@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Email Viewer</title>
+        <script>
+        let crntEmailId, emails;
+        function showEmail(id) {
+            if(!id) {
+                document.getElementById('emailContent').src = '';//"data:text/html;charset=utf-8,";
+                if(crntEmailId)
+                    document.getElementById('item-'+crntEmailId).style.backgroundColor = '#fff'
+                document.body.classList.remove('viewer')
+                crntEmailId = undefined;
+                return;
+            }
+            const crntItem = document.getElementById('item-'+id);
+            document.getElementById('emailContent').src = 'open/'+id;
+            crntItem.classList.add('open')
+            if(crntEmailId)
+                document.getElementById('item-'+crntEmailId).classList.remove('active')
+            crntItem.classList.add('active')
+            crntEmailId = id;
+            document.body.classList.add('viewer')
+        }
+        const showItems = (search) => {
+            for(let {id, to, subject} of emails) {
+                if(subject.toLowerCase().includes(search) || to.toLowerCase().includes(search)) {
+                    document.getElementById('item-'+id).style.display = 'block'
+                } else {
+                    document.getElementById('item-'+id).style.display = 'none'
+                }
+            }
+        }
+        </script>
+        <style>
+.selected {
+    background-color: #ffa;
+}
+.email-item {
+    padding: 0.5em; cursor: pointer; border-bottom: solid 1px #aaa;
+}
+.email-item.open {
+    background-color: #f6f6f6;
+}
+.email-item.active {
+    background-color: #ffd;
+}
+.email-item-top {
+    display: flex;
+}
+.email-item-subject {
+    flex: 1; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+}
+.email-item.open .email-item-subject {
+    font-weight: normal;
+}
+.email-item-time {
+    color: #0008;
+}
+.email-item-to {
+    color: #999;
+}
+#emailsList {
+    display: flex;
+    flex-direction: column;
+    border-right: solid 1px #aaa;
+    flex: 1;
+    min-width: 300px;
+}
+.list-header {
+    display: flex;
+}
+.list-header input {
+    flex: 1;
+}
+input, button {
+    padding: 0.7em;
+    font-size: 0.9em;
+}
+#listParent {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex: 1;
+}
+.email-header {
+    display: flex;
+    padding: 0.2em;
+}
+#emailContent {
+    border: none;
+    flex: 2;
+}
+#emailViewer {
+    display: flex;
+}
+.email-header {
+    display: none;
+}
+@media only screen and (max-width: 600px) {
+    .email-header {
+        display: flex;
+    }
+    #emailViewer {
+        display: none;
+    }
+    .viewer > #emailsList {
+        display: none;
+    }
+    .viewer > #emailViewer {
+        display: flex;
+    }
+}
+        </style>
+    </head>
+    <body style="display: flex; flex-direction: row; width: 100vw; height: 100vh; margin: 0;">
+        <div id="emailsList">
+            <div class="list-header">
+                <input class="" oninput="showItems(event.target.value.toLowerCase())" placeholder="Search Here">
+                <button onclick="location.reload()">Refresh</button>
+            </div>
+            <div class="" id="listParent">
+                {{#each emails}}
+                    <div class="email-item{{#if open}} open{{/if}}" id="item-{{id}}" onclick="showEmail('{{id}}')">
+                        <div class="email-item-top">
+                            <div class="email-item-subject">{{subject}}</div>
+                            <div class="email-item-time">{{time}}</div>
+                        </div>
+                        <div class="email-item-to">To: {{to}}</div>
+                    </div>
+                {{/each}}
+            </div>
+        </div>
+        <div style="flex: 2; flex-direction: column;" id="emailViewer">
+            <div class="email-header">
+                <button onclick="showEmail()" class="">Go Back</button>
+            </div>
+            <iframe id="emailContent">
+            </iframe>
+        </div>
+    </body>
+</html>
