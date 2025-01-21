@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.developent
+.env.production
+
+node_modules
+serviceAccountKey.json
+temp
+uploads
+public
+emails
