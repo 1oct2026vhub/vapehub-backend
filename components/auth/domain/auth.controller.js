@@ -28,16 +28,7 @@ module.exports.login = async (req, res, next) => {
             const tokenExpiryDate = new Date(user?.token_expiry);
             const currentTime = new Date();
             const fiveMinutesBeforeExpiry = new Date(Date.now() + 1000 * 60 * 5);
-            if (tokenExpiryDate > currentTime) {
-                // Email not verified and token is still valid
-                throw {
-                    message: "Email not verified! Please verify your email",
-                    statusCode: 400,
-                    errors: {
-                        email: "Email not verified! Please verify your email",
-                    }
-                };
-            } else if (tokenExpiryDate > fiveMinutesBeforeExpiry || resendVerificationEmail) {
+            if (resendVerificationEmail || tokenExpiryDate > fiveMinutesBeforeExpiry) {
                 // Token expiry is more than 5 minutes away, send a new verification email
                 const token = uuid()
                 const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -59,6 +50,15 @@ module.exports.login = async (req, res, next) => {
                 await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
                 console.log("New verification email sent.");
                 return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
+            } else if (tokenExpiryDate > currentTime) {
+                // Email not verified and token is still valid
+                throw {
+                    message: "Email not verified! Please verify your email",
+                    statusCode: 400,
+                    errors: {
+                        email: "Email not verified! Please verify your email",
+                    }
+                };
             }
         }
 
@@ -141,7 +141,7 @@ module.exports.verifyEmail = async (req, res, next) => {
         await user.save();
         const { password: _, ...userData } = user.dataValues;
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
-        return successResponse(res, { message: "Email verified successfully",  ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
+        return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
         return errorResponse(res, error);
