@@ -11,7 +11,7 @@ const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.help
 
 module.exports.login = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, resendVerificationEmail = false } = req.body;
 
         // Find user by email
         const user = await User.findOne({ where: { email } });
@@ -24,12 +24,48 @@ module.exports.login = async (req, res, next) => {
             return errorResponse(res, { message: "Invalid email or password" }, 400);
         }
 
+        if (!user?.email_verified_at) {
+            const tokenExpiryDate = new Date(user?.token_expiry);
+            const currentTime = new Date();
+            const fiveMinutesBeforeExpiry = new Date(Date.now() + 1000 * 60 * 5);
+            if (tokenExpiryDate > currentTime) {
+                // Email not verified and token is still valid
+                throw {
+                    message: "Email not verified! Please verify your email",
+                    statusCode: 400,
+                    errors: {
+                        email: "Email not verified! Please verify your email",
+                    }
+                };
+            } else if (tokenExpiryDate > fiveMinutesBeforeExpiry || resendVerificationEmail) {
+                // Token expiry is more than 5 minutes away, send a new verification email
+                const token = uuid()
+                const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                user.token = token;
+                user.token_expiry = token_expiry;
+                await user.save();
+
+                const username = user?.first_name ?? user.email.split('@')[0];
+                const data = {
+                    emailTypes: constants.emailTypes.REGISTER,
+                    to: user.email,
+                    context: {
+                        userName: username,
+                        verificationLink: `${process.env.HOST_URL}/api/auth/verify-email?token=${token}`,
+                        expiryTime: moment(token_expiry).format('LLLL'),
+                    },
+                    attachments: ""
+                }
+                await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+                console.log("New verification email sent.");
+                return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
+            }
+        }
+
         const { password: _, ...userData } = user.dataValues;
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         // res, data, message, statusCode
         return successResponse(res, { ...userData, accessToken, refreshToken });
-
-
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
