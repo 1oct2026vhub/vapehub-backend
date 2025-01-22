@@ -49,7 +49,6 @@ module.exports.register = async (req, res, next) => {
             }
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
         const user = await User.create({
