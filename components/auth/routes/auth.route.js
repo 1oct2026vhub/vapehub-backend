@@ -28,6 +28,10 @@ const authController = require('../domain/auth.controller')
  *                 description: The password of the user.
  *                 minLength: 8
  *                 example: password123
+ *               resendVerificationEmail:
+ *                 type: boolean
+ *                 description: resend verificatin email.
+ *                 example: false
  *     responses:
  *       200:
  *         description: Successfully logged in
@@ -40,6 +44,7 @@ router.post("/login",
   validateRequest([
     check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required"),
     check("password").notEmpty().withMessage("Password is required").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
+    check("resendVerificationEmail").optional().isBoolean().withMessage("resendVerificationEmail must be a boolean")
   ]),
   authController.login
 );
