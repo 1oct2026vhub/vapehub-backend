@@ -11,23 +11,28 @@ const moment = require('moment');
 module.exports.login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
-        console.log("🚀 ~ module.exports.login= ~ email, password:", email, password)
 
-        // Validate user credentials (this is just an example, use your actual validation method)
+        // Find user by email
         const user = await User.findOne({ where: { email } });
-        if (!user || !user.verifyPassword(password)) {
-            return res.status(401).json({ message: "Invalid username or password" });
+        if (!user) {
+            return errorResponse(res, { message: "Invalid email or password" }, 400);
+        }
+        // Verify password
+        const isPasswordValid = await user.verifyPassword(password);
+        if (!isPasswordValid) {
+            return errorResponse(res, { message: "Invalid email or password" }, 400);
         }
 
+        const { password: _, ...userData } = user.dataValues;
         const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
         const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 
         // res, data, message, statusCode
-        return successResponse(res, { accessToken, refreshToken });
+        return successResponse(res, { ...userData, accessToken, refreshToken });
 
 
     } catch (error) {
-        return errorResponse(res, error);
+        return errorResponse(res, error, error.message);
     }
 }
 
@@ -44,7 +49,6 @@ module.exports.register = async (req, res, next) => {
             }
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
         const user = await User.create({
@@ -69,7 +73,8 @@ module.exports.register = async (req, res, next) => {
             attachments: ""
         }
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-        return successResponse(res, { ...user, accessToken, refreshToken }, "User created successfully", 201);
+        const { password: _, ...userData } = user.dataValues;
+        return successResponse(res, { ...userData, accessToken, refreshToken }, "User created successfully", 201);
 
     } catch (error) {
         return errorResponse(res, error);
