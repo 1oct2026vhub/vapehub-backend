@@ -6,6 +6,7 @@ const { User } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
+const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
 
 
 module.exports.login = async (req, res, next) => {
@@ -24,9 +25,7 @@ module.exports.login = async (req, res, next) => {
         }
 
         const { password: _, ...userData } = user.dataValues;
-        const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "30d" });
-
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         // res, data, message, statusCode
         return successResponse(res, { ...userData, accessToken, refreshToken });
 
@@ -57,9 +56,8 @@ module.exports.register = async (req, res, next) => {
             token,
             token_expiry
         });
-        const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         const username = user?.first_name ?? user.email.split('@')[0];
 
         const data = {
@@ -156,7 +154,6 @@ module.exports.forgotPassword = async (req, res, next) => {
 module.exports.resetPassword = async (req, res, next) => {
     try {
         const { token, password } = req.body;
-        console.log("🚀 ~ module.exports.resetPassword= ~ token, password:", token, password)
         const user = await User.findOne({ where: { token } });
         if (!user || user.token_expiry < new Date()) {
             throw {
@@ -176,4 +173,27 @@ module.exports.resetPassword = async (req, res, next) => {
         return errorResponse(res, error);
     }
 
+}
+
+module.exports.refreshToken = async (req, res, next) => {
+    try {
+        const { refreshToken } = req.body;
+        // Verify the refresh token
+        const decoded = verifyAuthJwtToken(refreshToken, process.env.JWT_REFRESH_SECRET);
+        const user = await User.findByPk(decoded.id);
+        if (!user) {
+            throw {
+                message: "User not found",
+                statusCode: 404,
+                errors: {
+                    refreshToken: "User not found",
+                }
+            }
+        }
+        const { accessToken, refreshToken: newRefreshToken } = generateAuthJwtToken({ id: user.id });
+        return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
+    } catch (error) {
+        console.log("🚀 ~ module.exports.refreshToken= ~ error:", error)
+        return errorResponse(res, error);
+    }
 }

@@ -10,12 +10,12 @@ const successResponse = (res, data, message = "Request successful", statusCode =
 };
 
 // Error response function
-const errorResponse = (res, error, message = "Something went wrong", statusCode = 500) => {
+const errorResponse = (res, error, message, statusCode) => {
     if (!message) {
         message = error?.errors?.[0]?.message || error.message;
     }
     if (!statusCode) {
-        statusCode = error?.statusCode ? error.statusCode : statusCode;
+        statusCode = error?.statusCode ? error.statusCode : 500;
     }
     const errorData = error.errors ? error.errors : error;
     res.status(statusCode).json({

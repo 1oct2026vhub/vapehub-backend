@@ -18,12 +18,12 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:5000',
-        description: 'Development server',
+        url: process.env.HOST_URL,
+        description: 'Development Server',
       },
       {
-        url: 'https://vapehub.com',
-        description: 'Production server',
+        url: 'http://localhost:5000',
+        description: 'Local server',
       }]
   },
   apis: glob.sync(path.join(__dirname, '/../components/**/routes/*.route.js')),
