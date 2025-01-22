@@ -109,11 +109,5 @@ module.exports = (sequelize, DataTypes) => {
         }
     });
 
-    User.beforeUpdate(async (user, options) => {
-        if (user.password) {
-            user.password = await bcrypt.hash(user.password, 10); // Hash password before updating
-        }
-    });
-
     return User;
 };

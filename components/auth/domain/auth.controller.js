@@ -164,7 +164,8 @@ module.exports.resetPassword = async (req, res, next) => {
                 }
             }
         }
-        user.password = password;
+        const hashedPassword = await bcrypt.hashSync(password, 10);
+        user.password = hashedPassword;
         user.token = null;
         user.token_expiry = null;
         await user.save();
