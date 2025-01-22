@@ -285,6 +285,10 @@ router.post('/reset-password',
  *       400:
  *         description: Invalid or missing refresh token
  */
-router.post("/refresh-token", authController.refreshToken);
+router.post("/refresh-token",
+  validateRequest([
+    check('refreshToken').isString().notEmpty().withMessage('refreshToken is required in request body'),
+  ]),
+  authController.refreshToken);
 
 module.exports = router;
