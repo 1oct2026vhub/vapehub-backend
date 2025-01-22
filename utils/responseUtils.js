@@ -15,7 +15,7 @@ const errorResponse = (res, error, message = "Something went wrong", statusCode 
         message = error?.errors?.[0]?.message || error.message;
     }
     if (!statusCode) {
-        const statusCode = error?.statusCode ? error.statusCode : statusCode
+        statusCode = error?.statusCode ? error.statusCode : statusCode;
     }
     const errorData = error.errors ? error.errors : error;
     res.status(statusCode).json({

@@ -7,5 +7,4 @@ node_modules
 serviceAccountKey.json
 temp
 uploads
-public
 emails

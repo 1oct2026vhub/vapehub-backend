@@ -100,7 +100,6 @@ module.exports = (sequelize, DataTypes) => {
 
     // Add a method to verify password in instance methods
     User.prototype.verifyPassword = function (providedPassword) {
-        console.log("🚀 ~ providedPassword:", providedPassword)
         return bcrypt.compareSync(providedPassword, this.password);
     };
 
@@ -115,7 +114,6 @@ module.exports = (sequelize, DataTypes) => {
             user.password = await bcrypt.hash(user.password, 10); // Hash password before updating
         }
     });
-
 
     return User;
 };
