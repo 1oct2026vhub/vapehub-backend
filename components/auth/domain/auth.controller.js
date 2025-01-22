@@ -93,7 +93,6 @@ module.exports.register = async (req, res, next) => {
             token_expiry
         });
 
-        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         const username = user?.first_name ?? user.email.split('@')[0];
 
         const data = {
@@ -107,9 +106,7 @@ module.exports.register = async (req, res, next) => {
             attachments: ""
         }
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-        const { password: _, ...userData } = user.dataValues;
-        return successResponse(res, { ...userData, accessToken, refreshToken }, "User created successfully", 201);
-
+        return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
         return errorResponse(res, error);
     }
@@ -142,7 +139,9 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        return successResponse(res, { message: "Email verified successfully", email: user?.email, id: user?.id }, "Email verified successfully", 200);
+        const { password: _, ...userData } = user.dataValues;
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
+        return successResponse(res, { message: "Email verified successfully",  ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
         return errorResponse(res, error);
