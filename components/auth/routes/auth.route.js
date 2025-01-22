@@ -63,10 +63,12 @@ router.post("/login",
  *                 type: string
  *                 format: email
  *                 description: The email of the user
+ *                 example: user@example.com
  *               password:
  *                 type: string
  *                 description: The password of the user (must be at least 8 characters)
  *                 minLength: 8
+ *                 example: password123
  *     responses:
  *       201:
  *         description: User successfully registered
@@ -226,10 +228,12 @@ router.post('/forgot-password', validateRequest([
  *                 type: string
  *                 format: string
  *                 description: token sent to the user's email
+ *                 example: 62af6dd0-f7fc-49ff-9fdf-ceb2331c9180
  *               password:
  *                 type: string
  *                 description: The new password of the user (must be at least 8 characters)
  *                 minLength: 8
+ *                 example: password123
    *     responses:
    *       200:
    *         description: Password reset successful
@@ -238,10 +242,49 @@ router.post('/forgot-password', validateRequest([
    *       500:
    *         description: Internal server error
    */
-router.post('/reset-password', 
+router.post('/reset-password',
   validateRequest([
     check('token').isString().notEmpty().withMessage('Token is required in query params'),
     check('password').isString().notEmpty().withMessage('Password is required').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
   ])
   , authController.resetPassword);
+
+/**
+ * @swagger
+ * /api/auth/refresh-token:
+ *   post:
+ *     summary: Refresh user access token
+ *     description: Refreshes the user's access token using the refresh token.
+ *     tags:
+ *      - Authentication 
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: The refresh token to obtain a new access token.  
+ *                 example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzM3NTI5MzkzLCJleHAiOjE3NDAxMjEzOTN9.xYGc_TerVZbE-3kzagCYIZSZxVspY80AblO5Yfm83S0"
+ *     responses:
+ *       200:
+ *         description: Access token refreshed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   example: "newAccessToken12345"
+ *                 refreshToken:
+ *                   type: string
+ *                   example: "newAccessToken12345"
+ *       400:
+ *         description: Invalid or missing refresh token
+ */
+router.post("/refresh-token", authController.refreshToken);
+
 module.exports = router;
