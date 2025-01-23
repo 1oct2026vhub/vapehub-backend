@@ -2,6 +2,7 @@
 .env.local
 .env.developent
 .env.production
+.env.*
 
 node_modules
 serviceAccountKey.json
