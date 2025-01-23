@@ -8,7 +8,6 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const cors = require("cors");
 const swaggerUi = require('swagger-ui-express');
-const swaggerDocs = require('./config/swaggerOptions');
 
 // Response Helper middleware
 const responseHelper = require("./library/responseHelper");
@@ -29,9 +28,19 @@ app.use(helmet({
 }));
 
 // 2. CORS configuration
-const whitelistedOrigins = process.env.CORS_ORIGINS?.split(" ") || [];
+const whitelistedOrigins = process.env.CORS_ORIGINS?.split(",").map(origin => origin.trim()) || [];
 app.use(
-    cors("*")
+    cors({
+        origin: (origin, callback) => {
+            // Allow requests with no origin (e.g., mobile apps or Postman)
+            if (!origin || whitelistedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error("Not allowed by CORS"));
+            }
+        },
+        credentials: true, // Include credentials if needed
+    })
 );
 
 // 3. Body parsing middleware
@@ -56,7 +65,7 @@ passportConfig(passport);
 // app.use(responseHelper);
 
 // Serve Swagger API Docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions')));
 
 // Routes
 app.get("/", (req, res) => {
