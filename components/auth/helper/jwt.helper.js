@@ -14,18 +14,18 @@ module.exports.verifyAuthJwtToken = (token, secret) => {
         // Handle errors based on error name
         if (err.name === "TokenExpiredError") {
             throw {
-                message: "Refresh token has expired",
+                message: "Token has expired! Please login again",
                 statusCode: 401,
                 errors: {
-                    refreshToken: "Refresh token has expired",
+                    refreshToken: "Token has expired! Please login again",
                 }
             };
         } else {
             throw {
-                message: "Invalid refresh token",
+                message: "Invalid token",
                 statusCode: 400,
                 errors: {
-                    refreshToken: "Invalid refresh token",
+                    refreshToken: "Invalid token",
                 }
             };
         }
