@@ -27,8 +27,7 @@ module.exports.login = async (req, res, next) => {
         if (!user?.email_verified_at) {
             const tokenExpiryDate = new Date(user?.token_expiry);
             const currentTime = new Date();
-            const fiveMinutesBeforeExpiry = new Date(Date.now() + 1000 * 60 * 5);
-            if (resendVerificationEmail || tokenExpiryDate > fiveMinutesBeforeExpiry) {
+            if (resendVerificationEmail || tokenExpiryDate < currentTime) {
                 // Token expiry is more than 5 minutes away, send a new verification email
                 const token = uuid()
                 const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -61,9 +60,17 @@ module.exports.login = async (req, res, next) => {
                 };
             }
         }
-
-        const { password: _, ...userData } = user.dataValues;
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
+        const userData = {
+            id: user.id,
+            first_name: user?.first_name,
+            last_name: user?.last_name,
+            email: user?.email,
+            phone: user?.phone,
+            profile_pic_url: user?.profile_pic_url,
+            gender: user?.gender,
+            dob: user?.dob,
+        }
         // res, data, message, statusCode
         return successResponse(res, { ...userData, accessToken, refreshToken });
     } catch (error) {
@@ -78,7 +85,7 @@ module.exports.register = async (req, res, next) => {
         const userExists = await User.findOne({ where: { email } });
         if (userExists) {
             throw {
-                message: "User already exists",
+                message: "User email already exists",
                 statusCode: 400,
                 errors: { email: "User eamil already exists" },
             }
@@ -139,7 +146,16 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        const { password: _, ...userData } = user.dataValues;
+        const userData = {
+            id: user.id,
+            first_name: user?.first_name,
+            last_name: user?.last_name,
+            email: user?.email,
+            phone: user?.phone,
+            profile_pic_url: user?.profile_pic_url,
+            gender: user?.gender,
+            dob: user?.dob,
+        }
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
@@ -158,6 +174,15 @@ module.exports.forgotPassword = async (req, res, next) => {
                 statusCode: 404,
                 errors: {
                     email: "User not found",
+                }
+            }
+        }
+        if (!user?.email_verified_at) {
+            throw {
+                message: "Email is not verified. Please verify your email first.",
+                statusCode: 400,
+                errors: {
+                    email: "Email is not verified. Please verify your email first.",
                 }
             }
         }
@@ -204,7 +229,7 @@ module.exports.resetPassword = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        return successResponse(res, { message: "Password reset successfully" }, "Password reset successfully", 200);
+        return successResponse(res, { message: "Password reset successful! Please log in to continue." }, "Password reset successful! Please log in to continue.", 200);
     } catch (error) {
         return errorResponse(res, error);
     }

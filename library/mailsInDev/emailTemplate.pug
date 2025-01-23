@@ -133,11 +133,11 @@ html
         input(type='radio', name='preview_email', checked)#tab-html
         label(for='tab-html') HTML
         .preview-email-tab
-          iframe(sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-presentation allow-downloads", referrerpolicy='no-referrer', seamless='seamless', srcdoc=`<base target='_top'>${html}`)#html
+          iframe(sandbox="allow-same-origin", referrerpolicy='no-referrer', seamless='seamless', srcdoc=`<base target='_top'>${html}`)#html
       if text
         input(type='radio', name='preview_email', checked=!html)#tab-text
         label(for='tab-text') Plain text
         .preview-email-tab
-          iframe(sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-presentation allow-downloads", referrerpolicy='no-referrer', seamless='seamless', srcdoc=`<pre>${text}</pre>`)#text
+          iframe(sandbox="allow-same-origin", referrerpolicy='no-referrer', seamless='seamless', srcdoc=`<pre>${text}</pre>`)#text
     script.
       document.querySelectorAll('[data-convert="date"]').forEach(i => i.innerText = new Date(Number(i.dataset.date)).toString())
