@@ -4,15 +4,15 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
   class Product extends Model {
     static associate(models) {
-      this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
+      this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by', onDelete: 'SET NULL', onUpdate: 'CASCADE' });
       this.belongsTo(models.Category, { foreignKey: 'category_id' });
       this.belongsTo(models.Brand, { foreignKey: 'brand_id' });
-    //   this.hasMany(models.ProductImage, { foreignKey: 'product_id' });
-    //   this.hasMany(models.ProductVariant, { foreignKey: 'product_id' });
-    //   this.hasMany(models.Review, { foreignKey: 'product_id' });
-    //   this.belongsToMany(models.Tag, { through: 'product_tags', foreignKey: 'product_id' });
-    //   this.hasMany(models.Cart, { foreignKey: 'product_id' });
-    //   this.hasMany(models.Order, { foreignKey: 'product_id' });
+      //   this.hasMany(models.ProductImage, { foreignKey: 'product_id' });
+      //   this.hasMany(models.ProductVariant, { foreignKey: 'product_id' });
+      //   this.hasMany(models.Review, { foreignKey: 'product_id' });
+      //   this.belongsToMany(models.Tag, { through: 'product_tags', foreignKey: 'product_id' });
+      //   this.hasMany(models.Cart, { foreignKey: 'product_id' });
+      //   this.hasMany(models.Order, { foreignKey: 'product_id' });
     }
   }
 
@@ -25,7 +25,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     updated_by: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'users',
         key: 'id'
