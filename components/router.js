@@ -12,6 +12,8 @@ router.post("/", (req, res) => {
 // This should be under the correct path
 router.use('/auth', require('./auth/routes/auth.route'));
 router.use("/brands", require("./brand/routes/brand.route"))
+router.use("/category", require("./category/routes/category.route"))
+router.use("/product", require("./product/routes/product.route"))
 
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 
