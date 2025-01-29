@@ -8,14 +8,102 @@ const { check, query, param } = require("express-validator");
  * @swagger
  * /api/product:
  *   get:
- *     summary: Retrieve a list of product
+ *     summary: Retrieve a list of products with optional filters
  *     tags:
- *      - Product
+ *       - Product
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         description: Keyword to search in product names
+ *       - in: query
+ *         name: price_range
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: is_new
+ *         schema:
+ *           type: boolean
+ *         description: Filter by new products
+ *       - in: query
+ *         name: categories
+ *         schema:
+ *           type: string
+ *         description: Comma-separated category IDs (e.g., 1,2,3)
+ *       - in: query
+ *         name: brand
+ *         schema:
+ *           type: integer
+ *         description: Brand ID
+ *       - in: query
+ *         name: flavours
+ *         schema:
+ *           type: string
+ *         description: Comma-separated flavor IDs (e.g., 1,2,3)
+ *       - in: query
+ *         name: bottle_size
+ *         schema:
+ *           type: string
+ *         description: Bottle size filter
+ *       - in: query
+ *         name: nicotine_strength
+ *         schema:
+ *           type: string
+ *         description: Nicotine strength filter
+ *       - in: query
+ *         name: nicotine_type
+ *         schema:
+ *           type: string
+ *         description: Nicotine type filter
+ *       - in: query
+ *         name: vg_ratio
+ *         schema:
+ *           type: string
+ *         description: VG ratio filter
+ *       - in: query
+ *         name: vaping_style
+ *         schema:
+ *           type: string
+ *         description: Vaping style filter
+ *       - in: query
+ *         name: coil_style
+ *         schema:
+ *           type: string
+ *         description: Coil style filter
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           default: id
+ *         description: Field to sort by
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of items to skip
  *     responses:
  *       200:
- *         description: A list of product
+ *         description: A list of products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Internal server error
  */
 router.get('/', authenticateJWT, brandController.listAllproducts);
 
