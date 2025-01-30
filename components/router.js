@@ -14,6 +14,7 @@ router.use('/auth', require('./auth/routes/auth.route'));
 router.use("/brands", require("./brand/routes/brand.route"))
 router.use("/category", require("./category/routes/category.route"))
 router.use("/product", require("./product/routes/product.route"))
+router.use("/faqs", require("./FAQ/routes/faqs.route"))
 
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 
