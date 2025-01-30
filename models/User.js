@@ -8,10 +8,10 @@ module.exports = (sequelize, DataTypes) => {
             this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
             this.hasMany(models.UserAddress, { foreignKey: 'user_id' });
             this.hasMany(models.Product, { foreignKey: 'updated_by' });
+            this.hasMany(models.Cart, { foreignKey: 'user_id' });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
-            // this.hasMany(models.Cart, { foreignKey: 'user_id' });
             // this.hasMany(models.Transaction, { foreignKey: 'user_id' });
             // this.hasMany(models.Order, { foreignKey: 'user_id' });
         }

@@ -9,6 +9,7 @@ module.exports = (sequelize, DataTypes) => {
       this.belongsTo(models.Brand, { foreignKey: 'brand_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
       this.hasMany(models.ProductImage, { foreignKey: 'product_id' });
       this.belongsToMany(models.Flavor, { through: 'ProductFlavor', foreignKey: 'product_id' });
+      this.hasMany(models.Cart, { foreignKey: 'product_id' });
       
     }
   }
