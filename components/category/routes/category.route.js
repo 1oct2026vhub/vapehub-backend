@@ -17,7 +17,7 @@ const { check, query, param } = require("express-validator");
  *       200:
  *         description: A list of category
  */
-router.get('/', authenticateJWT, brandController.listAllbrands);
+router.get('/', authenticateJWT, brandController.listAllcategories);
 
 /**
  * @swagger
@@ -42,7 +42,7 @@ router.get('/:id', authenticateJWT,
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.getBrandByid
+    brandController.getCategoryByid
 );
 
 /**
@@ -63,6 +63,8 @@ router.get('/:id', authenticateJWT,
  *                 type: string
  *               logo_url:
  *                 type: string
+ *               slug:
+ *                 type: string
  *               updated_by:
  *                 type: integer
  *     responses:
@@ -73,8 +75,9 @@ router.post('/', authenticateJWT,
     validateRequest([
         check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
         check('logo_url').notEmpty().isString().withMessage('Logo URL must be a string'),
+        check('slug').notEmpty().withMessage("slug is required").isString().withMessage('slug must be a string'),
     ]),
-    brandController.createBrand
+    brandController.createCategory
 );
 
 /**
@@ -112,8 +115,9 @@ router.put('/:id', authenticateJWT,
         param('id').isInt().withMessage('ID must be an integer'),
         check('name').optional().isString().withMessage('Name must be a string'),
         check('logo_url').optional().isString().withMessage('Logo URL must be a string'),
+        check('slug').optional().isString().withMessage('Slug must be a string'),
     ]),
-    brandController.updateBrand
+    brandController.updateCategory
 );
 
 /**
@@ -130,14 +134,14 @@ router.put('/:id', authenticateJWT,
  *         schema:
  *           type: integer
  *     responses:
- *       204:
+ *       200:
  *         description: Deleted
  */
 router.delete('/:id', authenticateJWT,
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.deleteBrand
+    brandController.deleteCategory
 );
 
 module.exports = router;

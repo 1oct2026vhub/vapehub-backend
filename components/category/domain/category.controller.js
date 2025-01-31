@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Category } = require("../../../models");
 
-module.exports.listAllbrands = async (req, res, next) => {
+module.exports.listAllcategories = async (req, res, next) => {
     try {
         const Categories = await Category.findAll();
         successResponse(res, Categories, 'Success');
@@ -10,62 +10,63 @@ module.exports.listAllbrands = async (req, res, next) => {
     }
 
 }
-module.exports.getBrandByid = async (req, res, next) => {
+module.exports.getCategoryByid = async (req, res, next) => {
     try {
-        const brand = await Category.findByPk(req.params.id);
-        successResponse(res, brand, 'Success');
+        const category = await Category.findByPk(req.params.id);
+        successResponse(res, category, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
 
 }
-module.exports.createBrand = async (req, res, next) => {
+module.exports.createCategory = async (req, res, next) => {
     try {
-        const { name, logo_url } = req.body;
+        const { name, logo_url, slug } = req.body;
         const { id: updated_by } = req.user
-        const brand = await Category.create({ name, logo_url, updated_by });
-        successResponse(res, brand, 'Category created successfully', 201);
+        const category = await Category.create({ name, logo_url, updated_by, slug });
+        successResponse(res, category, 'Category created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
 }
-module.exports.updateBrand = async (req, res, next) => {
+module.exports.updateCategory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, logo_url } = req.body;
+        const { name, slug, logo_url } = req.body;
         const { id: updated_by } = req.user
 
-        const brand = await Category.findByPk(id);
-        if (!brand) {
+        const category = await Category.findByPk(id);
+        if (!category) {
             throw {
                 statusCode: 404,
                 message: 'Category not found'
             }
         }
 
-        await brand.update({
+        await category.update({
             ...(name && { name }),
+            ...(slug && { slug }),
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
         });
-        successResponse(res, brand, 'Category updated successfully',);
+        successResponse(res, category, 'Category updated successfully',);
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
 
 }
-module.exports.deleteBrand = async (req, res, next) => {
+module.exports.deleteCategory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const brand = await Category.findByPk(id);
-        if (!brand) {
+        const category = await Category.findByPk(id);
+        if (!category) {
             throw {
                 statusCode: 404,
                 message: 'Category not found'
             }
         }
-        await brand.destroy();
-        successResponse(res, { message: 'Category deleted successfully' }, null, 204);
+        await category.destroy({ force: true });
+        successResponse(res, { message: 'Category deleted successfully' }, 'Category deleted successfully', 200);
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

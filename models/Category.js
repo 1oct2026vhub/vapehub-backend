@@ -24,7 +24,6 @@ module.exports = (sequelize, DataTypes) => {
         },
         updated_by: {
             type: DataTypes.INTEGER,
-            allowNull: true,
             references: {
                 model: 'users',
                 key: 'id'
@@ -36,7 +35,12 @@ module.exports = (sequelize, DataTypes) => {
         },
         slug: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
+            unique: {
+                args: true,
+                msg: 'Slug already exists'
+            },
+
         },
         parent_id: {
             type: DataTypes.INTEGER,
