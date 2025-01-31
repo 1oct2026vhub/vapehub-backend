@@ -45,14 +45,6 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 1
-        },
-        price: {
-            type: DataTypes.DECIMAL,
-            allowNull: false
-        },
-        discount_price: {
-            type: DataTypes.DECIMAL,
-            allowNull: true
         }
     }, {
         sequelize,

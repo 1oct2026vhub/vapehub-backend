@@ -11,7 +11,9 @@ const { check, query, param } = require("express-validator");
  *   get:
  *     tags:
  *       - Cart
- *     summary: Get all FAQs
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Get all items in cart
  *     responses:
  *       200:
  *         description: Success
@@ -24,64 +26,84 @@ router.get('/', authenticateJWT, cartController.listCartItems);
  *   post:
  *     tags:
  *       - Cart
+ *     security:
+ *       - bearerAuth: []
  *     summary: Create a new FAQ
- *     parameters:
- *       - in: body
- *         name: body
- *         description: FAQ object
- *         required: true
- *         schema:
- *           type: object
- *           properties:
- *             question:
- *               type: string
- *             answer:
- *               type: string
+ *     requestBody:
+ *        required: true
+ *        content:
+ *          application/json:
+ *           schema:
+ *            type: object
+ *            properties:
+ *             product_id:
+ *              type: integer
+ *             flavor_id:
+ *              type: integer
+ *             quantity:
+ *              type: integer
  *     responses:
  *       200:
- *         description: Success
+ *         description: Cart item created successfully
+ *       400:
+ *         description: Bad Request
+ *       401:
+ *         description: Unauthorized - User is not authenticated
+ *       500:
+ *         description: Internal Server Error - An unexpected error occurred
  */
 router.post('/', authenticateJWT,
-
+    validateRequest([
+        check('product_id').isNumeric().withMessage('Product ID must be a number'),
+        check('flavor_id').isNumeric().withMessage('Flavor ID must be a number'),
+        check('quantity').isNumeric().withMessage('Quantity must be a number'),
+    ]),
     cartController.createCart);
 
 /**
  * @swagger
- * /api/cart/:id:
+ * /api/cart/{id}:
  *   put:
  *     summary: Update an FAQ
  *     tags:
  *       - Cart
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         type: integer
- *       - in: body
- *         name: body
- *         description: FAQ object
- *         required: true
  *         schema:
- *           type: object
- *           properties:
- *             question:
- *               type: string
- *             answer:
- *               type: string
+ *           type: integer
+ *     requestBody:
+ *        required: true
+ *        content:
+ *          application/json:
+ *           schema:
+ *            type: object
+ *            properties:
+ *             quantity:
+ *              type: integer
  *     responses:
  *       200:
- *         description: Success
+ *         description: A single brand
  */
 router.put('/:id', authenticateJWT,
-    cartController.updateCart);
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer')
+    ]),
+    cartController.updateCart
+);
 
 /**
  * @swagger
- * /api/cart/:id:
+ * /api/cart/{id}:
  *   delete:
  *     tags:
  *       - Cart
  *     summary: Delete an FAQ
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

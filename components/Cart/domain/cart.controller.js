@@ -1,15 +1,24 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Cart, Product, Flavor } = require("../../../models");
+const { Cart, Product, Flavor, Category, Brand, ProductImage } = require("../../../models");
+
+const includeClause = [
+    {
+        model: Product,
+        include: [
+            { model: Category, as: 'Category' },
+            { model: Brand, as: 'Brand' },
+            { model: ProductImage, as: 'ProductImages' },
+        ]
+    },
+    { model: Flavor, as: 'Flavor' }
+]
 
 module.exports.listCartItems = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         const carts = await Cart.findAll({
             where: { user_id },
-            include: [
-                { model: Product, attributes: ['name', 'slug', 'price', 'discount_price'] },
-                { model: Flavor, attributes: ['name', 'id'] }
-            ]
+            include: includeClause
         });
         successResponse(res, carts, 'Success');
     } catch (error) {
@@ -21,10 +30,7 @@ module.exports.getCartByid = async (req, res, next) => {
     try {
         const cart = await Cart.findByPk(req.params.id,
             {
-                include: [
-                    { model: Product, attributes: ['name', 'slug', 'price', 'discount_price'] },
-                    { model: Flavor, attributes: ['name', 'id'] }
-                ]
+                include: includeClause
             });
         successResponse(res, cart, 'Success');
     } catch (error) {
@@ -35,16 +41,28 @@ module.exports.getCartByid = async (req, res, next) => {
 module.exports.createCart = async (req, res, next) => {
     try {
         const user_id = req.user.id;
-        const { product_id, flavor_id, quantity, price, discount_price } = req.body;
-        const cartItem = await Cart.create({
-            user_id,
-            product_id,
-            flavor_id,
-            quantity,
-            price,
-            discount_price
+        const { product_id, flavor_id, quantity } = req.body;
+
+        // Check if the cart item already exists for the user with the specified product and flavor
+        const cartExists = await Cart.findOne({
+            where: { user_id, product_id, flavor_id },
+            include: includeClause
         });
-        successResponse(res, cartItem, 'Cart created successfully', 201);
+
+        if (cartExists) {
+            // If the cart item exists, update the quantity
+            cartExists.quantity = quantity;
+            await cartExists.save();
+            return successResponse(res, cartExists, 'Cart updated successfully');
+        } else {
+            // If the cart item doesn't exist, create a new cart item and return with associated product and flavor
+            const newItem = await Cart.create({ user_id, product_id, flavor_id, quantity });
+            const cartItem = await Cart.findOne({
+                where: { id: newItem.id },
+                include: includeClause,
+            });
+            return successResponse(res, cartItem, 'Cart created successfully');
+        }
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -52,16 +70,16 @@ module.exports.createCart = async (req, res, next) => {
 module.exports.updateCart = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { quantity, price, discount_price } = req.body;
-        const cartItem = await Cart.findByPk(id);
+        const { quantity } = req.body;
+        const cartItem = await Cart.findByPk(id, { include: includeClause });
         if (!cartItem) {
-            return res.status(404).json({ error: 'Cart item not found' });
+            throw {
+                statusCode: 404,
+                message: 'Cart item not found'
+            }
         }
 
         cartItem.quantity = quantity || cartItem.quantity;
-        cartItem.price = price || cartItem.price;
-        cartItem.discount_price = discount_price || cartItem.discount_price;
-
         await cartItem.save();
 
         successResponse(res, cartItem, 'Cart updated successfully',);
@@ -81,7 +99,7 @@ module.exports.deleteCart = async (req, res, next) => {
             }
         }
         await cart.destroy({ force: true });
-        successResponse(res, { message: 'Cart deleted successfully' }, null, 204);
+        successResponse(res, { message: 'Cart deleted successfully' });
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
