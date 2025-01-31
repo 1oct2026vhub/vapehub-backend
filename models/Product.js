@@ -10,7 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       this.hasMany(models.ProductImage, { foreignKey: 'product_id' });
       this.belongsToMany(models.Flavor, { through: 'ProductFlavor', foreignKey: 'product_id' });
       this.hasMany(models.Cart, { foreignKey: 'product_id' });
-      
+
     }
   }
 
@@ -35,7 +35,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     slug: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: false,
     },
     description: {
       type: DataTypes.TEXT,

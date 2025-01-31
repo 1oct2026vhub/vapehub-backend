@@ -37,10 +37,9 @@ module.exports.listAllproducts = async (req, res, next) => {
         }
 
         if (brands) {
-            const brand_ids = brands.split(',').map(Number);
-            whereClause.brand_id = { [Op.in]: brand_ids };
+            const brandIds = brands.split(',').map(Number);
+            whereClause.brand_id = { [Op.in]: brandIds };
         }
-
         if (categories) {
             const categoryIds = categories.split(',').map(Number);
             whereClause.category_id = { [Op.in]: categoryIds };
@@ -64,8 +63,12 @@ module.exports.listAllproducts = async (req, res, next) => {
             'bottle_size', 'nicotine_strength', 'nicotine_type', 'vg_ratio',
             'vaping_style', 'coil_style', 'puff_count', 'battery_capacity',
             'device_style', 'eliquid_capacity', 'pod_coil_style', 'pod_fill_style',
-            "is_new"
         ];
+
+        if (req.query.is_new !== undefined) {
+            whereClause.is_new = req.query.is_new === true;
+        }
+
 
         filterableFields.forEach(field => {
             if (req.query[field]) {
@@ -105,7 +108,7 @@ module.exports.listAllproducts = async (req, res, next) => {
         });
 
         // Calculate total pages
-        const totalPages = Math.ceil(totalCount / parsedLimit);
+        const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
 
         // Calculate current page
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
@@ -155,37 +158,158 @@ module.exports.getProductByid = async (req, res, next) => {
 
 }
 module.exports.createProduct = async (req, res, next) => {
+    const transaction = await Product.sequelize.transaction();
     try {
-        const { name, logo_url } = req.body;
-        const { id: updated_by } = req.user
-        const product = await Product.create({ name, logo_url, updated_by });
-        successResponse(res, product, 'Product created successfully', 201);
+        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, flavour_ids, product_images } = req.body;
+        const { id: updated_by } = req.user; // Authenticated user
+
+        // find product by slug
+        const existingProduct = await Product.findOne({ where: { slug } });
+        if (existingProduct) {
+            throw {
+                statusCode: 400,
+                message: 'Product already exists'
+            }
+        }
+
+        // Create the product
+        const product = await Product.create(
+            { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, updated_by },
+            { transaction }
+        );
+
+        // If flavors are provided, associate them
+        if (flavour_ids && flavour_ids.length > 0) {
+            const flavorRecords = flavour_ids.map(item => ({
+                product_id: product.id,
+                flavor_id: item.flavor_id,
+                ...(item.price && { price: item.price }),
+                ...(item.discount_price && { discount_price: item.discount_price }),
+                ...(item.stock_quantity && { stock_quantity: item.stock_quantity }),
+            }));
+            await ProductFlavor.bulkCreate(flavorRecords, { transaction });
+        }
+        // If product_images are provided, associate them
+        if (product_images && product_images.length > 0) {
+            const productImages = product_images.map(item => ({
+                product_id: product.id,
+                image_url: item.image_url,
+                is_primary: item.is_primary,
+                updated_by
+            }));
+            await ProductImage.bulkCreate(productImages, { transaction });
+        }
+
+        await transaction.commit();
+
+        // Fetch the created product with related models
+        const newProduct = await Product.findByPk(product.id, {
+            include: [
+                { model: Category, as: 'Category' },
+                { model: Brand, as: 'Brand' },
+                { model: ProductImage, as: 'ProductImages' },
+                {
+                    model: Flavor, as: 'Flavors', through: {
+                        model: ProductFlavor,
+                    }
+                }
+            ]
+        });
+
+        return successResponse(res, newProduct, 'Product created successfully');
     } catch (error) {
+        await transaction.rollback();
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
 }
 module.exports.updateProduct = async (req, res, next) => {
+    const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, logo_url } = req.body;
+        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, flavour_ids, product_images } = req.body;
         const { id: updated_by } = req.user
 
-        const product = await Product.findByPk(id);
+        // Find the product
+        const product = await Product.findByPk(id, { transaction });
         if (!product) {
+            await transaction.rollback();
             throw {
                 statusCode: 404,
                 message: 'Product not found'
             }
         }
-
-        await product.update({
+        // Update product fields
+        const updatedFields = {
             ...(name && { name }),
-            ...(logo_url && { logo_url }),
-            ...(updated_by && { updated_by }),
+            ...(slug && { slug }),
+            ...(description && { description }),
+            ...(price && { price }),
+            ...(discount_price && { discount_price }),
+            ...(stock_quantity && { stock_quantity }),
+            ...(puff_count && { puff_count }),
+            ...(is_new !== undefined && { is_new }),
+            ...(battery_capacity && { battery_capacity }),
+            ...(coil_style && { coil_style }),
+            ...(device_style && { device_style }),
+            ...(eliquid_capacity && { eliquid_capacity }),
+            ...(pod_coil_style && { pod_coil_style }),
+            ...(pod_fill_style && { pod_fill_style }),
+            ...(power_supply && { power_supply }),
+            ...(nicotine_strength && { nicotine_strength }),
+            ...(nicotine_type && { nicotine_type }),
+            ...(vg_ratio && { vg_ratio }),
+            ...(vaping_style && { vaping_style }),
+            ...(bottle_size && { bottle_size }),
+            ...(category_id && { category_id }),
+            ...(brand_id && { brand_id }),
+            ...(updated_by && { updated_by })
+        };
+
+        await product.update(updatedFields, { transaction });
+
+        // Update associated flavors
+        if (flavour_ids && flavour_ids.length > 0) {
+            await ProductFlavor.destroy({ where: { product_id: id }, transaction });
+            const flavorRecords = flavour_ids.map(item => ({
+                product_id: id,
+                flavor_id: item.flavor_id,
+                ...(item.price && { price: item.price }),
+                ...(item.discount_price && { discount_price: item.discount_price }),
+                ...(item.stock_quantity && { stock_quantity: item.stock_quantity }),
+            }));
+            await ProductFlavor.bulkCreate(flavorRecords, { transaction });
+        }
+
+        // Update associated images
+        if (product_images && product_images.length > 0) {
+            await ProductImage.destroy({ where: { product_id: id }, transaction });
+            const imageRecords = product_images.map(item => ({
+                product_id: id,
+                image_url: item.image_url,
+                is_primary: item.is_primary,
+                updated_by
+            }));
+            await ProductImage.bulkCreate(imageRecords, { transaction });
+        }
+        await transaction.commit();
+
+        // Fetch the updated product with related models
+        const updatedProduct = await Product.findByPk(id, {
+            include: [
+                { model: Category, as: 'Category' },
+                { model: Brand, as: 'Brand' },
+                { model: ProductImage, as: 'ProductImages' },
+                {
+                    model: Flavor, as: 'Flavors', through: {
+                        model: ProductFlavor,
+                    }
+                }
+            ]
         });
-        successResponse(res, product, 'Product updated successfully',);
+        successResponse(res, updatedProduct, 'Product updated');
     } catch (error) {
+        await transaction.rollback();
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
@@ -202,7 +326,7 @@ module.exports.deleteProduct = async (req, res, next) => {
             }
         }
         await product.destroy();
-        successResponse(res, { message: 'Product deleted successfully' }, null, 204);
+        successResponse(res, { message: 'Product deleted successfully' });
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
