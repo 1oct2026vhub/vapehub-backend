@@ -42,7 +42,7 @@ db.Sequelize = Sequelize;
 
 (async () => {
   try {
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     await sequelize.authenticate();
     console.log('DB Connection has been established successfully.');
   } catch (err) {
