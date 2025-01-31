@@ -4,7 +4,7 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class ProductImage extends Model {
         static associate(models) {
-            this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
+            this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
             this.belongsTo(models.Product, { foreignKey: 'product_id' });
         }
     }
@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
         },
         updated_by: {
             type: DataTypes.INTEGER,
-            allowNull: false,
+            allowNull: true,
             references: {
                 model: 'users',
                 key: 'id'

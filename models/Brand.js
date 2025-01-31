@@ -4,7 +4,12 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class Brand extends Model {
         static associate(models) {
-            this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
+            this.belongsTo(models.User, {
+                as: 'updatedBy',
+                foreignKey: 'updated_by',
+                onDelete: 'SET NULL',
+                onUpdate: 'CASCADE'
+            });
             this.hasMany(models.Product, { foreignKey: 'brand_id' });
         }
     }
@@ -18,10 +23,18 @@ module.exports = (sequelize, DataTypes) => {
         },
         updated_by: {
             type: DataTypes.INTEGER,
-            allowNull: false,
+            allowNull: true,
             references: {
                 model: 'users',
                 key: 'id'
+            }
+        },
+        slug: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: {
+                args: true,
+                msg: 'Slug already in use!, slug must be unique'
             }
         },
         name: {

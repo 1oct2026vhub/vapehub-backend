@@ -65,7 +65,7 @@ passportConfig(passport);
 // app.use(responseHelper);
 
 // Serve Swagger API Docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions')));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions'), false, { docExpansion: 'none' }));
 
 // Routes
 app.get("/", (req, res) => {

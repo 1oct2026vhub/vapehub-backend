@@ -22,12 +22,12 @@ const authController = require('../domain/auth.controller')
  *               email:
  *                 type: string
  *                 description: The email of the user.
- *                 example: user@example.com
+ *                 example: user31@example.com
  *               password:
  *                 type: string
  *                 description: The password of the user.
  *                 minLength: 8
- *                 example: password123
+ *                 example: Password@123
  *               resendVerificationEmail:
  *                 type: boolean
  *                 description: resend verificatin email.
@@ -68,12 +68,12 @@ router.post("/login",
  *                 type: string
  *                 format: email
  *                 description: The email of the user
- *                 example: user@example.com
+ *                 example: user31@example.com
  *               password:
  *                 type: string
  *                 description: The password of the user (must be at least 8 characters)
  *                 minLength: 8
- *                 example: password123
+ *                 example: Password@123
  *     responses:
  *       201:
  *         description: User successfully registered

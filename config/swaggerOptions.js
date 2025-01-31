@@ -24,7 +24,18 @@ const swaggerOptions = {
       {
         url: 'http://localhost:5000',
         description: 'Local server',
-      }]
+      }],
+    components: {
+      securitySchemes: { // Corrected: Replaced "securityDefinitions" with "securitySchemes"
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT', // Optional: Specifies the token format
+          description: 'Enter your bearer token in the format **Bearer <token>**',
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }], // Apply Bearer token globally
   },
   apis: glob.sync(path.join(__dirname, '/../components/**/routes/*.route.js')),
 };
