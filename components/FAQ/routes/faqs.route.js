@@ -25,18 +25,23 @@ router.get('/', FAQController.listAllfaqs);
  *     tags:
  *       - FAQ
  *     summary: Create a new FAQ
- *     parameters:
- *       - in: body
- *         name: body
- *         description: FAQ object
- *         required: true
- *         schema:
- *           type: object
- *           properties:
- *             question:
- *               type: string
- *             answer:
- *               type: string
+ *     requestBody:
+ *       description: FAQ object
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 example: "What is your return policy?"
+ *               answer:
+ *                 type: string
+ *                 example: "You can return the item within 30 days."
+ *             required:
+ *               - question
+ *               - answer
  *     responses:
  *       200:
  *         description: Success
@@ -50,7 +55,7 @@ router.post('/', authenticateJWT,
 
 /**
  * @swagger
- * /api/faqs/:id:
+ * /api/faqs/{id}:
  *   put:
  *     summary: Update an FAQ
  *     tags:
@@ -59,18 +64,25 @@ router.post('/', authenticateJWT,
  *       - in: path
  *         name: id
  *         required: true
- *         type: integer
- *       - in: body
- *         name: body
- *         description: FAQ object
- *         required: true
  *         schema:
- *           type: object
- *           properties:
- *             question:
- *               type: string
- *             answer:
- *               type: string
+ *           type: integer
+ *     requestBody:
+ *       description: FAQ object
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 example: "What is your refund policy?"
+ *               answer:
+ *                 type: string
+ *                 example: "You can request a refund within 14 days."
+ *             required:
+ *               - question
+ *               - answer
  *     responses:
  *       200:
  *         description: Success
@@ -85,7 +97,7 @@ router.put('/:id', authenticateJWT,
 
 /**
  * @swagger
- * /api/faqs/:id:
+ * /api/faqs/{id}:
  *   delete:
  *     tags:
  *       - FAQ

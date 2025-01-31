@@ -21,9 +21,9 @@ module.exports.getFaqByid = async (req, res, next) => {
 }
 module.exports.createFaq = async (req, res, next) => {
     try {
-        const { name, logo_url } = req.body;
+        const { question, answer } = req.body;
         const { id: updated_by } = req.user
-        const faq = await FAQ.create({ name, logo_url, updated_by });
+        const faq = await FAQ.create({ question, answer, updated_by });
         successResponse(res, faq, 'FAQ created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -32,7 +32,7 @@ module.exports.createFaq = async (req, res, next) => {
 module.exports.updateFaq = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, logo_url } = req.body;
+        const { question, answer } = req.body;
         const { id: updated_by } = req.user
 
         const faq = await FAQ.findByPk(id);
@@ -44,8 +44,8 @@ module.exports.updateFaq = async (req, res, next) => {
         }
 
         await faq.update({
-            ...(name && { name }),
-            ...(logo_url && { logo_url }),
+            ...(question && { question }),
+            ...(answer && { answer }),
             ...(updated_by && { updated_by }),
         });
         successResponse(res, faq, 'FAQ updated successfully',);
@@ -64,8 +64,8 @@ module.exports.deleteFaq = async (req, res, next) => {
                 message: 'FAQ not found'
             }
         }
-        await faq.destroy();
-        successResponse(res, { message: 'FAQ deleted successfully' }, null, 204);
+        await faq.destroy({ force: true });
+        successResponse(res, { message: 'FAQ deleted successfully' });
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
