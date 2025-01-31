@@ -63,6 +63,8 @@ router.get('/:id', authenticateJWT,
  *                 type: string
  *               logo_url:
  *                 type: string
+ *               slug:
+ *                 type: string
  *               updated_by:
  *                 type: integer
  *     responses:
@@ -73,6 +75,7 @@ router.post('/', authenticateJWT,
     validateRequest([
         check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
         check('logo_url').notEmpty().isString().withMessage('Logo URL must be a string'),
+        check('slug').notEmpty().withMessage("Slug is required").isString().withMessage('slug must be a string'),
     ]),
     brandController.createBrand
 );
@@ -101,6 +104,8 @@ router.post('/', authenticateJWT,
  *                 type: string
  *               logo_url:
  *                 type: string
+ *               slug:
+ *                 type: string
  *               updated_by:
  *                 type: integer
  *     responses:
@@ -112,6 +117,7 @@ router.put('/:id', authenticateJWT,
         param('id').isInt().withMessage('ID must be an integer'),
         check('name').optional().isString().withMessage('Name must be a string'),
         check('logo_url').optional().isString().withMessage('Logo URL must be a string'),
+        check('slug').optional().isString().withMessage('Slug must be a string'),
     ]),
     brandController.updateBrand
 );

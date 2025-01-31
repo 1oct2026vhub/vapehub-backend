@@ -21,9 +21,9 @@ module.exports.getBrandByid = async (req, res, next) => {
 }
 module.exports.createBrand = async (req, res, next) => {
     try {
-        const { name, logo_url } = req.body;
+        const { name, logo_url, slug } = req.body;
         const { id: updated_by } = req.user
-        const brand = await Brand.create({ name, logo_url, updated_by });
+        const brand = await Brand.create({ name, logo_url, updated_by, slug });
         successResponse(res, brand, 'Brand created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -32,7 +32,7 @@ module.exports.createBrand = async (req, res, next) => {
 module.exports.updateBrand = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, logo_url } = req.body;
+        const { name, logo_url, slug } = req.body;
         const { id: updated_by } = req.user
 
         const brand = await Brand.findByPk(id);
@@ -45,6 +45,7 @@ module.exports.updateBrand = async (req, res, next) => {
 
         await brand.update({
             ...(name && { name }),
+            ...(slug && { slug }),
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
         });
@@ -64,8 +65,8 @@ module.exports.deleteBrand = async (req, res, next) => {
                 message: 'Brand not found'
             }
         }
-        await brand.destroy();
-        successResponse(res, { message: 'Brand deleted successfully' }, null, 204);
+        await brand.destroy({ force: true });
+        successResponse(res, { message: 'Brand deleted successfully' }, "Success", 200);
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

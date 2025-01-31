@@ -29,6 +29,14 @@ module.exports = (sequelize, DataTypes) => {
                 key: 'id'
             }
         },
+        slug: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: {
+                args: true,
+                msg: 'Slug already in use!, slug must be unique'
+            }
+        },
         name: {
             type: DataTypes.STRING,
             allowNull: false
