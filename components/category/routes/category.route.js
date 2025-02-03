@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
-const brandController = require("../domain/category.controller");
+const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 
@@ -15,13 +15,13 @@ const { check, query, param } = require("express-validator");
  *       200:
  *         description: A list of category
  */
-router.get('/', brandController.listAllcategories);
+router.get('/', categoryController.listAllcategories);
 
 /**
  * @swagger
  * /api/category/{id}:
  *   get:
- *     summary: Retrieve a single brand by ID
+ *     summary: Retrieve a single category by ID
  *     tags:
  *      - Category
  *     parameters:
@@ -32,13 +32,13 @@ router.get('/', brandController.listAllcategories);
  *           type: integer
  *     responses:
  *       200:
- *         description: A single brand
+ *         description: A single category
  */
 router.get('/:id',
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.getCategoryByid
+    categoryController.getCategoryByid
 );
 
 /**
@@ -49,7 +49,7 @@ router.get('/:id',
  *      - Category
  *     security:
  *       - bearerAuth: []
- *     summary: Create a new brand
+ *     summary: Create a new category
  *     requestBody:
  *       required: true
  *       content:
@@ -75,7 +75,7 @@ router.post('/', authenticateJWT,
         check('logo_url').notEmpty().isString().withMessage('Logo URL must be a string'),
         check('slug').notEmpty().withMessage("slug is required").isString().withMessage('slug must be a string'),
     ]),
-    brandController.createCategory
+    categoryController.createCategory
 );
 
 /**
@@ -86,7 +86,7 @@ router.post('/', authenticateJWT,
  *      - Category
  *     security:
  *       - bearerAuth: []
- *     summary: Update a brand by ID
+ *     summary: Update a category by ID
  *     parameters:
  *       - in: path
  *         name: id
@@ -117,7 +117,7 @@ router.put('/:id', authenticateJWT,
         check('logo_url').optional().isString().withMessage('Logo URL must be a string'),
         check('slug').optional().isString().withMessage('Slug must be a string'),
     ]),
-    brandController.updateCategory
+    categoryController.updateCategory
 );
 
 /**
@@ -128,7 +128,7 @@ router.put('/:id', authenticateJWT,
  *      - Category
  *     security:
  *       - bearerAuth: []
- *     summary: Delete a brand by ID
+ *     summary: Delete a category by ID
  *     parameters:
  *       - in: path
  *         name: id
@@ -143,7 +143,7 @@ router.delete('/:id', authenticateJWT,
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.deleteCategory
+    categoryController.deleteCategory
 );
 
 module.exports = router;

@@ -86,7 +86,7 @@ router.post('/', authenticateJWT,
  *              type: integer
  *     responses:
  *       200:
- *         description: A single brand
+ *         description: A single cart
  */
 router.put('/:id', authenticateJWT,
     validateRequest([
