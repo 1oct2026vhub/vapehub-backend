@@ -11,13 +11,11 @@ const { check, query, param } = require("express-validator");
  *     summary: Retrieve a list of brands
  *     tags:
  *      - Brand
- *     security:
- *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: A list of brands
  */
-router.get('/', authenticateJWT, brandController.listAllbrands);
+router.get('/', brandController.listAllbrands);
 
 /**
  * @swagger
@@ -26,8 +24,6 @@ router.get('/', authenticateJWT, brandController.listAllbrands);
  *     summary: Retrieve a single brand by ID
  *     tags:
  *      - Brand
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -38,7 +34,7 @@ router.get('/', authenticateJWT, brandController.listAllbrands);
  *       200:
  *         description: A single brand
  */
-router.get('/:id', authenticateJWT,
+router.get('/:id',
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
@@ -51,6 +47,8 @@ router.get('/:id', authenticateJWT,
  *   post:
  *     tags:
  *      - Brand
+ *     security:
+ *       - bearerAuth: []
  *     summary: Create a new brand
  *     requestBody:
  *       required: true
@@ -86,6 +84,8 @@ router.post('/', authenticateJWT,
  *   put:
  *     tags:
  *      - Brand
+ *     security:
+ *       - bearerAuth: []
  *     summary: Update a brand by ID
  *     parameters:
  *       - in: path
@@ -128,6 +128,8 @@ router.put('/:id', authenticateJWT,
  *   delete:
  *     tags:
  *      - Brand
+ *     security:
+ *       - bearerAuth: []
  *     summary: Delete a brand by ID
  *     parameters:
  *       - in: path

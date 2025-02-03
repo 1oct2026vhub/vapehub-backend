@@ -11,8 +11,6 @@ const { check, query, param } = require("express-validator");
  *     summary: Retrieve a list of products with optional filters
  *     tags:
  *       - Product
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: keyword
@@ -105,7 +103,7 @@ const { check, query, param } = require("express-validator");
  *       500:
  *         description: Internal server error
  */
-router.get('/', authenticateJWT, brandController.listAllproducts);
+router.get('/', brandController.listAllproducts);
 
 /**
  * @swagger
@@ -114,8 +112,6 @@ router.get('/', authenticateJWT, brandController.listAllproducts);
  *     summary: Retrieve a single brand by ID
  *     tags:
  *      - Product
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -126,7 +122,7 @@ router.get('/', authenticateJWT, brandController.listAllproducts);
  *       200:
  *         description: A single brand
  */
-router.get('/:id', authenticateJWT,
+router.get('/:id',
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
@@ -473,6 +469,8 @@ router.put('/:id', authenticateJWT,
  *   delete:
  *     tags:
  *      - Product
+ *     security:
+ *       - bearerAuth: []
  *     summary: Delete a brand by ID
  *     parameters:
  *       - in: path
