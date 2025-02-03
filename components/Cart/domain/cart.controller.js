@@ -32,6 +32,12 @@ module.exports.getCartByid = async (req, res, next) => {
             {
                 include: includeClause
             });
+            if (!cart) {
+                throw {
+                    message: "Cart not found",
+                    statusCode: 400,
+                };
+            }
         successResponse(res, cart, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);

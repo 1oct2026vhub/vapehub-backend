@@ -13,6 +13,12 @@ module.exports.listAllbrands = async (req, res, next) => {
 module.exports.getBrandByid = async (req, res, next) => {
     try {
         const brand = await Brand.findByPk(req.params.id);
+        if (!brand) {
+            throw {
+                message: "Brand not found",
+                statusCode: 400,
+            }
+        }
         successResponse(res, brand, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
