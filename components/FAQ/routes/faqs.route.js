@@ -94,8 +94,8 @@ router.post('/', authenticateJWT,
 router.put('/:id', authenticateJWT,
     validateRequest([
         param('id').isNumeric().withMessage('ID must be a number'),
-        check('question').isString().withMessage('Question must be a string'),
-        check('answer').isString().withMessage('Answer must be a string'),
+        check('question').isString().withMessage('Question must be a string').notEmpty().withMessage('Question cannot be empty'),
+        check('answer').isString().withMessage('Answer must be a string').notEmpty().withMessage('Answer cannot be empty'),
     ]),
     FAQController.updateFaq);
 
