@@ -24,6 +24,8 @@ router.get('/', FAQController.listAllfaqs);
  *   post:
  *     tags:
  *       - FAQ
+ *     security:
+ *       - bearerAuth: []
  *     summary: Create a new FAQ
  *     requestBody:
  *       description: FAQ object
@@ -60,6 +62,8 @@ router.post('/', authenticateJWT,
  *     summary: Update an FAQ
  *     tags:
  *       - FAQ
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -101,6 +105,8 @@ router.put('/:id', authenticateJWT,
  *   delete:
  *     tags:
  *       - FAQ
+ *     security:
+ *       - bearerAuth: []
  *     summary: Delete an FAQ
  *     parameters:
  *       - in: path
