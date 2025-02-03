@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
-const brandController = require("../domain/product.controller");
+const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 
@@ -103,13 +103,13 @@ const { check, query, param } = require("express-validator");
  *       500:
  *         description: Internal server error
  */
-router.get('/', brandController.listAllproducts);
+router.get('/', productController.listAllproducts);
 
 /**
  * @swagger
  * /api/product/{id}:
  *   get:
- *     summary: Retrieve a single brand by ID
+ *     summary: Retrieve a single product by ID
  *     tags:
  *      - Product
  *     parameters:
@@ -120,13 +120,13 @@ router.get('/', brandController.listAllproducts);
  *           type: integer
  *     responses:
  *       200:
- *         description: A single brand
+ *         description: A single product
  */
 router.get('/:id',
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.getProductByid
+    productController.getProductByid
 );
 
 /**
@@ -291,7 +291,7 @@ router.post('/', authenticateJWT,
         check('product_images.*.image_url').optional().isString().withMessage('Image URL must be a string'),
         check('product_images.*.is_primary').optional().isBoolean().withMessage('is_primary must be a boolean'),
     ]),
-    brandController.createProduct
+    productController.createProduct
 );
 
 /**
@@ -460,7 +460,7 @@ router.put('/:id', authenticateJWT,
         check('product_images.*.image_url').optional().isString().withMessage('Image URL must be a string'),
         check('product_images.*.is_primary').optional().isBoolean().withMessage('is_primary must be a boolean'),
     ]),
-    brandController.updateProduct
+    productController.updateProduct
 );
 
 /**
@@ -471,7 +471,7 @@ router.put('/:id', authenticateJWT,
  *      - Product
  *     security:
  *       - bearerAuth: []
- *     summary: Delete a brand by ID
+ *     summary: Delete a product by ID
  *     parameters:
  *       - in: path
  *         name: id
@@ -486,7 +486,7 @@ router.delete('/:id', authenticateJWT,
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
-    brandController.deleteProduct
+    productController.deleteProduct
 );
 
 module.exports = router;
