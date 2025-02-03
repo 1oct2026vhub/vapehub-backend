@@ -13,6 +13,12 @@ module.exports.listAllcategories = async (req, res, next) => {
 module.exports.getCategoryByid = async (req, res, next) => {
     try {
         const category = await Category.findByPk(req.params.id);
+        if(!category){
+            throw {
+                message: "Category not found",
+                statusCode: 400,
+            }
+        }
         successResponse(res, category, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);

@@ -50,7 +50,7 @@ router.get('/', FAQController.listAllfaqs);
  */
 router.post('/', authenticateJWT,
     validateRequest([
-        check('question').isString().withMessage('Question must be a string'),
+        check('question').isString().withMessage('Question must be a string').notEmpty().withMessage('Question cannot be empty'),
         check('answer').isString().withMessage('Answer must be a string').notEmpty().withMessage('Answer cannot be empty'),
     ]),
     FAQController.createFaq);
