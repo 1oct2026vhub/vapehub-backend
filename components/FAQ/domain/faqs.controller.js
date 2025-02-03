@@ -13,6 +13,12 @@ module.exports.listAllfaqs = async (req, res, next) => {
 module.exports.getFaqByid = async (req, res, next) => {
     try {
         const faq = await FAQ.findByPk(req.params.id);
+        if (!faq) {
+            throw {
+                message: "Item not found",
+                statusCode: 400,
+            }
+        }
         successResponse(res, faq, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);

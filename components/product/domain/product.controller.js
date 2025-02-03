@@ -151,6 +151,12 @@ module.exports.getProductByid = async (req, res, next) => {
                 }
             ]
         });
+        if (!product) {
+            throw {
+                message: "Product not found",
+                statusCode: 400,
+            }
+        }
         successResponse(res, product, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
