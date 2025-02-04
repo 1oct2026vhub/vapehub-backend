@@ -28,7 +28,7 @@ router.get('/', authenticateJWT, cartController.listCartItems);
  *       - Cart
  *     security:
  *       - bearerAuth: []
- *     summary: Create a new FAQ
+ *     summary: Create a new cart
  *     requestBody:
  *        required: true
  *        content:
@@ -64,7 +64,7 @@ router.post('/', authenticateJWT,
  * @swagger
  * /api/cart/{id}:
  *   put:
- *     summary: Update an FAQ
+ *     summary: Update an cart
  *     tags:
  *       - Cart
  *     security:
@@ -101,7 +101,7 @@ router.put('/:id', authenticateJWT,
  *   delete:
  *     tags:
  *       - Cart
- *     summary: Delete an FAQ
+ *     summary: Delete an cart
  *     security:
  *       - bearerAuth: []
  *     parameters:
