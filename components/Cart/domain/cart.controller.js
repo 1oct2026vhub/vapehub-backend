@@ -74,7 +74,7 @@ module.exports.createCart = async (req, res, next) => {
                 statusCode: 400,
             };
         }
-        if (!productFlavors) {
+        if (!productFlavors && flavor_id) {
             throw {
                 message: "Flavor not found for the specified product",
                 statusCode: 400,
