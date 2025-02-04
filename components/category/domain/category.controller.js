@@ -28,7 +28,18 @@ module.exports.getCategoryByid = async (req, res, next) => {
 module.exports.createCategory = async (req, res, next) => {
     try {
         const { name, logo_url, slug } = req.body;
-        const { id: updated_by } = req.user
+        const { id: updated_by } = req.user;
+        // check if category already exists
+        const categoryExists = await Category.findOne({ where: { name } });
+        if (categoryExists) {
+            throw {
+                message: "Category name already exists",
+                statusCode: 400,
+                errors: { name: "Category name already exists" },
+            }
+        }
+
+        // Create new category
         const category = await Category.create({ name, logo_url, updated_by, slug });
         successResponse(res, category, 'Category created successfully', 201);
     } catch (error) {

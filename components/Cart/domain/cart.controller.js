@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Cart, Product, Flavor, Category, Brand, ProductImage } = require("../../../models");
+const { Cart, Product, Flavor, Category, Brand, ProductImage, ProductFlavor } = require("../../../models");
 
 const includeClause = [
     {
@@ -20,6 +20,11 @@ module.exports.listCartItems = async (req, res, next) => {
             where: { user_id },
             include: includeClause
         });
+        if (!carts?.[0]) {
+            throw {
+                message: "Cart is empty"
+            }
+        }
         successResponse(res, carts, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -32,12 +37,12 @@ module.exports.getCartByid = async (req, res, next) => {
             {
                 include: includeClause
             });
-            if (!cart) {
-                throw {
-                    message: "Cart not found",
-                    statusCode: 400,
-                };
-            }
+        if (!cart) {
+            throw {
+                message: "Cart not found",
+                statusCode: 400,
+            };
+        }
         successResponse(res, cart, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -54,6 +59,45 @@ module.exports.createCart = async (req, res, next) => {
             where: { user_id, product_id, flavor_id },
             include: includeClause
         });
+
+        // Fetch the product along with its associated flavors
+        const product = await Product.findOne({
+            where: { id: product_id }
+        });
+        const productFlavors = await ProductFlavor.findOne({
+            where: { product_id, flavor_id }
+        })
+
+        if (!product) {
+            throw {
+                message: "Product not found",
+                statusCode: 400,
+            };
+        }
+        if (!productFlavors) {
+            throw {
+                message: "Flavor not found for the specified product",
+                statusCode: 400,
+            };
+        }
+
+        // Determine the available stock
+        let availableStock = product?.stock_quantity || 0;
+
+        // If the product has a flavor variant, get its stock quantity
+        if (productFlavors?.stock_quantity) {
+            availableStock = productFlavors?.stock_quantity || 0;
+        }
+
+        // If no stock is available, return an error
+        if (availableStock === 0) {
+            return errorResponse(res, {}, "Out of stock", 400);
+        }
+
+        // Ensure requested quantity does not exceed available stock
+        if (quantity > availableStock) {
+            return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
+        }
 
         if (cartExists) {
             // If the cart item exists, update the quantity
