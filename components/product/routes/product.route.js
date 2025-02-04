@@ -76,7 +76,12 @@ const { check, query, param } = require("express-validator");
  *         schema:
  *           type: string
  *           default: id
- *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           default: ASC
+ *         description: Sort by ASC or DESC
  *       - in: query
  *         name: limit
  *         schema:
