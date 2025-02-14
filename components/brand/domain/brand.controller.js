@@ -27,9 +27,9 @@ module.exports.getBrandByid = async (req, res, next) => {
 }
 module.exports.createBrand = async (req, res, next) => {
     try {
-        const { name, logo_url, slug } = req.body;
+        const { name, logo_url, slug, description } = req.body;
         const { id: updated_by } = req.user
-        const brand = await Brand.create({ name, logo_url, updated_by, slug });
+        const brand = await Brand.create({ name, logo_url, updated_by, slug, description});
         successResponse(res, brand, 'Brand created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -38,7 +38,7 @@ module.exports.createBrand = async (req, res, next) => {
 module.exports.updateBrand = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, logo_url, slug } = req.body;
+        const { name, logo_url, slug, description } = req.body;
         const { id: updated_by } = req.user
 
         const brand = await Brand.findByPk(id);
@@ -54,6 +54,7 @@ module.exports.updateBrand = async (req, res, next) => {
             ...(slug && { slug }),
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
+            ...(description && { description }),
         });
         successResponse(res, brand, 'Brand updated successfully',);
     } catch (error) {

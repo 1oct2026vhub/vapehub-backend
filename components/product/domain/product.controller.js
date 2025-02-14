@@ -1,7 +1,9 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
-const logger = require("../../../library/logger")
+const logger = require("../../../library/logger");
+const { getTrendingProducts, generateUniqueFileName } = require("../helper/product.helper");
+const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -65,8 +67,12 @@ module.exports.listAllproducts = async (req, res, next) => {
             'device_style', 'eliquid_capacity', 'pod_coil_style', 'pod_fill_style',
         ];
 
-        if (req.query.is_new !== undefined) {
-            whereClause.is_new = req.query.is_new === true;
+
+        if (req.query.is_new) {
+            // fetch last one month created product
+            const lastMonthDate = new Date();
+            lastMonthDate.setDate(lastMonthDate.getDate() - 30);
+            whereClause.createdAt = { [Op.gte]: lastMonthDate };
         }
 
 
@@ -334,6 +340,51 @@ module.exports.deleteProduct = async (req, res, next) => {
         await product.destroy();
         successResponse(res, { message: 'Product deleted successfully' });
     } catch (error) {
+        logger.error(error)
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.trendingProduct = async (req, res) => {
+    try {
+        const trendingProducts = await getTrendingProducts(10);
+        return successResponse(res, trendingProducts, { message: 'Top 10 trending products fetched successfully' },)
+    } catch (error) {
+        logger.error(error)
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.uploadImage = async (req, res) => {
+    try {
+        console.log('Uploading image', req.files)
+        const { files } = req;
+        if (!files || files.length === 0) {
+            throw new Error('No file uploaded.');
+        }
+
+        const uploadPromise = files.map(image => {
+            const { originalname, mimetype, buffer } = image;
+            const fileName = generateUniqueFileName(originalname)
+            const params = {
+                Bucket: process.env.AWS_S3_BUCKET,
+                Key: `products/${fileName}`,
+                Body: buffer,
+                ContentType: mimetype
+            }
+            return uploadFiletToS3(params)
+        })
+        const uploadedImages = await Promise.all(uploadPromise);
+        const response = uploadedImages.map(item => {
+            return {
+                Location: item.Location,
+                Key: item.key,
+            }
+        })
+
+        return successResponse(res, response);
+    } catch (error) {
+        console.log("🚀 ~ module.exports.uploadImage= ~ error:", error)
         logger.error(error)
         return errorResponse(res, error, error.message);
     }

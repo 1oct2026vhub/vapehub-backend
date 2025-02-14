@@ -11,21 +11,21 @@ const s3 = require('../../config/awsConfig');
  * @returns {string} - The signed URL.
  */
 const generateSignedUrl = async (objectKey, operation = 'getObject') => {
-    try {
-        const params = {
-            Bucket: process.env.AWS_BUCKET,
-            Key: objectKey,
-            Expires: 604800, // URL expiration time in seconds
-            ResponseContentDisposition: 'inline'
-        };
-        // Generate the signed URL
-        const signedUrl = await s3.getSignedUrlPromise(operation, params)
+  try {
+    const params = {
+      Bucket: process.env.AWS_BUCKET,
+      Key: objectKey,
+      Expires: 604800, // URL expiration time in seconds
+      ResponseContentDisposition: 'inline'
+    };
+    // Generate the signed URL
+    const signedUrl = await s3.getSignedUrlPromise(operation, params)
 
-        return signedUrl;
-    } catch (e) {
-        console.error(e);
-        throw new Error(e)
-    }
+    return signedUrl;
+  } catch (e) {
+    console.error(e);
+    throw new Error(e)
+  }
 };
 
 
@@ -33,21 +33,29 @@ const generateSignedUrl = async (objectKey, operation = 'getObject') => {
  * Deletes a file from S3
  * @param {String} key - The key (path) to the file in the bucket
  */
-const deleteFile = async ( key) => {
-    const params = {
-      Bucket: process.env.AWS_BUCKET, 
-      Key: key
-    };
-  
-    try {
-      // Delete the file from S3
-      await s3.deleteObject(params).promise();
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
+const deleteFile = async (key) => {
+  const params = {
+    Bucket: process.env.AWS_BUCKET,
+    Key: key
   };
+
+  try {
+    // Delete the file from S3
+    await s3.deleteObject(params).promise();
+  } catch (error) {
+    console.error('Error deleting file:', error);
+  }
+};
+
+const uploadFiletToS3 = async (params) => {
+  try {
+    return await s3.upload(params).promise();
+  } catch (error) {
+    console.error('Error uploading file:', error);
+  }
+}
 
 
 module.exports = {
-    generateSignedUrl,deleteFile
+  generateSignedUrl, deleteFile, uploadFiletToS3
 };
