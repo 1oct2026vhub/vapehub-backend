@@ -16,6 +16,7 @@ router.use("/category", require("./category/routes/category.route"))
 router.use("/product", require("./product/routes/product.route"))
 router.use("/faqs", require("./FAQ/routes/faqs.route"))
 router.use("/cart", require("./Cart/routes/cart.route"))
+router.use("/mailSubscription", require("./mailSubcription/routes/mailSubscription.route"))
 
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 
