@@ -10,7 +10,7 @@ const customerController = require('../domain/customer.controller');
  *   get:
  *     summary: List all users with filtering, sorting, and pagination
  *     tags: 
- *       - ADMIN - User
+ *       - ADMIN - Customer
  *     parameters:
  *       - in: query
  *         name: page
@@ -68,7 +68,7 @@ router.get(
  *   delete:
  *     summary: Delete a user (soft delete)
  *     tags: 
- *       - ADMIN - User
+ *       - ADMIN - Customer
  *     parameters:
  *       - in: path
  *         name: id
@@ -82,7 +82,7 @@ router.get(
  *       404:
  *         description: User not found
  */
-router.delete("/:id", [authMiddleware(true), validateRequest(validationRules.updateUserValidation)], customerController.deleteUser);
+router.delete("/:id", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], customerController.deleteUser);
 
 /**
  * @swagger
@@ -90,7 +90,7 @@ router.delete("/:id", [authMiddleware(true), validateRequest(validationRules.upd
  *   put:
  *     summary: Restore a soft-deleted user
  *     tags: 
- *       - ADMIN - User
+ *       - ADMIN - Customer
  *     parameters:
  *       - in: path
  *         name: id
@@ -106,7 +106,7 @@ router.delete("/:id", [authMiddleware(true), validateRequest(validationRules.upd
  *       400:
  *         description: Validation error
  */
-router.put("/:id/restore", [authMiddleware(true), validateRequest(validationRules.updateUserValidation)], customerController.restoreUser);
+router.put("/:id/restore", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], customerController.restoreUser);
 
 
 
@@ -115,7 +115,8 @@ router.put("/:id/restore", [authMiddleware(true), validateRequest(validationRule
  * /api/admin/customer/{id}/block:
  *   put:
  *     summary: Block a customer
- *     tags: [Users]
+ *     tags: 
+ *       - ADMIN - Customer
  *     parameters:
  *       - in: path
  *         name: id
@@ -127,14 +128,15 @@ router.put("/:id/restore", [authMiddleware(true), validateRequest(validationRule
  *       200:
  *         description: Customer blocked successfully
  */
-router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.updateUserValidation)], customerController.blockUser);
+router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], customerController.blockUser);
 
 /**
  * @swagger
  * /api/admin/customer/{id}/unblock:
  *   put:
  *     summary: Unblock a customer
- *     tags: [Users]
+ *     tags: 
+ *       - ADMIN - Customer
  *     parameters:
  *       - in: path
  *         name: id
@@ -146,7 +148,29 @@ router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.
  *       200:
  *         description: Customer unblocked successfully
  */
-router.put("/:id/unblock",  [authMiddleware(true), validateRequest(validationRules.updateUserValidation)], customerController.unblockUser);
+router.put("/:id/unblock",  [authMiddleware(true), validateRequest(validationRules.userIDValidation)], customerController.unblockUser);
+
+/**
+ * @swagger
+ * /api/admin/customer/{id}:
+ *   get:
+ *     summary: Get user details with order information
+ *     tags: 
+ *       - ADMIN - Customer
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to retrieve
+ *     responses:
+ *       200:
+ *         description: User details retrieved successfully
+ *       404:
+ *         description: User not found
+ */
+router.get("/:id", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], customerController.getUserDetails);
 
 module.exports = router;
 

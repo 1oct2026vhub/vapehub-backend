@@ -7,10 +7,11 @@ module.exports = (sequelize, DataTypes) => {
     class User extends Model {
         static associate(models) {
             this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
-            this.hasMany(models.UserAddress, { foreignKey: 'user_id' });
+            this.hasMany(models.UserAddress, { foreignKey: 'user_id', as: "UserAddresses" });
             this.hasMany(models.Product, { foreignKey: 'updated_by' });
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
             this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
+            this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });

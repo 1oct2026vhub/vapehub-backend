@@ -5,7 +5,7 @@ module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.addColumn("users", "referral_code", {
       type: Sequelize.STRING,
-      allowNull: false,
+      allowNull: true,
     });
   },
 

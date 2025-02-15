@@ -1,10 +1,10 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role } = require("../../../../models");
+const { User, Role, Order, Product, ProductImage, UserAddress } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const moment = require('moment');
-const { Op } = require("sequelize");
+const { Sequelize, Op } = require("sequelize");
 
 
 //List all users (with pagination)
@@ -15,8 +15,6 @@ module.exports.listUsers = async (req, res) => {
         const offset = (page - 1) * limit;
 
         const whereCondition = {};
-
-        deleted = false;
 
         // Fetch non-admin roles
         const adminRoles = await Role.findAll({
@@ -50,16 +48,30 @@ module.exports.listUsers = async (req, res) => {
 
         const users = await User.findAndCountAll({
             where: whereCondition,
-            include: [
-                { model: Role, as: "roles", attributes: ["id", "role"] },
-                { model: Order, as: "orders", attributes: [[sequelize.fn("COUNT", sequelize.col("orders.id")), "order_count"]] }
+            attributes: [
+                "id", 
+                "first_name", 
+                "last_name", 
+                "gender",
+                "email", 
+                "phone",
+                "blocked", 
+                "email_verified_at",
+                "profile_pic_url",
+                "dob",
+                "createdAt", 
+                "updatedAt",
+                [Sequelize.literal("(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id)"), "order_count"],
+                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.SUCCESS})`), "order_success_count"],
+                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.CANCELED})`), "order_canceled_count"],
+                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.PENDING})`), "order_pending_count"],
+                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.PAYMENT_FAILED})`), "order_payment_failed_count"],
             ],
-            group: ["User.id"],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [[sort_by, order]],
+            order: [[Sequelize.col(sort_by), order.toUpperCase()]],
+            subQuery: false, //Prevents incorrect grouping
         });
-
         return successResponse(res, {  
             total: users.count,
             page: parseInt(page),
@@ -148,6 +160,50 @@ module.exports.unblockUser = async (req, res) => {
         return successResponse(res, { }, "User unblocked successfully", 200);
     } catch (error) {
         console.error("Error unblocking customer:", error);
+        return errorResponse(res, error);
+    }
+};
+
+/**
+ * Controller function to get user details with order information
+ */
+module.exports.getUserDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const user = await User.findByPk(id, {
+            include: [
+                { 
+                    model: Order, 
+                    as: "orders", 
+                    include: [
+                        { 
+                            model: Product,
+                            as: "products",
+                            include: [
+                                {
+                                    model: ProductImage,
+                                    as: "ProductImages",
+                                    attributes: ["id", "image_url", "is_primary"]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    model: UserAddress,
+                    as: "UserAddresses", // Ensure alias matches model association
+                    attributes: ["id", "name", "last_name", "company_name", "country", "street", "apartment", "town", "county", "post_code", "phone"]
+                }
+            ]
+        });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return successResponse(res, user, "User details retrieved successfully", 200);
+    } catch (error) {
+        console.error("Error fetching user details:", error);
         return errorResponse(res, error);
     }
 };

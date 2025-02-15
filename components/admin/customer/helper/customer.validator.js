@@ -1,6 +1,6 @@
 const { check, query, param, body } = require("express-validator");
 
-const updateUserValidation = [
+const userIDValidation = [
     param("id").isInt().withMessage("User ID must be an integer")
 ];
 
@@ -40,6 +40,6 @@ module.exports = {  };
 
 
 module.exports = {
-  updateUserValidation,
+  userIDValidation,
   userListValidationRules
 };
