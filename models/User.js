@@ -9,6 +9,7 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.UserAddress, { foreignKey: 'user_id' });
             this.hasMany(models.Product, { foreignKey: 'updated_by' });
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
+            this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -48,7 +49,8 @@ module.exports = (sequelize, DataTypes) => {
         },
         email: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
+            unique: true,
         },
         phone: {
             type: DataTypes.STRING,
@@ -56,11 +58,11 @@ module.exports = (sequelize, DataTypes) => {
         },
         email_verified_at: {
             type: DataTypes.DATE,
-            allowNull: true
+            allowNull: true,
         },
         password: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
         },
         profile_pic_url: {
             type: DataTypes.STRING,
@@ -89,7 +91,15 @@ module.exports = (sequelize, DataTypes) => {
         int_field: {
             type: DataTypes.INTEGER,
             defaultValue: 0
-        }
+        },
+        roleId: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+            model: "roles",
+            key: "id",
+            },
+        },
     }, {
         sequelize,
         modelName: 'User',
