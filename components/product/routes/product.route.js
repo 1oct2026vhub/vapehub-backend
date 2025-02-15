@@ -3,6 +3,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
+const multer = require("multer");
 
 /**
  * @swagger
@@ -112,7 +113,7 @@ router.get('/', productController.listAllproducts);
 
 /**
  * @swagger
- * /api/product/{id}:
+ * /api/product/fetch/{id}:
  *   get:
  *     summary: Retrieve a single product by ID
  *     tags:
@@ -127,7 +128,7 @@ router.get('/', productController.listAllproducts);
  *       200:
  *         description: A single product
  */
-router.get('/:id',
+router.get('/fetch/:id',
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
@@ -493,5 +494,35 @@ router.delete('/:id', authenticateJWT,
     ]),
     productController.deleteProduct
 );
+/**
+ * @swagger
+ * /api/product/trending:
+ *   get:
+ *     tags:
+ *      - Product
+ *     summary: Retrieve trending product
+ *     responses:
+ *       200:
+ *         description: Product created successfully
+ *       400:
+ *         description: Bad request (validation errors)
+ *       401:
+ *         description: Unauthorized (missing or invalid token)
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/trending", productController.trendingProduct)
+
+// api for file upload
+// Configure multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    }
+});
+// Helper function to generate unique filename
+router.post("/upload/image", upload.array("images"), productController.uploadImage)
 
 module.exports = router;

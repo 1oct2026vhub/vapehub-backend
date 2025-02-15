@@ -19,9 +19,15 @@ module.exports = (sequelize, DataTypes) => {
 
         // Method to verify password
         static async verifyPassword(storedPassword, providedPassword) {
-            console.log("🚀 ~ User ~ verifyPassword ~ providedPassword:", providedPassword)
             return bcrypt.compare(providedPassword, storedPassword);
         }
+
+        // generate referal code
+        static generateReferralCode(userId) {
+            const code = `${userId}-${Math.random().toString(36).substring(2, 8).toLowerCase()}`;
+            return code;
+        }
+
     }
 
     User.init({
@@ -92,6 +98,7 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             defaultValue: 0
         },
+<<<<<<< HEAD
         roleId: {
             type: DataTypes.INTEGER,
             allowNull: true,
@@ -100,6 +107,14 @@ module.exports = (sequelize, DataTypes) => {
             key: "id",
             },
         },
+=======
+        referral_code: {
+            type: DataTypes.STRING,
+            // unique: true,
+            allowNull: false,
+            
+        }
+>>>>>>> 43e49c16a666587de9c00b358557afe553a366ef
     }, {
         sequelize,
         modelName: 'User',
@@ -116,6 +131,9 @@ module.exports = (sequelize, DataTypes) => {
     User.beforeCreate(async (user, options) => {
         if (user.password) {
             user.password = await bcrypt.hash(user.password, 10); // Hash password before saving
+        }
+        if (!user.referral_code) {
+            user.referral_code = User.generateReferralCode(user.id);
         }
     });
 

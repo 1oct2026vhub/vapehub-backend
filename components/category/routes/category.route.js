@@ -63,6 +63,8 @@ router.get('/:id',
  *                 type: string
  *               slug:
  *                 type: string
+ *               description:
+ *                 type: string
  *               updated_by:
  *                 type: integer
  *     responses:
@@ -74,6 +76,7 @@ router.post('/', authenticateJWT,
         check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
         check('logo_url').notEmpty().isString().withMessage('Logo URL must be a string'),
         check('slug').notEmpty().withMessage("slug is required").isString().withMessage('slug must be a string'),
+        check('description').optional().isString().withMessage('description must be a string'),
     ]),
     categoryController.createCategory
 );
@@ -106,6 +109,8 @@ router.post('/', authenticateJWT,
  *                 type: string
  *               updated_by:
  *                 type: integer
+ *               description:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Updated
@@ -116,6 +121,7 @@ router.put('/:id', authenticateJWT,
         check('name').optional().isString().withMessage('Name must be a string'),
         check('logo_url').optional().isString().withMessage('Logo URL must be a string'),
         check('slug').optional().isString().withMessage('Slug must be a string'),
+        check('description').optional().isString().withMessage('description must be a string'),
     ]),
     categoryController.updateCategory
 );
