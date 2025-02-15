@@ -12,5 +12,6 @@ router.post("/", (req, res) => {
 // This should be under the correct path
 router.use('/auth', require('./auth/routes/auth.route'));
 router.use('/user', require('./user/routes/user.route'));
+router.use('/customer', require('./customer/routes/customer.route'));
 
 module.exports = router;

@@ -1,6 +1,7 @@
 'use strict';
 const { Model } = require('sequelize');
 const bcrypt = require('bcrypt');
+const { trendingProduct } = require('../components/product/domain/product.controller');
 
 module.exports = (sequelize, DataTypes) => {
     class User extends Model {
@@ -98,7 +99,6 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             defaultValue: 0
         },
-<<<<<<< HEAD
         roleId: {
             type: DataTypes.INTEGER,
             allowNull: true,
@@ -107,14 +107,17 @@ module.exports = (sequelize, DataTypes) => {
             key: "id",
             },
         },
-=======
         referral_code: {
             type: DataTypes.STRING,
             // unique: true,
             allowNull: false,
             
-        }
->>>>>>> 43e49c16a666587de9c00b358557afe553a366ef
+        },
+        blocked: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
     }, {
         sequelize,
         modelName: 'User',
