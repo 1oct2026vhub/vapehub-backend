@@ -2,6 +2,7 @@ module.exports = {
     emailTypes: {
         REGISTER: 'REGISTER',
         FORGOT_PASSWORD: 'FORGOT_PASSWORD',
+        REFER_A_FRIEND: 'REFER_A_FRIEND',
     },
     emailTypeData: {
         REGISTER: {
@@ -12,6 +13,11 @@ module.exports = {
         FORGOT_PASSWORD: {
             folderName: 'forgotPassword',
             subject: 'Password Reset | VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        REFER_A_FRIEND: {
+            folderName: 'referFriend',
+            subject: 'Invite Your Friends to Join | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },

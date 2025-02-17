@@ -1,5 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Category } = require("../../../models");
+const { fetchProducts } = require("../../product/helper/product.helper");
 
 module.exports.listAllcategories = async (req, res, next) => {
     try {
@@ -13,7 +14,7 @@ module.exports.listAllcategories = async (req, res, next) => {
 module.exports.getCategoryByid = async (req, res, next) => {
     try {
         const category = await Category.findByPk(req.params.id);
-        if(!category){
+        if (!category) {
             throw {
                 message: "Category not found",
                 statusCode: 400,
@@ -23,7 +24,6 @@ module.exports.getCategoryByid = async (req, res, next) => {
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
-
 }
 module.exports.createCategory = async (req, res, next) => {
     try {
@@ -49,7 +49,7 @@ module.exports.createCategory = async (req, res, next) => {
 module.exports.updateCategory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, slug, logo_url, description} = req.body;
+        const { name, slug, logo_url, description } = req.body;
         const { id: updated_by } = req.user
 
         const category = await Category.findByPk(id);
@@ -66,6 +66,7 @@ module.exports.updateCategory = async (req, res, next) => {
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
             ...(description && { description }),
+            ...(description && { description }),
         });
         successResponse(res, category, 'Category updated successfully',);
     } catch (error) {
@@ -76,7 +77,7 @@ module.exports.updateCategory = async (req, res, next) => {
 module.exports.deleteCategory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const category = await Category.findByPk(id);
+        const category = await Category.findByPk(id, { plain: true });
         if (!category) {
             throw {
                 statusCode: 404,
@@ -86,6 +87,26 @@ module.exports.deleteCategory = async (req, res, next) => {
         await category.destroy({ force: true });
         successResponse(res, { message: 'Category deleted successfully' }, 'Category deleted successfully', 200);
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.getCategoryBySlug = async (req, res, next) => {
+    try {
+        const category = await Category.findOne({ where: { slug: req.params.slug } });
+        if (!category) {
+            throw {
+                message: "Category not found",
+                statusCode: 400,
+            };
+        }
+        req.query.categories = `${category.id}`
+        // fetch related product
+        const product = await fetchProducts(req.query)
+
+        return successResponse(res, { ...category.get({ plain: true }), ...product }, "Success");
+    } catch (error) {
+        console.log("🚀 ~ module.exports.getCategoryBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }
