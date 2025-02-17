@@ -1,14 +1,17 @@
 'use strict';
 const { Model } = require('sequelize');
 const bcrypt = require('bcrypt');
+const { trendingProduct } = require('../components/product/domain/product.controller');
 
 module.exports = (sequelize, DataTypes) => {
     class User extends Model {
         static associate(models) {
             this.belongsTo(models.User, { as: 'updatedBy', foreignKey: 'updated_by' });
-            this.hasMany(models.UserAddress, { foreignKey: 'user_id' });
+            this.hasMany(models.UserAddress, { foreignKey: 'user_id', as: "UserAddresses" });
             this.hasMany(models.Product, { foreignKey: 'updated_by' });
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
+            this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
+            this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -54,7 +57,8 @@ module.exports = (sequelize, DataTypes) => {
         },
         email: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
+            unique: true,
         },
         phone: {
             type: DataTypes.STRING,
@@ -62,11 +66,11 @@ module.exports = (sequelize, DataTypes) => {
         },
         email_verified_at: {
             type: DataTypes.DATE,
-            allowNull: true
+            allowNull: true,
         },
         password: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: false,
         },
         profile_pic_url: {
             type: DataTypes.STRING,
@@ -96,12 +100,25 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             defaultValue: 0
         },
+        roleId: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+            model: "roles",
+            key: "id",
+            },
+        },
         referral_code: {
             type: DataTypes.STRING,
             // unique: true,
             allowNull: true,
             
-        }
+        },
+        blocked: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
     }, {
         sequelize,
         modelName: 'User',
