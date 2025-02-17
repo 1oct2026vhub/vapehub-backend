@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { categoryIdValidation, categoryValidation, categoryUpdatesValidation } = require("../helper/category.validator");
+const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation } = require("../helper/category.validator");
 
 /**
  * @swagger
@@ -10,10 +10,35 @@ const { categoryIdValidation, categoryValidation, categoryUpdatesValidation } = 
  *   get:
  *     summary: Retrieve a list of categories
  *     tags:
- *      - ADMIN - Categories
+ *       - ADMIN - Categories
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of records per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search categories by name, slug, or description
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: boolean
+ *         description: Filter categories based on soft deletion status (true = only deleted, false = only active)
  *     responses:
  *       200:
- *         description: A list of categories
+ *         description: Successfully retrieved categories
+ *       400:
+ *         description: Invalid request parameters
  */
 router.get('/', authMiddleware(true), categoryController.listAllCategories);
 
@@ -44,29 +69,47 @@ router.get('/:id', [authMiddleware(true), validateRequest(categoryIdValidation)]
  *      - ADMIN - Categories
  *     security:
  *       - bearerAuth: []
- *     summary: Create a new category
+ *     summary: Create a new category with an optional logo image upload
+ *     consumes:
+ *       - multipart/form-data
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
  *               name:
  *                 type: string
- *               logo_url:
+ *                 description: Name of the category
+ *                 example: "Electronics"
+ *               logo:
  *                 type: string
+ *                 format: binary
+ *                 description: Logo image file (png, jpg, jpeg, webp)
  *               slug:
  *                 type: string
+ *                 description: SEO-friendly slug for category
+ *                 example: "electronics"
  *               description:
  *                 type: string
+ *                 description: Optional category description
+ *                 example: "All kinds of electronic products"
  *               parent_id:
  *                 type: integer
+ *                 nullable: true
+ *                 description: ID of the parent category (nullable)
+ *                 example: null
  *     responses:
- *       201:
- *         description: Created
+ *       200:
+ *         description: Category created successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
-router.post('/', [authMiddleware(true), validateRequest(categoryValidation)], categoryController.createCategory);
+
+router.post('/', [authMiddleware(true), uploadFileValidation, validateRequest(categoryValidation)], categoryController.createCategory);
 
 /**
  * @swagger
@@ -76,7 +119,9 @@ router.post('/', [authMiddleware(true), validateRequest(categoryValidation)], ca
  *      - ADMIN - Categories
  *     security:
  *       - bearerAuth: []
- *     summary: Update a category by ID
+ *     summary: Update category with an optional logo image upload
+ *     consumes:
+ *       - multipart/form-data
  *     parameters:
  *       - in: path
  *         name: id
@@ -86,25 +131,40 @@ router.post('/', [authMiddleware(true), validateRequest(categoryValidation)], ca
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
  *               name:
  *                 type: string
- *               logo_url:
+ *                 description: Name of the category
+ *                 example: "Electronics"
+ *               logo:
  *                 type: string
- *               updated_by:
- *                 type: integer
+ *                 format: binary
+ *                 description: Logo image file (png, jpg, jpeg, webp)
+ *               slug:
+ *                 type: string
+ *                 description: SEO-friendly slug for category
+ *                 example: "electronics"
  *               description:
  *                 type: string
+ *                 description: Optional category description
+ *                 example: "All kinds of electronic products"
  *               parent_id:
  *                 type: integer
+ *                 nullable: true
+ *                 description: ID of the parent category (nullable)
+ *                 example: null
  *     responses:
  *       200:
- *         description: Updated
+ *         description: Category created successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
-router.put('/:id', [authMiddleware(true), validateRequest(categoryUpdatesValidation)], categoryController.updateCategory);
+router.put('/:id', [authMiddleware(true), uploadFileValidation, validateRequest(categoryUpdatesValidation)], categoryController.updateCategory);
 
 /**
  * @swagger
@@ -130,7 +190,7 @@ router.delete('/:id', [authMiddleware(true), validateRequest(categoryIdValidatio
 
 /**
  * @swagger
- * /api/admin/categories/{id}/restore:
+ * /api/admin/category/{id}/restore:
  *   put:
  *     summary: Restore a soft-deleted category
  *     tags:
