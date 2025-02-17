@@ -525,4 +525,116 @@ const upload = multer({
 // Helper function to generate unique filename
 router.post("/upload/image", upload.array("images"), productController.uploadImage)
 
+/**
+ * @swagger
+ * /api/product/slug/{slug}:
+ *   get:
+ *     summary: Retrieve a list of products with optional filters
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ * 
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         description: Keyword to search in product names
+ *       - in: query
+ *         name: price_range
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: is_new
+ *         schema:
+ *           type: boolean
+ *         description: Filter by new products
+ *       - in: query
+ *         name: categories
+ *         schema:
+ *           type: string
+ *         description: Comma-separated category IDs (e.g., 1,2,3)
+ *       - in: query
+ *         name: brand
+ *         schema:
+ *           type: integer
+ *         description: Brand ID
+ *       - in: query
+ *         name: flavours
+ *         schema:
+ *           type: string
+ *         description: Comma-separated flavor IDs (e.g., 1,2,3)
+ *       - in: query
+ *         name: bottle_size
+ *         schema:
+ *           type: string
+ *         description: Bottle size filter
+ *       - in: query
+ *         name: nicotine_strength
+ *         schema:
+ *           type: string
+ *         description: Nicotine strength filter
+ *       - in: query
+ *         name: nicotine_type
+ *         schema:
+ *           type: string
+ *         description: Nicotine type filter
+ *       - in: query
+ *         name: vg_ratio
+ *         schema:
+ *           type: string
+ *         description: VG ratio filter
+ *       - in: query
+ *         name: vaping_style
+ *         schema:
+ *           type: string
+ *         description: Vaping style filter
+ *       - in: query
+ *         name: coil_style
+ *         schema:
+ *           type: string
+ *         description: Coil style filter
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           default: id
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           default: ASC
+ *         description: Sort by ASC or DESC
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of items to skip
+ *     responses:
+ *       200:
+ *         description: A list of products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/slug/:slug', productController.listAllproductsBySlug);
+
 module.exports = router;
