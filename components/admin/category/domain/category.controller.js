@@ -5,9 +5,6 @@ const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library
 
 /**
  * Retrieves all categories.
- * @param {Object} req - Request object.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.listAllCategories = async (req, res, next) => {
     try {
@@ -57,9 +54,6 @@ module.exports.listAllCategories = async (req, res, next) => {
 
 /**
  * Retrieves a category by ID.
- * @param {Object} req - Request object.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.getCategoryById = async (req, res, next) => {
     try {
@@ -75,9 +69,6 @@ module.exports.getCategoryById = async (req, res, next) => {
 
 /**
  * Creates a new category.
- * @param {Object} req - Request object containing category details.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.createCategory = async (req, res, next) => {
     try {
@@ -146,9 +137,6 @@ module.exports.createCategory = async (req, res, next) => {
 
 /**
  * Updates an existing category by ID.
- * @param {Object} req - Request object containing updated category details.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.updateCategory = async (req, res, next) => {
     try {
@@ -221,9 +209,6 @@ module.exports.updateCategory = async (req, res, next) => {
 
 /**
  * Deletes a category by ID.
- * @param {Object} req - Request object.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.deleteCategory = async (req, res, next) => {
     try {
@@ -243,9 +228,6 @@ module.exports.deleteCategory = async (req, res, next) => {
 
 /**
  * Restores a soft-deleted category by ID.
- * @param {Object} req - Request object.
- * @param {Object} res - Response object.
- * @param {Function} next - Next middleware function.
  */
 module.exports.restoreCategory = async (req, res, next) => {
     try {
