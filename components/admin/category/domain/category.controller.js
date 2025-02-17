@@ -85,7 +85,7 @@ module.exports.createCategory = async (req, res, next) => {
         let { name, slug, description, parent_id } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
-        const { files } = req;
+        const { file } = req;
 
         // Trim input values
         name = name?.trim();
@@ -114,24 +114,24 @@ module.exports.createCategory = async (req, res, next) => {
         }
 
         // Upload logo image to S3
-        if (files && files.length > 0) {
+        if (file) {
             try {
-                const uploadedImages = await Promise.all(
-                    files.map(async ({ originalname, mimetype, buffer }) => {
-                        const fileName = generateUniqueFileName(originalname);
-                        const params = {
-                            Bucket: process.env.AWS_S3_BUCKET,
-                            Key: `categories/${fileName}`,
-                            Body: buffer,
-                            ContentType: mimetype
-                        };
-                        return uploadFiletToS3(params);
-                    })
-                );
-                logo_url = uploadedImages[0]?.Location || null;
-            } catch (error) {
-                console.error("File Upload Error:", error);
-                return errorResponse(res, { message: "Failed to upload logo image" }, "File upload failed", 500);
+                const { originalname, mimetype, buffer } = file;
+                const fileName = generateUniqueFileName(originalname);
+                const params = {
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: `categories/${fileName}`,
+                    Body: buffer,
+                    ContentType: mimetype
+                };
+
+                const uploadedImage = await uploadFiletToS3(params);
+                if (!uploadedImage?.Location) throw new Error("File upload failed");
+
+                logo_url = uploadedImage.Location;
+            } catch (uploadError) {
+                console.error("File Upload Error:", uploadError);
+                return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
         }
 
@@ -164,7 +164,7 @@ module.exports.updateCategory = async (req, res, next) => {
         }
 
         // Check for name and slug uniqueness
-        const existingCategory = awaitCategory.findOne({ where: { name, id: { [Op.ne]: id } } });
+        const existingCategory = await Category.findOne({ where: { name, id: { [Op.ne]: id } } });
 
         if (existingCategory) {
             return errorResponse(

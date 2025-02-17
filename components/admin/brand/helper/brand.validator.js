@@ -2,11 +2,11 @@ const { check, param } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
 
-const categoryIdValidation = [
-    param("id").isInt().withMessage("Category ID must be an integer"),
+const brandIdValidation = [
+    param("id").isInt().withMessage("Brand ID must be an integer"),
 ];
 
-const categoryValidation = [
+const brandValidation = [
     check("name")
     .custom((value, { req }) => {
         if (!req.body.name || req.body.name.trim() === "") {
@@ -25,21 +25,19 @@ const categoryValidation = [
     check("description")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
-      .isString()
-      .withMessage("Description must be a string"),
-
+      .isString().withMessage("Description must be a string"),
     check("parent_id")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
-      .custom(value => {
+      .custom((value) => {
           if (value !== null && isNaN(Number(value))) {
               throw new Error("Parent ID must be an integer or null");
           }
           return true;
-      }),
+    }),
 ];
 
-const categoryUpdatesValidation = [
+const brandUpdatesValidation = [
     param("id").
       isInt().withMessage("ID must be an integer"),
     check("name")
@@ -57,16 +55,12 @@ const categoryUpdatesValidation = [
     check("logo_url")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
+      .trim()
       .isString().withMessage("Logo URL must be a string"),
     check("parent_id")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
-      .custom(value => {
-          if (value !== null && isNaN(Number(value))) {
-              throw new Error("Parent ID must be an integer or null");
-          }
-          return true;
-      }),
+      .isInt().withMessage("Parent ID must be an integer"),
 ];
 
 const filterValidations = [
@@ -120,8 +114,8 @@ const uploadFileValidation = (req, res, next) => {
   });
 };
 module.exports = {
-    categoryIdValidation,
-    categoryValidation,
-    categoryUpdatesValidation,
+    brandIdValidation,
+    brandValidation,
+    brandUpdatesValidation,
     uploadFileValidation
 };
