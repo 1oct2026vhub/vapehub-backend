@@ -111,7 +111,7 @@ module.exports = (sequelize, DataTypes) => {
         referral_code: {
             type: DataTypes.STRING,
             // unique: true,
-            allowNull: false,
+            allowNull: true,
             
         },
         blocked: {
