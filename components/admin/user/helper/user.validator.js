@@ -1,16 +1,16 @@
 const { check, query, param, body } = require("express-validator");
+const moment = require("moment");
 
-const roleValidation = {
-    getRoles: [
+const roleValidation =  [
         query('deleted')
         .optional()
         .customSanitizer((value) => {
             if (typeof value === "string") return value.toLowerCase() === "true";
             return Boolean(value);
         })
-        .isBoolean().withMessage("deleted must be a boolean value"),
-    ],
-}
+        .isBoolean().withMessage("deleted must be a boolean value")
+];
+
 
 const userValidationRules = [
   body("first_name")
@@ -27,7 +27,16 @@ const userValidationRules = [
 
   body("password")
     .notEmpty().withMessage("Password is required")
-    .isLength({ min: 6 }).withMessage("Password must be at least 6 characters long"),
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters long")
+    .matches(/[A-Z]/)
+    .withMessage("Password must contain at least one uppercase letter")
+    .matches(/[a-z]/)
+    .withMessage("Password must contain at least one lowercase letter")
+    .matches(/\d/)
+    .withMessage("Password must contain at least one digit")
+    .matches(/[@$!%*?&]/)
+    .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
 
   body("phone")
     .optional()
@@ -43,7 +52,17 @@ const userValidationRules = [
 
   body("dob")
     .optional()
-    .isDate().withMessage("Date of birth must be a valid date"),
+    .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
+    .custom((value) => {
+      const dob = new Date(value);
+      const today = new Date();
+      const age = today.getFullYear() - dob.getFullYear();
+      
+      if (age < 18) {
+        throw new Error("You must be at least 18 years old.");
+      }
+      return true;
+    }),
 ];
 
 
@@ -58,15 +77,19 @@ const userUpdateValidationRules = [
         .notEmpty().withMessage("Last name is required")
         .isString().withMessage("Last name must be a string"),
   
-    body("email")
-        .optional()
-        .notEmpty().withMessage("Email is required")
-        .isEmail().withMessage("Invalid email format"),
-  
     body("password")
         .optional()
         .notEmpty().withMessage("Password is required")
-        .isLength({ min: 6 }).withMessage("Password must be at least 6 characters long"),
+        .isLength({ min: 8 })
+        .withMessage("Password must be at least 8 characters long")
+        .matches(/[A-Z]/)
+        .withMessage("Password must contain at least one uppercase letter")
+        .matches(/[a-z]/)
+        .withMessage("Password must contain at least one lowercase letter")
+        .matches(/\d/)
+        .withMessage("Password must contain at least one digit")
+        .matches(/[@$!%*?&]/)
+        .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
   
     body("phone")
         .optional()
@@ -83,7 +106,17 @@ const userUpdateValidationRules = [
   
     body("dob")
         .optional()
-        .isDate().withMessage("Date of birth must be a valid date"),
+        .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
+        .custom((value) => {
+          const dob = new Date(value);
+          const today = new Date();
+          const age = today.getFullYear() - dob.getFullYear();
+          
+          if (age < 18) {
+            throw new Error("You must be at least 18 years old.");
+          }
+          return true;
+        }),
 ];
 
 const restoreUserValidation = [

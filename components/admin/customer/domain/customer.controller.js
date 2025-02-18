@@ -134,6 +134,9 @@ module.exports.blockUser = async (req, res) => {
         if (!user) {            
             return res.status(404).json({ message: "User not found" });
         }
+        if (user.blocked) {            
+            return res.status(400).json({ message: "User is already blocked" });
+        }
         user.blocked = true;
         await user.save();
         return successResponse(res, { }, "User blocked successfully", 200);
@@ -152,6 +155,10 @@ module.exports.unblockUser = async (req, res) => {
 
         if (!user) {            
             return res.status(404).json({ message: "User not found" });
+        }
+        
+        if (!user.blocked) {            
+            return res.status(400).json({ message: "User is active" });
         }
         
         user.blocked = false;

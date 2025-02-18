@@ -27,7 +27,6 @@ module.exports.roles = async (req, res, next) => {
         // Return success response
         return successResponse(res, { roles }, "Roles retrieved successfully");
     } catch (error) {
-        console.log(error);
         return errorResponse(res, error, error.message);
     }
 }
@@ -39,15 +38,27 @@ module.exports.createUser = async (req, res) => {
     try {
         const { first_name, last_name, email, password, phone, roleId, gender = 'male', dob = null } = req.body;
 
-        //  check email already exists
-        const userExists = await User.findOne({ where: { email } });
-        if (userExists) {
-            throw {
-                message: "User email already exists",
-                statusCode: 400,
-                errors: { email: "User email already exists" },
+        // Check if email already exists
+        const existingUser = await User.findOne({
+            where: { [Op.or]: [{ email }, phone ? { phone } : null].filter(Boolean) },
+        });
+
+        if (existingUser) {
+            const errors = {};
+            if (existingUser.email === email) {
+                errors.email = "User email already exists";
             }
+            if (phone && existingUser.phone === phone) {
+                errors.phone = "User phone number already exists";
+            }
+
+            throw {
+                message: "User already exists",
+                statusCode: 400,
+                errors,
+            };
         }
+        
 
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
@@ -102,18 +113,31 @@ module.exports.createUser = async (req, res) => {
 module.exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, email, password, phone, roleId, gender, dob } = req.body;
+        const { first_name, last_name, password, phone, roleId, gender, dob } = req.body;
 
         // Find the user
         const user = await User.findByPk(id);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
+        // Check if phone number already exists for another user
+        if (phone) {
+            const existingUser = await User.findOne({
+                where: { phone, id: { [Op.ne]: id } }, // Ensure it's not the same user
+            });
+
+            if (existingUser) {
+                return res.status(400).json({
+                    message: "Phone number already exists",
+                    errors: { phone: "This phone number is already in use by another user" },
+                });
+            }
+        }
 
         // Update fields
         if (first_name) user.first_name = first_name;
         if (last_name) user.last_name = last_name;
-        if (email) user.email = email;
+        // if (email) user.email = email;
         if (phone) user.phone = phone;
         if (roleId) user.roleId = roleId;
         if (gender) user.gender = gender;
