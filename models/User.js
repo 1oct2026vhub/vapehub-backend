@@ -26,7 +26,7 @@ module.exports = (sequelize, DataTypes) => {
 
         // generate referal code
         static generateReferralCode(userId) {
-            const code = `${userId}-${Math.random().toString(36).substring(2, 8).toLowerCase()}`;
+            const code = `${userId}:${Math.random().toString(36).substring(2, 8).toLowerCase()}`;
             return code;
         }
 
@@ -109,10 +109,8 @@ module.exports = (sequelize, DataTypes) => {
             },
         },
         referral_code: {
-            type: DataTypes.STRING,
-            // unique: true,
+            type: DataTypes.STRING(15),
             allowNull: true,
-            
         },
         blocked: {
             type: DataTypes.BOOLEAN,
@@ -136,9 +134,12 @@ module.exports = (sequelize, DataTypes) => {
         if (user.password) {
             user.password = await bcrypt.hash(user.password, 10); // Hash password before saving
         }
+    });
+    User.afterCreate(async (user, options) => {
         if (!user.referral_code) {
             user.referral_code = User.generateReferralCode(user.id);
         }
+        await user.save();
     });
 
     return User;

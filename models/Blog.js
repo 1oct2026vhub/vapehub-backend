@@ -2,13 +2,13 @@
 const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-    class Testimonial extends Model {
+    class Blog extends Model {
         static associate(models) {
             this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
         }
     }
 
-    Testimonial.init({
+    Blog.init({
         id: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -34,14 +34,18 @@ module.exports = (sequelize, DataTypes) => {
         content: {
             type: DataTypes.TEXT,
             allowNull: false,
+        },
+        slug: {
+            type: DataTypes.TEXT,
+            allowNull: false,
         }
     }, {
         sequelize,
-        modelName: 'Testimonial',
-        tableName: 'testimonials',
+        modelName: 'Blog',
+        tableName: 'blogs',
         paranoid: true,
         timestamps: true
     });
 
-    return Testimonial;
+    return Blog;
 };
