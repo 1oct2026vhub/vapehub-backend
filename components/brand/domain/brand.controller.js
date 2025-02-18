@@ -1,5 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Brand } = require("../../../models");
+const { fetchProducts } = require("../../product/helper/product.helper");
 
 module.exports.listAllbrands = async (req, res, next) => {
     try {
@@ -29,7 +30,7 @@ module.exports.createBrand = async (req, res, next) => {
     try {
         const { name, logo_url, slug, description } = req.body;
         const { id: updated_by } = req.user
-        const brand = await Brand.create({ name, logo_url, updated_by, slug, description});
+        const brand = await Brand.create({ name, logo_url, updated_by, slug, description });
         successResponse(res, brand, 'Brand created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -75,6 +76,26 @@ module.exports.deleteBrand = async (req, res, next) => {
         await brand.destroy({ force: true });
         successResponse(res, { message: 'Brand deleted successfully' }, "Success", 200);
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.getBrandBySlug = async (req, res, next) => {
+    try {
+        const brand = await Brand.findOne({ where: { slug: req.params.slug } });
+        // fetch related product
+        req.query.brands = `${brand.id}`
+        const product = await fetchProducts(req.query)
+
+        if (!brand) {
+            throw {
+                message: "Brand not found",
+                statusCode: 400,
+            };
+        }
+        return successResponse(res, { ...brand.get({ plain: true }), ...product }, "Success");
+    } catch (error) {
+        console.log("🚀 ~ module.exports.getBrandBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }

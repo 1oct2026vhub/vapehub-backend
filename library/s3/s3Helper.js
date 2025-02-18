@@ -1,6 +1,6 @@
 // s3Helper.js
 const s3 = require('../../config/awsConfig');
-
+const crypto = require('crypto');
 
 /**
  * Generates a signed URL for an S3 object.
@@ -55,7 +55,13 @@ const uploadFiletToS3 = async (params) => {
   }
 }
 
+const generateUniqueFileName = (originalName) => {
+  const timestamp = Date.now();
+  const randomString = crypto.randomBytes(8).toString('hex');
+  const extension = originalName.split('.').pop();
+  return `${timestamp}-${randomString}.${extension}`;
+};
 
 module.exports = {
-  generateSignedUrl, deleteFile, uploadFiletToS3
+  generateSignedUrl, deleteFile, uploadFiletToS3, generateUniqueFileName
 };

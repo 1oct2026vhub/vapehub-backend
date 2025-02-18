@@ -18,6 +18,10 @@ router.use("/faqs", require("./FAQ/routes/faqs.route"))
 router.use("/cart", require("./Cart/routes/cart.route"))
 router.use("/admin", require("./admin/admin.route"))
 router.use("/mailSubscription", require("./mailSubcription/routes/mailSubscription.route"))
+router.use("/testimonials", require("./testimonial/routes/testimonial.route"))
+router.use("/blogs", require("./blog/routes/blog.route"))
+router.use("/users", require("./user/routes/user.route"))
+router.use("/home", require("./homePage/routes/homePage.route"))
 
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 

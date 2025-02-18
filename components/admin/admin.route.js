@@ -13,5 +13,7 @@ router.post("/", (req, res) => {
 router.use('/auth', require('./auth/routes/auth.route'));
 router.use('/user', require('./user/routes/user.route'));
 router.use('/customer', require('./customer/routes/customer.route'));
-
+router.use('/category', require('./category/routes/category.route'));
+router.use('/brand', require('./brand/routes/brand.route'));
+router.use('/products', require('./product/routes/product.route'));
 module.exports = router;
