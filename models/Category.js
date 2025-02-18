@@ -20,7 +20,8 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             primaryKey: true,
             autoIncrement: true,
-            unique: true
+            unique: true,
+            allowNull: false,
         },
         updated_by: {
             type: DataTypes.INTEGER,
@@ -44,7 +45,8 @@ module.exports = (sequelize, DataTypes) => {
                 args: true,
                 msg: 'Slug already exists'
             },
-
+            onUpdate: "CASCADE",
+            onDelete: "SET NULL",
         },
         parent_id: {
             type: DataTypes.INTEGER,
