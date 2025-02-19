@@ -1,7 +1,7 @@
 'use strict';
 const { Model } = require('sequelize');
 const bcrypt = require('bcrypt');
-const { trendingProduct } = require('../components/product/domain/product.controller');
+// const { trendingProduct } = require('../components/product/domain/product.controller');
 
 module.exports = (sequelize, DataTypes) => {
     class User extends Model {
@@ -56,7 +56,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true
         },
         email: {
-            type: DataTypes.STRING,
+            type: DataTypes.STRING(255),
             allowNull: false,
             unique: true,
         },
