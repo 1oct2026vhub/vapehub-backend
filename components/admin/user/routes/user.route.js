@@ -28,7 +28,7 @@ const userController = require('../domain/user.controller');
  */
 router.get(
     "/roles",
-    [authMiddleware(true), validateRequest(validationRules.getRoles)],
+    [authMiddleware(true), validateRequest(validationRules.roleValidation)],
     userController.roles
 );
 
@@ -56,6 +56,44 @@ router.get(
  *         email:
  *           type: string
  *           description: Email address of the user
+ *         password:
+ *           type: string
+ *           description: User's password
+ *         phone:
+ *           type: string
+ *           description: Phone number of the user
+ *         roleId:
+ *           type: integer
+ *           description: Role ID assigned to the user
+ *         gender:
+ *           type: string
+ *           enum: [male, female, other]
+ *           description: Gender of the user
+ *         dob:
+ *           type: string
+ *           format: date
+ *           description: Date of birth of the user
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     UpdateUser:
+ *       type: object
+ *       required:
+ *         - first_name
+ *         - last_name
+ *         - password
+ *         - phone
+ *         - roleId
+ *       properties:
+ *         first_name:
+ *           type: string
+ *           description: First name of the user
+ *         last_name:
+ *           type: string
+ *           description: Last name of the user
  *         password:
  *           type: string
  *           description: User's password
@@ -123,7 +161,7 @@ router.post(
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/User'
+ *             $ref: '#/components/schemas/UpdateUser'
  *     responses:
  *       200:
  *         description: User updated successfully

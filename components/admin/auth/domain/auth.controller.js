@@ -28,10 +28,13 @@ module.exports.login = async (req, res, next) => {
         if (!user) {
             return errorResponse(res, { message: "Invalid email or password" }, 400);
         }
-        console.log(user.roles.is_admin_panel);
         // Ensure user is part of the admin panel
         if (!user.roles || !user.roles.is_admin_panel) {
             return errorResponse(res, { message: "Unauthorized: Admin access required" }, 403);
+        }
+
+        if (user.blocked) {
+            return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." }, 400);
         }
       
         // Verify password
@@ -63,7 +66,6 @@ module.exports.login = async (req, res, next) => {
                     attachments: ""
                 }
                 await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-                console.log("New verification email sent.");
                 return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
             } else if (tokenExpiryDate > currentTime) {
                 // Email not verified and token is still valid
@@ -90,7 +92,6 @@ module.exports.login = async (req, res, next) => {
         // res, data, message, statusCode
         return successResponse(res, { ...userData, accessToken, refreshToken });
     } catch (error) {
-        console.log(error);
         return errorResponse(res, error, error.message);
     }
 }
@@ -241,7 +242,6 @@ module.exports.refreshToken = async (req, res, next) => {
         const { accessToken, refreshToken: newRefreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
     } catch (error) {
-        console.log("🚀 ~ module.exports.refreshToken= ~ error:", error)
         return errorResponse(res, error);
     }
 }

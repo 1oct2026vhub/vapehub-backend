@@ -8,7 +8,7 @@ const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library
  */
 module.exports.listAllCategories = async (req, res, next) => {
     try {
-        let { page = 1, limit = 10, search, deleted } = req.query;
+        let { page = 1, limit = 10, search, deleted = "false" } = req.query;
         page = parseInt(page);
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
@@ -22,9 +22,7 @@ module.exports.listAllCategories = async (req, res, next) => {
             ];
         }
 
-        if (deleted !== undefined) {
-            whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
-        }
+        whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
 
         const { count, rows: categories } = await Category.findAndCountAll({
             where: whereCondition,

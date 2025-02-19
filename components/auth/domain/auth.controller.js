@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User } = require("../../../models");
+const { User, Role } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -13,11 +13,19 @@ module.exports.login = async (req, res, next) => {
     try {
         const { email, password, resendVerificationEmail = false } = req.body;
 
-        // Find user by email
-        const user = await User.findOne({ where: { email } });
+        // Find user by email, fetching only required fields
+        const user = await User.findOne({
+            where: { email },
+        });
+
         if (!user) {
             return errorResponse(res, { message: "Invalid email or password" }, 400);
         }
+
+        if (user.blocked) {
+            return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." }, 400);
+        }
+
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
@@ -47,7 +55,6 @@ module.exports.login = async (req, res, next) => {
                     attachments: ""
                 }
                 await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-                console.log("New verification email sent.");
                 return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
             } else if (tokenExpiryDate > currentTime) {
                 // Email not verified and token is still valid
@@ -90,6 +97,11 @@ module.exports.register = async (req, res, next) => {
                 errors: { email: "User eamil already exists" },
             }
         }
+        const role = await Role.findOne({
+            attributes: ['id'], // Only fetch the required column
+            where: { permission: 'user' },
+        });
+        const roleId = role?.id || null;
 
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
@@ -97,7 +109,8 @@ module.exports.register = async (req, res, next) => {
             email,
             password: password,
             token,
-            token_expiry
+            token_expiry,
+            roleId
         });
 
         const username = user?.first_name ?? user.email.split('@')[0];
@@ -265,7 +278,6 @@ module.exports.refreshToken = async (req, res, next) => {
         const { accessToken, refreshToken: newRefreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
     } catch (error) {
-        console.log("🚀 ~ module.exports.refreshToken= ~ error:", error)
         return errorResponse(res, error);
     }
 }
