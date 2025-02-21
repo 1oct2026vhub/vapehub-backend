@@ -146,6 +146,17 @@ module.exports.verifyEmail = async (req, res, next) => {
             }
         }
 
+        // check is user verified email
+        if(user?.email_verified_at){
+            throw {
+                message: "Email already verified",
+                statusCode: 400,
+                errors: {
+                    email: "Email already verified",
+                }
+            }
+        }
+
         if (user.token_expiry < new Date()) {
             throw {
                 message: "Invalid link or link expired",
@@ -192,10 +203,10 @@ module.exports.forgotPassword = async (req, res, next) => {
         }
         if (!user?.email_verified_at) {
             throw {
-                message: "Email is not verified. Please verify your email first.",
+                message: "Email is not verified. Please verify your email",
                 statusCode: 400,
                 errors: {
-                    email: "Email is not verified. Please verify your email first.",
+                    email: "Email is not verified. Please verify your email",
                 }
             }
         }

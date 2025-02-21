@@ -40,13 +40,13 @@ router.get("/carousel", homePageController.getHomeCarousel)
  *             type: object
  *             required:
  *               - image_url
- *               - order
+ *               - display_order
  *             properties:
  *               image_url:
  *                 type: string
  *                 format: uri
  *                 example: "https://example.com/image.jpg"
- *               order:
+ *               display_order:
  *                 type: integer
  *                 example: 1
  *               image_url_mid:
@@ -76,7 +76,7 @@ router.get("/carousel", homePageController.getHomeCarousel)
 router.post("/carousel",
     authenticateJWT,
     validateRequest([
-        check("order").notEmpty().withMessage("Order is required").isInt().withMessage("Order must be an integer"),
+        check("display_order").notEmpty().withMessage("Order is required").isInt().withMessage("Order must be an integer"),
         check("image_url").notEmpty().withMessage("Image URL is required").isURL().withMessage("Invalid image URL"),
         check("title").optional().isString().withMessage("Title should be a string"),
         check("description").optional().isString().withMessage("Description should be a string"),
