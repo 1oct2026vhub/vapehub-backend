@@ -1,6 +1,5 @@
-const { sequelize } = require("../../../models");  // Destructure to get the instance
 const crypto = require('crypto');
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../models");
+const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
 
 async function getTrendingProducts(limit = 10) {
