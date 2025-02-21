@@ -20,12 +20,12 @@ module.exports = (sequelize, DataTypes) => {
                 autoIncrement: true,
                 unique: true,
             },
-            order: {
+            display_order: {
                 type: DataTypes.INTEGER,
                 allowNull: false, // Required field
                 validate: {
-                    isInt: { msg: "Order must be an integer" },
-                    min: { args: [1], msg: "Order must be at least 1" }
+                    isInt: { msg: "display_order must be an integer" },
+                    min: { args: [1], msg: "display_order must be at least 1" }
                 }
             },
             image_url: {
