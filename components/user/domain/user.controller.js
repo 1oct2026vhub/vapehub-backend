@@ -7,9 +7,7 @@ const constants = require('../../../config/constants');
 module.exports.referFriend = async (req, res, next) => {
     try {
         const { email } = req.body;
-        const { id: user_id } = req.user
-        const payload = { email: email, referer_id: user_id }
-        const token = await jwt.sign(payload, process.env.JWT_KEY_SECRET)
+        const { referral_code } = req.user
         // check if the user email already exists
         const user = await User.findOne({ where: { email } })
         if (user) {
@@ -26,7 +24,8 @@ module.exports.referFriend = async (req, res, next) => {
             to: email,
             context: {
                 userName: username,
-                referralLink: `${process.env.FRONTEND_URL}/my-account/register?token=${token}`,
+                referralLink: `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`,
+                token: referral_code
             },
             attachments: ""
         }

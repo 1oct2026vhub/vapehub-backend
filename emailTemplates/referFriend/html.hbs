@@ -57,25 +57,37 @@
       color: #666;
       font-size: 12px;
     }
+
+    .referal-code {
+      margin: 20px 0 0 0;
+      font-size: 18px;
+      font-weight: bold;
+      color: #2e8b57;
+      text-align: center;
+      padding: 10px;
+      border-radius: 5px;
+      background-color: #f5f5f5;
+    }
   </style>
 </head>
 
 <body>
   <div class="email-container">
     <div class="header">
-      <a href="{{host}}">
-        <img src="{{host}}/public/images/logo.svg" alt="Vape Hub Logo" class="logo" />
+      <a href="{{FRONTEND_URL}}">
+        <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
       </a>
     </div>
     <div class="content">
-      <h2>Invite Your Friends to Join Vape Hub!</h2>
+      <h2>Invite Your Friends to Join VapeHub!</h2>
       {{!-- <p>Hello {{userName}},</p> --}}
       <p>
-        We’re excited to have you on board! Now, you can share the Vape Hub experience with your friends.
+        We’re excited to have you on board! Now, you can share the VapeHub experience with your friends.
         Invite them to join, and as a thank you, you both get a special reward!
       </p>
 
-      <a href="{{referralLink}}" target="_blank" class="button">Refer a Friend</a>
+      <div class="referal-code">{{token}}</div>
+      <a href="{{referralLink}}" target="_blank" class="button">Shop Now</a>
 
       <p>Thank you for being part of our community!</p>
     </div>

@@ -46,8 +46,8 @@ if (attachments.length > 0) {
 // get template and replace content
 const text = await fs.readFile(path.join(__dirname, '../../emailTemplates', emailConfig.folderName, 'text.hbs'), 'utf8')
 const html = await fs.readFile(path.join(__dirname, '../../emailTemplates', emailConfig.folderName, 'html.hbs'), 'utf8')
-data.text = Handlebars.compile(text)({ ...context, host: process.env.HOST_URL })
-data.html = Handlebars.compile(html)({ ...context, host: process.env.HOST_URL,  currentYear: new Date().getFullYear()})
+data.text = Handlebars.compile(text)({ ...context, host: process.env.HOST_URL, FRONTEND_URL:process.env.FRONTEND_URL })
+data.html = Handlebars.compile(html)({ ...context, host: process.env.HOST_URL, FRONTEND_URL:process.env.FRONTEND_URL, currentYear: new Date().getFullYear()})
 
 // send email
 if (process.env.EMAIL_TEST_MODE === 'true')
