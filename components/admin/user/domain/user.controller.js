@@ -3,6 +3,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { User, Role } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
+const bcrypt = require('bcrypt');
 const moment = require('moment');
 const { Sequelize, Op } = require("sequelize");
 
@@ -142,7 +143,10 @@ module.exports.updateUser = async (req, res) => {
         if (roleId) user.roleId = roleId;
         if (gender) user.gender = gender;
         if (dob) user.dob = dob;
-        if (password) user.password = password;
+        if (password){
+            const hashedPassword = await bcrypt.hashSync(password, 10);
+            user.password = hashedPassword;
+        } 
 
         await user.save();
 
