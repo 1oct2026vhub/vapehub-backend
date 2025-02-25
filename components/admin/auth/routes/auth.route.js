@@ -40,7 +40,7 @@ const authController = require('../domain/auth.controller')
  *       500:
  *         description: Internal server error
  */
-router.post("/login", validateRequest(authValidation.login), authController.login
+router.post("/login", authController.login
 );
 
 /**
