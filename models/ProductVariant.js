@@ -1,0 +1,175 @@
+'use strict';
+const { Model } = require('sequelize');
+const constants = require('../config/constants');
+
+module.exports = (sequelize, DataTypes) => {
+  class ProductVariant extends Model {
+    static associate(models) {
+      // Define associations
+      this.belongsTo(models.Product, {
+        foreignKey: 'product_id',
+        as: 'product'
+      });
+
+      this.belongsTo(models.User, {
+        foreignKey: 'updated_by',
+        as: 'updatedByUser'
+      });
+
+      this.hasMany(models.ProductVariantAttribute, {
+        foreignKey: 'variant_id',
+        as: 'variantAttributes'
+      });
+
+      this.hasMany(models.StockMovement, {
+        foreignKey: 'variant_id',
+        as: 'stockMovements'
+      });
+
+      this.hasMany(models.StockReservation, {
+        foreignKey: 'variant_id',
+        as: 'stockReservations'
+      });
+    }
+  }
+
+  ProductVariant.init({
+    id: {
+      type: DataTypes.BIGINT,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    product_id: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+      references: {
+        model: 'products',
+        key: 'id'
+      },
+      onDelete: 'CASCADE'
+    },
+    sku: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      unique: true,
+      validate: {
+        notEmpty: true
+      }
+    },
+    price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    discount_price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      validate: {
+        min: 0,
+        isLessThanPrice(value) {
+          if (value && this.price && value >= this.price) {
+            throw new Error('Discount price must be less than regular price');
+          }
+        }
+      }
+    },
+    purchase_price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    weight: {
+      type: DataTypes.DECIMAL(8, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    length: {
+      type: DataTypes.DECIMAL(8, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    width: {
+      type: DataTypes.DECIMAL(8, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    height: {
+      type: DataTypes.DECIMAL(8, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    barcode: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      unique: true
+    },
+    stock: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      validate: {
+        min: 0
+      }
+    },
+    low_stock_threshold: {
+      type: DataTypes.INTEGER,
+      defaultValue: 5,
+      validate: {
+        min: 0
+      }
+    },
+    stock_status: {
+      type: DataTypes.ENUM(constants.productVariantEnums.stockStatus),
+      defaultValue: constants.productVariants.stockStatus.IN_STOCK
+    },
+    status: {
+      type: DataTypes.ENUM('active', 'inactive'),
+      defaultValue: 'active'
+    },
+    updated_by: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'users',
+        key: 'id'
+      },
+      onDelete: 'SET NULL'
+    }
+  }, {
+    sequelize,
+    modelName: 'ProductVariant',
+    tableName: 'product_variants',
+    underscored: true,
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    hooks: {
+      beforeSave: async (variant) => {
+        // Auto-update stock_status based on stock level
+        if (variant.changed('stock')) {
+          if (variant.stock <= 0) {
+            variant.stock_status = 'out_of_stock';
+          } else {
+            variant.stock_status = 'in_stock';
+          }
+        }
+      }
+    }
+  });
+
+  return ProductVariant;
+}; 

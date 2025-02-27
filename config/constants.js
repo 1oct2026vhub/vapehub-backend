@@ -27,5 +27,43 @@ module.exports = {
          SUCCESS: 1,
          PAYMENT_FAILED : 2,
          CANCELED : 4
+    },
+    attributes: {
+        types: {
+            SELECT: 'select',
+            RADIO: 'radio',
+            TEXT: 'text',
+            IMAGE: 'image'
+        },
+        sortOrders: {
+            CUSTOM: 'custom',
+            NAME: 'name',
+            ID: 'id'
+        }
+    },
+    attributeEnums: {
+        types: ['select', 'radio', 'text', 'image'],
+        sortOrders: ['custom', 'name', 'id']
+    },
+    productVariants: {
+        stockStatus: {
+            IN_STOCK: 'in_stock',
+            OUT_OF_STOCK: 'out_of_stock',
+            BACKORDER: 'backorder'
+        }
+    },
+    stockMovements: {
+        changeTypes: {
+            ADDITION: 'addition',
+            DEDUCTION: 'deduction',
+            ADJUSTMENT: 'adjustment',
+            RESERVATION: 'reservation'
+        }
+    },
+    productVariantEnums: {
+        stockStatus: ['in_stock', 'out_of_stock', 'backorder']
+    },
+    stockMovementEnums: {
+        changeTypes: ['addition', 'deduction', 'adjustment', 'reservation']
     }
 }
