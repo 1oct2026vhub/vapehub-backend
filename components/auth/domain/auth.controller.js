@@ -147,7 +147,7 @@ module.exports.verifyEmail = async (req, res, next) => {
         }
 
         // check is user verified email
-        if(user?.email_verified_at){
+        if (user?.email_verified_at) {
             throw {
                 message: "Email already verified",
                 statusCode: 400,
@@ -264,7 +264,18 @@ module.exports.resetPassword = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        return successResponse(res, { message: "Password reset successful! Please log in to continue." }, "Password reset successful! Please log in to continue.", 200);
+        const userData = {
+            id: user.id,
+            first_name: user?.first_name,
+            last_name: user?.last_name,
+            email: user?.email,
+            phone: user?.phone,
+            profile_pic_url: user?.profile_pic_url,
+            gender: user?.gender,
+            dob: user?.dob,
+        }
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
+        return successResponse(res, { message: "Password reset successful! Please log in to continue.", ...userData, accessToken, refreshToken }, "Password reset successful! Please log in to continue.", 200);
     } catch (error) {
         return errorResponse(res, error);
     }
