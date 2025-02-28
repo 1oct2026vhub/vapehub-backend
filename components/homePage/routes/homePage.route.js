@@ -1,8 +1,8 @@
 const router = require("express").Router();
-const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const homePageController = require("../domain/homePage.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
+const { authMiddleware } = require('../../../library/middleware');
 
 /**
  * @swagger
@@ -74,7 +74,7 @@ router.get("/carousel", homePageController.getHomeCarousel)
  *         description: Internal server error
  */
 router.post("/carousel",
-    authenticateJWT,
+    authMiddleware(true),
     validateRequest([
         check("display_order").notEmpty().withMessage("Order is required").isInt().withMessage("Order must be an integer"),
         check("image_url").notEmpty().withMessage("Image URL is required").isURL().withMessage("Invalid image URL"),
