@@ -16,4 +16,5 @@ router.use('/customer', require('./customer/routes/customer.route'));
 router.use('/category', require('./category/routes/category.route'));
 router.use('/brand', require('./brand/routes/brand.route'));
 router.use('/products', require('./product/routes/product.route'));
+router.use('/shipping-methods', require('./shippingMethod/routes/shippingMethod.route'));
 module.exports = router;
