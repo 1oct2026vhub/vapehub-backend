@@ -3,14 +3,41 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const blogController = require("../domain/blog.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
+const { authMiddleware } = require('../../../library/middleware');
+const multer = require("multer");
+// api for file upload
+// Configure multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB limit
+    }
+});
 
 /**
  * @swagger
  * /api/blogs:
  *   get:
- *     summary: Retrieve a list of blogs
+ *     summary: Retrieve a list of blogs with optional search and filter
  *     tags:
  *       - Blog
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search blogs by title, content, or blog group
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: integer
+ *         description: Filter blogs by user ID
+ *       - in: query
+ *         name: blog_group
+ *         schema:
+ *           type: string
+ *         description: Filter blogs by blog_group
  *     responses:
  *       200:
  *         description: A list of blogs
@@ -50,10 +77,12 @@ router.get('/:id',
  *     security:
  *       - bearerAuth: []
  *     summary: Create a new blog
+ *     consumes:
+ *       - multipart/form-data
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
@@ -63,13 +92,14 @@ router.get('/:id',
  *                 type: string
  *               content:
  *                 type: string
+ *                 format: html
  *               slug:
  *                 type: string
  *     responses:
  *       200:
  *         description: Created
  */
-router.post('/', authenticateJWT,
+router.post('/', authMiddleware(true), upload.none(),
     validateRequest([
         check('blog_group').notEmpty().withMessage('Blog group is required'),
         check('title').notEmpty().withMessage('Title is required'),
@@ -97,7 +127,7 @@ router.post('/', authenticateJWT,
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
@@ -107,18 +137,19 @@ router.post('/', authenticateJWT,
  *                 type: string
  *               content:
  *                 type: string
+ *                 format: html
  *               slug:
  *                 type: string
  *     responses:
  *       200:
  *         description: Updated
  */
-router.put('/:id', authenticateJWT,
+router.put('/:id', authMiddleware(true), upload.none(),
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer'),
-        check('title').optional().notEmpty().withMessage('Title cannot be empty'),
-        check('content').optional().notEmpty().withMessage('Content cannot be empty'),
-        check('slug').optional().notEmpty().withMessage('slug cannot be empty'),
+        check('title').optional().isString().withMessage('Title must be a string'),
+        check('content').optional().isString().withMessage('Content must be a string'),
+        check('slug').optional().isString().withMessage('slug must be a string'),
         check('blog_group').optional().isString().withMessage('blog_group must be a string')
     ]),
     blogController.updateBlog
@@ -143,7 +174,7 @@ router.put('/:id', authenticateJWT,
  *       204:
  *         description: Deleted
  */
-router.delete('/:id', authenticateJWT,
+router.delete('/:id', authMiddleware(true),
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer')
     ]),
