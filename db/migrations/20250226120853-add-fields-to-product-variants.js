@@ -59,13 +59,13 @@ module.exports = {
     });
 
     // Add index for barcode
-    await queryInterface.addIndex('product_variants', ['barcode']);
+    // await queryInterface.addIndex('product_variants', ['barcode']);
   },
 
   async down(queryInterface, Sequelize) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       // Remove index first
-      await queryInterface.removeIndex('product_variants', ['barcode'], { transaction });
+      // await queryInterface.removeIndex('product_variants', ['barcode'], { transaction });
 
       // Remove columns
       await queryInterface.removeColumn('product_variants', 'discount_price', { transaction });

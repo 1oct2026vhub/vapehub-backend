@@ -107,6 +107,10 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'product_variant_images',
     underscored: true,
     timestamps: true,
+    paranoid: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
     hooks: {
       beforeCreate: async (image, options) => {
         // If this is the first image for the variant, make it primary

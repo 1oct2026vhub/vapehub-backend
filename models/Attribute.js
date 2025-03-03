@@ -36,6 +36,10 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty: true
       }
     },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
     slug: {
       type: DataTypes.STRING(255),
       allowNull: false,
@@ -72,7 +76,9 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: true,
     createdAt: 'created_at',
-    updatedAt: 'updated_at'
+    updatedAt: 'updated_at',
+    paranoid: true,
+    deletedAt: 'deleted_at'
   });
 
   return Attribute;

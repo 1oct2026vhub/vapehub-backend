@@ -77,6 +77,10 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'attribute_terms',
     underscored: true,
     timestamps: true,
+    paranoid: true,
+    deletedAt: 'deleted_at',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
     indexes: [
       {
         fields: ['attribute_id']

@@ -106,6 +106,9 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'StockMovement',
     tableName: 'stock_movements',
     underscored: true,
+    createdAt: 'created_at',
+    deletedAt: 'deleted_at',
+    paranoid: true,
     timestamps: true,
     updatedAt: false, // Only created_at is needed
     hooks: {

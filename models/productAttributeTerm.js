@@ -2,45 +2,53 @@
 const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-  class ProductVariantAttribute extends Model {
+  class ProductAttributeTerm extends Model {
     static associate(models) {
-      // Define associations
-      this.belongsTo(models.ProductVariant, {
-        foreignKey: 'variant_id',
-        as: 'variant'
+      // Associations
+      this.belongsTo(models.Product, {
+        foreignKey: 'product_id',
+        as: 'product',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
       });
 
       this.belongsTo(models.Attribute, {
         foreignKey: 'attribute_id',
-        as: 'attribute'
+        as: 'attribute',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
       });
 
       this.belongsTo(models.AttributeTerm, {
         foreignKey: 'term_id',
-        as: 'term'
+        as: 'term',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
       });
 
       this.belongsTo(models.User, {
         foreignKey: 'updated_by',
-        as: 'updatedByUser'
+        as: 'updatedByUser',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
       });
     }
   }
 
-  ProductVariantAttribute.init({
+  ProductAttributeTerm.init({
     id: {
       type: DataTypes.BIGINT,
       primaryKey: true,
-      autoIncrement: true
+      autoIncrement: true,
+      unique: true
     },
-    variant_id: {
-      type: DataTypes.BIGINT,
+    product_id: {
+      type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: 'product_variants',
+        model: 'products',
         key: 'id'
-      },
-      onDelete: 'CASCADE'
+      }
     },
     attribute_id: {
       type: DataTypes.BIGINT,
@@ -48,8 +56,7 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'attributes',
         key: 'id'
-      },
-      onDelete: 'CASCADE'
+      }
     },
     term_id: {
       type: DataTypes.BIGINT,
@@ -57,10 +64,9 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'attribute_terms',
         key: 'id'
-      },
-      onDelete: 'CASCADE'
+      }
     },
-    is_visible: {
+    is_visible_page: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true
@@ -72,30 +78,22 @@ module.exports = (sequelize, DataTypes) => {
     },
     updated_by: {
       type: DataTypes.INTEGER,
+      allowNull: false,
       references: {
         model: 'users',
         key: 'id'
-      },
-      onDelete: 'SET NULL'
+      }
     }
   }, {
     sequelize,
-    modelName: 'ProductVariantAttribute',
-    tableName: 'product_variant_attributes',
+    modelName: 'ProductAttributeTerm',
+    tableName: 'product_attribute_terms',
+    paranoid: true,
+    timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
-    deletedAt: 'deleted_at',
-    underscored: true,
-    timestamps: true,
-    paranoid: true,
-    indexes: [
-      {
-        unique: true,
-        fields: ['variant_id', 'attribute_id'],
-        name: 'unique_variant_attribute'
-      }
-    ]
+    deletedAt: 'deleted_at'
   });
 
-  return ProductVariantAttribute;
+  return ProductAttributeTerm;
 }; 

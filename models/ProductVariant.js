@@ -30,6 +30,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'variant_id',
         as: 'stockReservations'
       });
+      this.hasMany(models.ProductVariantImage, {
+          foreignKey: 'variant_id',
+          as: 'variantImages',
+          onDelete: 'CASCADE'
+      });
     }
   }
 
@@ -48,7 +53,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       onDelete: 'CASCADE'
     },
-    sku: {
+    slug: {
       type: DataTypes.STRING(100),
       allowNull: false,
       unique: true,
@@ -155,8 +160,10 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'product_variants',
     underscored: true,
     timestamps: true,
+    paranoid: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
     hooks: {
       beforeSave: async (variant) => {
         // Auto-update stock_status based on stock level
