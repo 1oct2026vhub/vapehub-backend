@@ -20,4 +20,6 @@ router.use('/attributes', require('./productAttributes/routes/attribute.route'))
 router.use('/attribute-terms', require('./productAttributes/routes/attributeTerms.route'));
 router.use('/stock-management', require('./product/routes/stockManagement.route'));
 router.use('/product-variants', require('./product/routes/productVariant.route'));
+router.use('/shipping-methods', require('./shippingMethod/routes/shippingMethod.route'));
+
 module.exports = router;
