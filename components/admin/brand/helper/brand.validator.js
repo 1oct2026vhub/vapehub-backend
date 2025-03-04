@@ -1,4 +1,4 @@
-const { check, param } = require("express-validator");
+const { check, param, body } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
 
@@ -78,6 +78,17 @@ const filterValidations = [
       .isBoolean().withMessage("Deleted must be a boolean value"),
 ]
 
+// New validation for bulk updates
+const bulkUpdateBrandsValidation = [
+    body('file')
+    .custom((value, { req }) => {
+        if (!req.file) {
+            throw new Error('File must be uploaded');
+        }
+        return true;
+    }),
+];
+
 // Configure multer for handling file uploads
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -94,6 +105,7 @@ const upload = multer({
         cb(null, true);
     },
 });
+const uploadFileMiddleware = upload.single('file');
 
 const uploadFileValidation = (req, res, next) => {
   upload.single("logo")(req, res, (err) => {
@@ -112,10 +124,14 @@ const uploadFileValidation = (req, res, next) => {
       }
       next();
   });
+
+  
 };
 module.exports = {
     brandIdValidation,
     brandValidation,
     brandUpdatesValidation,
-    uploadFileValidation
+    bulkUpdateBrandsValidation,
+    uploadFileValidation,
+    uploadFileMiddleware
 };

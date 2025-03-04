@@ -1,4 +1,4 @@
-const { check, param } = require("express-validator");
+const { check, param, body } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
 
@@ -92,14 +92,16 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB limit
     },
     fileFilter: (req, file, cb) => {
-        const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+        const allowedExtensions = ['.xlsx', '.xls'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (!allowedExtensions.includes(ext)) {
-            return cb(new Error("Only .png, .jpg, .jpeg, .webp files are allowed!"), false);
+            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
         }
         cb(null, true);
     },
 });
+
+const uploadFileMiddleware = upload.single('file');
 
 const uploadFileValidation = (req, res, next) => {
   upload.single("logo")(req, res, (err) => {
@@ -119,9 +121,22 @@ const uploadFileValidation = (req, res, next) => {
       next();
   });
 };
+
+const bulkUpdateCategoriesValidation = [
+    body('file')
+        .custom((value, { req }) => {
+            if (!req.file) {
+                throw new Error('File must be uploaded');
+            }
+            return true;
+        }),
+];
+
 module.exports = {
     categoryIdValidation,
     categoryValidation,
     categoryUpdatesValidation,
-    uploadFileValidation
+    uploadFileValidation,
+    bulkUpdateCategoriesValidation,
+    uploadFileMiddleware,
 };

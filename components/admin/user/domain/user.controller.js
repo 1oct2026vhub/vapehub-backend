@@ -86,7 +86,7 @@ module.exports.createUser = async (req, res) => {
                 to: newUser.email,
                 context: {
                     userName: username,
-                    verificationLink: `${process.env.HOST_URL}/api/admin/auth/verify-email?token=${token}`,
+                    verificationLink: `${process.env.FRONTEND_URL}/email-verify?token=${token}`,
                     expiryTime: moment(token_expiry).format('LLLL'),
                 },
                 attachments: ""
@@ -160,7 +160,7 @@ module.exports.updateUser = async (req, res) => {
 //List all users (with pagination)
 module.exports.listUsers = async (req, res) => {
     try {
-        const { sort_by = 'createdAt', order = 'DESC',page = 1, limit = 10, roleId, search, deleted } = req.query;
+        const { sort_by = 'createdAt', order = 'DESC', page = 1, limit = 10, roleId, search, deleted = "false" } = req.query;
 
         const offset = (page - 1) * limit;
 
@@ -184,7 +184,11 @@ module.exports.listUsers = async (req, res) => {
 
         // Filter by deleted flag if provided
         if (deleted !== undefined) {
-            whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
+            if (deleted === "true") {
+                whereCondition.deletedAt = { [Op.ne]: null }; // Only soft-deleted users
+            } else {
+                whereCondition.deletedAt = null; // Only active users
+            }
         }
 
         const users = await User.findAndCountAll({
@@ -193,6 +197,7 @@ module.exports.listUsers = async (req, res) => {
             limit: parseInt(limit),
             offset: parseInt(offset),
             order: [[sort_by, order]],
+            paranoid: false,
         });
 
         return successResponse(res, {  

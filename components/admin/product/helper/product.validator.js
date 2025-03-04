@@ -1,0 +1,104 @@
+const { check, param } = require("express-validator");
+const multer = require("multer");
+const path = require("path");
+
+const productIdValidation = [
+    param("id").isInt().withMessage("Product ID must be an integer"),
+];
+
+const createProductValidation = [
+    check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
+    check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
+    check('description').optional().isString().withMessage('Description must be a string'),
+    check('price').optional().isDecimal().withMessage('Price must be a decimal number'),
+    check('discount_price').optional().isDecimal().withMessage('Discount price must be a decimal number'),
+    check('stock_quantity').optional().isInt().withMessage('Stock quantity must be an integer'),
+    check('is_new').optional().isBoolean().withMessage('is_new must be a boolean'),
+    check('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
+    check('brand_id').isInt().withMessage('Brand ID must be an integer').notEmpty().withMessage('Brand ID is required'),
+   
+];
+
+const updateProductValidations = [
+    check('name').optional().isString().withMessage('Name must be a string'),
+    check('slug').optional().isString().withMessage('Slug must be a string'),
+    check('description').optional().isString().withMessage('Description must be a string'),
+    check('price').optional().isDecimal().withMessage('Price must be a decimal number'),
+    check('discount_price').optional().isDecimal().withMessage('Discount price must be a decimal number'),
+    check('stock_quantity').optional().isInt().withMessage('Stock quantity must be an integer'),
+    check('is_new').optional().isBoolean().withMessage('is_new must be a boolean'),
+    check('category_id').optional().isInt().withMessage('Category ID must be an integer'),
+    check('brand_id').optional().isInt().withMessage('Brand ID must be an integer'),
+    
+];
+
+const productImageValidation = [
+  param("product_id")
+      .notEmpty().withMessage("Product ID is required")
+      .isInt({ min: 1 }).withMessage("Product ID must be a valid integer"),
+
+  param("image_id")
+      .notEmpty().withMessage("Image ID is required")
+      .isInt({ min: 1 }).withMessage("Image ID must be a valid integer")
+];
+
+// Configure multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error("Only .png, .jpg, .jpeg, .webp files are allowed!"), false);
+        }
+        cb(null, true);
+    },
+});
+const uploadFileValidation = (req, res, next) => {
+  upload.array("images", 10)(req, res, (err) => { // Allow up to 10 images
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({
+        success: false,
+        message: "File upload error",
+        errors: [{ path: "images", msg: err.message }],
+      });
+    } else if (err) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid file type",
+        errors: [{ path: "images", msg: err.message }],
+      });
+    }
+
+    // Validate if any files were uploaded
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files uploaded",
+        errors: [{ path: "images", msg: "Please upload at least one image" }],
+      });
+    }
+
+    next();
+  });
+};
+
+const listAllProductsValidation = [
+    check('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    check('limit').optional().isInt({ min: 1 }).withMessage('Limit must be a positive integer'),
+    check('sort').optional().isString().withMessage('Sort must be a string'),
+    check('filter').optional().isString().withMessage('Filter must be a string'),
+];
+
+module.exports = {
+    productIdValidation,
+    createProductValidation,
+    updateProductValidations,
+    productImageValidation,
+    uploadFileValidation,
+    listAllProductsValidation
+};

@@ -60,7 +60,7 @@ module.exports.login = async (req, res, next) => {
                     to: user.email,
                     context: {
                         userName: username,
-                        verificationLink: `${process.env.HOST_URL}/api/admin/auth/verify-email?token=${token}`,
+                        verificationLink: `${process.env.FRONTEND_URL}/email-verify?token=${token}`,
                         expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
@@ -146,13 +146,7 @@ module.exports.forgotPassword = async (req, res, next) => {
         const { email } = req.body;
         const user = await User.findOne({ where: { email } });
         if (!user) {
-            throw {
-                message: "User not found",
-                statusCode: 404,
-                errors: {
-                    email: "User not found",
-                }
-            }
+            throw new Error("User not found");
         }
         if (!user?.email_verified_at) {
             throw {
@@ -174,7 +168,7 @@ module.exports.forgotPassword = async (req, res, next) => {
             to: user.email,
             context: {
                 userName: user?.first_name ?? user.email.split('@')[0],
-                resetPasswordLink: `${process.env.HOST_URL}/api/admin/admin/auth/reset-password?token=${token}`,
+                resetPasswordLink: `${process.env.FRONTEND_URL}/reset-password?token=${token}`,
                 expiryTime: moment(token_expiry).format('LLLL'),
             },
             attachments: ""

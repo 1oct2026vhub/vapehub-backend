@@ -1,10 +1,28 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Blog, User } = require("../../../models");
-const { fetchProducts } = require("../../product/helper/product.helper");
 
 module.exports.listAllblogs = async (req, res, next) => {
     try {
+        const { search, userId, blog_group } = req.query;
+        let whereCondition = {};
+        if (search) {
+            whereCondition = {
+                ...whereCondition,
+                [Op.or]: [
+                    { title: { [Op.iLike]: `%${search}%` } },
+                    { content: { [Op.iLike]: `%${search}%` } },
+                    { blog_group: { [Op.iLike]: `%${search}%` } }
+                ]
+            };
+        }
+        if (userId) {
+            whereCondition.user_id = userId;
+        }
+        if (blog_group) {
+            whereCondition.blog_group = blog_group;
+        }
         const blogs = await Blog.findAll({
+            where: whereCondition,
             include: {
                 model: User,
                 as: 'User',
