@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation } = require("../helper/category.validator");
+const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadFileMiddleware } = require("../helper/category.validator");
 
 /**
  * @swagger
@@ -207,5 +207,47 @@ router.delete('/:id', [authMiddleware(true), validateRequest(categoryIdValidatio
  */
 router.put("/:id/restore", [authMiddleware(true), validateRequest(categoryIdValidation)], categoryController.restoreCategory);
 
+/**
+ * @swagger
+ * /api/admin/category/download/sample-excel:
+ *   get:
+ *     summary: Download a sample Excel file of categories
+ *     tags:
+ *       - ADMIN - Categories
+ *     responses:
+ *       200:
+ *         description: Successfully downloaded the sample Excel file
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/download/sample-excel', [authMiddleware(true)], categoryController.downloadSampleExcel);
+
+/**
+ * @swagger
+ * /api/admin/category/bulk-update/categories:
+ *   post:
+ *     summary: Bulk update categories from an Excel file
+ *     tags:
+ *       - ADMIN - Categories
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file containing categories to update
+ *     responses:
+ *       200:
+ *         description: Categories updated successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update/categories', [authMiddleware(true), uploadFileMiddleware, validateRequest(bulkUpdateCategoriesValidation)], categoryController.bulkUpdateCategories);
 
 module.exports = router;

@@ -9,6 +9,7 @@ module.exports = (sequelize, DataTypes) => {
             this.belongsTo(models.Category, { foreignKey: 'category_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
             this.belongsTo(models.Brand, { foreignKey: 'brand_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
             this.belongsTo(models.ProductFlavor, { foreignKey: 'product_flavour_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+            this.belongsTo(models.User, { foreignKey: 'user_id' });
         }
     }
 
