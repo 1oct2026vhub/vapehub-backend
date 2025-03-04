@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { Category } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const ExcelJS = require("exceljs"); // Import the exceljs library
 
 /**
  * Retrieves all categories.
@@ -237,6 +238,113 @@ module.exports.restoreCategory = async (req, res, next) => {
 
         await category.restore();
         return successResponse(res, {}, "Category restored successfully", 200);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk updates categories from an Excel file.
+ * If a category does not exist, a new category will be created.
+ */
+module.exports.bulkUpdateCategories = async (req, res, next) => {
+    try {
+        const { file } = req; // Get the uploaded file
+        if (!file) {
+            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
+        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+
+        // Check the header row
+        const headerRow = worksheet.getRow(1).values;
+        const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
+
+        // Array to hold the results of each operation
+        let results = [];
+
+        // Iterate through each row in the worksheet
+        worksheet.eachRow({ includeEmpty: false }, async (row, rowNumber) => {
+            if (rowNumber === 1) return; // Skip header row
+
+            // If the first header is empty, skip the first column in each row
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+
+            const [name, slug, description, parent_slug] = rowValues; // Adjust destructuring based on the new structure
+
+            // Find the parent category by slug
+            let parentCategory = null;
+            if (parent_slug) {
+                parentCategory = await Category.findOne({ where: { slug: parent_slug } });
+            }
+
+            // Check if the slug already exists
+            let category = await Category.findOne({ where: { slug } });
+
+            try {
+                if (!category) {
+                    // If category does not exist, create a new one
+                    category = await Category.create({
+                        name: typeof name === 'string' ? name.trim() : name,
+                        slug: typeof slug === 'string' ? slug.trim() : slug,
+                        description: typeof description === 'string' ? description.trim() : description,
+                        parent_id: parentCategory ? parentCategory.id : null, // Use parent category ID if found
+                    });
+                    results.push({ slug, status: 'Created', id: category.id });
+                } else {
+                    // Update existing category fields
+                    await category.update({
+                        name: typeof name === 'string' ? name.trim() : category.name,
+                        description: typeof description === 'string' ? description.trim() : category.description,
+                        parent_id: parentCategory ? parentCategory.id : null, // Update parent ID if found
+                    });
+                    results.push({ slug, status: 'Updated', id: category.id });
+                }
+            } catch (updateError) {
+                results.push({ slug, status: 'Error', message: updateError.message });
+                console.error(`Error processing category with slug ${slug}:`, updateError);
+            }
+        });
+
+        return successResponse(res, { results }, "Categories processed successfully");
+    } catch (error) {
+        console.error('Error during bulk update:', error); // Log the error for debugging
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Generates and downloads a sample Excel file.
+ */
+module.exports.downloadSampleExcel = async (req, res, next) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Categories');
+
+        // Add column headers without ID and Parent ID
+        worksheet.columns = [
+            { header: 'Name', key: 'name', width: 30 },
+            { header: 'Slug', key: 'slug', width: 30 },
+            { header: 'Description', key: 'description', width: 50 },
+            { header: 'Parent Slug', key: 'parent_slug', width: 30 }, // New column for Parent Slug
+        ];
+
+        // Sample data based on Electric Vape category
+        worksheet.addRow({ name: 'Electric Vape', slug: 'electric-vape', description: 'All electric vape products', parent_slug: null });
+        worksheet.addRow({ name: 'Vape Pens', slug: 'vape-pens', description: 'Portable vape pens for on-the-go use', parent_slug: 'electric-vape' });
+        worksheet.addRow({ name: 'E-Liquids', slug: 'e-liquids', description: 'Various flavors of e-liquids for vaping', parent_slug: 'electric-vape' });
+        worksheet.addRow({ name: 'Vape Accessories', slug: 'vape-accessories', description: 'Accessories for your vaping needs', parent_slug: 'electric-vape' });
+        worksheet.addRow({ name: 'New Vape Category', slug: 'new-vape-category', description: 'A new category for upcoming vape products', parent_slug: null });
+
+        // Set the response headers
+        res.setHeader('Content-Disposition', 'attachment; filename=SampleCategories.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Write the workbook to the response
+        await workbook.xlsx.write(res);
+        res.end();
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

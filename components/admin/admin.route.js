@@ -16,4 +16,8 @@ router.use('/customer', require('./customer/routes/customer.route'));
 router.use('/category', require('./category/routes/category.route'));
 router.use('/brand', require('./brand/routes/brand.route'));
 router.use('/products', require('./product/routes/product.route'));
+router.use('/attributes', require('./productAttributes/routes/attribute.route'));
+router.use('/attribute-terms', require('./productAttributes/routes/attributeTerms.route'));
+router.use('/stock-management', require('./product/routes/stockManagement.route'));
+router.use('/product-variants', require('./product/routes/productVariant.route'));
 module.exports = router;

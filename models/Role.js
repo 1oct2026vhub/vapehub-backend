@@ -21,11 +21,17 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(50),
         allowNull: false,
         unique: true,
+        validate: {
+          notEmpty: true
+        }
       },
       permission: {
         type: DataTypes.ENUM("full", "limited", "user"),
         allowNull: false,
         defaultValue: "user",
+        validate: {
+          isIn: [["full", "limited", "user"]]
+        }
       },
       is_admin_panel: {
         type: DataTypes.BOOLEAN,
@@ -33,7 +39,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: false,
       },
       updated_by: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.BIGINT, // Changed to BIGINT to match migrations
         allowNull: true,
         references: {
           model: "users",
@@ -57,10 +63,9 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true, // Enables soft delete
       indexes: [
-        { unique: true, fields: ["role"] }, // Unique Index
-        { fields: ["permission"] }, // Standard Index
-        { fields: ["deleted"] }, // Index for soft deletes
-        { fields: ["is_admin_panel"] }, // Index for admin panel filtering
+        { fields: ["permission"] },
+        { fields: ["deleted"] },
+        { fields: ["is_admin_panel"] }
       ],
     }
   );

@@ -6,7 +6,9 @@ const {
     brandIdValidation, 
     brandValidation, 
     brandUpdatesValidation, 
-    uploadFileValidation 
+    uploadFileValidation,
+    bulkUpdateBrandsValidation,
+    uploadFileMiddleware
 } = require("../helper/brand.validator");
 
 /**
@@ -207,5 +209,48 @@ router.delete('/:id', [authMiddleware(true), validateRequest(brandIdValidation)]
  *         description: Brand not found
  */
 router.put('/:id/restore', [authMiddleware(true), validateRequest(brandIdValidation)], brandController.restoreBrand);
+
+/**
+ * @swagger
+ * /api/admin/brand/download/sample-excel:
+ *   get:
+ *     summary: Download a sample Excel file of brands
+ *     tags:
+ *       - ADMIN - Brands
+ *     responses:
+ *       200:
+ *         description: Successfully downloaded the sample Excel file
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/download/sample-excel', brandController.downloadSampleBrands);
+
+/**
+ * @swagger
+ * /api/admin/brand/bulk-update:
+ *   post:
+ *     summary: Bulk update brands from an Excel file
+ *     tags:
+ *       - ADMIN - Brands
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file containing brands to update
+ *     responses:
+ *       200:
+ *         description: Brands updated successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update', [authMiddleware(true), uploadFileMiddleware, validateRequest(bulkUpdateBrandsValidation)], brandController.bulkUpdateBrands);
 
 module.exports = router;
