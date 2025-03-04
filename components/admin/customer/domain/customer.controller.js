@@ -1,6 +1,6 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role, Order, Product, ProductImage, UserAddress } = require("../../../../models");
+const { User, Role, Order, Product, ProductImage, UserAddress, ProductVariant } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const moment = require('moment');
@@ -205,12 +205,19 @@ module.exports.getUserDetails = async (req, res) => {
                     include: [
                         { 
                             model: Product,
-                            as: "products",
+                            as: "product",
                             include: [
                                 {
                                     model: ProductImage,
                                     as: "ProductImages",
-                                    attributes: ["id", "image_url", "is_primary"]
+                                    attributes: ["id", "image_url", "is_primary"],
+                                    required: false
+                                },
+                                {
+                                    model: ProductVariant,
+                                    as: "variants",
+                                    attributes: ["id", "price", "stock", "stock_status"],
+                                    required: false
                                 }
                             ]
                         }
@@ -218,7 +225,7 @@ module.exports.getUserDetails = async (req, res) => {
                 },
                 {
                     model: UserAddress,
-                    as: "UserAddresses", // Ensure alias matches model association
+                    as: "UserAddresses",
                     attributes: ["id", "name", "last_name", "company_name", "country", "street", "apartment", "town", "county", "post_code", "phone"]
                 }
             ]
