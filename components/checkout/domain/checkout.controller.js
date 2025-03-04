@@ -15,7 +15,7 @@ module.exports.getCoupon = async (req, res, next) => {
 
 module.exports.checkout = async (req, res, next) => {
     try {
-        const userId = req.user.id ;
+        const userId = 5 || req.user.id ;
         const { couponCode } = req.body;
         let total = 0
         const cart = await Cart.findAll({
@@ -78,7 +78,7 @@ module.exports.checkout = async (req, res, next) => {
         });
 
         if (coupon) {
-            if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+            if (coupon.minimum_purchase && subTotal > coupon.minimum_purchase) {
                 if (coupon.usedCount <= coupon.usageLimit) {
                     // Check minimum purchase requirement
                     
