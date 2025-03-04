@@ -109,11 +109,10 @@ module.exports.checkout = async (req, res, next) => {
 
 
 module.exports.applyCoupon = async (req, res, next) => {
-    // const transaction = await Product.sequelize.transaction();
     try {
         const userId = req.user.id ;
         const { couponCode } = req.body;
-        let total = 0
+        let subTotal = 0
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -184,18 +183,18 @@ module.exports.applyCoupon = async (req, res, next) => {
         //calculate discount
         let discount = 0;
         // Calculate total amount
-        total = cart.reduce((total, item) => {
+        subTotal = cart.reduce((total, item) => {
             return total + (item.quantity * item.Product.price);
         }, 0);
 
         if (coupon.discount_type === "percentage") {
-            discount = (coupon.discount_value / 100) * total;
+            discount = (coupon.discount_value / 100) * subTotal;
         } else if (coupon.discount_type === "fixed") {
             discount = coupon.discount_value;
         }
-        const finalAmount = Math.max(0, totalPrice - discount); // Ensure total doesn't go negative
+        const total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
         const resObj = {
-            finalAmount: finalAmount
+            total
         }
 
         successResponse(res, resObj, 'Success');
