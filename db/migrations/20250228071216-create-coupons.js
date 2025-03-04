@@ -42,6 +42,11 @@ const createCouponTable = async (queryInterface, Sequelize) => {
         type: Sequelize.INTEGER,
         defaultValue: 0,
       },
+      is_single_use: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       start_date: {
         type: Sequelize.DATE,
         allowNull: false,

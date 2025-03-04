@@ -21,7 +21,7 @@ const { check, query, param } = require("express-validator");
  *       500:
  *         description: Internal server error
  */
-router.get("/user", checkoutController.getCoupon)
+// router.get("/user", checkoutController.getCoupon)
 
 
 router.post("/", checkoutController.checkout)

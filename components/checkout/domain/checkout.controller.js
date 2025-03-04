@@ -3,15 +3,15 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Coupon, CouponUsage, User, Product, ProductImage, Cart, Flavor, Order } = require("../../../models");
 const logger = require("../../../library/logger");
 
-module.exports.getCoupon = async (req, res, next) => {
-    try {
-        console.log("entered")
-        const coupons = await Cart.findAll();
-        successResponse(res, coupons, 'Success');
-    } catch (error) {
-        return errorResponse(res, error, error.message);
-    }
-}
+// module.exports.getCoupon = async (req, res, next) => {
+//     try {
+//         console.log("entered")
+//         const coupons = await Cart.findAll();
+//         successResponse(res, coupons, 'Success');
+//     } catch (error) {
+//         return errorResponse(res, error, error.message);
+//     }
+// }
 
 module.exports.checkout = async (req, res, next) => {
     try {
@@ -30,23 +30,23 @@ module.exports.checkout = async (req, res, next) => {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
                             as: "Product",
-                            include: [
-                                {
-                                  model: Category,
-                                  attributes: ["id", "name"], // Category details
-                                  as: "Category",
-                                },
-                                {
-                                    model: Brand,
-                                    attributes: ["id", "name"], // Brand details
-                                    as: "Brand",
-                                  },
-                                {
-                                    model: ProductImage,
-                                    attributes: ["id", "image_url"], // Product image details
-                                    as: "ProductImages",
-                                  },
-                              ],
+                            // include: [
+                            //     {
+                            //       model: Category,
+                            //       attributes: ["id", "name"], // Category details
+                            //       as: "Category",
+                            //     },
+                            //     {
+                            //         model: Brand,
+                            //         attributes: ["id", "name"], // Brand details
+                            //         as: "Brand",
+                            //       },
+                            //     {
+                            //         model: ProductImage,
+                            //         attributes: ["id", "image_url"], // Product image details
+                            //         as: "ProductImages",
+                            //       },
+                            //   ],
                           },
                           {
                             model: Flavor,
@@ -79,13 +79,12 @@ module.exports.checkout = async (req, res, next) => {
 
         if (coupon) {
             if (coupon.minimum_purchase && subTotal > coupon.minimum_purchase) {
-                if (coupon.usedCount <= coupon.usageLimit) {
+                if (coupon.usage_count <= coupon.usage_limit) {
                     // Check minimum purchase requirement
                     
                         const userUsedCoupon = await CouponUsage.findOne({
                             where: { user_id: userId, coupon_id: coupon.id }
                         });
-                
                         if (!userUsedCoupon) {
                             //calculate discount
                             let discount = 0;
@@ -99,13 +98,11 @@ module.exports.checkout = async (req, res, next) => {
                             }
                             total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
                         }
-                    
-    
-    
-                    
+
                 }
             }
         }
+
         const resObj = {
             cart,
             subTotal,
@@ -121,10 +118,10 @@ module.exports.checkout = async (req, res, next) => {
 
 module.exports.applyCoupon = async (req, res, next) => {
     try {
-        console.log("entered>>>>>", req.body)
         const userId = 5 || req.user.id ;
         const { couponCode } = req.body;
         let subTotal = 0
+        let total = 0
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -146,7 +143,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                         ]
                       });
 
-                      console.log("cart>>>>>", cart)
         if (cart.length === 0) {
             throw {
                 statusCode: 404,
@@ -158,6 +154,8 @@ module.exports.applyCoupon = async (req, res, next) => {
         subTotal = cart.reduce((total, item) => {
             return total + (item.quantity * item.Product.price);
         }, 0);
+
+        total = subTotal
          // Check if expired
         const coupon = await Coupon.findOne({
             where: {
@@ -167,7 +165,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         });
-        console.log("coupon>>>>>", coupon)
+        
         if (!coupon) {
             throw {
                 statusCode: 404,
@@ -184,21 +182,19 @@ module.exports.applyCoupon = async (req, res, next) => {
         }
 
         // Check usage limit
-        if (coupon.usedCount >= coupon.usageLimit) {
+        if (coupon.usage_count >= coupon.usage_limit) {
             throw {
                 statusCode: 400,
                 message: 'Coupon usage limit reached'
             }
         }
 
-        
+        const userUsedCoupon = await CouponUsage.findOne({
+            where: { user_id: userId, coupon_id: coupon.id }
+        });
 
         //isSingleUse
         if (coupon.is_single_use) {
-            const userUsedCoupon = await CouponUsage.findOne({
-                where: { user_id: userId, coupon_id: coupon.id }
-            });
-
             if (userUsedCoupon) {
                 throw {
                     statusCode: 400,
@@ -213,24 +209,25 @@ module.exports.applyCoupon = async (req, res, next) => {
         //calculate discount
         let discount = 0;
         
-
-        if (coupon.discount_type === "percentage") {
-            discount = (coupon.discount_value / 100) * subTotal;
-            // Apply maximum discount cap if set
-            if (coupon.maximum_discount && discount > coupon.maximum_discount) {
-                discount = coupon.maximum_discount;
+        if(!userUsedCoupon){
+            if (coupon.discount_type === "percentage") {
+                discount = (coupon.discount_value / 100) * subTotal;
+                // Apply maximum discount cap if set
+                if (coupon.maximum_discount && discount > coupon.maximum_discount) {
+                    discount = coupon.maximum_discount;
+                }
+            } else if (coupon.discount_type === "fixed") {
+                discount = coupon.discount_value;
             }
-        } else if (coupon.discount_type === "fixed") {
-            discount = coupon.discount_value;
+            total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
         }
-        const total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+                
         const resObj = {
+            subTotal,
             total
         }
-
         successResponse(res, resObj, 'Success');
     } catch (error) {
-        console.log("err>>>", error)
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
