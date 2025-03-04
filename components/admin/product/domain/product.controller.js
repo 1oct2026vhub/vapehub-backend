@@ -1,15 +1,15 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../../models");
+const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 
-module.exports.listAllproducts = async (req, res, next) => {
+module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
-            categories, brands, flavours, deleted, is_new
+            categories, brands, deleted, is_new, variant_attributes
         } = req.query;
 
         const parsedLimit = parseInt(limit, 10);
@@ -21,16 +21,16 @@ module.exports.listAllproducts = async (req, res, next) => {
             whereClause[Op.and].push({ name: { [Op.like]: `%${keyword}%` } });
         }
 
-        // Price range filter
+        // Price range filter based on product variants or product price
         if (price_range) {
             const [minPrice, maxPrice] = price_range.split('-').map(Number);
             whereClause[Op.and].push({
                 [Op.or]: [
                     { price: { [Op.between]: [minPrice, maxPrice] } },
                     Sequelize.literal(`EXISTS (
-                        SELECT 1 FROM ProductFlavors 
-                        WHERE ProductFlavors.product_id = Product.id 
-                        AND ProductFlavors.price BETWEEN ${minPrice ?? 0} ${maxPrice ? `AND ${maxPrice}` : ''}
+                        SELECT 1 FROM product_variants 
+                        WHERE product_variants.product_id = Product.id 
+                        AND product_variants.price BETWEEN ${minPrice ?? 0} ${maxPrice ? `AND ${maxPrice}` : ''}
                     )`)
                 ]
             });
@@ -48,31 +48,20 @@ module.exports.listAllproducts = async (req, res, next) => {
             whereClause[Op.and].push({ category_id: { [Op.in]: categoryIds } });
         }
 
-        // Flavour filter (Handled in both whereClause and includeClause)
-        if (flavours) {
-            const flavorIds = flavours.split(',').map(Number);
-            whereClause[Op.and].push(
-                Sequelize.literal(`EXISTS (
-                    SELECT 1 FROM ProductFlavors 
-                    WHERE ProductFlavors.product_id = Product.id 
-                    AND ProductFlavors.flavor_id IN (${flavorIds})
-                )`)
-            );
+        // Variant attribute filters
+        if (variant_attributes) {
+            const attributes = variant_attributes.split(',').map(attr => {
+                const [key, value] = attr.split(':');
+                return { [key]: value };
+            });
+            whereClause[Op.and].push({
+                [Op.or]: attributes.map(attr => Sequelize.literal(`EXISTS (
+                    SELECT 1 FROM product_variants 
+                    WHERE product_variants.product_id = Product.id 
+                    AND product_variants.${Object.keys(attr)[0]} = '${Object.values(attr)[0]}'
+                )`))
+            });
         }
-
-       // Additional attribute filters
-       const filterableFields = [
-            'bottle_size', 'nicotine_strength', 'nicotine_type', 'vg_ratio',
-            'vaping_style', 'coil_style', 'puff_count', 'battery_capacity',
-            'device_style', 'eliquid_capacity', 'pod_coil_style', 'pod_fill_style',
-        ];
-
-
-        filterableFields.forEach(field => {
-            if (req.query[field]) {
-                whereClause[Op.and].push({ [field]: req.query[field] });
-            }
-        });
 
         // "Is New" filter (Products created in the last 30 days)
         if (is_new) {
@@ -83,33 +72,40 @@ module.exports.listAllproducts = async (req, res, next) => {
 
         // Deleted filter (Soft-delete support)
         if (deleted !== undefined) {
-            whereClause.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
+            whereClause.deletedAt = deleted === "true" || deleted === true ? { [Op.ne]: null } : null;
         }
 
-        /// Define relationships to include
+        // Define relationships to include with LEFT JOIN
         const includeClause = [
-            { model: Category, as: 'Category' },
-            { model: Brand, as: 'Brand' },
-            { model: ProductImage, as: 'ProductImages' },
+            { 
+                model: Category, 
+                as: 'Category',
+                required: false // LEFT JOIN
+            },
+            { 
+                model: Brand, 
+                as: 'Brand',
+                required: false // LEFT JOIN
+            },
+            { 
+                model: ProductImage, 
+                as: 'ProductImages',
+                required: false // LEFT JOIN
+            },
             {
-                model: Flavor, as: 'Flavors', through: { model: ProductFlavor }
+                model: ProductVariant, 
+                as: 'variants',
+                required: false // LEFT JOIN - This ensures products without variants are included
             }
         ];
-
-        // Ensure flavour-based filtering in the include clause
-        if (flavours) {
-            includeClause.push({
-                model: Flavor,
-                as: 'Flavors',
-                where: { id: { [Op.in]: flavours.split(',').map(Number) } },
-                through: { attributes: [] }
-            });
-        }
 
         // Fetch total product count with filters
         const totalCount = await Product.count({
             where: whereClause,
-            include: includeClause,
+            include: includeClause.map(include => ({
+                ...include,
+                attributes: [] // Don't need attributes for counting
+            })),
             distinct: true
         });
 
@@ -145,16 +141,24 @@ module.exports.getProductById = async (req, res, next) => {
     try {
         const { id } = req.params; 
 
-        // Fetch the product by ID along with related data (Category, Brand, Images, and Flavors)
+        // Fetch the product by ID along with related data (Category, Brand, Images, Flavors, Variants, and Attributes)
         const product = await Product.findByPk(id, {
             include: [
                 { model: Category, as: "Category" }, 
                 { model: Brand, as: "Brand" }, 
                 { model: ProductImage, as: "ProductImages" },
                 {
-                    model: Flavor,
-                    as: "Flavors",
-                    through: { model: ProductFlavor } 
+                    model: ProductVariant, as: "Variants", // Include product variants
+                    include: [
+                        {
+                            model: ProductVariantImage, // Include associated variant images
+                            as: "VariantImages"
+                        },
+                        {
+                            model: ProductVariantAttribute, // Include associated attribute terms
+                            as: "AttributeTerms"
+                        }
+                    ]
                 }
             ]
         });
@@ -176,10 +180,8 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, price, discount_price, stock_quantity, puff_count, is_new,
-            battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style,
-            power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size,
-            category_id, brand_id, flavour_ids, product_images
+            name, slug, description, price, discount_price, stock_quantity, is_new,
+            category_id, brand_id
         } = req.body;
 
         const { id: updated_by } = req.user; // Authenticated user ID
@@ -194,36 +196,11 @@ module.exports.createProduct = async (req, res, next) => {
         // Create the product record
         const product = await Product.create(
             {
-                name, slug: slug.toLowerCase(), description, price, discount_price, stock_quantity, puff_count, is_new,
-                battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style,
-                power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size,
+                name, slug: slug.toLowerCase(), description, price, discount_price, stock_quantity, is_new,
                 category_id, brand_id, updated_by
             },
             { transaction }
         );
-
-        // Associate flavors with product (if provided)
-        if (Array.isArray(flavour_ids) && flavour_ids.length > 0) {
-            const flavorRecords = flavour_ids.map(({ flavor_id, price, discount_price, stock_quantity }) => ({
-                product_id: product.id,
-                flavor_id,
-                ...(price && { price }),
-                ...(discount_price && { discount_price }),
-                ...(stock_quantity && { stock_quantity })
-            }));
-            await ProductFlavor.bulkCreate(flavorRecords, { transaction });
-        }
-
-        // Associate images with product (if provided)
-        if (Array.isArray(product_images) && product_images.length > 0) {
-            const productImages = product_images.map(({ image_url, is_primary }) => ({
-                product_id: product.id,
-                image_url,
-                is_primary: is_primary || false, // Default to false if not provided
-                updated_by
-            }));
-            await ProductImage.bulkCreate(productImages, { transaction });
-        }
 
         // Commit the transaction after all inserts succeed
         await transaction.commit();
@@ -255,9 +232,7 @@ module.exports.updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
-            name, slug, description, price, discount_price, stock_quantity, puff_count, is_new,
-            battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style,
-            power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size,
+            name, slug, description, price, discount_price, stock_quantity, is_new,
             category_id, brand_id, flavour_ids, product_images
         } = req.body;
 
@@ -289,57 +264,13 @@ module.exports.updateProduct = async (req, res, next) => {
             ...(price && { price }),
             ...(discount_price && { discount_price }),
             ...(stock_quantity && { stock_quantity }),
-            ...(puff_count && { puff_count }),
             ...(is_new !== undefined && { is_new }),
-            ...(battery_capacity && { battery_capacity }),
-            ...(coil_style && { coil_style }),
-            ...(device_style && { device_style }),
-            ...(eliquid_capacity && { eliquid_capacity }),
-            ...(pod_coil_style && { pod_coil_style }),
-            ...(pod_fill_style && { pod_fill_style }),
-            ...(power_supply && { power_supply }),
-            ...(nicotine_strength && { nicotine_strength }),
-            ...(nicotine_type && { nicotine_type }),
-            ...(vg_ratio && { vg_ratio }),
-            ...(vaping_style && { vaping_style }),
-            ...(bottle_size && { bottle_size }),
             ...(category_id && { category_id }),
             ...(brand_id && { brand_id }),
             updated_by
         };
 
         await product.update(updatedFields, { transaction });
-
-        // Update associated flavors
-        if (Array.isArray(flavour_ids) && flavour_ids.length > 0) {
-            // Remove existing associations
-            await ProductFlavor.destroy({ where: { product_id: id }, transaction });
-
-            // Bulk insert new associations
-            const flavorRecords = flavour_ids.map(({ flavor_id, price, discount_price, stock_quantity }) => ({
-                product_id: id,
-                flavor_id,
-                ...(price && { price }),
-                ...(discount_price && { discount_price }),
-                ...(stock_quantity && { stock_quantity })
-            }));
-            await ProductFlavor.bulkCreate(flavorRecords, { transaction });
-        }
-
-        // Update associated product images
-        if (Array.isArray(product_images) && product_images.length > 0) {
-            // Remove existing images
-            await ProductImage.destroy({ where: { product_id: id }, transaction });
-
-            // Bulk insert new images
-            const imageRecords = product_images.map(({ image_url, is_primary }) => ({
-                product_id: id,
-                image_url,
-                is_primary: is_primary || false, // Default to false if not provided
-                updated_by
-            }));
-            await ProductImage.bulkCreate(imageRecords, { transaction });
-        }
 
         // Commit the transaction after all updates
         await transaction.commit();
@@ -611,5 +542,30 @@ module.exports.switchPrimaryImage = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+module.exports.getPriceRanges = async (req, res, next) => {
+    try {
+        // Fetch distinct price ranges from the ProductVariants table
+        const priceRanges = await ProductVariant.findAll({
+            attributes: [
+                [Sequelize.fn('MIN', Sequelize.col('price')), 'minPrice'],
+                [Sequelize.fn('MAX', Sequelize.col('price')), 'maxPrice']
+            ],
+            group: ['product_id'] // Group by product_id to get ranges for each product
+        });
+
+        // Transform the result into a more usable format
+        const ranges = priceRanges.map(range => ({
+            min: range.get('minPrice'),
+            max: range.get('maxPrice')
+        }));
+
+        return successResponse(res, ranges, 'Price ranges retrieved successfully');
+    } catch (error) {
+        logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 
 

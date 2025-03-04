@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation } = require("../helper/product.validatior");
+const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation } = require("../helper/product.validator");
 
 /**
  * @swagger
@@ -63,12 +63,6 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *           example: "1,2"
  *         description: Filter by brand IDs (comma-separated)
  *       - in: query
- *         name: flavours
- *         schema:
- *           type: string
- *           example: "3,5"
- *         description: Filter by flavour IDs (comma-separated)
- *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean
@@ -86,7 +80,7 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *       500:
  *         description: Internal server error
  */
-router.get('/', authMiddleware(true), productController.listAllproducts);
+router.get('/', [authMiddleware(true), validateRequest(listAllProductsValidation)], productController.listAllProducts);
 
 /**
  * @swagger
@@ -103,11 +97,14 @@ router.get('/', authMiddleware(true), productController.listAllproducts);
  *         required: true
  *         schema:
  *           type: integer
+ *         description: ID of the product to retrieve
  *     responses:
  *       200:
  *         description: Product retrieved successfully
  *       404:
  *         description: Product not found
+ *       500:
+ *         description: Internal server error
  */
 router.get('/fetch/:id',
     [authMiddleware(true), 
@@ -156,84 +153,34 @@ router.get('/fetch/:id',
  *               stock_quantity:
  *                 type: integer
  *                 description: Available stock quantity
- *               puff_count:
- *                 type: integer
- *                 description: Number of puffs (if applicable)
  *               is_new:
  *                 type: boolean
  *                 description: Indicates if the product is new
- *               battery_capacity:
- *                 type: string
- *                 description: Battery capacity of the product
- *               coil_style:
- *                 type: string
- *                 description: Coil style of the product
- *               device_style:
- *                 type: string
- *                 description: Style of the device
- *               eliquid_capacity:
- *                 type: string
- *                 description: E-liquid capacity of the product
- *               pod_coil_style:
- *                 type: string
- *                 description: Pod coil style of the product
- *               pod_fill_style:
- *                 type: string
- *                 description: Pod fill style of the product
- *               power_supply:
- *                 type: string
- *                 description: Power supply type of the product
- *               nicotine_strength:
- *                 type: string
- *                 description: Nicotine strength of the product
- *               nicotine_type:
- *                 type: string
- *                 description: Type of nicotine used
- *               vg_ratio:
- *                 type: string
- *                 description: VG ratio of the product
- *               vaping_style:
- *                 type: string
- *                 description: Vaping style of the product
- *               bottle_size:
- *                 type: string
- *                 description: Bottle size of the product
  *               category_id:
  *                 type: integer
  *                 description: ID of the associated category
  *               brand_id:
  *                 type: integer
  *                 description: ID of the associated brand
- *               flavour_ids:
+ *               variants:
  *                 type: array
  *                 items:
  *                   type: object
  *                   properties:
- *                     flavor_id:
+ *                     variant_id:
  *                       type: integer
- *                       description: ID of the flavor
- *                     price:
- *                       type: number
- *                       format: decimal
- *                       description: Price of the flavor
- *                     discount_price:
- *                       type: number
- *                       format: decimal
- *                       description: Discounted price of the flavor
- *                     stock_quantity:
- *                       type: integer
- *                       description: Stock quantity of the flavor
- *               product_images:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     image_url:
- *                       type: string
- *                       description: URL of the product image
- *                     is_primary:
- *                       type: boolean
- *                       description: Indicates if the image is primary
+ *                       description: ID of the variant
+ *                     variant_images:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           image_url:
+ *                             type: string
+ *                             description: URL of the variant image
+ *                           is_primary:
+ *                             type: boolean
+ *                             description: Indicates if the image is primary
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -293,87 +240,48 @@ router.post('/',
  *               stock_quantity:
  *                 type: integer
  *                 description: Available stock quantity
- *               puff_count:
- *                 type: integer
- *                 description: Number of puffs (if applicable)
  *               is_new:
  *                 type: boolean
  *                 description: Indicates if the product is new
- *               battery_capacity:
- *                 type: string
- *                 description: Battery capacity of the product
- *               coil_style:
- *                 type: string
- *                 description: Coil style of the product
- *               device_style:
- *                 type: string
- *                 description: Style of the device
- *               eliquid_capacity:
- *                 type: string
- *                 description: E-liquid capacity of the product
- *               pod_coil_style:
- *                 type: string
- *                 description: Pod coil style of the product
- *               pod_fill_style:
- *                 type: string
- *                 description: Pod fill style of the product
- *               power_supply:
- *                 type: string
- *                 description: Power supply type of the product
- *               nicotine_strength:
- *                 type: string
- *                 description: Nicotine strength of the product
- *               nicotine_type:
- *                 type: string
- *                 description: Type of nicotine used
- *               vg_ratio:
- *                 type: string
- *                 description: VG ratio of the product
- *               vaping_style:
- *                 type: string
- *                 description: Vaping style of the product
- *               bottle_size:
- *                 type: string
- *                 description: Bottle size of the product
  *               category_id:
  *                 type: integer
  *                 description: ID of the associated category
  *               brand_id:
  *                 type: integer
  *                 description: ID of the associated brand
- *               flavour_ids:
+ *               variants:
  *                 type: array
  *                 items:
  *                   type: object
  *                   properties:
- *                     flavor_id:
+ *                     variant_id:
  *                       type: integer
- *                       description: ID of the flavor
- *                     price:
- *                       type: number
- *                       format: decimal
- *                       description: Price of the flavor
- *                     discount_price:
- *                       type: number
- *                       format: decimal
- *                       description: Discounted price of the flavor
- *                     stock_quantity:
- *                       type: integer
- *                       description: Stock quantity of the flavor
- *               product_images:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     image_url:
- *                       type: string
- *                       description: URL of the product image
- *                     is_primary:
- *                       type: boolean
- *                       description: Indicates if the image is primary
+ *                       description: ID of the variant
+ *                     variant_images:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           image_url:
+ *                             type: string
+ *                             description: URL of the variant image
+ *                           is_primary:
+ *                             type: boolean
+ *                             description: Indicates if the image is primary
  *     responses:
  *       200:
  *         description: Product updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 name:
+ *                   type: string
+ *                 price:
+ *                   type: number
  *       400:
  *         description: Bad request (validation errors)
  *       401:
@@ -404,9 +312,14 @@ router.put('/:id',
  *         required: true
  *         schema:
  *           type: integer
+ *         description: ID of the product to delete
  *     responses:
  *       204:
  *         description: Deleted
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Internal server error
  */
 router.delete('/:id',
     [authMiddleware(true), 
@@ -525,8 +438,6 @@ router.delete(
     productController.deleteProductImage
 );
 
-
-
 /**
  * @swagger
  * /api/admin/products/{product_id}/image/{image_id}/primary:
@@ -561,9 +472,31 @@ router.delete(
  */
 router.put(
     "/:product_id/image/:image_id/primary",
-    authMiddleware(true),
-    validateRequest(productImageValidation),
+    [authMiddleware(true),
+    validateRequest(productImageValidation)],
     productController.switchPrimaryImage
+);
+
+/**
+ * @swagger
+ * /api/admin/products/price-ranges:
+ *   post:
+ *     summary: Retrieve price ranges for products
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved price ranges
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/price-ranges',
+    [authMiddleware(true)],
+    productController.getPriceRanges
 );
 
 module.exports = router;
