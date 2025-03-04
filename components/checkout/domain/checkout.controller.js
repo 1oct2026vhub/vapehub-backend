@@ -6,7 +6,7 @@ const logger = require("../../../library/logger");
 module.exports.getCoupon = async (req, res, next) => {
     try {
         console.log("entered")
-        const coupons = await CouponUsage.findAll();
+        const coupons = await Cart.findAll();
         successResponse(res, coupons, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -78,20 +78,31 @@ module.exports.checkout = async (req, res, next) => {
         });
 
         if (coupon) {
-            if (coupon.usedCount <= coupon.usageLimit) {
-                const userUsedCoupon = await CouponUsage.findOne({
-                    where: { user_id: userId, coupon_id: coupon.id }
-                });
-        
-                if (!userUsedCoupon) {
-                    //calculate discount
-                    let discount = 0;
-                    if (coupon.discount_type === "percentage") {
-                        discount = (coupon.discount_value / 100) * subTotal;
-                    } else if (coupon.discount_type === "fixed") {
-                        discount = coupon.discount_value;
-                    }
-                    total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+            if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+                if (coupon.usedCount <= coupon.usageLimit) {
+                    // Check minimum purchase requirement
+                    
+                        const userUsedCoupon = await CouponUsage.findOne({
+                            where: { user_id: userId, coupon_id: coupon.id }
+                        });
+                
+                        if (!userUsedCoupon) {
+                            //calculate discount
+                            let discount = 0;
+                            if (coupon.discount_type === "percentage") {
+                                discount = (coupon.discount_value / 100) * subTotal;
+                                if (coupon.maximum_discount && discount > coupon.maximum_discount) {
+                                    discount = coupon.maximum_discount;
+                                }
+                            } else if (coupon.discount_type === "fixed") {
+                                discount = coupon.discount_value;
+                            }
+                            total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+                        }
+                    
+    
+    
+                    
                 }
             }
         }
@@ -110,7 +121,8 @@ module.exports.checkout = async (req, res, next) => {
 
 module.exports.applyCoupon = async (req, res, next) => {
     try {
-        const userId = req.user.id ;
+        console.log("entered>>>>>", req.body)
+        const userId = 5 || req.user.id ;
         const { couponCode } = req.body;
         let subTotal = 0
         const cart = await Cart.findAll({
@@ -133,6 +145,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                           }
                         ]
                       });
+
+                      console.log("cart>>>>>", cart)
         if (cart.length === 0) {
             throw {
                 statusCode: 404,
@@ -140,7 +154,10 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
             
-
+        // Calculate total amount
+        subTotal = cart.reduce((total, item) => {
+            return total + (item.quantity * item.Product.price);
+        }, 0);
          // Check if expired
         const coupon = await Coupon.findOne({
             where: {
@@ -150,11 +167,19 @@ module.exports.applyCoupon = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         });
-
+        console.log("coupon>>>>>", coupon)
         if (!coupon) {
             throw {
                 statusCode: 404,
                 message: 'Invalid or expired coupon code'
+            }
+        }
+
+        // Check minimum purchase requirement
+        if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+            throw {
+                statusCode: 400,
+                message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
             }
         }
 
@@ -165,6 +190,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                 message: 'Coupon usage limit reached'
             }
         }
+
+        
 
         //isSingleUse
         if (coupon.is_single_use) {
@@ -180,15 +207,19 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
             
         }
+
+        
+
         //calculate discount
         let discount = 0;
-        // Calculate total amount
-        subTotal = cart.reduce((total, item) => {
-            return total + (item.quantity * item.Product.price);
-        }, 0);
+        
 
         if (coupon.discount_type === "percentage") {
             discount = (coupon.discount_value / 100) * subTotal;
+            // Apply maximum discount cap if set
+            if (coupon.maximum_discount && discount > coupon.maximum_discount) {
+                discount = coupon.maximum_discount;
+            }
         } else if (coupon.discount_type === "fixed") {
             discount = coupon.discount_value;
         }
@@ -199,6 +230,7 @@ module.exports.applyCoupon = async (req, res, next) => {
 
         successResponse(res, resObj, 'Success');
     } catch (error) {
+        console.log("err>>>", error)
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
