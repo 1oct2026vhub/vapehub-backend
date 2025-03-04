@@ -10,7 +10,7 @@ const { Sequelize, Op } = require("sequelize");
 //List all users (with pagination)
 module.exports.listUsers = async (req, res) => {
     try {
-        const { sort_by = 'createdAt', order = 'DESC',page = 1, limit = 10, search, deleted, blocked } = req.query;
+        const { sort_by = 'createdAt', order = 'DESC', page = 1, limit = 10, search, deleted = "false", blocked = "false" } = req.query;
 
         const offset = (page - 1) * limit;
 
@@ -38,7 +38,7 @@ module.exports.listUsers = async (req, res) => {
 
         // Filter by deleted flag if provided
         if (deleted !== undefined) {
-            whereCondition.deletedAt = deleted === "true";
+            whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
         }
 
         // Filter by blocked status
@@ -46,7 +46,11 @@ module.exports.listUsers = async (req, res) => {
             whereCondition.blocked = blocked === "true";
         }
 
-        const users = await User.findAndCountAll({
+        const totalUsers = await User.count({
+            where: whereCondition,
+        });
+
+        const users = await User.findAll({
             where: whereCondition,
             attributes: [
                 "id", 
@@ -61,27 +65,42 @@ module.exports.listUsers = async (req, res) => {
                 "dob",
                 "createdAt", 
                 "updatedAt",
-                [Sequelize.literal("(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id)"), "order_count"],
-                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.SUCCESS})`), "order_success_count"],
-                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.CANCELED})`), "order_canceled_count"],
-                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.PENDING})`), "order_pending_count"],
-                [Sequelize.literal(`(SELECT COUNT(*) FROM orders WHERE orders.user_id = User.id AND order_status = ${constants.orderStatus.PAYMENT_FAILED})`), "order_payment_failed_count"],
             ],
+            include: [{
+                model: Order, 
+                as: "orders", 
+                attributes: [
+                    "id", 
+                    "order_status", 
+                    "createdAt", 
+                    "updatedAt" 
+                ],
+                required: false 
+            }],
             limit: parseInt(limit),
             offset: parseInt(offset),
             order: [[Sequelize.col(sort_by), order.toUpperCase()]],
-            subQuery: false, //Prevents incorrect grouping
+            paranoid: false,
         });
-        return successResponse(res, {  
-            total: users.count,
+
+        // Format the response to include order details if they exist
+        const formattedUsers = users.map(user => {
+            return {
+                ...user.get(), // Get user data
+                orders: user.orders || [] // Include orders if they exist, otherwise an empty array
+            };
+        });
+
+        return successResponse(res, {
+            total: totalUsers,
             page: parseInt(page),
             limit: parseInt(limit),
-            users: users.rows }, 
-            "Customers retrieved successfully", 200);
+            users: formattedUsers,
+        }, "Customers retrieved successfully", 200);
 
     } catch (error) {
-        console.error("Error listing customer:", error);
-        return errorResponse(res, error);
+        console.error("Error listing customers:", error);
+        return errorResponse(res, { message: "An error occurred while retrieving customers." }, 500);
     }
 };
 
