@@ -41,7 +41,7 @@ module.exports.checkout = async (req, res, next) => {
         
         total = subTotal
          // Check if expired
-         if(couponCode){
+        if(couponCode){
             const coupon = await Coupon.findOne({
                 where: {
                     code: couponCode,
@@ -76,7 +76,7 @@ module.exports.checkout = async (req, res, next) => {
                     }
                 }
             }
-         }
+        }
         
 
         const resObj = {
@@ -164,14 +164,6 @@ module.exports.applyCoupon = async (req, res, next) => {
             
         // }
 
-        // Check minimum purchase requirement
-        if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
-            throw {
-                statusCode: 400,
-                message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
-            }
-        }
-
         // Check usage limit
         if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit) ) {
             throw {
@@ -180,6 +172,13 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
 
+        // Check minimum purchase requirement
+        if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+            throw {
+                statusCode: 400,
+                message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
+            }
+        }      
 
         //calculate discount
         let discount = 0;
