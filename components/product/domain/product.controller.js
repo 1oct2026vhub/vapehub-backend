@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../models");
+const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
@@ -17,17 +17,49 @@ module.exports.listAllproducts = async (req, res, next) => {
 
 module.exports.getProductByid = async (req, res, next) => {
     try {
-        const product = await Product.findOne({
-            where: { id: req.params.id }, include: [
-                { model: Category, as: 'Category' },
-                { model: Brand, as: 'Brand' },
-                { model: ProductImage, as: 'ProductImages' },
-                {
-                    model: Flavor, as: 'Flavors', through: {
-                        model: ProductFlavor,
+        const includeClause = [
+            {
+                model: Category,
+                as: 'Category'
+            },
+            {
+                model: Brand,
+                as: 'Brand'
+            },
+            {
+                model: ProductVariant,
+                as: 'variants',
+                include: [
+                    {
+                        model: ProductVariantAttribute,
+                        as: 'variantAttributes',
+                        include: [
+                            { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+                            { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+                        ]
+                    },
+                    {
+                        model: ProductVariantImage,
+                        as: 'variantImages',
+                        attributes: ['id', 'variant_id', 'image_url', 'is_primary']
                     }
-                }
-            ]
+                ]
+            },
+            {
+                model: ProductAttributeTerm,
+                as: 'productAttributeTerms',
+                include: [
+                    { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+                    { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+                ]
+            },
+            {
+                model: ProductImage,
+                as: 'ProductImages'
+            }
+        ];
+        const product = await Product.findOne({
+            where: { id: req.params.id }, include: includeClause
         });
         if (!product) {
             throw {

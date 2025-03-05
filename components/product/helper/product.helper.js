@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor } = require("../../../models");;
+const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
 
 async function getTrendingProducts(limit = 10) {
@@ -41,7 +41,7 @@ const generateUniqueFileName = (originalName) => {
   return `${timestamp}-${randomString}.${extension}`;
 };
 
-const fetchProducts = async (query) => {
+const fetchProducts2 = async (query) => {
   try {
     const { sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range, categories, brands, flavours,
       // bottle_size, nicotine_strength, nicotine_type, vg_ratio, vaping_style, coil_style, puff_count, battery_capacity, device_style, eliquid_capacity, pod_coil_style
@@ -177,5 +177,180 @@ const fetchProducts = async (query) => {
     throw error
   }
 }
+
+const fetchProducts = async (query) => {
+  try {
+    const {
+      sort_by = 'id',
+      order = 'ASC',
+      limit = 10,
+      offset = 0,
+      keyword,
+      price_range,
+      categories,
+      brands,
+      variant, // Expected format: { "12": [56,6,3,5], "29": [33,669,55] }
+      is_new
+    } = query;
+
+    // Parse limit and offset as integers
+    const parsedLimit = parseInt(limit);
+    const parsedOffset = parseInt(offset);
+
+    // Handle variant parameter
+    let variantObject = variant;
+    if (typeof variant === 'string') {
+      try {
+        variantObject = JSON.parse(variant);
+      } catch (error) {
+        throw new Error('Invalid variant format: must be valid JSON');
+      }
+    }
+    if (variantObject && typeof variantObject !== 'object') {
+      throw new Error('Variant parameter must be an object');
+    }
+
+    // Build Product where clause
+    let productWhereClause = {};
+    if (keyword) {
+      productWhereClause.name = { [Op.iLike]: `%${keyword}%` };
+    }
+    if (is_new) {
+      const lastMonthDate = new Date();
+      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
+      productWhereClause.created_at = { [Op.gte]: lastMonthDate };
+    }
+    if (brands) {
+      productWhereClause.brand_id = { [Op.in]: brands.split(',').map(Number) };
+    }
+    if (categories) {
+      productWhereClause.category_id = { [Op.in]: categories.split(',').map(Number) };
+    }
+
+    // Build ProductVariant where clause
+    let variantWhereClause = {};
+    if (price_range) {
+      const [minPrice, maxPrice] = price_range.split('-').map(Number);
+      variantWhereClause.price = { [Op.between]: [minPrice || 0, maxPrice || Infinity] };
+    }
+
+    // Build ProductAttributeTerm where clause for variant filtering
+    let productAttributeConditions = [];
+    if (variantObject && Object.keys(variantObject).length > 0) {
+      for (const [variantIdOrAttributeId, termIds] of Object.entries(variantObject)) {
+        // Convert termIds to an array if it's a string
+        let termIdsArray = termIds;
+        if (typeof termIds === 'string') {
+          try {
+            termIdsArray = JSON.parse(termIds); // Parse string like "[905,66]" into array
+          } catch (error) {
+            throw new Error(`Invalid termIds format for ${variantIdOrAttributeId}: must be a valid JSON array`);
+          }
+        }
+
+        // Ensure termIdsArray is an array and has elements
+        if (Array.isArray(termIdsArray) && termIdsArray.length > 0) {
+          const numericId = parseInt(variantIdOrAttributeId);
+          const numericTermIds = termIdsArray.map(Number);
+
+          if (variantIdOrAttributeId.length <= 2) { // Attribute ID
+            productAttributeConditions.push({
+              attribute_id: numericId,
+              term_id: { [Op.in]: numericTermIds }
+            });
+          } else { // Variant ID
+            variantWhereClause.id = numericId;
+            productAttributeConditions.push({
+              term_id: { [Op.in]: numericTermIds }
+            });
+          }
+        } else {
+          console.log(`🚀 ~ fetchProducts ~ Skipping ${variantIdOrAttributeId}: termIds is not a valid array`);
+        }
+      }
+    }
+
+    // Combine product attribute conditions
+    let productAttributeWhereClause = {};
+    if (productAttributeConditions.length > 0) {
+      productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
+    }
+
+    // Build include clause
+    const includeClause = [
+      { model: Category, as: 'Category' },
+      { model: Brand, as: 'Brand' },
+      {
+        model: ProductVariant,
+        as: 'variants',
+        where: variantWhereClause,
+        required: Object.keys(variantWhereClause).length > 0, // Only require if variant ID is specified
+        include: [
+          {
+            model: ProductVariantAttribute,
+            as: 'variantAttributes',
+            include: [
+              { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+              { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+            ]
+          },
+          {
+            model: ProductVariantImage,
+            as: 'variantImages',
+            attributes: ['id', 'variant_id', 'image_url', 'is_primary']
+          }
+        ]
+      },
+      {
+        model: ProductAttributeTerm,
+        as: 'productAttributeTerms',
+        where: productAttributeWhereClause,
+        required: productAttributeConditions.length > 0, // Require if filtering by attributes
+        include: [
+          { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+          { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+        ]
+      },
+      { model: ProductImage, as: 'ProductImages' }
+    ];
+
+    // Get total count
+    const totalCount = await Product.count({
+      where: productWhereClause,
+      include: includeClause,
+      distinct: true
+    });
+
+    // Calculate pagination
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
+    const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
+
+    const pagination = {
+      total_count: totalCount,
+      total_pages: totalPages,
+      current_page: currentPage,
+      limit: parsedLimit,
+      offset: parsedOffset
+    };
+
+    // Fetch products
+    const products = await Product.findAll({
+      where: productWhereClause,
+      include: includeClause,
+      order: [
+        [sort_by, order],
+        [{ model: ProductVariant, as: 'variants' }, sort_by, order]
+      ],
+      limit: parsedLimit,
+      offset: parsedOffset,
+      distinct: true,
+    });
+
+    return { products, pagination };
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    throw error;
+  }
+};
 
 module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts };
