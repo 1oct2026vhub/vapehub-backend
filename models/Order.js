@@ -2,112 +2,101 @@
 const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-    class Order extends Model {
-        static associate(models) {
-            this.belongsTo(models.Product, { foreignKey: 'product_id', onDelete: 'CASCADE', onUpdate: 'CASCADE', as: 'product' });
-            this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.Category, { foreignKey: 'category_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.Brand, { foreignKey: 'brand_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.ProductFlavor, { foreignKey: 'product_flavour_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.User, { foreignKey: 'user_id' });
-        }
+  class Order extends Model {
+    /**
+     * Define associations here
+     */
+    static associate(models) {
+      this.belongsTo(models.User, { 
+        foreignKey: 'user_id', 
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
+
+      this.belongsTo(models.Coupon, { 
+        foreignKey: 'coupon_id', 
+        onDelete: 'SET NULL', 
+        onUpdate: 'CASCADE' 
+      });
+
+      this.belongsTo(models.ShippingMethod, { 
+        foreignKey: 'shipping_method_id', 
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
     }
+  }
 
-    Order.init({
-        id: {
-            type: DataTypes.INTEGER,
-            primaryKey: true,
-            autoIncrement: true,
-            unique: true
-        },
-        product_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'products',
-                key: 'id'
-            }
-        },
-        product_flavour_id: {
-            type: DataTypes.INTEGER,
-            allowNull: true,
-            references: {
-                model: 'ProductFlavors',
-                key: 'flavor_id'
-            }
-        },
-        name: {
-            type: DataTypes.TEXT,
-            allowNull: false
-        },
-        slug: {
-            type: DataTypes.TEXT,
-        },
-        description: {
-            type: DataTypes.TEXT,
-            allowNull: true
-        },
-        price: {
-            type: DataTypes.INTEGER,
-            allowNull: false
-        },
-        discount_price: {
-            type: DataTypes.INTEGER,
-            allowNull: true
-        },
-        category_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'categories',
-                key: 'id'
-            }
-        },
-        brand_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'brands',
-                key: 'id'
-            }
-        },
-        quantity: {
-            type: DataTypes.INTEGER,
-            allowNull: false
-        },
-        user_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'users',
-                key: 'id'
-            }
-        },
-        image_url: {
-            type: DataTypes.TEXT,
-            allowNull: true
-        },
-        payment_gateway: {
-            type: DataTypes.STRING,
-            allowNull: true
-        },
-        transaction_id: {
-            type: DataTypes.STRING,
-            allowNull: true
-        },
-        order_status: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            defaultValue: 0
-            //   0 for pending 1 for successful 2 for returned 3 for payment_failed
-        }
-    }, {
-        sequelize,
-        modelName: 'Order',
-        tableName: 'orders',
-        paranoid: true,
-        timestamps: true
-    });
+  Order.init({
+    id: {
+      type: DataTypes.BIGINT,
+      primaryKey: true,
+      autoIncrement: true,
+      unique: true,
+      allowNull: false
+    },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    coupon_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'coupons',
+        key: 'id'
+      }
+    },
+    total: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false
+    },
+    discount_price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    status: {
+      type: DataTypes.ENUM('draft', 'pending', 'fail', 'cancel', 'return'),
+      allowNull: false,
+      defaultValue: 'draft'
+    },
+    shipping_address: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    shipping_method_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'shipping_methods',
+        key: 'id'
+      }
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    }
+  }, {
+    sequelize,
+    modelName: 'Order',
+    tableName: 'orders',
+    timestamps: true,
+    paranoid: true // Enables soft delete
+  });
 
-    return Order;
+  return Order;
 };
