@@ -8,7 +8,7 @@ const {
     brandUpdatesValidation, 
     uploadFileValidation,
     bulkUpdateBrandsValidation,
-    uploadFileMiddleware
+    uploadXlxFileMiddleware
 } = require("../helper/brand.validator");
 
 /**
@@ -251,6 +251,6 @@ router.get('/download/sample-excel', brandController.downloadSampleBrands);
  *       500:
  *         description: Internal server error
  */
-router.post('/bulk-update', [authMiddleware(true), uploadFileMiddleware, validateRequest(bulkUpdateBrandsValidation)], brandController.bulkUpdateBrands);
+router.post('/bulk-update', [authMiddleware(true), uploadXlxFileMiddleware, validateRequest(bulkUpdateBrandsValidation)], brandController.bulkUpdateBrands);
 
 module.exports = router;
