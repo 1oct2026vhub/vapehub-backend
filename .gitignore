@@ -9,3 +9,6 @@ serviceAccountKey.json
 temp
 uploads
 emails
+
+package-lock.json
+yarn.lock

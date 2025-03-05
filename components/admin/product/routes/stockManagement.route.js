@@ -1,20 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const stockManagementController = require('../domain/stockManagement.controller');
+const { authMiddleware } = require('../../../../library/middleware');
+const { addStockValidation, removeStockValidation, getStockHistoriesValidation } = require('../helper/stock.validator');
+const { validateRequest } = require("../../../../utils/validationMiddleware");
 
-/**
- * @swagger
- * tags:
- *   name: ADMIN - Stock Management
- *   description: API for managing stock
- */
-
+// Swagger documentation for adding stock
 /**
  * @swagger
  * /api/admin/stock-management/add:
  *   post:
  *     summary: Add stock
- *     tags: [Stock Management]
+ *     tags: 
+ *       - ADMIN - Stock Management
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -22,7 +22,7 @@ const stockManagementController = require('../domain/stockManagement.controller'
  *           schema:
  *             type: object
  *             properties:
- *               product_id:
+ *               variant_id:
  *                 type: integer
  *                 description: The ID of the product variant
  *               quantity:
@@ -36,14 +36,21 @@ const stockManagementController = require('../domain/stockManagement.controller'
  *       500:
  *         description: Internal server error
  */
-router.post('/add', stockManagementController.addStock);
+router.post('/add', 
+    [authMiddleware(true), validateRequest(addStockValidation())], 
+    stockManagementController.addStock
+);
 
+// Swagger documentation for removing stock
 /**
  * @swagger
  * /api/admin/stock-management/remove:
  *   post:
  *     summary: Remove stock
- *     tags: [Stock Management]
+ *     tags: 
+ *       - ADMIN - Stock Management
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -51,28 +58,35 @@ router.post('/add', stockManagementController.addStock);
  *           schema:
  *             type: object
  *             properties:
- *               product_id:
+ *               variant_id:
  *                 type: integer
  *                 description: The ID of the product variant
  *               quantity:
  *                 type: integer
  *                 description: The quantity to remove
  *     responses:
- *       201:
+ *       200:
  *         description: Stock removed successfully
  *       400:
  *         description: Bad request
  *       500:
  *         description: Internal server error
  */
-router.post('/remove', stockManagementController.removeStock);
+router.post('/remove', 
+    [authMiddleware(true), validateRequest(removeStockValidation())], 
+    stockManagementController.removeStock
+);
 
+// Swagger documentation for retrieving stock histories
 /**
  * @swagger
  * /api/admin/stock-management/history:
  *   get:
  *     summary: Get stock histories
- *     tags: [Stock Management]
+ *     tags: 
+ *       - ADMIN - Stock Management
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -87,13 +101,18 @@ router.post('/remove', stockManagementController.removeStock);
  *           type: integer
  *           description: The page number to return
  *       - in: query
+ *         name: sort_by
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Field to sort by (default - id)
+ *       - in: query
  *         name: order
  *         required: false
  *         schema:
- *           type: array
- *           items:
- *             type: string
- *           description: The order of the results
+ *           type: string
+ *           enum: [ASC, DESC]
+ *         description: Sort order (default - ASC)
  *       - in: query
  *         name: search
  *         required: false
@@ -113,12 +132,6 @@ router.post('/remove', stockManagementController.removeStock);
  *           type: string
  *           description: Filter by product name
  *       - in: query
- *         name: variant_name
- *         required: false
- *         schema:
- *           type: string
- *           description: Filter by variant name
- *       - in: query
  *         name: stock
  *         required: false
  *         schema:
@@ -129,6 +142,8 @@ router.post('/remove', stockManagementController.removeStock);
  *         required: false
  *         schema:
  *           type: string
+ *           enum: ['in_stock', 'out_of_stock', 'low_stock'] 
+ *           default: 'in_stock' 
  *           description: Filter by stock status
  *     responses:
  *       200:
@@ -138,6 +153,9 @@ router.post('/remove', stockManagementController.removeStock);
  *       500:
  *         description: Internal server error
  */
-router.get('/history', stockManagementController.getStockHistories);
+router.get('/history', 
+    [authMiddleware(true), validateRequest(getStockHistoriesValidation())], 
+    stockManagementController.getStockHistories
+);
 
 module.exports = router; 

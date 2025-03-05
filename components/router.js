@@ -22,7 +22,7 @@ router.use("/testimonials", require("./testimonial/routes/testimonial.route"))
 router.use("/blogs", require("./blog/routes/blog.route"))
 router.use("/users", require("./user/routes/user.route"))
 router.use("/home", require("./homePage/routes/homePage.route"))
-
+router.use("/checkout", require("./checkout/routes/checkout.route"))
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 
 module.exports = router;

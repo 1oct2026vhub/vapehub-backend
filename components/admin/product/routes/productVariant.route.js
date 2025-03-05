@@ -16,12 +16,6 @@ const {
     removeProductAttributeTermValidator
 } = require("../helper/productVariant.validator");
 
-/**
- * @swagger
- * tags:
- *   name: ProductVariants
- *   description: API for managing product variants
- */
 
 /**
  * @swagger
