@@ -2,7 +2,7 @@ const { AttributeTerm, Attribute, User, ProductVariantAttribute, ProductVariant 
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Op } = require('sequelize');
 const logger = require("../../../../library/logger");
-
+const ExcelJS = require('exceljs');
 // Create Term
 module.exports.createTerm = async (req, res, next) => {
     const transaction = await AttributeTerm.sequelize.transaction();
@@ -395,3 +395,103 @@ module.exports.getTerms = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }; 
+module.exports.bulkCreateOrUpdateTerms = async (req, res, next) => {
+    const transaction = await AttributeTerm.sequelize.transaction(); // Start a transaction
+    try {
+        const { file } = req; // Get the uploaded file
+        if (!file) {
+            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
+        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+
+        // Check the header row
+        const headerRow = worksheet.getRow(1).values;
+        const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Slug';
+
+        // Array to hold the results of each operation
+        let results = [];
+
+        // Iterate through each row in the worksheet
+        for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+            const row = worksheet.getRow(rowNumber);
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+
+            const [slug, attribute_slug, name, description] = rowValues; // Adjust destructuring based on the new structure
+
+            // Check if the attribute exists
+            const attribute = await Attribute.findOne({ where: { slug: attribute_slug } });
+
+            if (!attribute) {
+                results.push({ slug, status: 'Error', message: 'Attribute not found' });
+                continue; // Use continue instead of return to process the next row
+            }
+
+            // Check if the term slug already exists (case-insensitive)
+            let term = await AttributeTerm.findOne({ where: { slug: slug.toLowerCase(), attribute_id: attribute.id }, transaction });
+
+            try {
+                if (!term) {
+                    // If term does not exist, create a new one
+                    term = await AttributeTerm.create({
+                        slug: slug.toLowerCase(),
+                        name,
+                        description,
+                        attribute_id: attribute.id
+                    }, { transaction });
+                    results.push({ slug, status: 'Created', id: term.id });
+                } else {
+                    // Update existing term fields
+                    await term.update({
+                        name: name || term.name,
+                        description: description !== undefined ? description : term.description,
+                    }, { transaction });
+                    results.push({ slug, status: 'Updated', id: term.id });
+                }
+            } catch (updateError) {
+                results.push({ slug, status: 'Error', message: updateError.message });
+                console.error(`Error processing term with slug ${slug}:`, updateError);
+            }
+        }
+
+        await transaction.commit(); // Commit the transaction
+        return successResponse(res, { results }, "Terms processed successfully");
+    } catch (error) {
+        await transaction.rollback(); // Rollback the transaction on error
+        console.error('Error during bulk update:', error); // Log the error for debugging
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.downloadSampleTermsExcel = async (req, res, next) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Terms');
+
+        // Add column headers
+        worksheet.columns = [
+            { header: 'Slug', key: 'slug', width: 30 },
+            { header: 'Attribute Slug', key: 'attribute_slug', width: 30 },
+            { header: 'Name', key: 'name', width: 30 },
+            { header: 'Description', key: 'description', width: 50 },
+        ];
+
+        // Sample data for terms
+        worksheet.addRow({ slug: 'color', attribute_slug: 'color', name: 'Color', description: 'Term for color' });
+        worksheet.addRow({ slug: 'size', attribute_slug: 'size', name: 'Size', description: 'Term for size' });
+        worksheet.addRow({ slug: 'material', attribute_slug: 'material', name: 'Material', description: 'Term for material' });
+
+        // Set the response headers
+        res.setHeader('Content-Disposition', 'attachment; filename=SampleTerms.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Write the workbook to the response
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+

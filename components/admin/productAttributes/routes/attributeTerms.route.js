@@ -6,7 +6,9 @@ const {
     getTermValidator,
     deleteTermValidator,
     restoreTermValidator,
-    getTermsValidator
+    getTermsValidator,
+    bulkUpdateTermsValidator,
+    uploadFileMiddleware
 } = require('../helper/attributeTerms.validator');
 const attributeTermController = require('../domain/attributeTerm.controller');
 const { authMiddleware } = require('../../../../library/middleware');
@@ -376,5 +378,83 @@ router.patch('/:id/restore',
  *           type: string
  *           example: "Operation successful"
  */
+/**
+ * @swagger
+ * /api/admin/attribute-terms/bulk-update:
+ *   post:
+ *     summary: Bulk create or update attribute terms from an Excel file
+ *     tags:
+ *       - ADMIN - Attribute Terms
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file containing attribute terms
+ *     responses:
+ *       200:
+ *         description: Terms processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       slug:
+ *                         type: string
+ *                         example: "color"
+ *                       status:
+ *                         type: string
+ *                         example: "Created"
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                 message:
+ *                   type: string
+ *                   example: "Terms processed successfully"
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update', [authMiddleware(true), uploadFileMiddleware, validateRequest(bulkUpdateTermsValidator)], attributeTermController.bulkCreateOrUpdateTerms);
+
+/**
+ * @swagger
+ * /api/admin/attribute-terms/bulk-update/sample-excel:
+ *   get:
+ *     summary: Generate sample Excel file of attribute terms
+ *     tags:
+ *       - ADMIN - Attribute Terms
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Sample Excel file generated successfully
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/bulk-update/sample-excel', authMiddleware(true), attributeTermController.downloadSampleTermsExcel);
+
+
 
 module.exports = router;

@@ -1,4 +1,6 @@
 const { body, param, query } = require('express-validator');
+const multer = require('multer');
+const path = require('path');
 
 exports.createTermValidator = [
     body('attribute_id')
@@ -115,4 +117,34 @@ exports.getTermsValidator = [
         .optional()
         .isBoolean()
         .withMessage('show_deleted must be true or false')
+];
+
+// Configure multer for handling file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.xlsx', '.xls'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
+        }
+        cb(null, true);
+    },
+});
+
+// Middleware for file upload
+exports.uploadFileMiddleware = upload.single('file');
+
+exports.bulkUpdateTermsValidator = [
+    body('file')
+        .custom((value, { req }) => {
+            if (!req.file) {
+                throw new Error('File must be uploaded');
+            }
+            return true;
+        }),
 ];

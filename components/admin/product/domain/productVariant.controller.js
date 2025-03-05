@@ -773,13 +773,43 @@ module.exports.getProductVariants = async (req, res) => {
     try {
         const { product_id } = req.params;
 
+        // Validate product_id
+        if (!product_id) {
+            return res.status(400).json({ message: "Product ID is required" });
+        }
+
         const variants = await ProductVariant.findAll({
             where: { product_id },
             include: [
-                { model: ProductVariantImage, as: 'variantImages' },
-                { model: ProductVariantAttribute, as: 'variantAttributes' }
+                {
+                    model: ProductVariantImage,
+                    as: 'variantImages',
+                    attributes: ["id", "variant_id", "image_url", "is_primary"] // Only include necessary fields
+                },
+                {
+                    model: ProductVariantAttribute,
+                    as: 'variantAttributes',
+                    attributes: ["id", "variant_id", "attribute_id", "term_id", "is_visible", "used_in_variation"], // Only include necessary fields
+                    include: [
+                        {
+                            model: AttributeTerm,
+                            as: "term",
+                            attributes: ["id", "name", "slug"] // Only include necessary fields
+                        },
+                        {
+                            model: Attribute,
+                            as: "attribute",
+                            attributes: ["id", "name", "type"] // Only include necessary fields
+                        }
+                    ]
+                }
             ]
         });
+
+        // Check if variants were found
+        if (!variants || variants.length === 0) {
+            return res.status(404).json({ message: "No variants found for this product" });
+        }
 
         return successResponse(res, variants, "Product variants retrieved successfully");
     } catch (error) {

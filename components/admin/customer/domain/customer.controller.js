@@ -65,6 +65,7 @@ module.exports.listUsers = async (req, res) => {
                 "dob",
                 "createdAt", 
                 "updatedAt",
+                "deletedAt"
             ],
             include: [{
                 model: Order, 

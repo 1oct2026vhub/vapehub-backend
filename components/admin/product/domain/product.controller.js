@@ -144,19 +144,81 @@ module.exports.getProductById = async (req, res, next) => {
         // Fetch the product by ID along with related data (Category, Brand, Images, Flavors, Variants, and Attributes)
         const product = await Product.findByPk(id, {
             include: [
-                { model: Category, as: "Category" }, 
-                { model: Brand, as: "Brand" }, 
-                { model: ProductImage, as: "ProductImages" },
                 {
-                    model: ProductVariant, as: "Variants", // Include product variants
+                    model: Category,
+                    as: "Category"
+                },
+                {
+                    model: Brand,
+                    as: "Brand"
+                },
+                {
+                    model: ProductImage,
+                    as: "ProductImages"
+                },
+                {
+                    model: ProductVariant,
+                    as: "variants",
+                    attributes: [
+                        "id",
+                        "product_id",
+                        "slug",
+                        "price",
+                        "discount_price",
+                        "purchase_price",
+                        "weight",
+                        "length",
+                        "width",
+                        "height",
+                        "description",
+                        "barcode",
+                        "stock",
+                        "low_stock_threshold",
+                        "stock_status",
+                        "status"
+                    ],
                     include: [
                         {
-                            model: ProductVariantImage, // Include associated variant images
-                            as: "VariantImages"
+                            model: ProductVariantImage,
+                            as: "variantImages",
+                            attributes: [
+                                "id",
+                                "variant_id",
+                                "image_url",
+                                "is_primary"
+                            ]
                         },
                         {
-                            model: ProductVariantAttribute, // Include associated attribute terms
-                            as: "AttributeTerms"
+                            model: ProductVariantAttribute,
+                            as: "variantAttributes",
+                            attributes: [
+                                "id",
+                                "variant_id",
+                                "attribute_id",
+                                "term_id",
+                                "is_visible",
+                                "used_in_variation"
+                            ],
+                            include: [
+                                {
+                                    model: AttributeTerm,
+                                    as: "term",
+                                    attributes: [
+                                        "id",
+                                        "name",
+                                        "slug"
+                                    ]
+                                },
+                                {
+                                    model: Attribute,
+                                    as: "attribute",
+                                    attributes: [
+                                        "id",
+                                        "name",
+                                        "type"
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 }
