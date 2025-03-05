@@ -2,7 +2,7 @@ module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.createTable('order_items', {
       id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         primaryKey: true,
         autoIncrement: true,
         allowNull: false,
@@ -28,7 +28,7 @@ module.exports = {
         onUpdate: 'CASCADE',
       },
       variant_id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         allowNull: true,
         references: {
           model: 'product_variants',
