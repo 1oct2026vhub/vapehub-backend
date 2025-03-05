@@ -15,7 +15,7 @@ const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
     try {
-        const userId = 5 || req.user.id ;
+        const userId = req.user.id ;
         const { couponCode } = req.body;
         let total = 0
         const cart = await Cart.findAll({
@@ -118,7 +118,7 @@ module.exports.checkout = async (req, res, next) => {
 
 module.exports.applyCoupon = async (req, res, next) => {
     try {
-        const userId = 5 || req.user.id ;
+        const userId = req.user.id ;
         const { couponCode } = req.body;
         let subTotal = 0
         let total = 0
