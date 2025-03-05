@@ -217,6 +217,8 @@ module.exports.restoreBrand = async (req, res, next) => {
 module.exports.bulkUpdateBrands = async (req, res, next) => {
     try {
         const { file } = req; // Get the uploaded file
+        const { id: updated_by } = req.user; // Get the ID of the user making the update
+
         if (!file) {
             return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
         }
@@ -251,6 +253,7 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
                         name: typeof name === 'string' ? name.trim() : name,
                         slug: typeof slug === 'string' ? slug.trim() : slug,
                         description: typeof description === 'string' ? description.trim() : description,
+                        updated_by // Set the updated_by field
                     });
                     results.push({ slug, status: 'Created', id: brand.id });
                 } else {
@@ -258,6 +261,7 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
                     await brand.update({
                         name: typeof name === 'string' ? name.trim() : brand.name,
                         description: typeof description === 'string' ? description.trim() : brand.description,
+                        updated_by // Update the updated_by field
                     });
                     results.push({ slug, status: 'Updated', id: brand.id });
                 }

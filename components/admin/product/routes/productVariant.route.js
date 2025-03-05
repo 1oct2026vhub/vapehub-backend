@@ -16,6 +16,13 @@ const {
 
 /**
  * @swagger
+ * tags:
+ *   name: ProductVariants
+ *   description: API for managing product variants
+ */
+
+/**
+ * @swagger
  * /api/admin/product-variants:
  *   get:
  *     summary: Get all variants across all products

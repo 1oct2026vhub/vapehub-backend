@@ -1,7 +1,7 @@
 
 const router = require('express').Router();
 const { validateRequest } = require('../../../../utils/validationMiddleware');
-const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator } = require('../helper/attribute.validatior');
+const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadFileMiddleware } = require('../helper/attribute.validatior');
 const attributeController = require('../domain/attribute.controller');
 const { authMiddleware } = require('../../../../library/middleware');
 
@@ -778,6 +778,120 @@ router.get('/',
         validateRequest(getAttributesValidator)
     ],
     attributeController.getAttributes
+);
+
+/**
+ * @swagger
+ * /api/admin/attributes/bulk-update:
+ *   post:
+ *     summary: Bulk update product attributes from an Excel file
+ *     tags:
+ *       - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file containing attributes to update
+ *     responses:
+ *       200:
+ *         description: Attributes updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Attributes processed successfully"
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       slug:
+ *                         type: string
+ *                         example: "color"
+ *                       status:
+ *                         type: string
+ *                         example: "Updated"
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *       400:
+ *         description: Invalid request parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "No file uploaded"
+ *                 message:
+ *                   type: string
+ *                   example: "No file uploaded"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       403:
+ *         description: Forbidden - User doesn't have required permissions
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update', 
+    [ 
+        authMiddleware(true), 
+        uploadFileMiddleware,
+        validateRequest(bulkUpdateAttributesValidator)
+    ],
+    attributeController.bulkCreateOrUpdateAttributes
+);
+
+/**
+ * @swagger
+ * /api/admin/attributes/bulk-update/sample-pdf:
+ *   get:
+ *     summary: Generate PDF of product attributes
+ *     tags:
+ *       - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: PDF generated successfully
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       403:
+ *         description: Forbidden - User doesn't have required permissions
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/bulk-update/sample-pdf', 
+    [ 
+        authMiddleware(true)
+    ],
+    attributeController.downloadSampleAttributes
 );
 
 module.exports = router;

@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { Attribute, AttributeTerm, ProductVariantAttribute, ProductVariant, User } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
+const ExcelJS = require('exceljs');
 
 module.exports.createAttribute = async (req, res, next) => {
     const transaction = await Attribute.sequelize.transaction();
@@ -448,6 +449,112 @@ module.exports.getAttributes = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+/**
+ * Bulk creates or updates attributes from an Excel file.
+ * If an attribute does not exist, a new attribute will be created.
+ */
+module.exports.bulkCreateOrUpdateAttributes = async (req, res, next) => {
+    const transaction = await Attribute.sequelize.transaction(); // Start a transaction
+    try {
+        const { file } = req; // Get the uploaded file
+        if (!file) {
+            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
+        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+
+        // Check the header row
+        const headerRow = worksheet.getRow(1).values;
+        const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
+
+        // Array to hold the results of each operation
+        let results = [];
+
+        // Iterate through each row in the worksheet
+        await Promise.all(worksheet.eachRow({ includeEmpty: false }, async (row, rowNumber) => {
+            if (rowNumber === 1) return; // Skip header row
+
+            // If the first header is empty, skip the first column in each row
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+
+            const [name, slug, description, type, sort_order] = rowValues; // Adjust destructuring based on the new structure
+
+            // Check if the slug already exists (case-insensitive)
+            let attribute = await Attribute.findOne({ where: { slug: { [Op.like]: slug } }, transaction });
+
+            try {
+                if (!attribute) {
+                    // If attribute does not exist, create a new one
+                    attribute = await Attribute.create({
+                        name: typeof name === 'string' ? name.trim() : name,
+                        slug: typeof slug === 'string' ? slug.trim().toLowerCase() : slug,
+                        description: typeof description === 'string' ? description.trim() : description,
+                        type: type || 'select', // Default type if not provided
+                        sort_order: sort_order || 'custom' // Default sort order if not provided
+                    }, { transaction });
+                    results.push({ slug, status: 'Created', id: attribute.id });
+                } else {
+                    // Update existing attribute fields
+                    await attribute.update({
+                        name: typeof name === 'string' ? name.trim() : attribute.name,
+                        description: typeof description === 'string' ? description.trim() : attribute.description,
+                        type: type || attribute.type,
+                        sort_order: sort_order || attribute.sort_order,
+                    }, { transaction });
+                    results.push({ slug, status: 'Updated', id: attribute.id });
+                }
+            } catch (updateError) {
+                results.push({ slug, status: 'Error', message: updateError.message });
+                console.error(`Error processing attribute with slug ${slug}:`, updateError);
+            }
+        }));
+
+        await transaction.commit(); // Commit the transaction
+        return successResponse(res, { results }, "Attributes processed successfully");
+    } catch (error) {
+        await transaction.rollback(); // Rollback the transaction on error
+        console.error('Error during bulk update:', error); // Log the error for debugging
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Generates and downloads a sample Excel file for attributes.
+ */
+module.exports.downloadSampleAttributes = async (req, res, next) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Attributes');
+
+        // Add column headers
+        worksheet.columns = [
+            { header: 'Name', key: 'name', width: 30 },
+            { header: 'Slug', key: 'slug', width: 30 },
+            { header: 'Description', key: 'description', width: 50 },
+            { header: 'Type', key: 'type', width: 20 },
+            { header: 'Sort Order', key: 'sort_order', width: 20 },
+        ];
+
+        // Sample data for attributes
+        worksheet.addRow({ name: 'Color', slug: 'color', description: 'Attribute for color', type: 'select', sort_order: 'custom' });
+        worksheet.addRow({ name: 'Size', slug: 'size', description: 'Attribute for size', type: 'select', sort_order: 'custom' });
+        worksheet.addRow({ name: 'Material', slug: 'material', description: 'Attribute for material', type: 'select', sort_order: 'custom' });
+
+        // Set the response headers
+        res.setHeader('Content-Disposition', 'attachment; filename=SampleAttributes.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Write the workbook to the response
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
 
 
 
