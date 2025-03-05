@@ -93,9 +93,102 @@ module.exports.listAllProducts = async (req, res, next) => {
                 required: false // LEFT JOIN
             },
             {
-                model: ProductVariant, 
-                as: 'variants',
-                required: false // LEFT JOIN - This ensures products without variants are included
+                model: ProductAttributeTerm,
+                as: "productAttributeTerms",
+                attributes: [
+                    "id",
+                    "product_id",
+                    "attribute_id",
+                    "term_id",
+                    "is_visible_page",
+                    "used_in_variation"
+                ],
+                include: [  
+                    {
+                        model: Attribute,
+                        as: "attribute",
+                        attributes: [
+                            "id",
+                            "name",
+                            "slug"
+                        ]
+                    },
+                    {
+                        model: AttributeTerm,
+                        as: "term",
+                        attributes: [
+                            "id",
+                            "name",
+                            "slug"
+                        ]
+                    }
+                ]
+            },
+            {
+                model: ProductVariant,
+                as: "variants",
+                attributes: [
+                    "id",
+                    "product_id",
+                    "slug",
+                    "price",
+                    "discount_price",
+                    "purchase_price",
+                    "weight",
+                    "length",
+                    "width",
+                    "height",
+                    "description",
+                    "barcode",
+                    "stock",
+                    "low_stock_threshold",
+                    "stock_status",
+                    "status"
+                ],
+                include: [
+                    {
+                        model: ProductVariantImage,
+                        as: "variantImages",
+                        attributes: [
+                            "id",
+                            "variant_id",
+                            "image_url",
+                            "is_primary"
+                        ]
+                    },
+                    {
+                        model: ProductVariantAttribute,
+                        as: "variantAttributes",
+                        attributes: [
+                            "id",
+                            "variant_id",
+                            "attribute_id",
+                            "term_id",
+                            "is_visible",
+                            "used_in_variation"
+                        ],
+                        include: [
+                            {
+                                model: AttributeTerm,
+                                as: "term",
+                                attributes: [
+                                    "id",
+                                    "name",
+                                    "slug"
+                                ]
+                            },
+                            {
+                                model: Attribute,
+                                as: "attribute",
+                                attributes: [
+                                    "id",
+                                    "name",
+                                    "type"
+                                ]
+                            }
+                        ]
+                    }
+                ]
             }
         ];
 
@@ -155,6 +248,38 @@ module.exports.getProductById = async (req, res, next) => {
                 {
                     model: ProductImage,
                     as: "ProductImages"
+                },
+                {
+                    model: ProductAttributeTerm,
+                    as: "productAttributeTerms",
+                    attributes: [
+                        "id",
+                        "product_id",
+                        "attribute_id",
+                        "term_id",
+                        "is_visible_page",
+                        "used_in_variation"
+                    ],
+                    include: [  
+                        {
+                            model: Attribute,
+                            as: "attribute",
+                            attributes: [
+                                "id",
+                                "name",
+                                "slug"
+                            ]
+                        },
+                        {
+                            model: AttributeTerm,
+                            as: "term",
+                            attributes: [
+                                "id",
+                                "name",
+                                "slug"
+                            ]
+                        }
+                    ]
                 },
                 {
                     model: ProductVariant,
