@@ -11,7 +11,9 @@ const {
     deleteVariantImageValidator,
     getProductVariantsValidator,
     getProductVariantValidator,
-    uploadVariantImageMiddleware
+    uploadVariantImageMiddleware,
+    updateProductAttributesValidator,
+    removeProductAttributeTermValidator
 } = require("../helper/productVariant.validator");
 
 /**
@@ -1094,6 +1096,97 @@ router.put('/product/:product_id/variants/:variant_id/images/:image_id/primary',
 router.delete('/product/:product_id/variants/:variant_id/images/:image_id',
     [authMiddleware(true), validateRequest(deleteVariantImageValidator)],
     productVariantController.deleteVariantImage
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/product/{product_id}/attributes:
+ *   put:
+ *     summary: Update attributes of a product
+ *     tags:
+ *       - ADMIN - Product Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product to update attributes for
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - attributes
+ *             properties:
+ *               attributes:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - attribute_id
+ *                     - term_id
+ *                   properties:
+ *                     attribute_id:
+ *                       type: integer
+ *                     term_id:
+ *                       type: integer
+ *                     is_visible_page:
+ *                       type: boolean
+ *                       default: true
+ *                     used_in_variation:
+ *                       type: boolean
+ *                       default: false
+ *     responses:
+ *       200:
+ *         description: Attributes updated successfully
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/product/:product_id/attributes',
+    [authMiddleware(true), validateRequest(updateProductAttributesValidator)],
+    productVariantController.updateProductAttributes
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/product/{product_id}/attributes/{attribute_term_id}:
+ *   delete:
+ *     summary: Remove a product attribute term
+ *     tags:
+ *       - ADMIN - Product Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *       - in: path
+ *         name: attribute_term_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the attribute term to remove
+ *     responses:
+ *       200:
+ *         description: Attribute term removed successfully 
+ *       404:
+ *         description: Attribute term not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete('/product/:product_id/attributes/:attribute_term_id',
+    [authMiddleware(true), validateRequest(removeProductAttributeTermValidator)],
+    productVariantController.removeProductAttributeTerm
 );
 
 module.exports = router;

@@ -11,7 +11,8 @@ const ERROR_MESSAGES = {
     DUPLICATE_SLUG: (slug) => `Slug ${slug} already exists`,
     DUPLICATE_BARCODE: (barcode) => `Barcode ${barcode} already exists`,
     INVALID_DISCOUNT: "Discount price must be less than regular price",
-    // ... add more
+    ATTRIBUTE_TERM_NOT_FOUND: "Attribute term not found",
+    ATTRIBUTE_TERM_IN_USE: "Cannot remove attribute term as it is associated with existing product variants",
 };
 
 // Add attributes to a product
@@ -149,27 +150,18 @@ module.exports.updateProductAttributes = async (req, res) => {
             return errorResponse(res, { message: ERROR_MESSAGES.PRODUCT_NOT_FOUND }, ERROR_MESSAGES.PRODUCT_NOT_FOUND, 404);
         }
 
-        // Remove existing attributes
-        await ProductAttributeTerm.destroy({
-            where: { product_id },
-            transaction
-        });
-
-        // Add new attributes
+        // Update existing attributes
         if (Array.isArray(attributes) && attributes.length > 0) {
-            const productAttributeTerms = attributes.map(attr => ({
-                product_id,
-                attribute_id: attr.attribute_id,
-                term_id: attr.term_id,
-                is_visible_page: attr.is_visible_page ?? true,
-                used_in_variation: attr.used_in_variation ?? false,
-                updated_by
-            }));
-
-            await ProductAttributeTerm.bulkCreate(productAttributeTerms, { 
-                transaction,
-                validate: true
-            });
+            for (const attr of attributes) {
+                await ProductAttributeTerm.upsert({
+                    product_id,
+                    attribute_id: attr.attribute_id,
+                    term_id: attr.term_id,
+                    is_visible_page: attr.is_visible_page ?? true,
+                    used_in_variation: attr.used_in_variation ?? false,
+                    updated_by
+                }, { transaction });
+            }
         }
 
         await transaction.commit();
@@ -1159,6 +1151,55 @@ module.exports.restoreProductVariant = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+// Remove product attribute term
+module.exports.removeProductAttributeTerm = async (req, res) => {
+    const transaction = await Product.sequelize.transaction();
+    try {
+        const { attribute_term_id } = req.params;
+        const { id: updated_by } = req.user;
+
+        // Find the attribute term to be removed
+        const attributeTerm = await ProductAttributeTerm.findByPk(attribute_term_id);
+        if (!attributeTerm) {
+            return errorResponse(res, { message: ERROR_MESSAGES.ATTRIBUTE_TERM_NOT_FOUND }, ERROR_MESSAGES.ATTRIBUTE_TERM_NOT_FOUND, 404);  
+        }
+
+        // Check if the attribute term is associated with any variants of the same product
+        const variants = await ProductVariant.findAll({
+            where: { product_id: attributeTerm.product_id },
+            include: [{
+                model: ProductVariantAttribute,
+                as: 'variantAttributes',
+                where: { 
+                    term_id: attributeTerm.term_id,
+                    attribute_id: attributeTerm.attribute_id
+                } 
+            }],
+            transaction
+        });
+
+        if (variants.length > 0) {
+            return errorResponse(res, { message: ERROR_MESSAGES.ATTRIBUTE_TERM_IN_USE }, ERROR_MESSAGES.ATTRIBUTE_TERM_IN_USE, 400);
+        }
+
+        // Remove the attribute term
+        await attributeTerm.destroy({ transaction });
+
+        // Update the updated_by field
+        await attributeTerm.update({ updated_by }, { transaction });
+
+        await transaction.commit();
+
+        return successResponse(res, null, "Product attribute term removed successfully");
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Remove Product Attribute Term Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+
 
 // Add this helper function
 const updateStockStatus = (stock, lowStockThreshold) => {
