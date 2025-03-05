@@ -81,7 +81,13 @@ const commonValidations = {
             .optional()
             .isIn(['active', 'inactive'])
             .withMessage('Status must be either active or inactive')
-    ]
+    ],
+
+    attributeTermId: [
+        param('attribute_term_id') // Assuming the ID is passed as a URL parameter
+            .exists().withMessage('Attribute Term ID is required')
+            .isInt().withMessage('Attribute Term ID must be a valid integer'), // Adjust based on your ID type
+    ],
 };
 
 // Configure multer for handling variant image uploads
@@ -210,6 +216,21 @@ const getProductVariantValidator = [
     commonValidations.variantId
 ];
 
+const updateProductAttributesValidator = [
+    commonValidations.productId,
+    body('attributes')
+        .isArray()
+        .withMessage('Attributes must be an array'),
+    body('attributes.*.attribute_id')
+        .isInt()
+        .withMessage('Invalid attribute ID')
+];
+const removeProductAttributeTermValidator = [
+    ...commonValidations.attributeTermId,
+    commonValidations.productId
+];
+
+
 module.exports = {
     addProductAttributesValidator,
     createProductVariantsValidator,
@@ -220,4 +241,6 @@ module.exports = {
     getProductVariantsValidator,
     getProductVariantValidator,
     uploadVariantImageMiddleware,
+    updateProductAttributesValidator,
+    removeProductAttributeTermValidator
 };
