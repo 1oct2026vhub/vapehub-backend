@@ -38,7 +38,7 @@ router.get('/', authenticateJWT, cartController.listCartItems);
  *            properties:
  *             product_id:
  *              type: integer
- *             flavor_id:
+ *             variant_id:
  *              type: integer
  *             quantity:
  *              type: integer
@@ -55,7 +55,7 @@ router.get('/', authenticateJWT, cartController.listCartItems);
 router.post('/', authenticateJWT,
     validateRequest([
         check('product_id').isNumeric().withMessage('Product ID must be a number'),
-        check('flavor_id').isNumeric().withMessage('Flavor ID must be a number'),
+        check('variant_id').isNumeric().withMessage('variant_id must be a number'),
         check('quantity').isNumeric().withMessage('Quantity must be a number'),
     ]),
     cartController.createCart);

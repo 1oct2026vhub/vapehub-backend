@@ -4,9 +4,16 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class Cart extends Model {
         static associate(models) {
-            this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.Product, { foreignKey: 'product_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-            this.belongsTo(models.Flavor, { foreignKey: 'flavor_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+            this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE', as: 'user' });
+            this.belongsTo(models.Product, { foreignKey: 'product_id', onDelete: 'CASCADE', onUpdate: 'CASCADE', as:"product" });
+            
+            // ProductVariant association
+            this.belongsTo(models.ProductVariant, {
+                foreignKey: 'variant_id',
+                as: 'variant',
+                onDelete: 'SET NULL', // Allows cart item to remain if variant is deleted
+                onUpdate: 'CASCADE'
+            });
         }
     }
 
@@ -33,19 +40,25 @@ module.exports = (sequelize, DataTypes) => {
                 key: 'id'
             }
         },
-        flavor_id: {
-            type: DataTypes.INTEGER,
-            allowNull: true,
+        variant_id: {
+            type: DataTypes.BIGINT, // Matches ProductVariant.id type
+            allowNull: true, // Optional variant
             references: {
-                model: "Flavors",
+                model: 'product_variants',
                 key: 'id'
             }
         },
         quantity: {
             type: DataTypes.INTEGER,
             allowNull: false,
-            defaultValue: 1
-        }
+            defaultValue: 1,
+            validate: {
+                min: {
+                    args: 1,
+                    msg: 'Quantity must be at least 1'
+                }
+            }
+        },
     }, {
         sequelize,
         modelName: 'Cart',

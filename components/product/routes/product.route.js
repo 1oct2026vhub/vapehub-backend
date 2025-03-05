@@ -17,72 +17,50 @@ const multer = require("multer");
  *         name: keyword
  *         schema:
  *           type: string
- *         description: Keyword to search in product names
+ *         description: Keyword to search in product names (case-insensitive)
  *       - in: query
  *         name: price_range
  *         schema:
  *           type: string
+ *           example: "10-50"
+ *         description: Price range filter (min-max)
  *       - in: query
  *         name: is_new
  *         schema:
  *           type: boolean
- *         description: Filter by new products
+ *         description: Filter for products created in the last 30 days
  *       - in: query
  *         name: categories
  *         schema:
  *           type: string
- *         description: Comma-separated category IDs (e.g., 1,2,3)
+ *           example: "1,2,3"
+ *         description: Comma-separated category IDs
  *       - in: query
- *         name: brand
- *         schema:
- *           type: integer
- *         description: Brand ID
- *       - in: query
- *         name: flavours
+ *         name: brands
  *         schema:
  *           type: string
- *         description: Comma-separated flavor IDs (e.g., 1,2,3)
+ *           example: "1,2,3"
+ *         description: Comma-separated brand IDs
  *       - in: query
- *         name: bottle_size
+ *         name: variant
  *         schema:
  *           type: string
- *         description: Bottle size filter
- *       - in: query
- *         name: nicotine_strength
- *         schema:
- *           type: string
- *         description: Nicotine strength filter
- *       - in: query
- *         name: nicotine_type
- *         schema:
- *           type: string
- *         description: Nicotine type filter
- *       - in: query
- *         name: vg_ratio
- *         schema:
- *           type: string
- *         description: VG ratio filter
- *       - in: query
- *         name: vaping_style
- *         schema:
- *           type: string
- *         description: Vaping style filter
- *       - in: query
- *         name: coil_style
- *         schema:
- *           type: string
- *         description: Coil style filter
+ *           example: '{"12": [56,6,3,5], "29": [33,669,55]}'
+ *         description: JSON string of variant/attribute filters where key is variant ID or attribute ID and value is array of term IDs
  *       - in: query
  *         name: sort_by
  *         schema:
  *           type: string
- *           default: id
+ *           default: "id"
+ *           enum: ["id", "name", "price", "created_at", "stock"]
+ *         description: Field to sort by (applies to both Product and ProductVariant)
  *       - in: query
  *         name: order
  *         schema:
  *           type: string
- *           default: ASC
- *         description: Sort by ASC or DESC
+ *           default: "ASC"
+ *           enum: ["ASC", "DESC"]
+ *         description: Sort direction
  *       - in: query
  *         name: limit
  *         schema:
@@ -97,17 +75,144 @@ const multer = require("multer");
  *         description: Number of items to skip
  *     responses:
  *       200:
- *         description: A list of products
+ *         description: Successfully retrieved products with pagination
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       slug:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                         nullable: true
+ *                       category_id:
+ *                         type: integer
+ *                       brand_id:
+ *                         type: integer
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       updated_at:
+ *                         type: string
+ *                         format: date-time
+ *                       Category:
+ *                         type: object
+ *                       Brand:
+ *                         type: object
+ *                       variant:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             product_id:
+ *                               type: integer
+ *                             slug:
+ *                               type: string
+ *                             price:
+ *                               type: number
+ *                             discount_price:
+ *                               type: number
+ *                               nullable: true
+ *                             stock:
+ *                               type: integer
+ *                             stock_status:
+ *                               type: string
+ *                             variantAttributes:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   attribute_id:
+ *                                     type: integer
+ *                                   term_id:
+ *                                     type: integer
+ *                                   attribute:
+ *                                     type: object
+ *                                     properties:
+ *                                       id:
+ *                                         type: integer
+ *                                       name:
+ *                                         type: string
+ *                                       type:
+ *                                         type: string
+ *                                   term:
+ *                                     type: object
+ *                                     properties:
+ *                                       id:
+ *                                         type: integer
+ *                                       name:
+ *                                         type: string
+ *                                       slug:
+ *                                         type: string
+ *                       productAttributeTerms:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             attribute_id:
+ *                               type: integer
+ *                             term_id:
+ *                               type: integer
+ *                             attribute:
+ *                               type: object
+ *                             term:
+ *                               type: object
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total_count:
+ *                       type: integer
+ *                     total_pages:
+ *                       type: integer
+ *                     current_page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
  *       400:
  *         description: Invalid request parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
  */
 router.get('/', productController.listAllproducts);
 
