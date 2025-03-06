@@ -167,7 +167,7 @@ module.exports.updateCart = async (req, res, next) => {
 
         // Check stock if quantity is updated
         if (quantity) {
-            const availableStock = cartItem.variant ? cartItem.variant.stock : cartItem.product.stock || 0;
+            const availableStock = cartItem.variant ? cartItem.variant.stock : cartItem.product.stock_quantity || 0;
             if (quantity > availableStock) {
                 return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
             }
