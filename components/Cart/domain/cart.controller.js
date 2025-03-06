@@ -51,12 +51,7 @@ module.exports.listCartItems = async (req, res, next) => {
             where: { user_id },
             include: includeClause
         });
-        if (!carts?.[0]) {
-            throw {
-                message: "Cart is empty"
-            }
-        }
-        successResponse(res, carts, 'Success');
+        successResponse(res, carts, 'Cart is empty');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
