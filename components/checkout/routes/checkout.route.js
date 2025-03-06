@@ -220,6 +220,4 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  */
 router.post("/apply-coupon", authenticateJWT,  validateRequest(applyCouponValidate),  checkoutController.applyCoupon)
 
-
-
 module.exports = router
