@@ -52,11 +52,12 @@ router.get('/', authenticateJWT, cartController.listCartItems);
  *       500:
  *         description: Internal Server Error - An unexpected error occurred
  */
-router.post('/', authenticateJWT,
+
+router.post('/', authenticateJWT, 
     validateRequest([
-        check('product_id').isNumeric().withMessage('Product ID must be a number'),
-        check('variant_id').isNumeric().withMessage('variant_id must be a number'),
-        check('quantity').isNumeric().withMessage('Quantity must be a number'),
+        check('product_id').toInt().isInt().withMessage('Product ID must be a number'),
+        check('variant_id').toInt().isInt().withMessage('variant_id must be a number'),
+        check('quantity').toInt().isInt().withMessage('Quantity must be a number'),
     ]),
     cartController.createCart);
 
@@ -113,6 +114,7 @@ router.put('/:id', authenticateJWT,
  *       200:
  *         description: Success
  */
+
 router.delete('/:id', authenticateJWT,
     validateRequest([
         param('id').isNumeric().withMessage('ID must be a number'),
