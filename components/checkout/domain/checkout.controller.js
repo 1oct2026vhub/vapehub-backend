@@ -14,17 +14,17 @@ module.exports.checkout = async (req, res, next) => {
                           {
                             model: User,
                             attributes: ["id", "first_name", "last_name", "email", "phone"], // User details
-                            as: "User"
+                            as: "user"
                           },
                           {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
-                            as: "Product",
+                            as: "product",
                           },
                           {
-                            model: Flavor,
-                            attributes: ["id", "name"], // Flavor details
-                            as: "Flavor"
+                            model: ProductVariant,
+                            attributes: ["id", "slug", "price", "discount_price", "purchase_price", "stock"], // product variant details
+                            as: "variant"
                           }
                         ]
                       });
@@ -104,17 +104,17 @@ module.exports.applyCoupon = async (req, res, next) => {
                           {
                             model: User,
                             attributes: ["id", "first_name", "last_name", "email", "phone"], // User details
-                            as: "User"
+                            as: "user"
                           },
                           {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
-                            as: "Product"
+                            as: "product"
                           },
                           {
-                            model: Flavor,
-                            attributes: ["id", "name"], // Flavor details
-                            as: "Flavor"
+                            model: ProductVariant,
+                            attributes: ["id", "slug", "price", "discount_price", "purchase_price", "stock"], // // product variant details
+                            as: "variant"
                           }
                         ]
                       });
