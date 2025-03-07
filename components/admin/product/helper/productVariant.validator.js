@@ -172,7 +172,17 @@ const createProductVariantsValidator = [
     ...commonValidations.variantBaseFields,
     body('variants.*.attributes')
         .isArray()
-        .withMessage('Variant attributes must be an array')
+        .withMessage('Variant attributes must be an array'),
+    body('variants.*.attributes.*.attribute_id')
+        .notEmpty()
+        .withMessage('Attribute ID is required')
+        .isInt({ min: 1 })
+        .withMessage('Attribute ID must be a positive integer'),
+    body('variants.*.attributes.*.term_id')
+        .notEmpty()
+        .withMessage('Term ID is required')
+        .isInt({ min: 1 })
+        .withMessage('Term ID must be a positive integer'),
 ];
 
 const updateProductVariantValidator = [
@@ -185,11 +195,15 @@ const updateProductVariantValidator = [
     body('attributes.*.attribute_id')
         .optional()
         .isInt()
-        .withMessage('Invalid attribute ID'),
+        .withMessage('Invalid attribute ID')
+        .isInt({ min: 1 })
+        .withMessage('Attribute ID must be a positive integer'),
     body('attributes.*.term_id')
         .optional()
         .isInt()
         .withMessage('Invalid term ID')
+        .isInt({ min: 1 })
+        .withMessage('Term ID must be a positive integer')
 ];
 
 // Modified uploadVariantImagesValidator to use with multer
