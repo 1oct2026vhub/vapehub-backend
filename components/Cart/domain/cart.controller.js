@@ -51,12 +51,7 @@ module.exports.listCartItems = async (req, res, next) => {
             where: { user_id },
             include: includeClause
         });
-        if (!carts?.[0]) {
-            throw {
-                message: "Cart is empty"
-            }
-        }
-        successResponse(res, carts, 'Success');
+        successResponse(res, carts, 'Cart is empty');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -85,7 +80,6 @@ module.exports.createCart = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         const { product_id, variant_id, quantity } = req.body;
-
         // Validate required fields
         if (!product_id) {
             throw { message: "Product ID is required", statusCode: 400 };
@@ -99,20 +93,21 @@ module.exports.createCart = async (req, res, next) => {
             where: { user_id, product_id, variant_id: variant_id || null },
             include: includeClause
         });
-
+        
         // Fetch product and variant (if provided)
         const product = await Product.findByPk(product_id);
         if (!product) {
             throw { message: "Product not found", statusCode: 404 };
         }
-
-        let availableStock = product.stock || 0; // Fallback to product stock if no variant
+        
+        let availableStock = product.stock_quantity || 0; // Fallback to product stock if no variant
         if (variant_id) {
             const variant = await ProductVariant.findByPk(variant_id);
             if (!variant || variant.product_id !== product_id) {
                 throw { message: "Variant not found or does not belong to the specified product", statusCode: 404 };
             }
             availableStock = variant.stock || 0; // Use variant stock if specified
+            
         }
 
         // Check stock availability
@@ -124,8 +119,12 @@ module.exports.createCart = async (req, res, next) => {
         }
 
         if (cartExists) {
+            const addedQuantity = cartExists.quantity + quantity
+            if(addedQuantity > availableStock ){
+                throw { message: `Added quantity exceed the limit only ${availableStock} item(s) available in stock`, statusCode: 400 };
+            }
             // Update existing cart item
-            cartExists.quantity = quantity;
+            cartExists.quantity = addedQuantity;
             await cartExists.save();
             return successResponse(res, cartExists, 'Cart updated successfully');
         } else {
@@ -163,7 +162,7 @@ module.exports.updateCart = async (req, res, next) => {
 
         // Check stock if quantity is updated
         if (quantity) {
-            const availableStock = cartItem.variant ? cartItem.variant.stock : cartItem.product.stock || 0;
+            const availableStock = cartItem.variant ? cartItem.variant.stock : cartItem.product.stock_quantity || 0;
             if (quantity > availableStock) {
                 return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
             }
