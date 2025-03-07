@@ -371,7 +371,21 @@ module.exports.createProduct = async (req, res, next) => {
             category_id, brand_id
         } = req.body;
 
-        const { id: updated_by } = req.user; // Authenticated user ID
+        const { id: updated_by } = req.user;
+
+        // Validate required fields
+        if (!name || !slug) {
+            return errorResponse(
+                res, 
+                { message: "Name and slug are required" }, 
+                "Missing required fields", 
+                400
+            );
+        }
+
+        // Clean the name and slug
+        const cleanName = name.trim();
+        const cleanSlug = slug.toLowerCase().trim();
 
         // Check if category and brand exist
         const categoryExists = await Category.findByPk(category_id);
@@ -384,44 +398,135 @@ module.exports.createProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
         }
 
-        // Check if product already exists (case-insensitive slug check)
-        const existingProduct = await Product.findOne({ where: { slug: slug.toLowerCase() } });
-        if (existingProduct) {
-            await transaction.rollback(); // Ensure rollback before throwing error
-            return errorResponse(res, { message: "Product already exists" }, "Product already exists", 400);
+        // Check for duplicate name (case-insensitive)
+        const existingProductName = await Product.findOne({
+            where: {
+                name: {
+                    [Op.like]: cleanName // Case-insensitive comparison
+                }
+            }
+        });
+
+        if (existingProductName) {
+            return errorResponse(
+                res, 
+                { 
+                    message: "Product with this name already exists",
+                    existing_product: {
+                        id: existingProductName.id,
+                        name: existingProductName.name
+                    }
+                }, 
+                "Duplicate product name", 
+                400
+            );
+        }
+
+        // Check for duplicate slug (case-insensitive)
+        const existingProductSlug = await Product.findOne({
+            where: {
+                slug: cleanSlug
+            }
+        });
+
+        if (existingProductSlug) {
+            return errorResponse(
+                res, 
+                { 
+                    message: "Product with this slug already exists",
+                    existing_product: {
+                        id: existingProductSlug.id,
+                        slug: existingProductSlug.slug
+                    }
+                }, 
+                "Duplicate product slug", 
+                400
+            );
+        }
+
+        // Validate price and discount_price
+        const numericPrice = price ? parseFloat(price) : null;
+        const numericDiscountPrice = discount_price ? parseFloat(discount_price) : null;
+
+        if (numericPrice && numericPrice !== null && (isNaN(numericPrice) || numericPrice <= 0)) {
+            return errorResponse(
+                res, 
+                { message: "Invalid price value" }, 
+                "Invalid price", 
+                400
+            );
+        }
+
+        if (numericDiscountPrice && numericDiscountPrice !== null) {
+            if (isNaN(numericDiscountPrice) || numericDiscountPrice <= 0) {
+                return errorResponse(
+                    res, 
+                    { message: "Invalid discount price value" }, 
+                    "Invalid discount price", 
+                    400
+                );
+            }
+
+            if (numericPrice !== null && numericDiscountPrice >= numericPrice) {
+                return errorResponse(
+                    res, 
+                    { message: "Discount price must be less than regular price" }, 
+                    "Invalid discount price", 
+                    400
+                );
+            }
         }
 
         // Create the product record
         const product = await Product.create(
             {
-                name, slug: slug.toLowerCase(), description, price, discount_price, stock_quantity, is_new,
-                category_id, brand_id, updated_by
+                name: cleanName,
+                slug: cleanSlug,
+                description,
+                price: numericPrice ? numericPrice.toFixed(2) : null,
+                discount_price: numericDiscountPrice ? numericDiscountPrice.toFixed(2) : null,
+                stock_quantity,
+                is_new,
+                category_id,
+                brand_id,
+                updated_by
             },
             { transaction }
         );
 
-        // Commit the transaction after all inserts succeed
         await transaction.commit();
 
         // Fetch and return the created product with related models
         const newProduct = await Product.findByPk(product.id, {
             include: [
-                { model: Category, as: "Category" },
-                { model: Brand, as: "Brand" },
-                { model: ProductImage, as: "ProductImages" },
-                {
-                    model: Flavor,
-                    as: "Flavors",
-                    through: { model: ProductFlavor }
+                { 
+                    model: Category, 
+                    as: "Category",
+                    attributes: ['id', 'name', 'slug']
+                },
+                { 
+                    model: Brand, 
+                    as: "Brand",
+                    attributes: ['id', 'name', 'slug']
+                },
+                { 
+                    model: ProductImage, 
+                    as: "ProductImages",
+                    attributes: ['id', 'image_url', 'is_primary']
                 }
             ]
         });
 
         return successResponse(res, newProduct, "Product created successfully", 201);
     } catch (error) {
-        await transaction.rollback(); // Rollback transaction on failure
-        logger.error(error);
-        return errorResponse(res, error, error.message);
+        console.log(error);
+        await transaction.rollback();
+        logger.error('Create Product Error:', {
+            error: error.message,
+            stack: error.stack,
+            body: req.body
+        });
+        return errorResponse(res, error, "Error creating product");
     }
 };
 
@@ -434,81 +539,184 @@ module.exports.updateProduct = async (req, res, next) => {
             category_id, brand_id, flavour_ids, product_images
         } = req.body;
 
-        const { id: updated_by } = req.user; // Authenticated user ID
+        const { id: updated_by } = req.user;
 
         // Find the existing product
         const product = await Product.findByPk(id, { transaction });
         if (!product) {
-            await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
-        // Ensure category and brand exist only if provided
+        // Clean the input values if provided
+        const cleanName = name?.trim();
+        const cleanSlug = slug?.toLowerCase().trim();
+
+        // Check for duplicate name if name is being updated
+        if (cleanName && cleanName !== product.name) {
+            const existingProductName = await Product.findOne({
+                where: {
+                    name: {
+                        [Op.like]: cleanName // Case-insensitive comparison
+                    },
+                    id: { [Op.ne]: id } // Exclude current product
+                },
+                transaction
+            });
+
+            if (existingProductName) {
+                return errorResponse(
+                    res, 
+                    { 
+                        message: "Product with this name already exists",
+                        existing_product: {
+                            id: existingProductName.id,
+                            name: existingProductName.name
+                        }
+                    }, 
+                    "Duplicate product name", 
+                    400
+                );
+            }
+        }
+
+        // Check for duplicate slug if slug is being updated
+        if (cleanSlug && cleanSlug !== product.slug) {
+            const existingProductSlug = await Product.findOne({
+                where: {
+                    slug: cleanSlug,
+                    id: { [Op.ne]: id }
+                },
+                transaction
+            });
+
+            if (existingProductSlug) {
+                return errorResponse(
+                    res, 
+                    { 
+                        message: "Product with this slug already exists",
+                        existing_product: {
+                            id: existingProductSlug.id,
+                            slug: existingProductSlug.slug
+                        }
+                    }, 
+                    "Duplicate product slug", 
+                    400
+                );
+            }
+        }
+
+        // Validate category if provided
         if (category_id) {
             const categoryExists = await Category.findByPk(category_id);
             if (!categoryExists) {
-                await transaction.rollback();
                 return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
             }
         }
 
+        // Validate brand if provided
         if (brand_id) {
             const brandExists = await Brand.findByPk(brand_id);
             if (!brandExists) {
-                await transaction.rollback();
                 return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
             }
         }
 
-        // Ensure slug uniqueness (case-insensitive check)
-        if (slug && slug.toLowerCase() !== product.slug) {
-            const existingProduct = await Product.findOne({
-                where: { slug: slug.toLowerCase(), id: { [Op.ne]: id } }
-            });
-            if (existingProduct) {
-                await transaction.rollback();
-                return errorResponse(res, { message: "Product with this slug already exists" }, "Duplicate slug", 400);
+        // Validate and parse prices if provided
+        let numericPrice = price !== undefined ? parseFloat(price) : product.price;
+        let numericDiscountPrice = discount_price !== undefined ? 
+            (discount_price ? parseFloat(discount_price) : null) : 
+            product.discount_price;
+
+        // Validate price only if provided
+        if (price && price !== undefined) {
+            if (isNaN(numericPrice) || numericPrice < 0) {
+                return errorResponse(
+                    res, 
+                    { message: "Invalid price value" }, 
+                    "Invalid price", 
+                    400
+                );
             }
         }
 
-        // Update product fields dynamically
+        // Validate discount price only if provided
+        if (discount_price && discount_price !== undefined) {
+            if (numericDiscountPrice !== null && (isNaN(numericDiscountPrice) || numericDiscountPrice < 0)) {
+                return errorResponse(
+                    res, 
+                    { message: "Invalid discount price value" }, 
+                    "Invalid discount price", 
+                    400
+                );
+            }
+
+            if (numericDiscountPrice !== null && numericDiscountPrice >= numericPrice) {
+                return errorResponse(
+                    res, 
+                    { message: "Discount price must be less than regular price" }, 
+                    "Invalid discount price", 
+                    400
+                );
+            }
+        }
+
+        // Prepare update fields
         const updatedFields = {
-            ...(name && { name }),
-            ...(slug && { slug: slug.toLowerCase() }),
-            ...(description && { description }),
-            ...(price && { price }),
-            ...(discount_price && { discount_price }),
-            ...(stock_quantity && { stock_quantity }),
+            ...(cleanName && { name: cleanName }),
+            ...(cleanSlug && { slug: cleanSlug }),
+            ...(description && { description: description.trim() }),
+            ...(price !== undefined && { price: numericPrice.toFixed(2) }),
+            ...(discount_price !== undefined && { discount_price: numericDiscountPrice ? numericDiscountPrice.toFixed(2) : null }),
+            ...(stock_quantity !== undefined && { stock_quantity }),
             ...(is_new !== undefined && { is_new }),
             ...(category_id && { category_id }),
             ...(brand_id && { brand_id }),
             updated_by
         };
 
-        await product.update(updatedFields, { transaction });
-
-        // Commit the transaction after all updates
-        await transaction.commit();
+        // Update only if there are changes
+        if (Object.keys(updatedFields).length > 0) {
+            await product.update(updatedFields, { transaction });
+        }
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
             include: [
-                { model: Category, as: "Category" },
-                { model: Brand, as: "Brand" },
-                { model: ProductImage, as: "ProductImages" },
+                { 
+                    model: Category, 
+                    as: "Category",
+                    attributes: ['id', 'name', 'slug']
+                },
+                { 
+                    model: Brand, 
+                    as: "Brand",
+                    attributes: ['id', 'name', 'slug']
+                },
+                { 
+                    model: ProductImage, 
+                    as: "ProductImages",
+                    attributes: ['id', 'image_url', 'is_primary']
+                },
                 {
-                    model: Flavor,
-                    as: "Flavors",
-                    through: { model: ProductFlavor }
+                    model: ProductVariant,
+                    as: "variants",
+                    attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
                 }
             ]
         });
 
+        await transaction.commit();
         return successResponse(res, updatedProduct, "Product updated successfully");
     } catch (error) {
-        await transaction.rollback(); // Rollback in case of failure
-        logger.error(error);
-        return errorResponse(res, error, error.message);
+        await transaction.rollback();
+        console.log(error);
+        logger.error('Update Product Error:', {
+            error: error.message,
+            stack: error.stack,
+            productId: req.params.id,
+            body: req.body
+        });
+        return errorResponse(res, error, "Error updating product");
     }
 };
 
