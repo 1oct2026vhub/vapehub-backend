@@ -162,25 +162,6 @@ router.get('/fetch/:id',
  *               brand_id:
  *                 type: integer
  *                 description: ID of the associated brand
- *               variants:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     variant_id:
- *                       type: integer
- *                       description: ID of the variant
- *                     variant_images:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           image_url:
- *                             type: string
- *                             description: URL of the variant image
- *                           is_primary:
- *                             type: boolean
- *                             description: Indicates if the image is primary
  *     responses:
  *       200:
  *         description: Product created successfully

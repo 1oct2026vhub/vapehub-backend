@@ -167,4 +167,87 @@ router.delete(
     shippingMethodController.deleteShippingMethod
 );
 
+
+/**
+ * @swagger
+ * /api/admin/shipping-methods/{id}:
+ *   patch:
+ *     summary: Restore a deleted shipping method
+ *     description: Restores a shipping method that was previously soft-deleted. Requires authentication.
+ *     tags:
+ *       - ADMIN - Shipping Methods
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: The ID of the deleted shipping method to restore
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ *     responses:
+ *       200:
+ *         description: Successfully restored the shipping method
+ *         
+ *       400:
+ *         description: Shipping method is already active
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping method is already active or was never deleted"
+ *       401:
+ *         description: Unauthorized (Invalid or missing token)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Unauthorized: Missing or invalid Bearer token"
+ *       404:
+ *         description: Shipping method not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping method not found"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Unexpected server error. Please try again later."
+ */
+
+
+
+router.patch("/:id", authMiddleware(true), validateRequest([param("id").isInt().withMessage("Invalid ID")]),  shippingMethodController.restoreShippingMethod);
+
+
 module.exports = router;
