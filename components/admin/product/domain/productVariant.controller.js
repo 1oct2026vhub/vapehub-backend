@@ -13,6 +13,12 @@ const ERROR_MESSAGES = {
     INVALID_DISCOUNT: "Discount price must be less than regular price",
     ATTRIBUTE_TERM_NOT_FOUND: "Attribute term not found",
     ATTRIBUTE_TERM_IN_USE: "Cannot remove attribute term as it is associated with existing product variants",
+    ATTRIBUTE_TERM_COMBINATION_EXISTS: "Attribute term combination already exists for this product",
+    ATTRIBUTE_TERM_COMBINATION_EXISTS_FOR_ANOTHER_BRAND: "Attribute term combination already exists for another brand",
+    INVALID_ATTRIBUTE_COMBINATION: "Invalid attribute combination for variant",
+    INVALID_ATTRIBUTE_RELATION: "The attribute and term relationship is invalid or has been deleted",
+    NO_TERMS_FOUND_FOR_ATTRIBUTE: "No terms found for the given attribute",
+    INVALID_TERM_ID: "Invalid term ID",
 };
 
 // Add attributes to a product
@@ -29,10 +35,12 @@ module.exports.addProductAttributes = async (req, res) => {
             return errorResponse(res, { message: ERROR_MESSAGES.PRODUCT_NOT_FOUND }, ERROR_MESSAGES.PRODUCT_NOT_FOUND, 404);
         }
 
-        // Add attributes and terms
+        // Validate attributes and terms
         if (Array.isArray(attributes) && attributes.length > 0) {
-            // First check for existing combinations
-            const existingAttributes = await ProductAttributeTerm.findAll({
+            await validateAttributesAndTerms(attributes);
+
+            // Check for existing combinations
+            const existingCombinations = await ProductAttributeTerm.findAll({
                 where: {
                     product_id,
                     [Op.or]: attributes.map(attr => ({
@@ -46,7 +54,7 @@ module.exports.addProductAttributes = async (req, res) => {
 
             // Filter out existing combinations
             const newAttributes = attributes.filter(attr => 
-                !existingAttributes.some(existing => 
+                !existingCombinations.some(existing => 
                     existing.attribute_id === attr.attribute_id && 
                     existing.term_id === attr.term_id
                 )
@@ -78,23 +86,15 @@ module.exports.addProductAttributes = async (req, res) => {
                 model: ProductAttributeTerm,
                 as: "productAttributeTerms",
                 include: [
-                    { 
-                        model: Attribute, 
-                        as: "attribute" 
-                    },
-                    { 
-                        model: AttributeTerm, 
-                        as: "term" 
-                    }
+                    { model: Attribute, as: "attribute" },
+                    { model: AttributeTerm, as: "term" }
                 ]
             }]
         });
 
         return successResponse(res, updatedProduct, "Product attributes added successfully");
     } catch (error) {
-        if (transaction && !transaction.finished) {
-            await transaction.rollback();
-        }
+        await transaction.rollback();
         logger.error('Add Product Attributes Error:', error);
         
         // Handle unique constraint violation specifically
@@ -103,6 +103,42 @@ module.exports.addProductAttributes = async (req, res) => {
         }
         
         return errorResponse(res, error, error.message);
+    }
+};
+
+// Helper function to validate attributes and terms
+const validateAttributesAndTerms = async (attributes) => {
+    const attributeIds = attributes.map(attr => attr.attribute_id);
+    const termIds = attributes.map(attr => attr.term_id);
+
+    // Check if all attributes exist
+    const existingAttributes = await Attribute.findAll({
+        where: { id: attributeIds }
+    });
+
+    if (existingAttributes.length !== attributeIds.length) {
+        throw new Error("One or more attribute IDs are invalid.");
+    }
+
+    // Check if all terms exist
+    const existingTerms = await AttributeTerm.findAll({
+        where: { id: termIds }
+    });
+
+    if (existingTerms.length !== termIds.length) {
+        throw new Error("One or more term IDs are invalid.");
+    }
+
+    const attributeTermRelations = await AttributeTerm.findAll({
+        where: { attribute_id: attributeIds }
+    });
+
+    const invalidTerms = attributes.filter(attr => 
+        !attributeTermRelations.some(term => term.id === attr.term_id && term.attribute_id === attr.attribute_id)
+    );
+
+    if (invalidTerms.length > 0) {
+        throw new Error("One or more term IDs are not associated with the provided attribute IDs.");
     }
 };
 
@@ -153,12 +189,17 @@ module.exports.updateProductAttributes = async (req, res) => {
         // Update existing attributes
         if (Array.isArray(attributes) && attributes.length > 0) {
             for (const attr of attributes) {
+                const { attribute_id, term_id } = attr;
+
+                // Validate attribute and term
+                await validateAttributesAndTerms([{ attribute_id, term_id }]);
+
                 await ProductAttributeTerm.upsert({
                     product_id,
                     attribute_id: attr.attribute_id,
                     term_id: attr.term_id,
-                    is_visible_page: attr.is_visible_page ?? true,
-                    used_in_variation: attr.used_in_variation ?? false,
+                    is_visible_page: attr.is_visible_page !== undefined ? attr.is_visible_page : true,
+                    used_in_variation: attr.used_in_variation !== undefined ? attr.used_in_variation : false,
                     updated_by
                 }, { transaction });
             }
@@ -180,7 +221,9 @@ module.exports.updateProductAttributes = async (req, res) => {
 
         return successResponse(res, updatedProduct, "Product attributes updated successfully");
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Update Product Attributes Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -261,92 +304,120 @@ module.exports.createProductVariants = async (req, res) => {
         const { product_id } = req.params;
         const { id: updated_by } = req.user;
 
-        // Handle variants data whether it's a string or object
-        let variantsData;
-        console.log(req.body);
-        try {
-            variantsData = typeof req.body.variants === 'string' 
-                ? JSON.parse(req.body.variants) 
-                : req.body.variants || [];
-        } catch (error) {
-            return errorResponse(res, { message: "Invalid variants data format" }, "Invalid variants data format", 400);
-        }
-
-        // Ensure variantsData is an array
+        // Handle variants data
+        const variantsData = parseVariantsData(req.body.variants);
         if (!Array.isArray(variantsData)) {
             return errorResponse(res, { message: "Variants must be an array" }, "Invalid variants format", 400);
         }
 
-        const product = await Product.findByPk(product_id);
-        if (!product) {
-            await transaction.rollback();
-            return errorResponse(res, { message: ERROR_MESSAGES.PRODUCT_NOT_FOUND }, ERROR_MESSAGES.PRODUCT_NOT_FOUND, 404);
-        }
+        const product = await validateProduct(product_id, transaction);
+        const hasVariationAttributes = await validateVariationAttributes(product_id, transaction);
 
-        const hasVariationAttributes = await ProductAttributeTerm.findOne({
-            where: { product_id, used_in_variation: true }
-        });
-
-        if (!hasVariationAttributes) {
-            await transaction.rollback();
-            return errorResponse(res, { message: "Product must have at least one attribute marked for variation" }, "No variation attributes", 400);
-        }
-
-        const createdVariants = [];
-        for (const variant of variantsData) {
-            try {
-                await validateVariantSlug(variant.slug, transaction);
-                await validateVariantBarcode(variant.barcode, transaction);
-                await validateVariantAttributes(variant.attributes, product_id, transaction);
-
-                const productVariant = await createVariantRecord(variant, product_id, updated_by, transaction);
-
-                const variantAttributeTerms = variant.attributes.map(attr => ({
-                    variant_id: productVariant.id,
-                    attribute_id: attr.attribute_id,
-                    term_id: attr.term_id,
-                    updated_by
-                }));
-                
-                await ProductVariantAttribute.bulkCreate(variantAttributeTerms, { 
-                    transaction,
-                    updateOnDuplicate: ['attribute_id', 'term_id', 'updated_by']
-                });
-
-                createdVariants.push(productVariant.id);
-            } catch (error) {
-                if (!transaction.finished) {
-                    await transaction.rollback();
-                }
-                return errorResponse(res, { message: error.message }, error.message, 400);
-            }
-        }
+        const createdVariants = await Promise.all(variantsData.map(async (variant) => {
+            await validateVariantData(variant, product_id, transaction);
+            return await createVariantAndAttributes(variant, product_id, updated_by, transaction);
+        }));
 
         await transaction.commit();
-
-        // Fetch the created variants without the problematic associations for now
-        const newVariants = await ProductVariant.findAll({
-            where: { id: createdVariants },
-            include: [
-                {
-                    model: ProductVariantAttribute,
-                    as: "variantAttributes",
-                    include: [
-                        { model: Attribute, as: "attribute" },
-                        { model: AttributeTerm, as: "term" }
-                    ]
-                }
-            ]
-        });
-
+        const newVariants = await fetchCreatedVariants(createdVariants);
         return successResponse(res, newVariants, "Product variants created successfully", 201);
     } catch (error) {
-        if (!transaction.finished) {
-            await transaction.rollback();
-        }
+        await transaction.rollback();
         logger.error('Create Product Variants Error:', error);
         return errorResponse(res, error, error.message);
     }
+};
+
+// Helper function to parse variants data
+const parseVariantsData = (variants) => {
+    try {
+        return typeof variants === 'string' ? JSON.parse(variants) : variants || [];
+    } catch {
+        throw new Error("Invalid variants data format");
+    }
+};
+
+// Helper function to validate product existence
+const validateProduct = async (product_id, transaction) => {
+    const product = await Product.findByPk(product_id);
+    if (!product) {
+        throw new Error(ERROR_MESSAGES.PRODUCT_NOT_FOUND);
+    }
+    return product;
+};
+
+// Helper function to validate variation attributes
+const validateVariationAttributes = async (product_id, transaction) => {
+    const hasVariationAttributes = await ProductAttributeTerm.findOne({
+        where: { product_id, used_in_variation: true }
+    });
+    if (!hasVariationAttributes) {
+        throw new Error("Product must have at least one attribute marked for variation");
+    }
+    return hasVariationAttributes;
+};
+
+// Helper function to validate variant data
+const validateVariantData = async (variant, product_id, transaction) => {
+    await validateVariantSlug(variant.slug, transaction);
+    await validateVariantBarcode(variant.barcode, transaction);
+    await validateVariantAttributes(variant.attributes, product_id, transaction);
+    await checkExistingCombinations(variant.attributes, product_id, transaction);
+};
+
+// Helper function to check existing combinations
+const checkExistingCombinations = async (attributes, product_id, transaction) => {
+    const existingCombinations = await ProductVariantAttribute.findAll({
+        include: [
+            {
+                model: ProductVariant,
+                as: "variant", // Specify the alias here
+                where: { product_id: product_id }, // Ensure we only check for the current product
+            }
+        ],
+        where: {
+            attribute_id: attributes.map(attr => attr.attribute_id),
+            term_id: attributes.map(attr => attr.term_id),
+        },
+        transaction // Include the transaction in the query
+    });
+    console.log(existingCombinations)
+    if (existingCombinations.length > 0) {
+        throw new Error("Attribute-term combination conflict detected for the current variant.");
+    }
+};
+
+// Helper function to create variant and its attributes
+const createVariantAndAttributes = async (variant, product_id, updated_by, transaction) => {
+    const productVariant = await createVariantRecord(variant, product_id, updated_by, transaction);
+    const variantAttributeTerms = variant.attributes.map(attr => ({
+        variant_id: productVariant.id,
+        attribute_id: attr.attribute_id,
+        term_id: attr.term_id,
+        updated_by
+    }));
+    await ProductVariantAttribute.bulkCreate(variantAttributeTerms, { 
+        transaction,
+        updateOnDuplicate: ['attribute_id', 'term_id', 'updated_by']
+    });
+    return productVariant.id;
+};
+
+// Helper function to fetch created variants
+const fetchCreatedVariants = async (createdVariants) => {
+    return await ProductVariant.findAll({
+        where: { id: createdVariants },
+        include: [
+            {
+                model: ProductVariantAttribute,
+                as: "variantAttributes",
+                include: [
+                    { model: Attribute, as: "attribute" },
+                    { model: AttributeTerm, as: "term" }
+                ]
+            }
+        ]
+    });
 };
 
 // Helper functions
@@ -437,25 +508,60 @@ const updateVariantAttributes = async (variantId, attributes, productId, updated
     }
 };
 
-// Refactored main function
 module.exports.updateProductVariant = async (req, res) => {
     const transaction = await Product.sequelize.transaction({ timeout: 10000 });
     try {
         const { variant_id } = req.params;
+        const { product_id } = req.params;
         const variantData = req.body;
         const { id: updated_by } = req.user;
 
-        const existingVariant = await validateVariantUpdate(variant_id, transaction);
+        // Fetch the existing variant
+        const existingVariant = await ProductVariant.findByPk(variant_id, { transaction });
+        if (!existingVariant) {
+            return errorResponse(res, { message: ERROR_MESSAGES.VARIANT_NOT_FOUND }, ERROR_MESSAGES.VARIANT_NOT_FOUND, 404);
+        }
+
+        // Validate the product associated with the variant
+        const existingProduct = await Product.findByPk(existingVariant.product_id);
+        if (!existingProduct) {
+            return errorResponse(res, { message: ERROR_MESSAGES.PRODUCT_NOT_FOUND }, ERROR_MESSAGES.PRODUCT_NOT_FOUND, 404);
+        }
+
+        // Validate update data
         await validateUpdateData(variantData, existingVariant, variant_id, transaction);
+        
+
+        const existingAttributes = await ProductVariantAttribute.findAll({
+            where: {
+                variant_id: {
+                    [Op.ne]: variant_id // Exclude the current variant
+                },
+                attribute_id: Array.isArray(variantData.attributes) ? variantData.attributes.map(attr => attr.attribute_id) : [],
+                term_id: Array.isArray(variantData.attributes) ? variantData.attributes.map(attr => attr.term_id) : [],
+            },
+            include: [
+                {
+                    model: ProductVariant,
+                    as: "variant", // Ensure to use the correct alias here
+                    where: { product_id: product_id } 
+                }
+            ],
+            transaction
+        });
+
+        if (existingAttributes.length > 0) {
+            throw new Error("Attribute combination already exists for another variant of the same brand");
+        }
 
         // Update basic info
-        const updatedVariant = await existingVariant.update({
+        await existingVariant.update({
             ...variantData,
             updated_by
         }, { transaction });
 
         // Update attributes if provided
-        if (variantData.attributes) {
+        if (Array.isArray(variantData.attributes)) {
             await updateVariantAttributes(variant_id, variantData.attributes, existingVariant.product_id, updated_by, transaction);
         }
 
@@ -467,7 +573,7 @@ module.exports.updateProductVariant = async (req, res) => {
                 { model: ProductVariantImage, as: "variantImages" },
                 {
                     model: ProductVariantAttribute,
-                    as: "variantAttributes",
+                    as: "variantAttributes", // Ensure to use the correct alias here
                     include: [
                         { model: Attribute, as: "attribute" },
                         { model: AttributeTerm, as: "term" }

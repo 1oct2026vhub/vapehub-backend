@@ -455,69 +455,72 @@ module.exports.getAttributes = async (req, res, next) => {
  * If an attribute does not exist, a new attribute will be created.
  */
 module.exports.bulkCreateOrUpdateAttributes = async (req, res, next) => {
-    const transaction = await Attribute.sequelize.transaction(); // Start a transaction
+    const transaction = await Attribute.sequelize.transaction(); 
     try {
-        const { file } = req; // Get the uploaded file
+        const { file } = req;
         if (!file) {
-            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+            await transaction.rollback();
+            throw new Error("No file uploaded");
         }
 
         const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
-        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+        await workbook.xlsx.load(file.buffer);
+        const worksheet = workbook.worksheets[0];
 
-        // Check the header row
         const headerRow = worksheet.getRow(1).values;
         const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
 
-        // Array to hold the results of each operation
         let results = [];
 
-        // Iterate through each row in the worksheet
-        await Promise.all(worksheet.eachRow({ includeEmpty: false }, async (row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip header row
+        for (const row of worksheet.getRows(2, worksheet.rowCount - 1)) {
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values;
+            const [name, slug, description, type, sort_order] = rowValues;
 
-            // If the first header is empty, skip the first column in each row
-            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+            if (!slug) continue; // Skip empty slugs to prevent errors
 
-            const [name, slug, description, type, sort_order] = rowValues; // Adjust destructuring based on the new structure
+            const result = await processAttribute(slug, name, description, type, sort_order, transaction);
+            results.push(result);
+        }
 
-            // Check if the slug already exists (case-insensitive)
-            let attribute = await Attribute.findOne({ where: { slug: { [Op.like]: slug } }, transaction });
-
-            try {
-                if (!attribute) {
-                    // If attribute does not exist, create a new one
-                    attribute = await Attribute.create({
-                        name: typeof name === 'string' ? name.trim() : name,
-                        slug: typeof slug === 'string' ? slug.trim().toLowerCase() : slug,
-                        description: typeof description === 'string' ? description.trim() : description,
-                        type: type || 'select', // Default type if not provided
-                        sort_order: sort_order || 'custom' // Default sort order if not provided
-                    }, { transaction });
-                    results.push({ slug, status: 'Created', id: attribute.id });
-                } else {
-                    // Update existing attribute fields
-                    await attribute.update({
-                        name: typeof name === 'string' ? name.trim() : attribute.name,
-                        description: typeof description === 'string' ? description.trim() : attribute.description,
-                        type: type || attribute.type,
-                        sort_order: sort_order || attribute.sort_order,
-                    }, { transaction });
-                    results.push({ slug, status: 'Updated', id: attribute.id });
-                }
-            } catch (updateError) {
-                results.push({ slug, status: 'Error', message: updateError.message });
-                console.error(`Error processing attribute with slug ${slug}:`, updateError);
-            }
-        }));
-
-        await transaction.commit(); // Commit the transaction
+        await transaction.commit();
         return successResponse(res, { results }, "Attributes processed successfully");
+
     } catch (error) {
-        await transaction.rollback(); // Rollback the transaction on error
-        console.error('Error during bulk update:', error); // Log the error for debugging
-        return errorResponse(res, error, error.message);
+        await transaction.rollback(); // Rollback transaction only in case of an error
+        console.error('Error during bulk update:', error);
+        return errorResponse(res, { message: error.message }, error.message);
+    }
+};
+
+const processAttribute = async (slug, name, description, type, sort_order, transaction) => {
+    let attribute = await Attribute.findOne({ 
+        where: { slug: { [Op.like]: slug.trim().toLowerCase() } }, 
+        transaction 
+    });
+
+    try {
+        if (!attribute) {
+            attribute = await Attribute.create({
+                name: typeof name === 'string' ? name.trim() : name,
+                slug: typeof slug === 'string' ? slug.trim().toLowerCase() : slug,
+                description: typeof description === 'string' ? description.trim() : description,
+                type: type || 'select',
+                sort_order: sort_order || 'custom'
+            }, { transaction });
+
+            return { slug, status: 'Created', id: attribute.id };
+        } else {
+            await attribute.update({
+                name: typeof name === 'string' ? name.trim() : attribute.name,
+                description: typeof description === 'string' ? description.trim() : attribute.description,
+                type: type || attribute.type,
+                sort_order: sort_order || attribute.sort_order,
+            }, { transaction });
+
+            return { slug, status: 'Updated', id: attribute.id };
+        }
+    } catch (updateError) {
+        return { slug, status: 'Error', message: updateError.message };
     }
 };
 
