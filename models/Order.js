@@ -18,12 +18,12 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'SET NULL', 
         onUpdate: 'CASCADE' 
       });
-
       this.belongsTo(models.ShippingMethod, { 
         foreignKey: 'shipping_method_id', 
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });
+      this.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'orderItems' });
     }
   }
 
@@ -44,7 +44,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     coupon_id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT,
       allowNull: true,
       references: {
         model: 'coupons',
@@ -70,7 +70,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     shipping_method_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'shipping_methods',
         key: 'id'

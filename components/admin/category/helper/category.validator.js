@@ -49,7 +49,7 @@ const categoryUpdatesValidation = [
     check("slug")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
-      .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).withMessage("Slug must be a valid URL-friendly string (lowercase letters, numbers, and hyphens only)"),
+      .matches(/^[a-z0-9_]+(?:[-_][a-z0-9_]+)*$/).withMessage("Slug must be a valid URL-friendly string (lowercase letters, numbers, hyphens, and underscores only)"),
     check("description")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
@@ -92,10 +92,10 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB limit
     },
     fileFilter: (req, file, cb) => {
-        const allowedExtensions = ['.xlsx', '.xls'];
+        const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp"];
         const ext = path.extname(file.originalname).toLowerCase();
         if (!allowedExtensions.includes(ext)) {
-            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
+            return cb(new Error("Only .png, .jpg, .jpeg, .webp files are allowed!"), false);
         }
         cb(null, true);
     },
