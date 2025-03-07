@@ -5,7 +5,7 @@ const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
     try {
-        const userId = req.user.id ;
+        const userId = req.user.id;
         const { couponCode } = req.body;
         let total = 0
         let subTotal = 0
@@ -46,17 +46,16 @@ module.exports.checkout = async (req, res, next) => {
         
         total = subTotal
          // Check if expired
-        if(couponCode){
-            const coupon = await Coupon.findOne({
-                where: {
-                    code: couponCode,
-                    status: "active",
-                    start_date: { [Op.lte]: new Date() }, // Coupon has started
-                    end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
-                }
-            });
+        const coupon = await Coupon.findOne({
+            where: {
+                code: couponCode,
+                status: "active",
+                start_date: { [Op.lte]: new Date() }, // Coupon has started
+                end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
+            }
+        });
 
-            if (coupon) {
+        if(couponCode && coupon && couponCode === coupon.code){
                 if (!coupon.minimum_purchase || (subTotal >= coupon.minimum_purchase)) {
                     if (!coupon.usage_limit || (coupon.usage_count <= coupon.usage_limit)) {
                         // Check minimum purchase requirement
@@ -80,9 +79,8 @@ module.exports.checkout = async (req, res, next) => {
     
                     }
                 }
-            }
+            
         }
-        
 
         const resObj = {
             cart,
