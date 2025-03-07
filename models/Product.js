@@ -18,6 +18,7 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'product_id',
         as: 'productAttributeTerms'
       });
+      this.belongsTo(models.Order, { foreignKey: 'order_id' });
     }
   }
 
