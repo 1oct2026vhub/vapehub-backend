@@ -4,9 +4,9 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class OrderItem extends Model {
       static associate(models) {
-        this.belongsTo(models.Order, { foreignKey: 'order_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-        this.belongsTo(models.Product, { foreignKey: 'product_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-        this.belongsTo(models.ProductVariant, { foreignKey: 'variant_id', onDelete: 'SET NULL', onUpdate: 'CASCADE' });
+        this.belongsTo(models.Order, { foreignKey: 'order_id' });
+        this.belongsTo(models.Product, { foreignKey: 'product_id' });
+        this.belongsTo(models.ProductVariant, { foreignKey: 'variant_id', as: 'variant' });
       }
     }
   
@@ -57,6 +57,7 @@ module.exports = (sequelize, DataTypes) => {
         modelName: 'OrderItem',
         tableName: 'order_items',
         timestamps: true,
+        paranoid: true,
       }
     );
   

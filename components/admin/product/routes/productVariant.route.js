@@ -568,7 +568,7 @@ router.post('/product/:product_id/variants',
 
 /**
  * @swagger
- * /api/admin/product-variants/product/{product_id}/variants:
+ * /api/admin/product-variants/product/{product_id}/variants/{variant_id}:
  *   put:
  *     summary: Update a product variant
  *     tags:
@@ -581,35 +581,114 @@ router.post('/product/:product_id/variants',
  *         required: true
  *         schema:
  *           type: integer
+ *         description: ID of the product
+ *       - in: path
+ *         name: variant_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the variant to update
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             properties:
  *               slug:
  *                 type: string
+ *                 description: Unique identifier for the variant
  *               price:
  *                 type: number
+ *                 format: decimal
+ *                 description: Regular price of the variant
  *               discount_price:
  *                 type: number
- *               stock_quantity:
+ *                 format: decimal
+ *                 description: Discounted price (must be less than regular price)
+ *               purchase_price:
+ *                 type: number
+ *                 format: decimal
+ *                 description: Purchase price of the variant
+ *               stock:
  *                 type: integer
+ *                 description: Available stock quantity
+ *               low_stock_threshold:
+ *                 type: integer
+ *                 description: Threshold for low stock warning
+ *               weight:
+ *                 type: number
+ *                 format: decimal
+ *                 description: Weight in grams
+ *               length:    
+ *                 type: number
+ *                 format: decimal
+ *                 description: Length in centimeters
+ *               width:
+ *                 type: number
+ *                 format: decimal
+ *                 description: Width in centimeters
+ *               height:
+ *                 type: number
+ *                 format: decimal
+ *                 description: Height in centimeters
+ *               barcode:
+ *                 type: string
+ *                 description: Unique barcode for the variant
  *               attributes:
  *                 type: array
  *                 items:
  *                   type: object
- *               images:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
+ *                   required:
+ *                     - attribute_id
+ *                     - term_id
+ *                   properties:
+ *                     attribute_id:
+ *                       type: integer
+ *                     term_id:
+ *                       type: integer
  *     responses:
  *       200:
- *         description: Variant updated successfully
+ *         description: Product variant updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/ProductVariant'
+ *                 message:
+ *                   type: string
+ *                   example: Product variant updated successfully
  *       404:
- *         description: Variant not found
+ *         description: Variant or product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Variant not found or Product not found
+ *       409:
+ *         description: Conflict error (duplicate attribute combination)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Attribute combination already exists for another variant of the same brand
  */
 router.put('/product/:product_id/variants/:variant_id',
     [authMiddleware(true), validateRequest(updateProductVariantValidator)],
@@ -618,7 +697,7 @@ router.put('/product/:product_id/variants/:variant_id',
 
 /**
  * @swagger
- * /api/admin/product-variants/product/{product_id}/variants:
+ * /api/admin/product-variants/variants/{variant_id}:
  *   delete:
  *     tags:
  *       - ADMIN - Product Variants
@@ -627,7 +706,7 @@ router.put('/product/:product_id/variants/:variant_id',
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: product_id
+ *         name: variant_id
  *         required: true
  *         schema:
  *           type: integer
@@ -672,14 +751,14 @@ router.put('/product/:product_id/variants/:variant_id',
  *                   type: string
  *                   example: Internal server error
  */
-router.delete('/product/:product_id/variants/:variant_id',
+router.delete('/variants/:variant_id',
     [authMiddleware(true), validateRequest(getProductVariantValidator)],
     productVariantController.removeProductVariant
 );
 
 /**
  * @swagger
- * /api/admin/product-variants/product/{product_id}/variants:
+ * /api/admin/product-variants/variants/{variant_id}/restore:
  *   put:
  *     summary: Restore a soft-deleted product variant
  *     tags:
@@ -688,7 +767,7 @@ router.delete('/product/:product_id/variants/:variant_id',
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: product_id
+ *         name: variant_id
  *         required: true
  *         schema:
  *           type: integer
@@ -761,7 +840,7 @@ router.delete('/product/:product_id/variants/:variant_id',
  *                   type: string
  *                   example: Internal server error
  */
-router.put('/product/:product_id/variants/:variant_id/restore',
+router.put('/variants/:variant_id/restore',
     [authMiddleware(true), validateRequest(getProductVariantValidator)],
     productVariantController.restoreProductVariant
 );

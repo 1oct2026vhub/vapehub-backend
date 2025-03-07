@@ -18,7 +18,6 @@ module.exports.createShippingMethod = async (req, res) => {
 module.exports.getAllShippingMethods = async (req, res) => {
     try {
         const shippingMethods = await ShippingMethod.findAll();
-        console.log("🚀 ~ module.exports.getAllShippingMethods= ~ shippingMethods:", shippingMethods)
         return successResponse(res, shippingMethods)
     } catch (error) {
         return errorResponse(res, error, error.message);
