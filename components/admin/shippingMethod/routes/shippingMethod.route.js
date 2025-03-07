@@ -170,7 +170,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/shipping-methods/{id}:
+ * /api/admin/shipping-methods/{id}:
  *   patch:
  *     summary: Restore a deleted shipping method
  *     description: Restores a shipping method that was previously soft-deleted. Requires authentication.
@@ -247,7 +247,7 @@ router.delete(
 
 
 
-router.patch("/:id", shippingMethodController.restoreShippingMethod);
+router.patch("/:id", authMiddleware(true), validateRequest([param("id").isInt().withMessage("Invalid ID")]),  shippingMethodController.restoreShippingMethod);
 
 
 module.exports = router;
