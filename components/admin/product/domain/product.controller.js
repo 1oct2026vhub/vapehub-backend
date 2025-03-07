@@ -373,6 +373,17 @@ module.exports.createProduct = async (req, res, next) => {
 
         const { id: updated_by } = req.user; // Authenticated user ID
 
+        // Check if category and brand exist
+        const categoryExists = await Category.findByPk(category_id);
+        if (!categoryExists) {
+            return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
+        }
+
+        const brandExists = await Brand.findByPk(brand_id);
+        if (!brandExists) {
+            return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
+        }
+
         // Check if product already exists (case-insensitive slug check)
         const existingProduct = await Product.findOne({ where: { slug: slug.toLowerCase() } });
         if (existingProduct) {
@@ -430,6 +441,23 @@ module.exports.updateProduct = async (req, res, next) => {
         if (!product) {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Ensure category and brand exist only if provided
+        if (category_id) {
+            const categoryExists = await Category.findByPk(category_id);
+            if (!categoryExists) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
+            }
+        }
+
+        if (brand_id) {
+            const brandExists = await Brand.findByPk(brand_id);
+            if (!brandExists) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
+            }
         }
 
         // Ensure slug uniqueness (case-insensitive check)

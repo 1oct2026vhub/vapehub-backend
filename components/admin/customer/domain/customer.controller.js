@@ -1,6 +1,6 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role, Order, Product, ProductImage, UserAddress, ProductVariant } = require("../../../../models");
+const { User, Role, Order, Product, ProductImage, UserAddress, ProductVariant, OrderItem } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const moment = require('moment');
@@ -195,9 +195,9 @@ module.exports.unblockUser = async (req, res) => {
  * Controller function to get user details with order information
  */
 module.exports.getUserDetails = async (req, res) => {
-    try {
-        const { id } = req.params;
+    const { id } = req.params;
 
+    try {
         const user = await User.findByPk(id, {
             include: [
                 { 
@@ -205,22 +205,33 @@ module.exports.getUserDetails = async (req, res) => {
                     as: "orders", 
                     include: [
                         { 
-                            model: Product,
-                            as: "product",
+                            model: OrderItem,
+                            as: "orderItems",
                             include: [
-                                {
-                                    model: ProductImage,
-                                    as: "ProductImages",
-                                    attributes: ["id", "image_url", "is_primary"],
-                                    required: false
-                                },
-                                {
+                                { 
                                     model: ProductVariant,
-                                    as: "variants",
+                                    as: "variant",
+                                    include: [
+                                        {
+                                            model: Product,
+                                            as: "product",
+                                            include: [
+                                                {
+                                                    model: ProductImage,
+                                                    as: "ProductImages",
+                                                    attributes: ["id", "image_url", "is_primary"],
+                                                    required: false
+                                                }
+                                            ],
+                                            required: false
+                                        }
+                                    ],
                                     attributes: ["id", "price", "stock", "stock_status"],
                                     required: false
                                 }
-                            ]
+                            ],
+                            attributes: ["id", "quantity"], 
+                            required: false
                         }
                     ]
                 },
@@ -235,6 +246,7 @@ module.exports.getUserDetails = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
+        
         return successResponse(res, user, "User details retrieved successfully", 200);
     } catch (error) {
         console.error("Error fetching user details:", error);

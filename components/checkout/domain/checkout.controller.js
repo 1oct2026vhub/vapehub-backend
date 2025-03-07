@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductImage, Cart, Flavor, Order } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, Flavor, Order } = require("../../../models");
 const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
@@ -8,23 +8,24 @@ module.exports.checkout = async (req, res, next) => {
         const userId = req.user.id ;
         const { couponCode } = req.body;
         let total = 0
+        let subTotal = 0
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
                           {
                             model: User,
                             attributes: ["id", "first_name", "last_name", "email", "phone"], // User details
-                            as: "User"
+                            as: "user"
                           },
                           {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
-                            as: "Product",
+                            as: "product",
                           },
                           {
-                            model: Flavor,
-                            attributes: ["id", "name"], // Flavor details
-                            as: "Flavor"
+                            model: ProductVariant,
+                            attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"], // product variant details
+                            as: "variant"
                           }
                         ]
                       });
@@ -35,9 +36,13 @@ module.exports.checkout = async (req, res, next) => {
             }
         }
 
-        const subTotal = cart.reduce((total, item) => {
-            return total + (item.quantity * item.Product.price);
-        }, 0);
+        // Calculate subtotal amount
+        for (const item of cart) {
+            if (!item.variant) {
+                return errorResponse(res, {}, "Variant missing", 404); // Stop execution immediately
+            }
+            subTotal += item.quantity * item.variant.price;
+        }
         
         total = subTotal
          // Check if expired
@@ -50,10 +55,10 @@ module.exports.checkout = async (req, res, next) => {
                     end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
             });
-            
+
             if (coupon) {
-                if (coupon.minimum_purchase && subTotal > coupon.minimum_purchase) {
-                    if (coupon.usage_limit && (coupon.usage_count <= coupon.usage_limit)) {
+                if (!coupon.minimum_purchase || (subTotal >= coupon.minimum_purchase)) {
+                    if (!coupon.usage_limit || (coupon.usage_count <= coupon.usage_limit)) {
                         // Check minimum purchase requirement
                         
                             const userUsedCoupon = await CouponUsage.findOne({
@@ -67,7 +72,7 @@ module.exports.checkout = async (req, res, next) => {
                                     if (coupon.maximum_discount && discount > coupon.maximum_discount) {
                                         discount = coupon.maximum_discount;
                                     }
-                                } else if (coupon.discount_type === "fixed") {
+                                } else if (coupon.discount_type === "fixed_amount") {
                                     discount = coupon.discount_value;
                                 }
                                 total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
@@ -104,17 +109,17 @@ module.exports.applyCoupon = async (req, res, next) => {
                           {
                             model: User,
                             attributes: ["id", "first_name", "last_name", "email", "phone"], // User details
-                            as: "User"
+                            as: "user"
                           },
                           {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
-                            as: "Product"
+                            as: "product"
                           },
                           {
-                            model: Flavor,
-                            attributes: ["id", "name"], // Flavor details
-                            as: "Flavor"
+                            model: ProductVariant,
+                            attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"], // // product variant details
+                            as: "variant"
                           }
                         ]
                       });
@@ -125,12 +130,15 @@ module.exports.applyCoupon = async (req, res, next) => {
                 message: 'Cart is empty'
             }
         }
-            
-        // Calculate total amount
-        subTotal = cart.reduce((total, item) => {
-            return total + (item.quantity * item.Product.price);
-        }, 0);
 
+        // Calculate subtotal amount
+        for (const item of cart) {
+            if (!item.variant) {
+                return errorResponse(res, {}, "Variant missing", 404); // Stop execution immediately
+            }
+            subTotal += item.quantity * item.variant.price;
+        }
+        
         total = subTotal
          // Check if expired
         const coupon = await Coupon.findOne({
@@ -141,7 +149,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         }); 
-        
+
         if (!coupon) {
             throw {
                 statusCode: 404,
@@ -171,7 +179,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 message: 'Coupon usage limit reached'
             }
         }
-
+        
         // Check minimum purchase requirement
         if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
             throw {
@@ -182,7 +190,7 @@ module.exports.applyCoupon = async (req, res, next) => {
 
         //calculate discount
         let discount = 0;
-        
+
         if(!userUsedCoupon){
             if (coupon.discount_type === "percentage") {
                 discount = (coupon.discount_value / 100) * subTotal;
@@ -190,7 +198,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (coupon.maximum_discount && discount > coupon.maximum_discount) {
                     discount = coupon.maximum_discount;
                 }
-            } else if (coupon.discount_type === "fixed") {
+            } else if (coupon.discount_type === "fixed_amount") {
                 discount = coupon.discount_value;
             }
             total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative

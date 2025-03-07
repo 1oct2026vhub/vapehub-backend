@@ -29,7 +29,7 @@ module.exports.login = async (req, res, next) => {
             return errorResponse(res, { message: "Invalid email or password" }, 400);
         }
         // Ensure user is part of the admin panel
-        if (!user.roles || !user.roles.is_admin_panel) {
+        if (!user.roles?.is_admin_panel) {
             return errorResponse(res, { message: "Unauthorized: Admin access required" }, 403);
         }
 
@@ -69,13 +69,7 @@ module.exports.login = async (req, res, next) => {
                 return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
             } else if (tokenExpiryDate > currentTime) {
                 // Email not verified and token is still valid
-                throw {
-                    message: "Email not verified! Please verify your email",
-                    statusCode: 400,
-                    errors: {
-                        email: "Email not verified! Please verify your email",
-                    }
-                };
+                throw new Error("Email not verified! Please verify your email");
             }
         }
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
@@ -101,23 +95,11 @@ module.exports.verifyEmail = async (req, res, next) => {
         const { token } = req.query;
         const user = await User.findOne({ where: { token } });
         if (!user) {
-            throw {
-                message: "Invalid link or link expired",
-                statusCode: 400,
-                errors: {
-                    token: "Invalid link or link expired",
-                }
-            }
+            throw new Error("Invalid link or link expired");
         }
 
         if (user.token_expiry < new Date()) {
-            throw {
-                message: "Invalid link or link expired",
-                statusCode: 400,
-                errors: {
-                    token: "Invalid link or link expired",
-                }
-            }
+            throw new Error("Invalid link or link expired");
         }
         user.email_verified_at = new Date();
         user.token = null;
@@ -149,13 +131,7 @@ module.exports.forgotPassword = async (req, res, next) => {
             throw new Error("User not found");
         }
         if (!user?.email_verified_at) {
-            throw {
-                message: "Email is not verified. Please verify your email first.",
-                statusCode: 400,
-                errors: {
-                    email: "Email is not verified. Please verify your email first.",
-                }
-            }
+            throw new Error("Email is not verified. Please verify your email first.");
         }
         const token = uuid()
         const token_expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hours
@@ -187,35 +163,24 @@ module.exports.resetPassword = async (req, res, next) => {
         const { token, password } = req.body;
         const user = await User.findOne({ where: { token } });
         if (!user || user.token_expiry < new Date()) {
-            throw {
-                message: "Invalid link or link expired",
-                statusCode: 400,
-                errors: {
-                    token: "Invalid link or link expired",
-                }
-            }
+            throw new Error("Invalid link or link expired");
         }
         // compare to current user password
         const passwordMatch = await bcrypt.compareSync(password, user.password);
         if (passwordMatch) {
-            throw {
-                message: "New password cannot be same as current password",
-                statusCode: 400,
-                errors: {
-                    password: "New password cannot be same as current password",
-                }
-            }
+            throw new Error("New password cannot be same as current password");
         }
         const hashedPassword = await bcrypt.hashSync(password, 10);
         user.password = hashedPassword;
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        return successResponse(res, { message: "Password reset successful! Please log in to continue." }, "Password reset successful! Please log in to continue.", 200);
+
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
+        return successResponse(res, { message: "Password reset successful! Please log in to continue.", accessToken, refreshToken }, "Password reset successful! Please log in to continue.", 200);
     } catch (error) {
         return errorResponse(res, error);
     }
-
 }
 
 module.exports.refreshToken = async (req, res, next) => {
@@ -225,13 +190,7 @@ module.exports.refreshToken = async (req, res, next) => {
         const decoded = verifyAuthJwtToken(refreshToken, process.env.JWT_REFRESH_SECRET);
         const user = await User.findByPk(decoded.id);
         if (!user) {
-            throw {
-                message: "User not found",
-                statusCode: 404,
-                errors: {
-                    refreshToken: "User not found",
-                }
-            }
+            throw new Error("User not found");
         }
         const { accessToken, refreshToken: newRefreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
