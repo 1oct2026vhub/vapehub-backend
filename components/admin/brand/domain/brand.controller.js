@@ -216,65 +216,151 @@ module.exports.restoreBrand = async (req, res, next) => {
  */
 module.exports.bulkUpdateBrands = async (req, res, next) => {
     try {
-        const { file } = req; // Get the uploaded file
-        const { id: updated_by } = req.user; // Get the ID of the user making the update
+        const { file } = req;
+        const { id: updated_by } = req.user;
 
         if (!file) {
             return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
         }
 
         const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
-        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+        await workbook.xlsx.load(file.buffer);
+        const worksheet = workbook.worksheets[0];
 
         // Check the header row
         const headerRow = worksheet.getRow(1).values;
         const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
 
-        // Array to hold the results of each operation
         let results = [];
+        const promises = []; // Array to store all promises
 
-        // Iterate through each row in the worksheet
-        worksheet.eachRow({ includeEmpty: false }, async (row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip header row
+        // Convert worksheet rows to array and skip header
+        const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
 
-            // If the first header is empty, skip the first column in each row
-            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+        // Process each row
+        for (const row of rows) {
+            // Skip empty rows
+            if (!row.values || row.values.length === 0) continue;
 
-            const [name, slug, description] = rowValues; // Adjust destructuring based on the new structure
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values;
+            const [name, slug, description] = rowValues;
 
-            // Check if the slug already exists
-            let brand = await Brand.findOne({ where: { slug } });
-
-            try {
-                if (!brand) {
-                    // If brand does not exist, create a new one
-                    brand = await Brand.create({
-                        name: typeof name === 'string' ? name.trim() : name,
-                        slug: typeof slug === 'string' ? slug.trim() : slug,
-                        description: typeof description === 'string' ? description.trim() : description,
-                        updated_by // Set the updated_by field
-                    });
-                    results.push({ slug, status: 'Created', id: brand.id });
-                } else {
-                    // Update existing brand fields
-                    await brand.update({
-                        name: typeof name === 'string' ? name.trim() : brand.name,
-                        description: typeof description === 'string' ? description.trim() : brand.description,
-                        updated_by // Update the updated_by field
-                    });
-                    results.push({ slug, status: 'Updated', id: brand.id });
-                }
-            } catch (updateError) {
-                results.push({ slug, status: 'Error', message: updateError.message });
-                console.error(`Error processing brand with slug ${slug}:`, updateError);
+            // Skip if required fields are missing
+            if (!name || !slug) {
+                results.push({
+                    slug: slug || 'Missing slug',
+                    name: name || 'Missing name',
+                    status: 'Skipped',
+                    message: 'Missing required fields'
+                });
+                continue;
             }
+
+            // Create a promise for processing each row
+            const processRowPromise = async () => {
+                try {
+                    // Validate slug format
+                    const cleanSlug = typeof slug === 'string' ? 
+                        slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') : 
+                        slug;
+
+                    // Check if brand exists
+                    let brand = await Brand.findOne({
+                        where: { slug: cleanSlug }
+                    });
+
+                    if (!brand) {
+                        // Create new brand
+                        brand = await Brand.create({
+                            name: typeof name === 'string' ? name.trim() : name,
+                            slug: cleanSlug,
+                            description: typeof description === 'string' ? description.trim() : description,
+                            updated_by
+                        });
+
+                        results.push({
+                            slug: cleanSlug,
+                            name: brand.name,
+                            status: 'Created',
+                            id: brand.id
+                        });
+                    } else {
+                        // Check if any changes are needed
+                        const updates = {
+                            name: typeof name === 'string' ? name.trim() : brand.name,
+                            description: typeof description === 'string' ? description.trim() : brand.description,
+                            updated_by
+                        };
+
+                        const hasChanges = Object.keys(updates).some(key => 
+                            updates[key] !== brand[key]
+                        );
+
+                        if (hasChanges) {
+                            // Update existing brand
+                            await brand.update(updates);
+                            results.push({
+                                slug: cleanSlug,
+                                name: updates.name,
+                                status: 'Updated',
+                                id: brand.id
+                            });
+                        } else {
+                            results.push({
+                                slug: cleanSlug,
+                                name: brand.name,
+                                status: 'Unchanged',
+                                id: brand.id
+                            });
+                        }
+                    }
+                } catch (error) {
+                    results.push({
+                        slug: slug || 'Unknown',
+                        name: name || 'Unknown',
+                        status: 'Error',
+                        message: error.message
+                    });
+                    console.error(`Error processing brand with slug ${slug}:`, error);
+                }
+            };
+
+            promises.push(processRowPromise());
+        }
+
+        // Wait for all promises to resolve
+        await Promise.all(promises);
+
+        // Sort results by status
+        results.sort((a, b) => {
+            const statusOrder = {
+                'Created': 1,
+                'Updated': 2,
+                'Unchanged': 3,
+                'Error': 4,
+                'Skipped': 5
+            };
+            return statusOrder[a.status] - statusOrder[b.status];
         });
 
-        return successResponse(res, { results }, "Brands processed successfully");
+        // Generate summary
+        const summary = {
+            total: results.length,
+            created: results.filter(r => r.status === 'Created').length,
+            updated: results.filter(r => r.status === 'Updated').length,
+            unchanged: results.filter(r => r.status === 'Unchanged').length,
+            errors: results.filter(r => r.status === 'Error').length,
+            skipped: results.filter(r => r.status === 'Skipped').length
+        };
+
+        return successResponse(res, {
+            summary,
+            results
+        }, "Brands processed successfully");
+
     } catch (error) {
-        console.error('Error during bulk update:', error); // Log the error for debugging
-        return errorResponse(res, error, error.message);
+        console.error('Error during bulk update:', error);
+        return errorResponse(res, error, "Error processing brands");
     }
 };
 

@@ -249,69 +249,129 @@ module.exports.restoreCategory = async (req, res, next) => {
  */
 module.exports.bulkUpdateCategories = async (req, res, next) => {
     try {
-        const { file } = req; // Get the uploaded file
+        const { file } = req;
         if (!file) {
             return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
         }
 
         const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(file.buffer); // Load the Excel file from buffer
-        const worksheet = workbook.worksheets[0]; // Get the first worksheet
+        await workbook.xlsx.load(file.buffer);
+        const worksheet = workbook.worksheets[0];
 
         // Check the header row
         const headerRow = worksheet.getRow(1).values;
         const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
 
-        // Array to hold the results of each operation
         let results = [];
+        const promises = []; // Array to store all promises
 
-        // Iterate through each row in the worksheet
-        worksheet.eachRow({ includeEmpty: false }, async (row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip header row
+        // Convert worksheet rows to array and skip header
+        const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
 
-            // If the first header is empty, skip the first column in each row
-            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values; // Skip the first column if empty
+        // Process each row
+        for (const row of rows) {
+            // Skip empty rows
+            if (!row.values || row.values.length === 0) continue;
 
-            const [name, slug, description, parent_slug] = rowValues; // Adjust destructuring based on the new structure
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values;
+            const [name, slug, description, parent_slug] = rowValues;
 
-            // Find the parent category by slug
-            let parentCategory = null;
-            if (parent_slug) {
-                parentCategory = await Category.findOne({ where: { slug: parent_slug } });
+            // Skip if required fields are missing
+            if (!name || !slug) {
+                results.push({ 
+                    slug: slug || 'Missing slug', 
+                    status: 'Skipped', 
+                    message: 'Missing required fields' 
+                });
+                continue;
             }
 
-            // Check if the slug already exists
-            let category = await Category.findOne({ where: { slug } });
+            // Create a promise for processing each row
+            const processRowPromise = async () => {
+                try {
+                    // Find parent category if parent_slug exists
+                    let parentCategory = null;
+                    if (parent_slug) {
+                        parentCategory = await Category.findOne({ 
+                            where: { slug: parent_slug } 
+                        });
+                    }
 
-            try {
-                if (!category) {
-                    // If category does not exist, create a new one
-                    category = await Category.create({
-                        name: typeof name === 'string' ? name.trim() : name,
-                        slug: typeof slug === 'string' ? slug.trim() : slug,
-                        description: typeof description === 'string' ? description.trim() : description,
-                        parent_id: parentCategory ? parentCategory.id : null, // Use parent category ID if found
+                    // Check if category exists
+                    let category = await Category.findOne({ 
+                        where: { slug } 
                     });
-                    results.push({ slug, status: 'Created', id: category.id });
-                } else {
-                    // Update existing category fields
-                    await category.update({
-                        name: typeof name === 'string' ? name.trim() : category.name,
-                        description: typeof description === 'string' ? description.trim() : category.description,
-                        parent_id: parentCategory ? parentCategory.id : null, // Update parent ID if found
+
+                    if (!category) {
+                        // Create new category
+                        category = await Category.create({
+                            name: typeof name === 'string' ? name.trim() : name,
+                            slug: typeof slug === 'string' ? slug.trim() : slug,
+                            description: typeof description === 'string' ? description.trim() : description,
+                            parent_id: parentCategory ? parentCategory.id : null,
+                        });
+                        results.push({ 
+                            slug, 
+                            status: 'Created', 
+                            id: category.id 
+                        });
+                    } else {
+                        // Update existing category
+                        await category.update({
+                            name: typeof name === 'string' ? name.trim() : category.name,
+                            description: typeof description === 'string' ? description.trim() : category.description,
+                            parent_id: parentCategory ? parentCategory.id : null,
+                        });
+                        results.push({ 
+                            slug, 
+                            status: 'Updated', 
+                            id: category.id 
+                        });
+                    }
+                } catch (error) {
+                    results.push({ 
+                        slug: slug || 'Unknown', 
+                        status: 'Error', 
+                        message: error.message 
                     });
-                    results.push({ slug, status: 'Updated', id: category.id });
+                    console.error(`Error processing category with slug ${slug}:`, error);
                 }
-            } catch (updateError) {
-                results.push({ slug, status: 'Error', message: updateError.message });
-                console.error(`Error processing category with slug ${slug}:`, updateError);
-            }
+            };
+
+            promises.push(processRowPromise());
+        }
+
+        // Wait for all promises to resolve
+        await Promise.all(promises);
+
+        // Sort results by status (Created, Updated, Error, Skipped)
+        results.sort((a, b) => {
+            const statusOrder = {
+                'Created': 1,
+                'Updated': 2,
+                'Error': 3,
+                'Skipped': 4
+            };
+            return statusOrder[a.status] - statusOrder[b.status];
         });
 
-        return successResponse(res, { results }, "Categories processed successfully");
+        // Return response with summary
+        const summary = {
+            total: results.length,
+            created: results.filter(r => r.status === 'Created').length,
+            updated: results.filter(r => r.status === 'Updated').length,
+            errors: results.filter(r => r.status === 'Error').length,
+            skipped: results.filter(r => r.status === 'Skipped').length,
+        };
+
+        return successResponse(res, {
+            summary,
+            results
+        }, "Categories processed successfully");
+
     } catch (error) {
-        console.error('Error during bulk update:', error); // Log the error for debugging
-        return errorResponse(res, error, error.message);
+        console.error('Error during bulk update:', error);
+        return errorResponse(res, error, "Error processing categories");
     }
 };
 

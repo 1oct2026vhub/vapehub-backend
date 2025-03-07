@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadFileMiddleware } = require("../helper/category.validator");
+const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadXlxFileMiddleware } = require("../helper/category.validator");
 
 /**
  * @swagger
@@ -248,6 +248,6 @@ router.get('/download/sample-excel', [authMiddleware(true)], categoryController.
  *       500:
  *         description: Internal server error
  */
-router.post('/bulk-update/categories', [authMiddleware(true), uploadFileMiddleware, validateRequest(bulkUpdateCategoriesValidation)], categoryController.bulkUpdateCategories);
+router.post('/bulk-update/categories', [authMiddleware(true), uploadXlxFileMiddleware, validateRequest(bulkUpdateCategoriesValidation)], categoryController.bulkUpdateCategories);
 
 module.exports = router;
