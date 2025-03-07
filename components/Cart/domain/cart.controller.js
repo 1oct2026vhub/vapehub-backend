@@ -46,7 +46,7 @@ const includeClause = [
 
 module.exports.listCartItems = async (req, res, next) => {
     try {
-        const user_id = 222 || req.user.id;
+        const user_id = req.user.id;
         const carts = await Cart.findAll({
             where: { user_id },
             include: includeClause
