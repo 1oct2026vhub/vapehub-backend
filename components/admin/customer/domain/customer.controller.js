@@ -211,21 +211,21 @@ module.exports.getUserDetails = async (req, res) => {
                                 { 
                                     model: ProductVariant,
                                     as: "variant",
-                                    // include: [
-                                    //     {
-                                    //         model: Product,
-                                    //         as: "product",
-                                    //         include: [
-                                    //             {
-                                    //                 model: ProductImage,
-                                    //                 as: "ProductImages",
-                                    //                 attributes: ["id", "image_url", "is_primary"],
-                                    //                 required: false
-                                    //             }
-                                    //         ],
-                                    //         required: false
-                                    //     }
-                                    // ],
+                                    include: [
+                                        {
+                                            model: Product,
+                                            as: "product",
+                                            include: [
+                                                {
+                                                    model: ProductImage,
+                                                    as: "ProductImages",
+                                                    attributes: ["id", "image_url", "is_primary"],
+                                                    required: false
+                                                }
+                                            ],
+                                            required: false
+                                        }
+                                    ],
                                     attributes: ["id", "price", "stock", "stock_status"],
                                     required: false
                                 }
