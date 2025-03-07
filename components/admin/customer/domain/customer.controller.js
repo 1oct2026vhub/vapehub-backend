@@ -72,7 +72,7 @@ module.exports.listUsers = async (req, res) => {
                 as: "orders", 
                 attributes: [
                     "id", 
-                    "order_status", 
+                    "status", 
                     "createdAt", 
                     "updatedAt" 
                 ],
