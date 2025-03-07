@@ -85,3 +85,28 @@ module.exports.deleteShippingMethod = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+
+// Restore shipping method
+module.exports.restoreShippingMethod = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Find the deleted shipping method (with paranoid: false to include soft-deleted records)
+        const shippingMethod = await ShippingMethod.findByPk(id, { paranoid: false });
+
+        if (!shippingMethod) {
+            throw { statusCode: 404, message: 'Shipping method not found' };
+        }
+
+        if (!shippingMethod.deletedAt) {
+            return successResponse(res, shippingMethod, 'Shipping method is already active');
+        }
+
+        await shippingMethod.restore(); // Restore the soft-deleted record
+
+        successResponse(res, shippingMethod, 'Shipping method restored successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
