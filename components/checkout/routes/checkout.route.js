@@ -14,7 +14,7 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *     tags:
  *       - Checkout
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -143,7 +143,7 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *     tags:
  *       - Coupon
  *     security:
- *       - BearerAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
