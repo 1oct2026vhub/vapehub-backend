@@ -7,8 +7,9 @@ module.exports.checkout = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const { couponCode } = req.body;
-        let total = 0
-        let subTotal = 0
+        let total = 0;
+        let subTotal = 0;
+        let validityMessage = '';
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -39,7 +40,7 @@ module.exports.checkout = async (req, res, next) => {
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
-                return errorResponse(res, {}, "Variant missing", 404); // Stop execution immediately
+                return errorResponse(res, {}, `Variant ${item.variant.slug} is missing`, 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
         }
@@ -54,38 +55,52 @@ module.exports.checkout = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         });
-
         if(couponCode && coupon && couponCode === coupon.code){
                 if (!coupon.minimum_purchase || (subTotal >= coupon.minimum_purchase)) {
-                    if (!coupon.usage_limit || (coupon.usage_count <= coupon.usage_limit)) {
-                        // Check minimum purchase requirement
-                        
+                    if (!coupon.usage_limit || (coupon.usage_count < coupon.usage_limit)) {
                             const userUsedCoupon = await CouponUsage.findOne({
                                 where: { user_id: userId, coupon_id: coupon.id }
                             });
                             if (!userUsedCoupon) {
                                 //calculate discount
                                 let discount = 0;
+                                
                                 if (coupon.discount_type === "percentage") {
                                     discount = (coupon.discount_value / 100) * subTotal;
-                                    if (coupon.maximum_discount && discount > coupon.maximum_discount) {
-                                        discount = coupon.maximum_discount;
-                                    }
                                 } else if (coupon.discount_type === "fixed_amount") {
                                     discount = coupon.discount_value;
                                 }
+                                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount) ) {
+                                    discount = coupon.maximum_discount;
+                                }
+                                if(parseFloat(discount) > parseFloat(subTotal)){
+                                    discount = coupon.maximum_discount
+                                }
                                 total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+                            }
+                            else{
+                                validityMessage = 'You have already used this coupon.'
                             }
     
                     }
+                    else{
+                        validityMessage = 'Coupon usage limit reached'
+                    }
+                }
+                else{
+                    validityMessage = `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
                 }
             
+        }
+        else{
+            validityMessage = 'Invalid or expired coupon code'
         }
 
         const resObj = {
             cart,
             subTotal,
-            total
+            total,
+            validityMessage
         }
         successResponse(res, resObj, 'Success');
     } catch (error) {
@@ -132,7 +147,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
-                return errorResponse(res, {}, "Variant missing", 404); // Stop execution immediately
+                return errorResponse(res, {}, `Variant ${item.variant.slug} is missing`, 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
         }
@@ -192,16 +207,18 @@ module.exports.applyCoupon = async (req, res, next) => {
         if(!userUsedCoupon){
             if (coupon.discount_type === "percentage") {
                 discount = (coupon.discount_value / 100) * subTotal;
-                // Apply maximum discount cap if set
-                if (coupon.maximum_discount && discount > coupon.maximum_discount) {
-                    discount = coupon.maximum_discount;
-                }
             } else if (coupon.discount_type === "fixed_amount") {
                 discount = coupon.discount_value;
             }
+
+            if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                discount = coupon.maximum_discount;
+            }
+            if(parseFloat(discount) > parseFloat(subTotal)){
+                discount = coupon.maximum_discount
+            }
             total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
         }
-                
         const resObj = {
             subTotal,
             total
