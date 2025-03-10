@@ -157,8 +157,7 @@ router.post('/forgot-password', validateRequest(authValidation.forgotPassword), 
    *     summary: Reset password for the user
    *     description: Endpoint to reset the user's password using a token and a new password.
    *     tags:
-   *      - ADMIN 
-   *      - Authentication
+   *      - ADMIN - Authentication
    *     requestBody:
    *       required: true
    *       content:
