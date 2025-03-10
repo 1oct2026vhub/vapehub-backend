@@ -126,13 +126,30 @@ module.exports.verifyEmail = async (req, res, next) => {
 module.exports.forgotPassword = async (req, res, next) => {
     try {
         const { email } = req.body;
-        const user = await User.findOne({ where: { email } });
+        const user = await User.findOne({
+            where: { email },
+            include: [
+                {
+                    model: Role,
+                    as: "roles",
+                    attributes: ["is_admin_panel"],
+                },
+            ],
+        });
+        
         if (!user) {
             throw new Error("User not found");
         }
+
+        // Check if user has admin panel access
+        if (!user.roles?.is_admin_panel) {
+            return errorResponse(res, { message: "Unauthorized: Admin access required" }, "Unauthorized: Admin access required", 403);
+        }
+
         if (!user?.email_verified_at) {
             throw new Error("Email is not verified. Please verify your email first.");
         }
+        
         const token = uuid()
         const token_expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hours
         user.token = token;
@@ -166,10 +183,31 @@ module.exports.resetPassword = async (req, res, next) => {
             throw new Error("Password and confirm password do not match");
         }
 
-        const user = await User.findOne({ where: { token } });
+        const user = await User.findOne({ 
+            where: { token },
+            include: [
+                {
+                    model: Role,
+                    as: "roles",
+                    attributes: ["is_admin_panel"],
+                },
+            ],
+        });
+
         if (!user || user.token_expiry < new Date()) {
             throw new Error("Invalid link or link expired");
         }
+
+        // Check if user has admin panel access
+        if (!user.roles?.is_admin_panel) {
+            return errorResponse(
+                res, 
+                { message: "This email is not registered for admin access" }, 
+                "This email is not registered for admin access", 
+                403
+            );
+        }
+
         // compare to current user password
         const passwordMatch = await bcrypt.compareSync(password, user.password);
         if (passwordMatch) {
