@@ -26,21 +26,21 @@ module.exports.login = async (req, res, next) => {
         });
         
         if (!user) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, { message: "Invalid email or password" },"Invalid email or password",400);
         }
         // Ensure user is part of the admin panel
         if (!user.roles?.is_admin_panel) {
-            return errorResponse(res, { message: "Unauthorized: Admin access required" }, 403);
+            return errorResponse(res, { message: "Unauthorized: Admin access required" },"Unauthorized: Admin access required",403);
         }
 
         if (user.blocked) {
-            return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." }, 400);
+            return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." },"Your account has been blocked. Please reach out to support for assistance.",400);
         }
       
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, { message: "Invalid email or password" },"Invalid email or password", 400);
         }
 
         if (!user?.email_verified_at) {
@@ -60,13 +60,13 @@ module.exports.login = async (req, res, next) => {
                     to: user.email,
                     context: {
                         userName: username,
-                        verificationLink: `${process.env.FRONTEND_URL}/email-verify?token=${token}`,
+                        verificationLink: `${process.env.ADMIN_FRONTEND_URL}/email-verify?token=${token}`,
                         expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
                 }
                 await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-                return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" }, 400);
+                return errorResponse(res, { message: "Email not verified. A new verification email has been sent to your email address" },"Email not verified. A new verification email has been sent to your email address", 400);
             } else if (tokenExpiryDate > currentTime) {
                 // Email not verified and token is still valid
                 throw new Error("Email not verified! Please verify your email");
@@ -86,7 +86,7 @@ module.exports.login = async (req, res, next) => {
         // res, data, message, statusCode
         return successResponse(res, { ...userData, accessToken, refreshToken });
     } catch (error) {
-        return errorResponse(res, error, error.message);
+        return errorResponse(res, error, error.message, 500);
     }
 }
 
@@ -119,7 +119,7 @@ module.exports.verifyEmail = async (req, res, next) => {
         return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
-        return errorResponse(res, error);
+        return errorResponse(res, error, error.message, 500);
     }
 }
 
@@ -144,7 +144,7 @@ module.exports.forgotPassword = async (req, res, next) => {
             to: user.email,
             context: {
                 userName: user?.first_name ?? user.email.split('@')[0],
-                resetPasswordLink: `${process.env.FRONTEND_URL}/reset-password?token=${token}`,
+                resetPasswordLink: `${process.env.ADMIN_FRONTEND_URL}/reset-password?token=${token}`,
                 expiryTime: moment(token_expiry).format('LLLL'),
             },
             attachments: ""
@@ -154,13 +154,18 @@ module.exports.forgotPassword = async (req, res, next) => {
         return successResponse(res, { message: "Password reset email sent successfully" }, "Password reset email sent successfully", 200);
 
     } catch (error) {
-        return errorResponse(res, error);
+        return errorResponse(res, error, error.message, 500);
     }
 }
 
 module.exports.resetPassword = async (req, res, next) => {
     try {
-        const { token, password } = req.body;
+        const { token, password, confirmPassword } = req.body;
+        
+        if (password !== confirmPassword) {
+            throw new Error("Password and confirm password do not match");
+        }
+
         const user = await User.findOne({ where: { token } });
         if (!user || user.token_expiry < new Date()) {
             throw new Error("Invalid link or link expired");
@@ -179,7 +184,7 @@ module.exports.resetPassword = async (req, res, next) => {
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { message: "Password reset successful! Please log in to continue.", accessToken, refreshToken }, "Password reset successful! Please log in to continue.", 200);
     } catch (error) {
-        return errorResponse(res, error);
+        return errorResponse(res, error, error.message, 500 );
     }
 }
 
@@ -195,6 +200,6 @@ module.exports.refreshToken = async (req, res, next) => {
         const { accessToken, refreshToken: newRefreshToken } = generateAuthJwtToken({ id: user.id });
         return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
     } catch (error) {
-        return errorResponse(res, error);
+        return errorResponse(res, error, error.message, 500 );
     }
 }
