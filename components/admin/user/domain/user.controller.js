@@ -86,7 +86,7 @@ module.exports.createUser = async (req, res) => {
                 to: newUser.email,
                 context: {
                     userName: username,
-                    verificationLink: `${process.env.FRONTEND_URL}/email-verify?token=${token}`,
+                    verificationLink: `${process.env.ADMIN_FRONTEND_URL}/email-verify?token=${token}`,
                     expiryTime: moment(token_expiry).format('LLLL'),
                 },
                 attachments: ""

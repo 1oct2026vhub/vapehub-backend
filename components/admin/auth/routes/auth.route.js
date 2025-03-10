@@ -157,30 +157,38 @@ router.post('/forgot-password', validateRequest(authValidation.forgotPassword), 
    *     summary: Reset password for the user
    *     description: Endpoint to reset the user's password using a token and a new password.
    *     tags:
- *      - ADMIN 
- *        - Authentication
-*     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               token:
- *                 type: string
- *                 format: string
- *                 description: token sent to the user's email
- *                 example: 62af6dd0-f7fc-49ff-9fdf-ceb2331c9180
- *               password:
- *                 type: string
- *                 description: The new password of the user (must be at least 8 characters)
- *                 minLength: 8
- *                 example: password123
+   *      - ADMIN 
+   *      - Authentication
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               token:
+   *                 type: string
+   *                 format: string
+   *                 description: token sent to the user's email
+   *                 example: 62af6dd0-f7fc-49ff-9fdf-ceb2331c9180
+   *               password:
+   *                 type: string
+   *                 description: The new password of the user (must be at least 8 characters with one uppercase, one lowercase, one number, and one special character)
+   *                 minLength: 8
+   *                 example: Password@123
+   *               confirmPassword:
+   *                 type: string
+   *                 description: Confirm password (must match password)
+   *                 example: Password@123
+   *             required:
+   *               - token
+   *               - password
+   *               - confirmPassword
    *     responses:
    *       200:
    *         description: Password reset successful
    *       400:
-   *         description: Invalid request (e.g., invalid token or password)
+   *         description: Invalid request (e.g., invalid token, password mismatch, or invalid password format)
    *       500:
    *         description: Internal server error
    */
