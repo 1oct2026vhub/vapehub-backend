@@ -40,7 +40,7 @@ module.exports.checkout = async (req, res, next) => {
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
-                return errorResponse(res, {}, `Variant ${item.variant.slug} is missing`, 404); // Stop execution immediately
+                return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
         }
@@ -95,7 +95,8 @@ module.exports.checkout = async (req, res, next) => {
         else{
             validityMessage = 'Invalid or expired coupon code'
         }
-
+        total = parseFloat(Math.max(0, total).toFixed(2));
+        subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             cart,
             subTotal,
@@ -147,7 +148,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
-                return errorResponse(res, {}, `Variant ${item.variant.slug} is missing`, 404); // Stop execution immediately
+                return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
         }
@@ -219,6 +220,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
             total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
         }
+        total = parseFloat(Math.max(0, total).toFixed(2));
+        subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             subTotal,
             total
