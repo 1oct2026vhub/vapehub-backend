@@ -10,6 +10,7 @@ module.exports.checkout = async (req, res, next) => {
         let total = 0;
         let subTotal = 0;
         let validityMessage = '';
+        let totalItems = 0;
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -43,6 +44,7 @@ module.exports.checkout = async (req, res, next) => {
                 return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
+            totalItems += item.quantity
         }
         
         total = subTotal
@@ -99,6 +101,7 @@ module.exports.checkout = async (req, res, next) => {
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             cart,
+            totalItems,
             subTotal,
             total,
             validityMessage
@@ -117,6 +120,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         const { couponCode } = req.body;
         let subTotal = 0
         let total = 0
+        let totalItems = 0;
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -151,6 +155,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
             subTotal += item.quantity * item.variant.price;
+            totalItems += item.quantity
         }
         
         total = subTotal
@@ -223,6 +228,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
+            totalItems,
             subTotal,
             total
         }
