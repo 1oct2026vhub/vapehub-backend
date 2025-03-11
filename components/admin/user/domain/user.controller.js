@@ -160,10 +160,18 @@ module.exports.updateUser = async (req, res) => {
 //List all users (with pagination)
 module.exports.listUsers = async (req, res) => {
     try {
-        const { sort_by = 'createdAt', order = 'DESC', page = 1, limit = 10, roleId, search, deleted = "false" } = req.query;
+        const { 
+            sort_by = 'createdAt', 
+            order = 'DESC', 
+            page = 1, 
+            limit = 10, 
+            roleId, 
+            search, 
+            deleted = "false",
+            verified = "all" 
+        } = req.query;
 
         const offset = (page - 1) * limit;
-
         const whereCondition = {};
 
         // Filter by roleId if provided
@@ -182,13 +190,20 @@ module.exports.listUsers = async (req, res) => {
             ];
         }
 
-        // Filter by deleted flag if provided
+        // Filter by deleted flag
         if (deleted !== undefined) {
             if (deleted === "true") {
-                whereCondition.deletedAt = { [Op.ne]: null }; // Only soft-deleted users
+                whereCondition.deletedAt = { [Op.ne]: null };
             } else {
-                whereCondition.deletedAt = null; // Only active users
+                whereCondition.deletedAt = null;
             }
+        }
+
+        // Add email verification filter
+        if (verified !== "all") {
+            whereCondition.email_verified_at = verified === "true" ? 
+                { [Op.ne]: null } : // For verified emails
+                null;              // For unverified emails
         }
 
         const users = await User.findAndCountAll({

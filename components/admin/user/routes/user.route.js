@@ -219,6 +219,12 @@ router.put(
  *         schema:
  *           type: boolean
  *         description: Filter users based on soft delete flag (true = only deleted users, false = only active users)
+ *       - in: query
+ *         name: verified
+ *         schema:
+ *           type: string
+ *           enum: [all, true, false]
+ *         description: Filter users by email verification status
  *     responses:
  *       200:
  *         description: Users retrieved successfully

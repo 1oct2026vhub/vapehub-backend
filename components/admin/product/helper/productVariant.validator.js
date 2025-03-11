@@ -84,9 +84,9 @@ const commonValidations = {
     ],
 
     attributeTermId: [
-        param('attribute_term_id') // Assuming the ID is passed as a URL parameter
+        param('attribute_term_id')
             .exists().withMessage('Attribute Term ID is required')
-            .isInt().withMessage('Attribute Term ID must be a valid integer'), // Adjust based on your ID type
+            .isInt().withMessage('Attribute Term ID must be a valid integer'),
     ],
 };
 
@@ -107,9 +107,26 @@ const upload = multer({
     },
 });
 
+// Configure multer for handling Excel file uploads
+const excelStorage = multer.memoryStorage();
+const uploadExcel = multer({
+    storage: excelStorage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.xlsx', '.xls'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
+        }
+        cb(null, true);
+    },
+});
+
 // Middleware for variant image upload validation
 const uploadVariantImageMiddleware = (req, res, next) => {
-    upload.array("files", 10)(req, res, (err) => { // Allow up to 10 images
+    upload.array("files", 10)(req, res, (err) => {
         if (err instanceof multer.MulterError) {
             return res.status(400).json({
                 success: false,
@@ -124,7 +141,6 @@ const uploadVariantImageMiddleware = (req, res, next) => {
             });
         }
 
-        // Validate if any files were uploaded
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -137,7 +153,54 @@ const uploadVariantImageMiddleware = (req, res, next) => {
     });
 };
 
+// Middleware for Excel file upload validation
+const uploadExcelMiddleware = (req, res, next) => {
+    uploadExcel.single('file')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({
+                success: false,
+                message: "File upload error",
+                errors: [{ path: "file", msg: err.message }],
+            });
+        } else if (err) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid file type",
+                errors: [{ path: "file", msg: err.message }],
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "No file uploaded",
+                errors: [{ path: "file", msg: "Please upload an Excel file" }],
+            });
+        }
+
+        next();
+    });
+};
+
 // Validator configurations
+const bulkUpdateVariantsValidator = [
+    uploadExcelMiddleware,
+    body('file')
+        .custom((value, { req }) => {
+            if (!req.file) {
+                throw new Error('Excel file must be uploaded');
+            }
+            const ext = path.extname(req.file.originalname).toLowerCase();
+            if (!['.xlsx', '.xls'].includes(ext)) {
+                throw new Error('Only .xlsx and .xls files are allowed');
+            }
+            if (req.file.size > 5 * 1024 * 1024) {
+                throw new Error('File size should not exceed 5MB');
+            }
+            return true;
+        })
+];
+
 const addProductAttributesValidator = [
     commonValidations.productId,
     ...commonValidations.attributeValidation,
@@ -206,10 +269,8 @@ const updateProductVariantValidator = [
         .withMessage('Term ID must be a positive integer')
 ];
 
-// Modified uploadVariantImagesValidator to use with multer
 const uploadVariantImagesValidator = [
     commonValidations.variantId,
-    // File validation is handled by uploadVariantImageMiddleware
 ];
 
 const setVariantPrimaryImageValidator = [
@@ -239,11 +300,11 @@ const updateProductAttributesValidator = [
         .isInt()
         .withMessage('Invalid attribute ID')
 ];
+
 const removeProductAttributeTermValidator = [
     ...commonValidations.attributeTermId,
     commonValidations.productId
 ];
-
 
 module.exports = {
     addProductAttributesValidator,
@@ -256,5 +317,7 @@ module.exports = {
     getProductVariantValidator,
     uploadVariantImageMiddleware,
     updateProductAttributesValidator,
-    removeProductAttributeTermValidator
+    removeProductAttributeTermValidator,
+    bulkUpdateVariantsValidator,
+    uploadExcelMiddleware
 };
