@@ -40,7 +40,16 @@ const userValidationRules = [
 
   body("phone")
     .optional()
-    .isMobilePhone().withMessage("Invalid phone number format"),
+    .isLength({ min: 10, max: 16 }).withMessage("Phone number must be between 10 and 16 digits long")
+    .matches(/^\d+$/).withMessage("Phone number must contain only digits")
+    .custom((value) => {
+      const mobilePattern = /^(?:\+?\d{1,3})?\s?\d{10,16}$/; // Adjusted pattern to allow 10 to 16 digits
+      if (!mobilePattern.test(value)) {
+        throw new Error("Invalid phone number format");
+      }
+      return true;
+    }),
+    // .isMobilePhone('any', { strict: true }).withMessage("Invalid mobile phone number format"),
 
   body("roleId")
     .notEmpty().withMessage("Role ID is required")
@@ -93,7 +102,16 @@ const userUpdateValidationRules = [
   
     body("phone")
         .optional()
-        .isMobilePhone().withMessage("Invalid phone number format"),
+        .isLength({ min: 10, max: 16 }).withMessage("Phone number must be between 10 and 16 digits long")
+        .matches(/^\d+$/).withMessage("Phone number must contain only digits")
+        .custom((value) => {
+          const mobilePattern = /^(?:\+?\d{1,3})?\s?\d{10,16}$/; // Adjusted pattern to allow 10 to 16 digits
+          if (!mobilePattern.test(value)) {
+            throw new Error("Invalid phone number format");
+          }
+          return true;
+        }),
+        // .isMobilePhone('any', { strict: true }).withMessage("Invalid mobile phone number format"),
   
     body("roleId")
         .optional()
@@ -158,6 +176,11 @@ const userListValidationRules = [
       .optional()
       .isBoolean()
       .withMessage("Deleted must be a boolean value"),
+
+    query("verified")
+      .optional()
+      .isIn(["all", "true", "false"])
+      .withMessage("Verified must be one of: all, true, false"),
 ];
 
 module.exports = {  };

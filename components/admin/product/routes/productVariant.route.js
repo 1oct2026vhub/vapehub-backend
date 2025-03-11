@@ -1,3 +1,130 @@
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     ProductVariant:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *           description: The variant ID
+ *         product_id:
+ *           type: integer
+ *           description: The ID of the parent product
+ *         slug:
+ *           type: string
+ *           description: Unique identifier for the variant
+ *         price:
+ *           type: number
+ *           format: float
+ *           description: Regular price of the variant
+ *         discount_price:
+ *           type: number
+ *           format: float
+ *           description: Discounted price of the variant
+ *         purchase_price:
+ *           type: number
+ *           format: float
+ *           description: Purchase price of the variant
+ *         weight:
+ *           type: number
+ *           format: float
+ *           description: Weight in grams
+ *         length:
+ *           type: number
+ *           format: float
+ *           description: Length in centimeters
+ *         width:
+ *           type: number
+ *           format: float
+ *           description: Width in centimeters
+ *         height:
+ *           type: number
+ *           format: float
+ *           description: Height in centimeters
+ *         description:
+ *           type: string
+ *           description: Variant description
+ *         barcode:
+ *           type: string
+ *           description: Unique barcode for the variant
+ *         stock:
+ *           type: integer
+ *           description: Available stock quantity
+ *         low_stock_threshold:
+ *           type: integer
+ *           description: Threshold for low stock warning
+ *         stock_status:
+ *           type: string
+ *           enum: [in_stock, out_of_stock, low_stock]
+ *           description: Current stock status
+ *         status:
+ *           type: string
+ *           enum: [active, inactive]
+ *           description: Variant status
+ *         variantImages:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: integer
+ *               image_url:
+ *                 type: string
+ *               is_primary:
+ *                 type: boolean
+ *         variantAttributes:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: integer
+ *               attribute:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   name:
+ *                     type: string
+ *               term:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   name:
+ *                     type: string
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         deleted_at:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
+ * 
+ *     Pagination:
+ *       type: object
+ *       properties:
+ *         total_count:
+ *           type: integer
+ *           description: Total number of items
+ *         total_pages:
+ *           type: integer
+ *           description: Total number of pages
+ *         current_page:
+ *           type: integer
+ *           description: Current page number
+ *         limit:
+ *           type: integer
+ *           description: Number of items per page
+ *         offset:
+ *           type: integer
+ *           description: Number of items skipped
+ */
+
 const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const productVariantController = require("../domain/productVariant.controller");
@@ -13,8 +140,10 @@ const {
     getProductVariantValidator,
     uploadVariantImageMiddleware,
     updateProductAttributesValidator,
-    removeProductAttributeTermValidator
+    removeProductAttributeTermValidator,
+    bulkUpdateVariantsValidator
 } = require("../helper/productVariant.validator");
+
 
 
 /**
@@ -1260,6 +1389,126 @@ router.put('/product/:product_id/attributes',
 router.delete('/product/:product_id/attributes/:attribute_term_id',
     [authMiddleware(true), validateRequest(removeProductAttributeTermValidator)],
     productVariantController.removeProductAttributeTerm
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/bulk-update:
+ *   post:
+ *     summary: Bulk update product variants using Excel file
+ *     tags:
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx or .xls) containing variant data
+ *     responses:
+ *       200:
+ *         description: Variants processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                           description: Total number of rows processed
+ *                         created:
+ *                           type: integer
+ *                           description: Number of new variants created
+ *                         updated:
+ *                           type: integer
+ *                           description: Number of variants updated
+ *                         errors:
+ *                           type: integer
+ *                           description: Number of rows with errors
+ *                         skipped:
+ *                           type: integer
+ *                           description: Number of rows skipped
+ *                     results:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                             description: Variant ID or 'N/A' for new variants
+ *                           slug:
+ *                             type: string
+ *                             description: Variant slug
+ *                           status:
+ *                             type: string
+ *                             enum: [Created, Updated, Error, Skipped]
+ *                           message:
+ *                             type: string
+ *                             description: Processing result message
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Excel file must be uploaded"
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update',
+    [authMiddleware(true), bulkUpdateVariantsValidator],
+    productVariantController.bulkUpdateVariants
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/bulk-update/download-sample:
+ *   get:
+ *     summary: Download sample Excel file for bulk variant update
+ *     tags:
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Excel file downloaded successfully
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/bulk-update/download-sample',
+    [authMiddleware(true)],
+    productVariantController.downloadVariantSampleExcel
 );
 
 module.exports = router;

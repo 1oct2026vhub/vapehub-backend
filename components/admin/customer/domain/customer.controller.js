@@ -10,10 +10,18 @@ const { Sequelize, Op } = require("sequelize");
 //List all users (with pagination)
 module.exports.listUsers = async (req, res) => {
     try {
-        const { sort_by = 'createdAt', order = 'DESC', page = 1, limit = 10, search, deleted = "false", blocked = "false" } = req.query;
+        const { 
+            sort_by = 'createdAt', 
+            order = 'DESC', 
+            page = 1, 
+            limit = 10, 
+            search, 
+            deleted = "false", 
+            blocked = "false",
+            verified = "all" 
+        } = req.query;
 
         const offset = (page - 1) * limit;
-
         const whereCondition = {};
 
         // Fetch non-admin roles
@@ -46,9 +54,14 @@ module.exports.listUsers = async (req, res) => {
             whereCondition.blocked = blocked === "true";
         }
 
-        const totalUsers = await User.count({
-            where: whereCondition,
-        });
+        // Filter by email verification status
+        if (verified !== "all") {
+            whereCondition.email_verified_at = verified === "true" ? 
+                { [Op.ne]: null } : 
+                null;              
+        }
+
+        const totalUsers = await User.count({ where: whereCondition });
 
         const users = await User.findAll({
             where: whereCondition,
@@ -85,12 +98,10 @@ module.exports.listUsers = async (req, res) => {
         });
 
         // Format the response to include order details if they exist
-        const formattedUsers = users.map(user => {
-            return {
-                ...user.get(), // Get user data
-                orders: user.orders || [] // Include orders if they exist, otherwise an empty array
-            };
-        });
+        const formattedUsers = users.map(user => ({
+            ...user.get(), 
+            orders: user.orders || [] 
+        }));
 
         return successResponse(res, {
             total: totalUsers,

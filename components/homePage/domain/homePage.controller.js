@@ -22,10 +22,9 @@ module.exports.createHomeCarousel = async (req, res, next) => {
         const { display_order, image_url, image_url_mid, image_url_low, title, description } = req.body;
         const existing = await Carousel.findAll({ where: { display_order } })
         if (existing.length > 0) {
-            throw {
-                message: "display_order already exists",
-                statusCode: 400,
-            }
+            const error = new Error("display_order already exists");
+            error.statusCode = 400;
+            throw error;
         }
         const carousel = await Carousel.create({ display_order, image_url, image_url_mid, image_url_low, title, description, updated_by: user_id })
         successResponse(res, carousel, 'Success');
@@ -64,10 +63,9 @@ module.exports.addBannerImage = async (req, res, next) => {
         const { display_order, image_url, image_url_mid, image_url_low, title, description } = req.body;
         const existing = await BannerImage.findAll({ where: { display_order } })
         if (existing.length > 0) {
-            throw {
-                message: "display_order already exists",
-                statusCode: 400,
-            }
+            const error = new Error("display_order already exists");
+            error.statusCode = 400;
+            throw error;
         }
         const banner = await BannerImage.create({ display_order, image_url, image_url_mid, image_url_low, title, description, updated_by: user_id })
         successResponse(res, banner, 'Success');

@@ -1,6 +1,7 @@
-const { check, param } = require("express-validator");
+const { check, param, body } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
+
 
 const productIdValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
@@ -94,11 +95,55 @@ const listAllProductsValidation = [
     check('filter').optional().isString().withMessage('Filter must be a string'),
 ];
 
+// Configure multer for handling Excel file uploads
+const uploadXlx = multer({
+    storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.xlsx', '.xls'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
+        }
+        cb(null, true);
+    },
+});
+
+const uploadXlxFileMiddleware = uploadXlx.single('file');
+
+// Validation for bulk updates
+const bulkUpdateProductsValidation = [
+    body('file')
+        .custom((value, { req }) => {
+            if (!req.file) {
+                throw new Error('Excel file must be uploaded');
+            }
+            return true;
+        }),
+    check('file')
+        .custom((value, { req }) => {
+            if (req.file) {
+                const ext = path.extname(req.file.originalname).toLowerCase();
+                if (!['.xlsx', '.xls'].includes(ext)) {
+                    throw new Error('Only .xlsx and .xls files are allowed');
+                }
+                if (req.file.size > 5 * 1024 * 1024) { // 5MB in bytes
+                    throw new Error('File size should not exceed 5MB');
+                }
+            }
+            return true;
+        })
+];
+
 module.exports = {
     productIdValidation,
     createProductValidation,
     updateProductValidations,
     productImageValidation,
     uploadFileValidation,
-    listAllProductsValidation
+    listAllProductsValidation,
+    bulkUpdateProductsValidation,
+    uploadXlxFileMiddleware
 };

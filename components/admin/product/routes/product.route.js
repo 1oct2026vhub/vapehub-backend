@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation } = require("../helper/product.validator");
+const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware } = require("../helper/product.validator");
 
 /**
  * @swagger
@@ -460,5 +460,64 @@ router.post('/price-ranges',
     [authMiddleware(true)],
     productController.getPriceRanges
 );
+
+/**
+ * @swagger
+ * /api/admin/products/bulk-update:
+ *   post:
+ *     summary: Bulk update products from an Excel file
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file containing product data
+ *     responses:
+ *       200:
+ *         description: Products updated successfully
+ *       400:
+ *         description: Invalid request parameters
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-update',
+    [authMiddleware(true), uploadXlxFileMiddleware],
+    productController.bulkUpdateProducts
+);
+
+/**
+ * @swagger
+ * /api/admin/products/download-sample:
+ *   get:
+ *     summary: Download a sample Excel file for products
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Sample Excel file downloaded successfully
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/download-sample',
+    [authMiddleware(true)],
+    productController.downloadSampleExcel
+);
+
 
 module.exports = router;

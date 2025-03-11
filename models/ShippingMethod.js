@@ -32,6 +32,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.STRING,
                 allowNull: false
             },
+            shipping_cost: {  // <-- New field added
+                type: DataTypes.DECIMAL( 8, 2),
+                allowNull: false,
+                defaultValue: 0.0, // Ensuring default value to prevent NULL errors
+            },
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,
             updated_by: {

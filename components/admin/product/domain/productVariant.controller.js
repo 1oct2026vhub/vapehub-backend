@@ -4,6 +4,7 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
+const ExcelJS = require("exceljs");
 
 const ERROR_MESSAGES = {
     VARIANT_NOT_FOUND: "Variant not found",
@@ -381,7 +382,6 @@ const checkExistingCombinations = async (attributes, product_id, transaction) =>
         },
         transaction // Include the transaction in the query
     });
-    console.log(existingCombinations)
     if (existingCombinations.length > 0) {
         throw new Error("Attribute-term combination conflict detected for the current variant.");
     }
@@ -1139,7 +1139,6 @@ module.exports.getVariantById = async (req, res) => {
 
         return successResponse(res, variant, 'Variant retrieved successfully');
     } catch (error) {
-        console.log(error);
         logger.error('Get Variant By ID Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -1312,5 +1311,369 @@ const updateStockStatus = (stock, lowStockThreshold) => {
     if (stock === 0) return 'out_of_stock';
     if (stock <= lowStockThreshold) return 'low_stock';
     return 'in_stock';
+};
+
+module.exports.bulkUpdateVariants = async (req, res, next) => {
+    const transaction = await ProductVariant.sequelize.transaction();   
+    try {
+        const { file } = req;
+        const { id: updated_by } = req.user;
+
+        if (!file) {
+            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer);
+        const worksheet = workbook.worksheets[0];
+
+        // Check the header row
+        const headerRow = worksheet.getRow(1).values;
+        const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'ID';
+
+        const results = [];
+        const promises = [];
+
+        // Convert worksheet rows to array and skip header
+        const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
+
+        // Process each row
+        for (const row of rows) {
+            // Skip empty rows
+            if (!row.values || row.values.length === 0) continue;
+
+            const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values;
+            const [
+                id,
+                product_slug,
+                slug,
+                price,
+                discount_price,
+                purchase_price,
+                weight,
+                length,
+                width,
+                height,
+                description,
+                barcode,
+                stock,
+                low_stock_threshold,
+                stock_status,
+                status,
+                attributes
+            ] = rowValues;
+
+            // Skip if required fields are missing
+            if (!product_slug || !slug) {
+                results.push({
+                    id: id || 'N/A',
+                    slug: slug || 'Missing slug',
+                    status: 'Skipped',
+                    message: 'Missing required fields (product_slug or slug)'
+                });
+                continue;
+            }
+
+            // Create a promise for processing each row
+            const processRowPromise = async () => {
+                try {
+                    // Find product by slug
+                    const product = await Product.findOne({ where: { slug: product_slug } });
+                    if (!product) throw new Error(`Product with slug ${product_slug} not found`);
+
+                    // Create variant data object
+                    const variantData = {
+                        slug: slug.trim(),
+                        price: parseFloat(price) || 0,
+                        discount_price: parseFloat(discount_price) || null,
+                        purchase_price: parseFloat(purchase_price) || 0,
+                        weight: parseFloat(weight) || 0,
+                        length: parseFloat(length) || 0,
+                        width: parseFloat(width) || 0,
+                        height: parseFloat(height) || 0,
+                        description: description?.trim() || null,
+                        barcode: barcode?.trim() || null,
+                        stock: parseInt(stock) || 0,
+                        low_stock_threshold: parseInt(low_stock_threshold) || 0,
+                        stock_status: stock_status?.trim() || 'in_stock',
+                        status: status?.trim() || 'active',
+                        product_id: product.id,
+                        updated_by
+                    };
+
+                    let variant;
+                    let action;
+
+                    // If ID exists, try to find and update the variant
+                    if (id) {
+                        variant = await ProductVariant.findByPk(id);
+                        if (!variant) throw new Error(`Variant with ID ${id} not found`);
+
+                        // Check for duplicate slug if it's being changed
+                        if (variant.slug !== variantData.slug) {
+                            const existingVariantWithSlug = await ProductVariant.findOne({
+                                where: { slug: variantData.slug, id: { [Op.ne]: id } }
+                            });
+                            if (existingVariantWithSlug) throw new Error(`Duplicate slug: ${variantData.slug} already exists`);
+                        }
+
+                        // Check for duplicate barcode if it's being changed and is not empty
+                        if (variantData.barcode && variant.barcode !== variantData.barcode) {
+                            const existingVariantWithBarcode = await ProductVariant.findOne({
+                                where: { barcode: variantData.barcode, id: { [Op.ne]: id } }
+                            });
+                            if (existingVariantWithBarcode) throw new Error(`Duplicate barcode: ${variantData.barcode} already exists`);
+                        }
+
+                        await variant.update(variantData);
+                        action = 'Updated';
+                    } else {
+                        // Check for duplicate slug before creating
+                        const existingVariant = await ProductVariant.findOne({ where: { slug: variantData.slug } });
+                        if (existingVariant) throw new Error(`Duplicate slug: ${variantData.slug} already exists`);
+
+                        // Check for duplicate barcode before creating if barcode is provided
+                        if (variantData.barcode) {
+                            const existingVariantWithBarcode = await ProductVariant.findOne({ where: { barcode: variantData.barcode } });
+                            if (existingVariantWithBarcode) throw new Error(`Duplicate barcode: ${variantData.barcode} already exists`);
+                        }
+
+                        // Create new variant
+                        variant = await ProductVariant.create(variantData);
+                        action = 'Created';
+                    }
+
+                    // Process variant attributes
+                    if (attributes) {
+                        try {
+                            // Validate attributes format
+                            if (typeof attributes !== 'string') {
+                                throw new Error('Attributes must be a string');
+                            }
+
+                            const attributePairs = attributes.split(',').map(pair => pair.trim());
+                            
+                            // First validate all pairs before making any changes
+                            for (const pair of attributePairs) {
+                                try {
+                                    const parts = pair.split(':');
+                                    if (parts.length !== 2) {
+                                        throw new Error(`Invalid attribute format: ${pair}. Use format: attribute_slug:term_slug`);
+                                    }
+
+                                    const [attributeSlug, termSlug] = parts.map(s => s?.trim());
+                                    
+                                    if (!attributeSlug || !termSlug) {
+                                        throw new Error(`Invalid attribute format: ${pair}. Both attribute and term slugs are required`);
+                                    }
+
+                                    // Validate attribute exists
+                                    const attribute = await Attribute.findOne({ 
+                                        where: { slug: attributeSlug },
+                                        transaction 
+                                    });
+                                    if (!attribute) {
+                                        throw new Error(`Attribute "${attributeSlug}" not found`);
+                                    }
+
+                                    // Validate term exists and belongs to attribute
+                                    const term = await AttributeTerm.findOne({ 
+                                        where: { 
+                                            slug: termSlug, 
+                                            attribute_id: attribute.id 
+                                        },
+                                        transaction 
+                                    });
+                                    if (!term) {
+                                        throw new Error(`Term "${termSlug}" not found for attribute "${attributeSlug}"`);
+                                    }
+
+                                    // Validate attribute-term is defined for product
+                                    const productAttributeTerm = await ProductAttributeTerm.findOne({
+                                        where: { 
+                                            product_id: product.id, 
+                                            attribute_id: attribute.id, 
+                                            term_id: term.id 
+                                        },
+                                        transaction
+                                    });
+                                    if (!productAttributeTerm) {
+                                        throw new Error(`Attribute "${attributeSlug}" with term "${termSlug}" is not defined for product "${product_slug}"`);
+                                    }
+
+                                    // Check if this combination already exists
+                                    const existingVariantAttribute = await ProductVariantAttribute.findOne({
+                                        where: { 
+                                            variant_id: variant.id, 
+                                            attribute_id: attribute.id, 
+                                            term_id: term.id 
+                                        },
+                                        transaction
+                                    });
+
+                                    // Only create if it doesn't exist
+                                    if (!existingVariantAttribute) {
+                                        try {
+                                            await ProductVariantAttribute.create({
+                                                variant_id: variant.id,
+                                                attribute_id: attribute.id,
+                                                term_id: term.id,
+                                                updated_by
+                                            }, { transaction });
+                                        } catch (createError) {
+                                            console.error('Create Error:', createError);
+                                            throw new Error(`Failed to create variant attribute: ${createError.message}`);
+                                        }
+                                    }
+                                } catch (pairError) {
+                                    console.error('Pair Error:', pairError);
+                                    throw new Error(`Error processing attribute pair "${pair}": ${pairError.message}`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Attribute Processing Error:', error);
+                            throw new Error(`Error processing attributes: ${error.message}`);
+                        }
+                    }
+
+                    results.push({
+                        id: variant.id,
+                        slug: variant.slug,
+                        status: action,
+                        message: `Variant successfully ${action.toLowerCase()}`
+                    });
+
+                } catch (error) {
+                    results.push({
+                        id: id || 'N/A',
+                        slug: slug || 'Unknown',
+                        status: 'Error',
+                        message: error.message
+                    });
+                    logger.error(`Error processing variant ${id ? `with ID ${id}` : `with slug ${slug}`}:`, error);
+                }
+            };
+
+            promises.push(processRowPromise());
+        }
+
+        // Wait for all promises to resolve
+        await Promise.all(promises);
+
+        // Sort results by status
+        results.sort((a, b) => {
+            const statusOrder = { 'Created': 1, 'Updated': 2, 'Error': 3, 'Skipped': 4 };
+            return statusOrder[a.status] - statusOrder[b.status];
+        });
+
+        // Return response with summary
+        const summary = {
+            total: results.length,
+            created: results.filter(r => r.status === 'Created').length,
+            updated: results.filter(r => r.status === 'Updated').length,
+            errors: results.filter(r => r.status === 'Error').length,
+            skipped: results.filter(r => r.status === 'Skipped').length,
+        };
+
+        return successResponse(res, { summary, results }, "Product variants processed successfully");
+
+    } catch (error) {
+        logger.error('Error during bulk update:', error);
+        return errorResponse(res, error, "Error processing product variants");
+    } finally {
+        await transaction.rollback();
+    }
+};
+
+module.exports.downloadVariantSampleExcel = async (req, res, next) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Product Variants');
+
+        // Add column headers
+        worksheet.columns = [
+            { header: 'ID', key: 'id', width: 10 },
+            { header: 'Product Slug', key: 'product_slug', width: 30 },
+            { header: 'Slug', key: 'slug', width: 30 },
+            { header: 'Price', key: 'price', width: 15 },
+            { header: 'Discount Price', key: 'discount_price', width: 15 },
+            { header: 'Purchase Price', key: 'purchase_price', width: 15 },
+            { header: 'Weight', key: 'weight', width: 10 },
+            { header: 'Length', key: 'length', width: 10 },
+            { header: 'Width', key: 'width', width: 10 },
+            { header: 'Height', key: 'height', width: 10 },
+            { header: 'Description', key: 'description', width: 50 },
+            { header: 'Barcode', key: 'barcode', width: 20 },
+            { header: 'Stock', key: 'stock', width: 10 },
+            { header: 'Low Stock Threshold', key: 'low_stock_threshold', width: 15 },
+            { header: 'Stock Status', key: 'stock_status', width: 15 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Attributes (attribute_slug:term_slug)', key: 'attributes', width: 100 }
+        ];
+
+        // Sample data with attributes
+        worksheet.addRow({
+            id: '', // Empty for new variant
+            product_slug: 'sample-vape-device',
+            slug: 'sample-vape-device-black',
+            price: 99.99,
+            discount_price: 89.99,
+            purchase_price: 79.99,
+            weight: 0.5,
+            length: 10,
+            width: 5,
+            height: 2,
+            description: 'Black variant of the sample vape device',
+            barcode: 'VD-001-BLK',
+            stock: 100,
+            low_stock_threshold: 10,
+            stock_status: 'in_stock',
+            status: 'active',
+            attributes: 'color:black,size:standard,nicotine:0mg,flavor:mint'
+        });
+
+        worksheet.addRow({
+            id: '1',
+            product_slug: 'premium-e-liquid',
+            slug: 'premium-e-liquid-30ml',
+            price: 29.99,
+            discount_price: 24.99,
+            purchase_price: 19.99,
+            weight: 0.1,
+            length: 5,
+            width: 3,
+            height: 1,
+            description: '30ml bottle of premium e-liquid',
+            barcode: 'EL-001-30ML',
+            stock: 200,
+            low_stock_threshold: 20,
+            stock_status: 'in_stock',
+            status: 'active',
+            attributes: 'color:red,size:30ml,nicotine:6mg,flavor:strawberry'
+        });
+
+        // Add notes about attribute format
+        worksheet.addRow({
+            id: 'NOTE:',
+            product_slug: 'Format: attribute_slug:term_slug',
+            description: 'Multiple attributes should be comma-separated. Visibility and variation settings are inherited from product attributes.'
+        });
+
+        worksheet.addRow({
+            id: 'IMPORTANT:',
+            product_slug: 'The attributes must be already defined in the product',
+            description: 'The visibility and variation settings are taken from the product attribute settings'
+        });
+
+        // Set the response headers
+        res.setHeader('Content-Disposition', 'attachment; filename=SampleProductVariants.xlsx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Write the workbook to the response
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
 };
 
