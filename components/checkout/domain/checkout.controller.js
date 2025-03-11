@@ -1,16 +1,17 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, Flavor, Order } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, Flavor, Order } = require("../../../models");
 const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode } = req.body;
+        const { couponCode, shippingMethodId } = req.body;
         let total = 0;
         let subTotal = 0;
-        let validityMessage = '';
         let totalItems = 0;
+        let shippingCost = 0;
+        let validityMessage = '';
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -37,7 +38,14 @@ module.exports.checkout = async (req, res, next) => {
                 message: 'Cart is empty'
             }
         }
+        const shippingMethod = await ShippingMethod.findOne({
+            where: { id: shippingMethodId },
+            attributes: ["id", "shipping_method", "shipping_cost"], // Selecting only necessary fields
+        });
 
+        if (shippingMethod) {
+            shippingCost = shippingMethod.shipping_cost
+        }
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
@@ -57,6 +65,8 @@ module.exports.checkout = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         });
+        
+
         if(couponCode && coupon && couponCode === coupon.code){
                 if (!coupon.minimum_purchase || (subTotal >= coupon.minimum_purchase)) {
                     if (!coupon.usage_limit || (coupon.usage_count < coupon.usage_limit)) {
@@ -97,11 +107,17 @@ module.exports.checkout = async (req, res, next) => {
         else{
             validityMessage = 'Invalid or expired coupon code'
         }
-        total = parseFloat(Math.max(0, total).toFixed(2));
+
+
+        if(!couponCode){
+            validityMessage = ''
+        }
+        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             cart,
             totalItems,
+            shippingCost,
             subTotal,
             total,
             validityMessage
@@ -117,10 +133,11 @@ module.exports.checkout = async (req, res, next) => {
 module.exports.applyCoupon = async (req, res, next) => {
     try {
         const userId = req.user.id ;
-        const { couponCode } = req.body;
+        const { couponCode, shippingMethodId } = req.body;
         let subTotal = 0
         let total = 0
         let totalItems = 0;
+        let shippingCost = 0;
         const cart = await Cart.findAll({
                         where: { user_id: userId },
                         include: [
@@ -149,6 +166,14 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
 
+        const shippingMethod = await ShippingMethod.findOne({
+            where: { id: shippingMethodId },
+            attributes: ["id", "shipping_method", "shipping_cost"], // Selecting only necessary fields
+        });
+
+        if (shippingMethod) {
+            shippingCost = shippingMethod.shipping_cost
+        }
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
@@ -216,7 +241,6 @@ module.exports.applyCoupon = async (req, res, next) => {
             } else if (coupon.discount_type === "fixed_amount") {
                 discount = coupon.discount_value;
             }
-
             if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
                 discount = coupon.maximum_discount;
             }
@@ -225,10 +249,13 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
             total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
         }
-        total = parseFloat(Math.max(0, total).toFixed(2));
+
+        
+        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             totalItems,
+            shippingCost,
             subTotal,
             total
         }
