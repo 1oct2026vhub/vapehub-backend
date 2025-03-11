@@ -4,6 +4,7 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const ExcelJS = require("exceljs");
 
 module.exports.listAllProducts = async (req, res, next) => {
     try {
@@ -987,6 +988,389 @@ module.exports.getPriceRanges = async (req, res, next) => {
     } catch (error) {
         logger.error(error);
         return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk updates products from an Excel file.
+ * If product ID exists, update that product; if not, create a new one.
+ */
+module.exports.bulkUpdateProducts = async (req, res, next) => {
+    try {
+        const { file } = req;
+        const { id: updated_by } = req.user;
+
+        if (!file) {
+            return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer);
+
+        // Process main products sheet
+        const productSheet = workbook.worksheets[0];
+        const attributeSheet = workbook.worksheets[1]; // Second sheet for attributes
+
+        let results = {
+            products: [],
+            attributes: []
+        };
+        const promises = [];
+
+        // Process Products Sheet
+        if (productSheet) {
+            const headerRow = productSheet.getRow(1).values;
+            const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'ID';
+            const rows = productSheet.getRows(2, productSheet.rowCount - 1) || [];
+
+            // Process each product row
+            for (const row of rows) {
+                if (!row.values || row.values.length === 0) continue;
+
+                const rowValues = isFirstHeaderEmpty ? row.values.slice(1) : row.values;
+                const [
+                    id,
+                    name,
+                    slug,
+                    description,
+                    is_new,
+                    brand_slug,
+                    category_slug
+                ] = rowValues;
+
+                // Skip if required fields are missing
+                if (!name || !slug) {
+                    results.products.push({
+                        id: id || 'N/A',
+                        slug: slug || 'Missing slug',
+                        status: 'Skipped',
+                        message: 'Missing required fields (name or slug)'
+                    });
+                    continue;
+                }
+
+                promises.push(processProductRow({
+                    id, name, slug, description, is_new, 
+                    brand_slug, category_slug, updated_by, 
+                    results
+                }));
+            }
+        }
+
+        // Process Attributes Sheet
+        if (attributeSheet) {
+            const attrHeaderRow = attributeSheet.getRow(1).values;
+            const isFirstAttrHeaderEmpty = !attrHeaderRow[0] || attrHeaderRow[0] !== 'Product Slug';
+            const attrRows = attributeSheet.getRows(2, attributeSheet.rowCount - 1) || [];
+
+            // Process each attribute row
+            for (const row of attrRows) {
+                if (!row.values || row.values.length === 0) continue;
+
+                const rowValues = isFirstAttrHeaderEmpty ? row.values.slice(1) : row.values;
+                const [
+                    product_slug,
+                    attribute_slug,
+                    term_slugs,
+                    is_visible_page,
+                    used_in_variation
+                ] = rowValues;
+
+                // Skip if required fields are missing
+                if (!product_slug || !attribute_slug || !term_slugs) {
+                    results.attributes.push({
+                        product_slug: product_slug || 'N/A',
+                        attribute_slug: attribute_slug || 'N/A',
+                        status: 'Skipped',
+                        message: 'Missing required fields'
+                    });
+                    continue;
+                }
+
+                promises.push(processAttributeRow({
+                    product_slug,
+                    attribute_slug,
+                    term_slugs,
+                    is_visible_page,
+                    used_in_variation,
+                    updated_by,
+                    results
+                }));
+            }
+        }
+
+        // Wait for all promises to resolve
+        await Promise.all(promises);
+
+        // Sort results
+        results.products.sort(sortByStatus);
+        results.attributes.sort(sortByStatus);
+
+        // Generate summary
+        const summary = {
+            products: generateSummary(results.products),
+            attributes: generateSummary(results.attributes)
+        };
+
+        return successResponse(res, {
+            summary,
+            results
+        }, "Products and attributes processed successfully");
+
+    } catch (error) {
+        logger.error('Error during bulk update:', error);
+        return errorResponse(res, error, "Error processing products and attributes");
+    }
+};
+
+// Helper function to process a product row
+const processProductRow = async ({ id, name, slug, description, is_new, brand_slug, category_slug, updated_by, results }) => {
+    try {
+        // Find brand if brand_slug exists
+        let brand = null;
+        if (brand_slug) {
+            brand = await Brand.findOne({ where: { slug: brand_slug } });
+            if (!brand) throw new Error(`Brand with slug ${brand_slug} not found`);
+        }
+
+        // Find category if category_slug exists
+        let category = null;
+        if (category_slug) {
+            category = await Category.findOne({ where: { slug: category_slug } });
+            if (!category) throw new Error(`Category with slug ${category_slug} not found`);
+        }
+
+        const productData = {
+            name: typeof name === 'string' ? name.trim() : name,
+            slug: typeof slug === 'string' ? slug.trim() : slug,
+            description: typeof description === 'string' ? description.trim() : description,
+            is_new: is_new === 'true' || is_new === true,
+            brand_id: brand?.id,
+            category_id: category?.id,
+            updated_by
+        };
+
+        let product;
+        let action;
+
+        if (id) {
+            product = await Product.findByPk(id);
+            if (product) {
+                if (product.slug !== productData.slug) {
+                    const existingProductWithSlug = await Product.findOne({
+                        where: { 
+                            slug: productData.slug,
+                            id: { [Op.ne]: id }
+                        }
+                    });
+                    if (existingProductWithSlug) {
+                        throw new Error(`Duplicate slug: ${productData.slug} already exists`);
+                    }
+                }
+                await product.update(productData);
+                action = 'Updated';
+            } else {
+                throw new Error(`Product with ID ${id} not found`);
+            }
+        } else {
+            const existingProduct = await Product.findOne({
+                where: { slug: productData.slug }
+            });
+            if (existingProduct) {
+                throw new Error(`Duplicate slug: ${productData.slug} already exists`);
+            }
+            product = await Product.create(productData);
+            action = 'Created';
+        }
+
+        results.products.push({
+            id: product.id,
+            slug: product.slug,
+            status: action,
+            message: `Product successfully ${action.toLowerCase()}`
+        });
+
+    } catch (error) {
+        results.products.push({
+            id: id || 'N/A',
+            slug: slug || 'Unknown',
+            status: 'Error',
+            message: error.message
+        });
+        logger.error(`Error processing product ${id ? `with ID ${id}` : `with slug ${slug}`}:`, error);
+    }
+};
+
+// Helper function to process an attribute row
+const processAttributeRow = async ({ product_slug, attribute_slug, term_slugs, is_visible_page, used_in_variation, updated_by, results }) => {
+    try {
+        // Find the product
+        const product = await Product.findOne({ where: { slug: product_slug } });
+        if (!product) throw new Error(`Product with slug ${product_slug} not found`);
+
+        // Find the attribute
+        const attribute = await Attribute.findOne({ where: { slug: attribute_slug } });
+        if (!attribute) throw new Error(`Attribute with slug ${attribute_slug} not found`);
+
+        // Process terms
+        const termSlugsArray = term_slugs.split(',').map(slug => slug.trim());
+        
+        // Find all terms
+        const terms = await AttributeTerm.findAll({
+            where: {
+                slug: { [Op.in]: termSlugsArray },
+                attribute_id: attribute.id
+            }
+        });
+
+        if (terms.length !== termSlugsArray.length) {
+            const foundSlugs = terms.map(term => term.slug);
+            const missingSlugs = termSlugsArray.filter(slug => !foundSlugs.includes(slug));
+            throw new Error(`Some terms not found: ${missingSlugs.join(', ')}`);
+        }
+
+        // Remove existing attribute terms for this product-attribute combination
+        await ProductAttributeTerm.destroy({
+            where: {
+                product_id: product.id,
+                attribute_id: attribute.id
+            }
+        });
+
+        // Create new attribute terms
+        await Promise.all(terms.map(term => 
+            ProductAttributeTerm.create({
+                product_id: product.id,
+                attribute_id: attribute.id,
+                term_id: term.id,
+                is_visible_page: is_visible_page === 'true' || is_visible_page === true,
+                used_in_variation: used_in_variation === 'true' || used_in_variation === true,
+                updated_by
+            })
+        ));
+
+        results.attributes.push({
+            product_slug,
+            attribute_slug,
+            status: 'Updated',
+            message: `Attribute terms successfully updated`
+        });
+
+    } catch (error) {
+        results.attributes.push({
+            product_slug: product_slug || 'N/A',
+            attribute_slug: attribute_slug || 'N/A',
+            status: 'Error',
+            message: error.message
+        });
+        logger.error(`Error processing attribute for product ${product_slug}:`, error);
+    }
+};
+
+// Helper function to sort results by status
+const sortByStatus = (a, b) => {
+    const statusOrder = {
+        'Created': 1,
+        'Updated': 2,
+        'Error': 3,
+        'Skipped': 4
+    };
+    return statusOrder[a.status] - statusOrder[b.status];
+};
+
+// Helper function to generate summary
+const generateSummary = (results) => ({
+    total: results.length,
+    created: results.filter(r => r.status === 'Created').length,
+    updated: results.filter(r => r.status === 'Updated').length,
+    errors: results.filter(r => r.status === 'Error').length,
+    skipped: results.filter(r => r.status === 'Skipped').length,
+});
+
+/**
+ * Generates and downloads a sample Excel file for products.
+ */
+module.exports.downloadSampleExcel = async (req, res, next) => {
+    try {
+        const workbook = new ExcelJS.Workbook();
+
+        // Products Sheet
+        const productSheet = workbook.addWorksheet('Products');
+        productSheet.columns = [
+            { header: 'ID', key: 'id', width: 10 },
+            { header: 'Name', key: 'name', width: 30 },
+            { header: 'Slug', key: 'slug', width: 30 },
+            { header: 'Description', key: 'description', width: 50 },
+            { header: 'Is New', key: 'is_new', width: 10 },
+            { header: 'Brand Slug', key: 'brand_slug', width: 20 },
+            { header: 'Category Slug', key: 'category_slug', width: 20 }
+        ];
+
+        // Add sample product data
+        productSheet.addRow({
+            id: '', // Empty for new product
+            name: 'Sample Product',
+            slug: 'sample-product',
+            description: 'This is a sample product description',
+            is_new: true,
+            brand_slug: 'sample-brand',
+            category_slug: 'sample-category'
+        });
+
+        productSheet.addRow({
+            id: '1', // For updating existing product
+            name: 'Existing Product',
+            slug: 'existing-product',
+            description: 'This is an existing product',
+            is_new: false,
+            brand_slug: 'existing-brand',
+            category_slug: 'existing-category'
+        });
+
+        // Attributes Sheet
+        const attributeSheet = workbook.addWorksheet('Product Attributes');
+        attributeSheet.columns = [
+            { header: 'Product Slug', key: 'product_slug', width: 30 },
+            { header: 'Attribute Slug', key: 'attribute_slug', width: 30 },
+            { header: 'Term Slugs (comma-separated)', key: 'term_slugs', width: 40 },
+            { header: 'Is Visible on Page', key: 'is_visible_page', width: 20 },
+            { header: 'Used in Variation', key: 'used_in_variation', width: 20 }
+        ];
+
+        // Add sample attribute data
+        attributeSheet.addRow({
+            product_slug: 'sample-product',
+            attribute_slug: 'color',
+            term_slugs: 'red,blue,green',
+            is_visible_page: true,
+            used_in_variation: true
+        });
+
+        attributeSheet.addRow({
+            product_slug: 'existing-product',
+            attribute_slug: 'size',
+            term_slugs: 'small,medium,large',
+            is_visible_page: true,
+            used_in_variation: false
+        });
+
+        // Add notes
+        productSheet.addRow({});
+        productSheet.addRow(['NOTE:', 'Leave ID empty for new products. Fill ID for updating existing products.']);
+        attributeSheet.addRow({});
+        attributeSheet.addRow(['NOTE:', 'Multiple terms should be comma-separated. Product slug must match a product in the Products sheet.']);
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=SampleProductsWithAttributes.xlsx');
+
+        // Write workbook to response
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        logger.error('Error generating sample Excel:', error);
+        return errorResponse(res, error, "Error generating sample Excel file");
     }
 };
 

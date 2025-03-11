@@ -34,12 +34,19 @@ const userListValidationRules = [
       .optional()
       .isBoolean()
       .withMessage("Deleted must be a boolean value"),
+
+    query("blocked")
+      .optional()
+      .isBoolean()
+      .withMessage("Blocked must be a boolean value"),
+
+    query("verified")
+      .optional()
+      .isIn(["all", "true", "false"])
+      .withMessage("Verified must be one of: all, true, false"),  
 ];
 
-module.exports = {  };
-
-
-module.exports = {
+module.exports = { 
   userIDValidation,
   userListValidationRules
 };
