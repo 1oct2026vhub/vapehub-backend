@@ -40,10 +40,10 @@ const userValidationRules = [
 
   body("phone")
     .optional()
-    .isLength({ min: 10, max: 16 }).withMessage("Phone number must be between 10 and 16 digits long")
+    .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
     .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
     .custom((value) => {
-      const mobilePattern = /^\+?\d{10,16}$/; // Updated pattern to allow + prefix
+      const mobilePattern = /^\+?\d{8,16}$/; // Updated pattern to allow 8-16 digits
       if (!mobilePattern.test(value)) {
         throw new Error("Invalid phone number format");
       }
@@ -102,10 +102,10 @@ const userUpdateValidationRules = [
   
     body("phone")
         .optional()
-        .isLength({ min: 10, max: 16 }).withMessage("Phone number must be between 10 and 16 digits long")
+        .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
         .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
         .custom((value) => {
-          const mobilePattern = /^\+?\d{10,16}$/; // Updated pattern to allow + prefix
+          const mobilePattern = /^\+?\d{8,16}$/; // Updated pattern to allow 8-16 digits
           if (!mobilePattern.test(value)) {
             throw new Error("Invalid phone number format");
           }
