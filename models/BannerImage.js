@@ -51,6 +51,33 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.TEXT,
                 allowNull: true
             },
+            redirect_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                get() {
+                    const value = this.getDataValue('redirect_url');
+                    return value === null ? '#' : value;
+                },
+                set(value) {
+                    this.setDataValue('redirect_url', value === null ? '#' : value);
+                },
+                validate: {
+                    customValidator(value) {
+                        if (value === '#') return true;
+                        
+                        // Check if it's a valid URL
+                        try {
+                            new URL(value);
+                            return true;
+                        } catch (e) {
+                            // If not a URL, check if it's a valid path/slug
+                            if (!/^[a-zA-Z0-9-_/]+$/.test(value)) {
+                                throw new Error('Redirect URL must be "#", a valid URL, or contain only letters, numbers, hyphens, underscores, and forward slashes');
+                            }
+                        }
+                    }
+                }
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,

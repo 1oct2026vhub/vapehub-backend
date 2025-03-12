@@ -21,5 +21,7 @@ router.use('/attribute-terms', require('./productAttributes/routes/attributeTerm
 router.use('/stock-management', require('./product/routes/stockManagement.route'));
 router.use('/product-variants', require('./product/routes/productVariant.route'));
 router.use('/shipping-methods', require('./shippingMethod/routes/shippingMethod.route'));
+router.use('/banners', require('./banner/routes/banner.route'));
+router.use('/carousels', require('./carousels/routes/carousel.route'));
 
 module.exports = router;
