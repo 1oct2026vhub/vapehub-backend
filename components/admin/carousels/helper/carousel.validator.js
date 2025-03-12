@@ -16,7 +16,6 @@ const uploadImageMiddleware = multer({
     }
 }).fields([
     { name: 'image', maxCount: 1 },
-    { name: 'image_mid', maxCount: 1 },
     { name: 'image_low', maxCount: 1 }
 ]);
 
@@ -38,10 +37,6 @@ const validateImageUpload = (req, res, next) => {
 };
 
 const createCarouselValidation = [
-    body('display_order')
-        .notEmpty().withMessage('Display order is required')
-        .isInt({ min: 1 }).withMessage('Display order must be a positive integer'),
-    
     body('title')
         .optional()
         .isString().withMessage('Title must be a string')
@@ -73,10 +68,6 @@ const createCarouselValidation = [
 const updateCarouselValidation = [
     param('id')
         .isInt().withMessage('Invalid carousel ID'),
-    
-    body('display_order')
-        .optional()
-        .isInt({ min: 1 }).withMessage('Display order must be a positive integer'),
     
     body('title')
         .optional()
@@ -145,6 +136,13 @@ const getCarouselDetailsValidation = [
         .isInt().withMessage('Invalid carousel ID')
 ];
 
+const shuffleDisplayOrderValidation = [
+    param('id')
+        .isInt().withMessage('Invalid carousel ID'),
+    body('new_display_order')
+        .isInt({ min: 1 }).withMessage('New display order must be a positive integer')
+];
+
 module.exports = {
     validateImageUpload,
     createCarouselValidation,
@@ -152,4 +150,5 @@ module.exports = {
     getCarouselsValidation,
     deleteCarouselValidation,
     getCarouselDetailsValidation,
+    shuffleDisplayOrderValidation,
 }; 

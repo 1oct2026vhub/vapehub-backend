@@ -1,16 +1,22 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Carousel } = require("../../../../models");
 const { uploadFiletToS3 } = require("../../../../library/s3/s3Helper");
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 
 // Helper function to handle image upload
 const uploadImageToS3 = async (file, prefix) => {
-    return uploadFiletToS3({
+    const response = await uploadFiletToS3({
         Bucket: process.env.AWS_S3_BUCKET,
         Key: `carousels/${prefix}-${Date.now()}-${file.originalname}`,
         Body: file.buffer,
         ContentType: file.mimetype
     });
+    
+    // Ensure we return a string URL, not the full S3 response object
+    if (response && response.Location) {
+        return response.Location;
+    }
+    throw new Error('Failed to get image URL from S3');
 };
 
 // Helper function to validate display order
@@ -28,19 +34,24 @@ const validateDisplayOrder = async (display_order, currentOrder) => {
 // Helper function to delete image from S3
 const deleteImageFromS3 = async (imageUrl) => {
     if (!imageUrl) return;
-    
-    if (!imageUrl.includes(process.env.AWS_S3_BUCKET)) return;
-    
+
+    // Check if URL is from S3 bucket
+    const bucketUrl = process.env.AWS_S3_BUCKET;
+    if (!imageUrl.startsWith(bucketUrl)) return;
+
     try {
         const key = imageUrl.split('/').pop();
-        await uploadFiletToS3({
-            Bucket: process.env.AWS_S3_BUCKET,
-            Key: `carousels/${key}`,
-            Delete: true
-        });
+        await deleteFile(`carousels/${key}`);
     } catch (error) {
-        console.log('Error deleting image from S3:', error);
+        logger.error('Error deleting image from S3:', error);
+        // Don't throw error as this is not critical
     }
+};
+
+// Add this new helper function at the top
+const getNextDisplayOrder = async () => {
+    const maxOrder = await Carousel.max('display_order');
+    return (maxOrder || 0) + 1;
 };
 
 module.exports.getCarousels = async (req, res) => {
@@ -103,27 +114,32 @@ module.exports.getCarousels = async (req, res) => {
 module.exports.createCarousel = async (req, res) => {
     try {
         const user_id = req?.user?.id;
-        const { display_order, title, description, redirect_url } = req.body;
+        const { title, description, redirect_url } = req.body;  // Removed display_order from here
         const files = req.files;
 
-        if (!files.image || !files.image_mid || !files.image_low) {
-            const error = new Error("All three images (original, medium, and low) are required");
+        if (!files.image || !files.image_low) {
+            const error = new Error("Both images (original and low) are required");
             error.statusCode = 400;
             throw error;
         }
 
-        await validateDisplayOrder(display_order);
+        // Get next display order automatically
+        const display_order = await getNextDisplayOrder();
 
-        const [image_url, image_url_mid, image_url_low] = await Promise.all([
-            uploadImageToS3(files.image[0], 'original'),
-            uploadImageToS3(files.image_mid[0], 'mid'),
-            uploadImageToS3(files.image_low[0], 'low')
-        ]);
+        // Upload images and get URLs
+        let image_url, image_url_low;
+        try {
+            [image_url, image_url_low] = await Promise.all([
+                uploadImageToS3(files.image[0], 'original'),
+                uploadImageToS3(files.image_low[0], 'low')
+            ]);
+        } catch (error) {
+            throw new Error(`Image upload failed: ${error.message}`);
+        }
 
         const carousel = await Carousel.create({
-            display_order,
+            display_order,  // Automatically calculated display order
             image_url,
-            image_url_mid,
             image_url_low,
             title,
             description,
@@ -141,7 +157,7 @@ module.exports.updateCarousel = async (req, res) => {
     try {
         const { id } = req.params;
         const user_id = req?.user?.id;
-        const { display_order, title, description, status, redirect_url } = req.body;
+        const { title, description, status, redirect_url } = req.body;  // Removed display_order from here
         const files = req.files;
 
         const carousel = await Carousel.findByPk(id);
@@ -151,31 +167,22 @@ module.exports.updateCarousel = async (req, res) => {
             throw error;
         }
 
-        await validateDisplayOrder(display_order, carousel.display_order);
-
         if (files) {
             try {
                 if (files.image) {
                     await deleteImageFromS3(carousel.image_url);
                     carousel.image_url = await uploadImageToS3(files.image[0], 'original');
                 }
-                if (files.image_mid) {
-                    await deleteImageFromS3(carousel.image_url_mid);
-                    carousel.image_url_mid = await uploadImageToS3(files.image_mid[0], 'mid');
-                }
                 if (files.image_low) {
                     await deleteImageFromS3(carousel.image_url_low);
                     carousel.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
                 }
             } catch (error) {
-                const err = new Error('Error processing images');
-                err.statusCode = 500;
-                throw err;
+                throw new Error(`Image upload failed: ${error.message}`);
             }
         }
 
         Object.assign(carousel, {
-            ...(display_order && { display_order }),
             ...(title && { title }),
             ...(description && { description }),
             ...(status && { status }),
@@ -201,7 +208,24 @@ module.exports.deleteCarousel = async (req, res) => {
             throw error;
         }
 
-        await carousel.destroy();
+        await Carousel.sequelize.transaction(async (t) => {
+            // Update display orders of items after the deleted item
+            await Carousel.update(
+                { 
+                    display_order: Sequelize.literal('display_order - 1')
+                },
+                { 
+                    where: {
+                        display_order: { [Op.gt]: carousel.display_order }
+                    },
+                    transaction: t
+                }
+            );
+
+            // Delete the carousel
+            await carousel.destroy({ transaction: t });
+        });
+
         return successResponse(res, null, 'Carousel deleted successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -221,6 +245,79 @@ module.exports.getCarouselDetails = async (req, res) => {
         }
 
         return successResponse(res, carousel, 'Carousel details retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.shuffleDisplayOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { new_display_order } = req.body;
+        const user_id = req?.user?.id;
+
+        // Get current carousel
+        const currentCarousel = await Carousel.findByPk(id);
+        if (!currentCarousel) {
+            const error = new Error("Carousel not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Start transaction for multiple updates
+        await Carousel.sequelize.transaction(async (t) => {
+            if (currentCarousel.display_order < new_display_order) {
+                // Moving down: Decrease display_order of items between old and new position
+                await Carousel.update(
+                    { 
+                        display_order: Sequelize.literal('display_order - 1'),
+                        updated_by: user_id 
+                    },
+                    { 
+                        where: {
+                            display_order: {
+                                [Op.gt]: currentCarousel.display_order,
+                                [Op.lte]: new_display_order
+                            }
+                        },
+                        transaction: t
+                    }
+                );
+            } else if (currentCarousel.display_order > new_display_order) {
+                // Moving up: Increase display_order of items between new and old position
+                await Carousel.update(
+                    { 
+                        display_order: Sequelize.literal('display_order + 1'),
+                        updated_by: user_id 
+                    },
+                    { 
+                        where: {
+                            display_order: {
+                                [Op.gte]: new_display_order,
+                                [Op.lt]: currentCarousel.display_order
+                            }
+                        },
+                        transaction: t
+                    }
+                );
+            }
+
+            // Update current carousel's display_order
+            await currentCarousel.update(
+                { 
+                    display_order: new_display_order,
+                    updated_by: user_id 
+                },
+                { transaction: t }
+            );
+        });
+
+        // Get updated carousel list
+        const updatedCarousels = await Carousel.findAll({
+            order: [['display_order', 'ASC']]
+        });
+
+        return successResponse(res, updatedCarousels, 'Display order updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

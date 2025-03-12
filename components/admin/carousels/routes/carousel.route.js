@@ -9,7 +9,8 @@ const {
     updateCarouselValidation,
     getCarouselsValidation,
     deleteCarouselValidation,
-    getCarouselDetailsValidation
+    getCarouselDetailsValidation,
+    shuffleDisplayOrderValidation
 } = require('../helper/carousel.validator');
 
 // Common middleware for auth
@@ -31,8 +32,6 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *           type: integer
  *         image_url:
  *           type: string
- *         image_url_mid:
- *           type: string
  *         image_url_low:
  *           type: string
  *         title:
@@ -42,6 +41,8 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *         status:
  *           type: string
  *           enum: [active, inactive]
+ *         redirect_url:
+ *           type: string
  *         updated_by:
  *           type: integer
  *         createdAt:
@@ -53,9 +54,6 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *         deletedAt:
  *           type: string
  *           format: date-time
- *         redirect_url:
- *           type: string
- *           description: URL for redirection when carousel is clicked
  */
 
 /**
@@ -149,17 +147,10 @@ router.get('/',
  *           schema:
  *             type: object
  *             required:
- *               - display_order
  *               - image
- *               - image_mid
  *               - image_low
  *             properties:
- *               display_order:
- *                 type: integer
  *               image:
- *                 type: string
- *                 format: binary
- *               image_mid:
  *                 type: string
  *                 format: binary
  *               image_low:
@@ -202,12 +193,7 @@ router.post('/',
  *           schema:
  *             type: object
  *             properties:
- *               display_order:
- *                 type: integer
  *               image:
- *                 type: string
- *                 format: binary
- *               image_mid:
  *                 type: string
  *                 format: binary
  *               image_low:
@@ -284,6 +270,54 @@ router.delete('/:id',
 router.get('/:id', 
     withValidation(getCarouselDetailsValidation),
     carouselController.getCarouselDetails
+);
+
+/**
+ * @swagger
+ * /api/admin/carousels/{id}/shuffle:
+ *   put:
+ *     tags:
+ *       - ADMIN - Carousel
+ *     summary: Shuffle carousel display order
+ *     description: Update the display order of a carousel and reorder other carousels accordingly
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Carousel ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - new_display_order
+ *             properties:
+ *               new_display_order:
+ *                 type: integer
+ *                 description: New display order position
+ *     responses:
+ *       200:
+ *         description: Display order updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Carousel'
+ *       400:
+ *         description: Invalid display order
+ *       404:
+ *         description: Carousel not found
+ */
+router.put('/:id/shuffle',
+    withValidation(shuffleDisplayOrderValidation),
+    carouselController.shuffleDisplayOrder
 );
 
 module.exports = router; 
