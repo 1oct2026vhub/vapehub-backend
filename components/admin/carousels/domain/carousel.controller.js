@@ -103,7 +103,7 @@ module.exports.getCarousels = async (req, res) => {
 module.exports.createCarousel = async (req, res) => {
     try {
         const user_id = req?.user?.id;
-        const { display_order, title, description } = req.body;
+        const { display_order, title, description, redirect_url } = req.body;
         const files = req.files;
 
         if (!files.image || !files.image_mid || !files.image_low) {
@@ -127,6 +127,7 @@ module.exports.createCarousel = async (req, res) => {
             image_url_low,
             title,
             description,
+            redirect_url,
             updated_by: user_id
         });
 
@@ -140,7 +141,7 @@ module.exports.updateCarousel = async (req, res) => {
     try {
         const { id } = req.params;
         const user_id = req?.user?.id;
-        const { display_order, title, description } = req.body;
+        const { display_order, title, description, status, redirect_url } = req.body;
         const files = req.files;
 
         const carousel = await Carousel.findByPk(id);
@@ -177,6 +178,8 @@ module.exports.updateCarousel = async (req, res) => {
             ...(display_order && { display_order }),
             ...(title && { title }),
             ...(description && { description }),
+            ...(status && { status }),
+            ...(redirect_url && { redirect_url }),
             updated_by: user_id
         });
 
