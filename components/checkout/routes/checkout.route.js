@@ -99,6 +99,16 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *                         shipping_cost:
  *                           type: number
  *                           example: 5.0
+ *                     paymentMethod:
+ *                       type: object
+ *                       description: Selected payment method details.
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 2
+ *                         name:
+ *                           type: string
+ *                           example: "vivaWallet"
  *                     totalItems:
  *                       type: integer
  *                       example: 3
