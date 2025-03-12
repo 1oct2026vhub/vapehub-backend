@@ -51,7 +51,23 @@ const createCarouselValidation = [
     body('description')
         .optional()
         .isString().withMessage('Description must be a string')
-        .trim()
+        .trim(),
+    
+    body('redirect_url')
+        .optional()
+        .custom((value) => {
+            if (value === '#') return true;
+            
+            try {
+                new URL(value);
+                return true;
+            } catch (e) {
+                if (!/^[a-zA-Z0-9-_/]+$/.test(value)) {
+                    throw new Error('Redirect URL must be "#", a valid URL, or contain only letters, numbers, hyphens, underscores, and forward slashes');
+                }
+            }
+            return true;
+        }),
 ];
 
 const updateCarouselValidation = [
@@ -71,7 +87,23 @@ const updateCarouselValidation = [
     body('description')
         .optional()
         .isString().withMessage('Description must be a string')
-        .trim()
+        .trim(),
+    
+    body('redirect_url')
+        .optional()
+        .custom((value) => {
+            if (value === '#') return true;
+            
+            try {
+                new URL(value);
+                return true;
+            } catch (e) {
+                if (!/^[a-zA-Z0-9-_/]+$/.test(value)) {
+                    throw new Error('Redirect URL must be "#", a valid URL, or contain only letters, numbers, hyphens, underscores, and forward slashes');
+                }
+            }
+            return true;
+        }),
 ];
 
 const getCarouselsValidation = [

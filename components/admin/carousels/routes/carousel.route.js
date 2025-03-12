@@ -3,8 +3,6 @@ const router = express.Router();
 const carouselController = require('../domain/carousel.controller');
 const { authMiddleware } = require('../../../../library/middleware');
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-
-
 const { 
     validateImageUpload,
     createCarouselValidation,
@@ -13,6 +11,12 @@ const {
     deleteCarouselValidation,
     getCarouselDetailsValidation
 } = require('../helper/carousel.validator');
+
+// Common middleware for auth
+const authMiddlewareAdmin = [authMiddleware(true)];
+
+// Common middleware for protected routes with validation
+const withValidation = (validationRules) => [...authMiddlewareAdmin, validateRequest(validationRules)];
 
 /**
  * @swagger
@@ -49,6 +53,9 @@ const {
  *         deletedAt:
  *           type: string
  *           format: date-time
+ *         redirect_url:
+ *           type: string
+ *           description: URL for redirection when carousel is clicked
  */
 
 /**
@@ -121,7 +128,10 @@ const {
  *                   items:
  *                     $ref: '#/components/schemas/Carousel'
  */
-router.get('/', [authMiddleware(true), validateRequest(getCarouselsValidation)], carouselController.getCarousels);
+router.get('/', 
+    withValidation(getCarouselsValidation), 
+    carouselController.getCarousels
+);
 
 /**
  * @swagger
@@ -159,12 +169,15 @@ router.get('/', [authMiddleware(true), validateRequest(getCarouselsValidation)],
  *                 type: string
  *               description:
  *                 type: string
+ *               redirect_url:
+ *                 type: string
+ *                 description: URL for redirection (#, valid URL, or path)
  *     responses:
  *       201:
  *         description: Carousel created successfully
  */
 router.post('/', 
-    [authMiddleware(true), validateImageUpload, validateRequest(createCarouselValidation)], 
+    [...authMiddlewareAdmin, validateImageUpload, validateRequest(createCarouselValidation)],
     carouselController.createCarousel
 );
 
@@ -204,6 +217,9 @@ router.post('/',
  *                 type: string
  *               description:
  *                 type: string
+ *               redirect_url:
+ *                 type: string
+ *                 description: URL for redirection (#, valid URL, or path)
  *     responses:
  *       200:
  *         description: Carousel updated successfully
@@ -211,7 +227,7 @@ router.post('/',
  *         description: Carousel not found
  */
 router.put('/:id', 
-    [authMiddleware(true), validateImageUpload, validateRequest(updateCarouselValidation)], 
+    [...authMiddlewareAdmin, validateImageUpload, validateRequest(updateCarouselValidation)],
     carouselController.updateCarousel
 );
 
@@ -237,7 +253,7 @@ router.put('/:id',
  *         description: Carousel not found
  */
 router.delete('/:id', 
-    [authMiddleware(true), validateRequest(deleteCarouselValidation)], 
+    withValidation(deleteCarouselValidation),
     carouselController.deleteCarousel
 );
 
@@ -266,7 +282,7 @@ router.delete('/:id',
  *         description: Carousel not found
  */
 router.get('/:id', 
-    [authMiddleware(true), validateRequest(getCarouselDetailsValidation)],
+    withValidation(getCarouselDetailsValidation),
     carouselController.getCarouselDetails
 );
 
