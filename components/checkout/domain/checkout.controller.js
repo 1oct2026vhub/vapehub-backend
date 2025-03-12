@@ -6,7 +6,7 @@ const logger = require("../../../library/logger");
 module.exports.checkout = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode, shippingMethodId } = req.body;
+        const { couponCode } = req.body;
         let total = 0;
         let subTotal = 0;
         let totalItems = 0;
@@ -38,13 +38,13 @@ module.exports.checkout = async (req, res, next) => {
                 message: 'Cart is empty'
             }
         }
-        const shippingMethod = await ShippingMethod.findOne({
-            where: { id: shippingMethodId },
-            attributes: ["id", "shipping_method", "shipping_cost"], // Selecting only necessary fields
+        // Fetch ShippingMethod separately
+        const shippingMethod = await ShippingMethod.findAll({
+            attributes: ["id", "shipping_method", "shipping_cost"]
         });
 
-        if (shippingMethod) {
-            shippingCost = shippingMethod.shipping_cost
+        if(!shippingMethod || shippingMethod.length === 0){
+            validityMessage = 'No shipping methods available'
         }
         // Calculate subtotal amount
         for (const item of cart) {
@@ -112,10 +112,11 @@ module.exports.checkout = async (req, res, next) => {
         if(!couponCode){
             validityMessage = ''
         }
-        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
+        total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         const resObj = {
             cart,
+            shippingMethod,
             totalItems,
             shippingCost,
             subTotal,
@@ -265,3 +266,5 @@ module.exports.applyCoupon = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+

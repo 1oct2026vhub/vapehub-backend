@@ -26,10 +26,7 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *                 type: string
  *                 description: The coupon code to apply for a discount.
  *                 example: "DISCOUNT10"
- *               shippingMethodId:
- *                 type: integer
- *                 description: ID of the selected shipping method. Defaults to 0 if not provided.
- *                 example: 2
+ *               
  *     responses:
  *       "200":
  *         description: Checkout successful
@@ -89,12 +86,23 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *                               name:
  *                                 type: string
  *                                 example: "Vanilla"
+ *                     shippingMethod:
+ *                       type: object
+ *                       description: Selected shipping method details.
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         shipping_method:
+ *                           type: string
+ *                           example: "Standard Shipping"
+ *                         shipping_cost:
+ *                           type: number
+ *                           example: 5.0
  *                     totalItems:
  *                       type: integer
  *                       example: 3
- *                     shippingCost:
- *                       type: number
- *                       example: 5.0
+ *                     
  *                     subTotal:
  *                       type: number
  *                       example: 100.0
