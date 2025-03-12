@@ -10,14 +10,6 @@ const checkoutValidator = [
         .trim()
         .withMessage("Coupon code must be a valid string"),
 
-        // Validate shippingMethodId (required & must be an integer)
-        check("shippingMethodId")
-        .optional()
-        .default(0)
-        .toInt()
-        .isInt()
-        .withMessage("Shipping method ID must be a valid number"),
-
 ];
 
 const applyCouponValidate = [
