@@ -2,64 +2,52 @@
 const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-    class Blog extends Model {
+    class BlogCategory extends Model {
         static associate(models) {
             this.belongsTo(models.User, {
-                foreignKey: 'author_id',
-                as: 'author'
-            });
-            this.belongsTo(models.User, {
+                as: 'updatedBy',
                 foreignKey: 'updated_by',
-                as: 'updatedBy'
+                onDelete: 'SET NULL',
+                onUpdate: 'CASCADE'
             });
-            this.belongsToMany(models.BlogCategory, {
+            this.belongsToMany(models.Blog, {
                 through: models.BlogCategoryRelation,
-                foreignKey: 'blog_id',
-                otherKey: 'category_id',
-                as: 'categories'
-            });
-            this.belongsToMany(models.BlogTag, {
-                through: models.BlogTagRelation,
-                foreignKey: 'blog_id',
-                otherKey: 'tag_id',
-                as: 'tags'
+                foreignKey: 'category_id',
+                otherKey: 'blog_id',
+                as: 'blogs'
             });
             this.hasMany(models.BlogCategoryRelation, {
-                foreignKey: 'blog_id',
-                as: 'categoryRelations'
-            });
-            this.hasMany(models.BlogTagRelation, {
-                foreignKey: 'blog_id',
-                as: 'tagRelations'
+                foreignKey: 'category_id',
+                as: 'blogRelations'
             });
         }
     }
 
-    Blog.init({
+    BlogCategory.init({
         id: {
             type: DataTypes.INTEGER,
             primaryKey: true,
             autoIncrement: true,
             unique: true
         },
-        title: {
-            type: DataTypes.STRING(255),
+        name: {
+            type: DataTypes.STRING(100),
             allowNull: false,
             validate: {
                 notEmpty: true
             }
         },
         slug: {
-            type: DataTypes.STRING(255),
+            type: DataTypes.STRING(100),
             allowNull: false,
             unique: true,
             validate: {
                 notEmpty: true
             }
         },
-        content: {
+        description: {
             type: DataTypes.TEXT,
-            allowNull: false
+            allowNull: true
         },
         image_url: {
             type: DataTypes.STRING(500),
@@ -67,18 +55,6 @@ module.exports = (sequelize, DataTypes) => {
             validate: {
                 isUrl: true
             }
-        },
-        author_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'users',
-                key: 'id'
-            }
-        },
-        published_at: {
-            type: DataTypes.DATE,
-            allowNull: true
         },
         updated_by: {
             type: DataTypes.INTEGER,
@@ -90,8 +66,8 @@ module.exports = (sequelize, DataTypes) => {
         }
     }, {
         sequelize,
-        modelName: 'Blog',
-        tableName: 'blogs',
+        modelName: 'BlogCategory',
+        tableName: 'blog_categories',
         paranoid: true,
         timestamps: true,
         createdAt: 'created_at',
@@ -99,5 +75,5 @@ module.exports = (sequelize, DataTypes) => {
         deletedAt: 'deleted_at'
     });
 
-    return Blog;
-};
+    return BlogCategory;
+}; 
