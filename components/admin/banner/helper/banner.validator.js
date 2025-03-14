@@ -18,7 +18,6 @@ const uploadImageMiddleware = multer({
     }
 }).fields([
     { name: 'image', maxCount: 1 },
-    { name: 'image_mid', maxCount: 1 },
     { name: 'image_low', maxCount: 1 }
 ]);
 
@@ -42,22 +41,6 @@ const validateImageUpload = (req, res, next) => {
 
 // Validation rules for creating a banner
 const createBannerValidation = [
-    body('display_order')
-        .notEmpty().withMessage('Display order is required')
-        .isInt({ min: 1 }).withMessage('Display order must be a positive integer'),
-    
-    body('image_url')
-        .notEmpty().withMessage('Image URL is required')
-        .isURL().withMessage('Invalid image URL format'),
-    
-    body('image_url_mid')
-        .optional()
-        .isURL().withMessage('Invalid image URL format'),
-    
-    body('image_url_low')
-        .optional()
-        .isURL().withMessage('Invalid image URL format'),
-    
     body('title')
         .optional()
         .isString().withMessage('Title must be a string')
@@ -94,22 +77,6 @@ const createBannerValidation = [
 const updateBannerValidation = [
     param('id')
         .isInt().withMessage('Invalid banner ID'),
-    
-    body('display_order')
-        .optional()
-        .isInt({ min: 1 }).withMessage('Display order must be a positive integer'),
-    
-    body('image_url')
-        .optional()
-        .isURL().withMessage('Invalid image URL format'),
-    
-    body('image_url_mid')
-        .optional()
-        .isURL().withMessage('Invalid image URL format'),
-    
-    body('image_url_low')
-        .optional()
-        .isURL().withMessage('Invalid image URL format'),
     
     body('title')
         .optional()
@@ -184,11 +151,17 @@ const bannerIdValidation = [
         .isInt().withMessage('Invalid banner ID')
 ];
 
+const shuffleBannerValidation = [
+    param('id').isInt().withMessage('Invalid banner ID'),
+    body('new_display_order').isInt().withMessage('New display order must be an integer')
+];
+
 module.exports = {
     validateImageUpload,
     createBannerValidation,
     updateBannerValidation,
     getBannersValidation,
     deleteBannerValidation,
-    bannerIdValidation
+    bannerIdValidation,
+    shuffleBannerValidation
 }; 

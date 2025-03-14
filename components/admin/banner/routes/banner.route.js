@@ -7,10 +7,14 @@ const {
     updateBannerValidation,
     getBannersValidation,
     deleteBannerValidation,
-    bannerIdValidation
+    bannerIdValidation,
+    shuffleBannerValidation
 } = require('../helper/banner.validator');
 const { authMiddleware } = require('../../../../library/middleware');
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+
+const authMiddlewareAdmin = [authMiddleware(true)];
+const withValidation = (validationRules) => [...authMiddlewareAdmin, validateRequest(validationRules)];
 
 /**
  * @swagger
@@ -24,8 +28,6 @@ const { validateRequest } = require("../../../../utils/validationMiddleware");
  *         display_order:
  *           type: integer
  *         image_url:
- *           type: string
- *         image_url_mid:
  *           type: string
  *         image_url_low:
  *           type: string
@@ -121,7 +123,10 @@ const { validateRequest } = require("../../../../utils/validationMiddleware");
  *                   items:
  *                     $ref: '#/components/schemas/Banner'
  */
-router.get('/', [authMiddleware(true), validateRequest(getBannersValidation)], bannerController.getBanners);
+router.get('/', 
+    withValidation(getBannersValidation), 
+    bannerController.getBanners
+);
 
 /**
  * @swagger
@@ -139,17 +144,10 @@ router.get('/', [authMiddleware(true), validateRequest(getBannersValidation)], b
  *           schema:
  *             type: object
  *             required:
- *               - display_order
  *               - image
- *               - image_mid
  *               - image_low
  *             properties:
- *               display_order:
- *                 type: integer
  *               image:
- *                 type: string
- *                 format: binary
- *               image_mid:
  *                 type: string
  *                 format: binary
  *               image_low:
@@ -169,7 +167,7 @@ router.get('/', [authMiddleware(true), validateRequest(getBannersValidation)], b
  *         description: Banner created successfully
  */
 router.post('/', 
-    [authMiddleware(true), validateImageUpload, validateRequest(createBannerValidation)], 
+    [...authMiddlewareAdmin, validateImageUpload, validateRequest(createBannerValidation)], 
     bannerController.createBanner
 );
 
@@ -194,12 +192,7 @@ router.post('/',
  *           schema:
  *             type: object
  *             properties:
- *               display_order:
- *                 type: integer
  *               image:
- *                 type: string
- *                 format: binary
- *               image_mid:
  *                 type: string
  *                 format: binary
  *               image_low:
@@ -221,7 +214,7 @@ router.post('/',
  *         description: Banner not found
  */
 router.put('/:id', 
-    [authMiddleware(true), validateImageUpload, validateRequest(updateBannerValidation)], 
+    [...authMiddlewareAdmin, validateImageUpload, validateRequest(updateBannerValidation)], 
     bannerController.updateBanner
 );
 
@@ -247,7 +240,7 @@ router.put('/:id',
  *         description: Banner not found
  */
 router.delete('/:id', 
-    [authMiddleware(true), validateRequest(deleteBannerValidation)], 
+    withValidation(deleteBannerValidation), 
     bannerController.deleteBanner
 );
 
@@ -276,8 +269,50 @@ router.delete('/:id',
  *         description: Banner not found
  */
 router.get('/:id', 
-    [authMiddleware(true), validateRequest(bannerIdValidation)],
+    withValidation(bannerIdValidation),
     bannerController.getBannerDetails
+);
+
+/**
+ * @swagger
+ * /api/admin/banners/{id}/shuffle:
+ *   put:
+ *     tags:
+ *       - ADMIN - Banner
+ *     summary: Shuffle banner display order
+ *     description: Update the display order of a banner and reorder other banners accordingly
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Banner ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - new_display_order
+ *             properties:
+ *               new_display_order:
+ *                 type: integer
+ *                 description: New display order position
+ *     responses:
+ *       200:
+ *         description: Display order updated successfully
+ *       400:
+ *         description: Invalid display order
+ *       404:
+ *         description: Banner not found
+ */
+router.put('/:id/shuffle',
+    withValidation(shuffleBannerValidation),
+    bannerController.shuffleDisplayOrder
 );
 
 module.exports = router; 
