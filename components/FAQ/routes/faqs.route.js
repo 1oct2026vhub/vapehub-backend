@@ -12,11 +12,47 @@ const { check, query, param } = require("express-validator");
  *     tags:
  *       - FAQ
  *     summary: Get all FAQs
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema:
+ *           type: string
+ *           enum: [product, category, brand, variant, common]
+ *         description: Type of entity
+ *       - in: query
+ *         name: entity_id
+ *         schema:
+ *           type: integer
+ *         description: ID of the related entity
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       entity_type:
+ *                         type: string
+ *                       entity_id:
+ *                         type: integer
+ *                       question:
+ *                         type: string
+ *                       answer:
+ *                         type: string
+ *                 message:
+ *                   type: string
  */
-router.get('/', FAQController.listAllfaqs);
+router.get('/', FAQController.listfaqs);
 
 /**
  * @swagger
@@ -35,6 +71,13 @@ router.get('/', FAQController.listAllfaqs);
  *           schema:
  *             type: object
  *             properties:
+ *               entity_type:
+ *                 type: string
+ *                 enum: [product, category, brand, variant, common]
+ *                 example: "product"
+ *               entity_id:
+ *                 type: integer
+ *                 example: 1
  *               question:
  *                 type: string
  *                 example: "What is your return policy?"
@@ -45,13 +88,41 @@ router.get('/', FAQController.listAllfaqs);
  *               - question
  *               - answer
  *     responses:
- *       200:
- *         description: Success
+ *       201:
+ *         description: FAQ created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     entity_type:
+ *                       type: string
+ *                     entity_id:
+ *                       type: integer
+ *                     question:
+ *                       type: string
+ *                     answer:
+ *                       type: string
+ *                     updated_by:
+ *                       type: integer
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Validation error
  */
 router.post('/', authenticateJWT,
     validateRequest([
         check('question').isString().withMessage('Question must be a string').notEmpty().withMessage('Question cannot be empty'),
         check('answer').isString().withMessage('Answer must be a string').notEmpty().withMessage('Answer cannot be empty'),
+        check('entity_type').optional().isIn(['product', 'category', 'brand', 'variant', 'common']).withMessage('Invalid entity type'),
+        check('entity_id').optional().isInt().withMessage('Entity ID must be an integer'),
     ]),
     FAQController.createFaq);
 

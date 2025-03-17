@@ -1,0 +1,115 @@
+const router = require("express").Router();
+const authenticateJWT = require("../../auth/middleware/authMiddleware");
+const shippingMethodController = require("../domain/shippingMethod.controller");
+const { validateRequest } = require("../../../utils/validationMiddleware");
+const {shippingMethodValidator} = require("../helper/shippingMethod.validator")
+
+/**
+ * @swagger
+ * /api/shipping-method:
+ *   post:
+ *     summary: Select Shipping Method
+ *     description: applies shipping cost, and calculates the final total. If a valid coupon is provided, it applies the discount.
+ *     tags:
+ *       - Shipping Method
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - shippingMethodId
+ *             properties:
+ *               couponCode:
+ *                 type: string
+ *                 description: Optional coupon code for discount.
+ *                 example: "DISCOUNT10"
+ *               shippingMethodId:
+ *                 type: integer
+ *                 description: ID of the selected shipping method.
+ *                 example: 1
+ *     responses:
+ *       "200":
+ *         description: Shipping method applied successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalItems:
+ *                       type: integer
+ *                       description: Number of items in the cart.
+ *                       example: 3
+ *                     shippingCost:
+ *                       type: number
+ *                       description: Cost of the selected shipping method.
+ *                       example: 5.0
+ *                     subTotal:
+ *                       type: number
+ *                       description: Cart total before discounts and shipping.
+ *                       example: 100.0
+ *                     total:
+ *                       type: number
+ *                       description: Final total after applying discounts and shipping.
+ *                       example: 90.0
+ *                     validityMessage:
+ *                       type: string
+ *                       description: Message about coupon validity.
+ *                       example: "You have already used this coupon."
+ *       "400":
+ *         description: Bad Request - Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping method ID is required"
+ *       "404":
+ *         description: Cart is empty or Shipping method not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Cart is empty"
+ *       "500":
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Internal server error"
+ */
+
+router.post("/", authenticateJWT, validateRequest(shippingMethodValidator), shippingMethodController.shippingMethod)
+
+
+module.exports = router

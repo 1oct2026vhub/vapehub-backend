@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, Flavor, Order } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order } = require("../../../models");
 const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
@@ -46,6 +46,10 @@ module.exports.checkout = async (req, res, next) => {
         if(!shippingMethod || shippingMethod.length === 0){
             validityMessage = 'No shipping methods available'
         }
+
+        const paymentMethod = await PaymentMethod.findAll({
+            where: { status: "active" }
+        });
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
@@ -117,6 +121,7 @@ module.exports.checkout = async (req, res, next) => {
         const resObj = {
             cart,
             shippingMethod,
+            paymentMethod,
             totalItems,
             shippingCost,
             subTotal,

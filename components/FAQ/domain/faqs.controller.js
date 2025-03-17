@@ -1,9 +1,10 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { FAQ } = require("../../../models");
 
-module.exports.listAllfaqs = async (req, res, next) => {
+module.exports.listfaqs = async (req, res, next) => {
     try {
-        const faqs = await FAQ.findAll();
+        const {entity_type,entity_id} =  req.query;
+        const faqs = await FAQ.findAll({ where: { entity_type, entity_id} });
         successResponse(res, faqs, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -27,9 +28,9 @@ module.exports.getFaqByid = async (req, res, next) => {
 }
 module.exports.createFaq = async (req, res, next) => {
     try {
-        const { question, answer } = req.body;
+        const { entity_type, entity_id, question, answer } = req.body;
         const { id: updated_by } = req.user
-        const faq = await FAQ.create({ question, answer, updated_by });
+        const faq = await FAQ.create({ entity_type, entity_id, question, answer, updated_by });
         successResponse(res, faq, 'FAQ created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
