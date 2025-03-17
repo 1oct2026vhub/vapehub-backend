@@ -1,10 +1,11 @@
 const { Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag} = require("../../../../models");
+const { Blog, User, BlogCategory, BlogTag, SlugRelation, sequelize } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const SlugManager = require("../../../../utils/slugManager");
+const slugManager = new SlugManager(SlugRelation);  
 
 const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
-const { sequelize } = require("../../../../models");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -105,9 +106,8 @@ module.exports.createBlog = async (req, res) => {
     let transaction;
     
     try {
-        // Start transaction with a longer timeout
         transaction = await sequelize.transaction({
-            timeout: 30000 // 30 seconds timeout
+            timeout: 30000
         });
 
         const { title, content, slug, published_at } = req.body;
@@ -116,16 +116,6 @@ module.exports.createBlog = async (req, res) => {
         const tags = req.body.tags ? 
             req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
         const { id: author_id } = req.user;
-
-        // Check for unique slug
-        const existingBlog = await Blog.findOne({ 
-            where: { slug },
-            transaction
-        });
-        
-        if (existingBlog) {
-            throw new Error('Slug already exists');
-        }
 
         let image_url = null;
         if (req.file) {
@@ -142,6 +132,9 @@ module.exports.createBlog = async (req, res) => {
             published_at,
             updated_by: author_id
         }, { transaction });
+
+        // Create slug relation using static method
+        await slugManager.createOrUpdateSlug(slug, 'blog', blog.id, transaction);
 
         // Update relations with error handling
         try {
@@ -236,8 +229,12 @@ module.exports.updateBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        // Handle image upload
         const image_url = await handleImageUpload(req.file) || blog.image_url;
+
+        // Update slug using static method
+        if (slug && slug !== blog.slug) {
+            await slugManager.createOrUpdateSlug(slug, 'blog', id, transaction);
+        }
 
         // Update blog
         await blog.update({
@@ -279,6 +276,9 @@ module.exports.deleteBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
+        // Delete slug using static method
+        await slugManager.deleteSlug('blog', req.params.id, transaction);
+
         // This will cascade delete relations due to model associations
         await blog.destroy({ transaction });
 
@@ -291,6 +291,7 @@ module.exports.deleteBlog = async (req, res) => {
 };
 
 module.exports.restoreBlog = async (req, res) => {
+    const transaction = await sequelize.transaction();
     try {
         const blog = await Blog.findOne({
             where: { id: req.params.id },
@@ -306,8 +307,14 @@ module.exports.restoreBlog = async (req, res) => {
         }
 
         await blog.restore();
+        
+        // Recreate slug using static method
+        await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, transaction);
+
+        await transaction.commit();
         successResponse(res, blog, 'Blog post restored successfully');
     } catch (error) {
+        await transaction.rollback();
         errorResponse(res, error);
     }
 };

@@ -132,6 +132,15 @@ router.get('/:id', [authMiddleware(true), validateRequest(blogCategoryIdValidati
  *                 type: string
  *                 description: Category description
  *                 example: "All technology related blogs"
+ *               parent_id:
+ *                 type: integer
+ *                 description: ID of the parent category (optional)
+ *                 example: 1
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *                 default: active
+ *                 description: Category status
  *               image:
  *                 type: string
  *                 format: binary
@@ -181,6 +190,14 @@ router.post('/', [authMiddleware(true), uploadFileValidation, validateRequest(bl
  *                 type: string
  *                 description: Category description
  *                 example: "Updated technology category description"
+ *               parent_id:
+ *                 type: integer
+ *                 description: ID of the parent category (optional)
+ *                 example: 1
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *                 description: Category status
  *               image:
  *                 type: string
  *                 format: binary
@@ -293,6 +310,19 @@ router.put('/:id/restore',
  *           type: string
  *         image_url:
  *           type: string
+ *         parent_id:
+ *           type: integer
+ *           nullable: true
+ *           description: ID of the parent category
+ *         parent:
+ *           $ref: '#/components/schemas/BlogCategory'
+ *         children:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/BlogCategory'
+ *         status:
+ *           type: string
+ *           enum: [active, inactive]
  *         updated_by:
  *           type: integer
  *         created_at:
