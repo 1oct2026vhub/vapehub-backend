@@ -105,10 +105,11 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *                       properties:
  *                         id:
  *                           type: integer
- *                           example: 2
+ *                           example: 1
  *                         name:
  *                           type: string
- *                           example: "vivaWallet"
+ *                           enum: ["VivaWallet", "Worldpay"]
+ *                           example: "VivaWallet"
  *                     totalItems:
  *                       type: integer
  *                       example: 3
