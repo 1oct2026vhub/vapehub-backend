@@ -15,6 +15,16 @@ module.exports = (sequelize, DataTypes) => {
             autoIncrement: true,
             unique: true
         },
+        entity_type: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: 'Type of entity (e.g., product, category, brand, variant, common)'
+        },
+        entity_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            comment: 'ID of the related entity'
+        },
         question: DataTypes.TEXT,
         answer: DataTypes.TEXT
     }, {
