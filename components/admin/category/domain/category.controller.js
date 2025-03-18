@@ -1,8 +1,11 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category } = require("../../../../models");
+const { Category, SlugRelation, sequelize } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 /**
  * Retrieves all categories.
@@ -70,8 +73,8 @@ module.exports.getCategoryById = async (req, res, next) => {
  * Creates a new category.
  */
 module.exports.createCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
-
         let { name, slug, description, parent_id } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
@@ -86,12 +89,14 @@ module.exports.createCategory = async (req, res, next) => {
         // Check if the category name already exists
         const categoryExists = await Category.findOne({ where: { name } });
         if (categoryExists) {
+            await t.rollback();
             return errorResponse(res, { message: "Category name already exists" }, "Category name already exists", 400);
         }
 
         
         // Validate parent category
         if (parent_id && !(await Category.findByPk(parent_id))) {
+            await t.rollback();
             return errorResponse(res, { message: "Parent category does not exist" }, "Invalid parent category", 400);
         }
 
@@ -99,6 +104,7 @@ module.exports.createCategory = async (req, res, next) => {
         if (parent_id) {
             const parentCategory = await Category.findByPk(parent_id);
             if (!parentCategory) {
+                await t.rollback();
                 return errorResponse(res, { message: "Parent category does not exist" }, "Parent category does not exist", 400);
             }
         }
@@ -120,16 +126,22 @@ module.exports.createCategory = async (req, res, next) => {
 
                 logo_url = uploadedImage.Location;
             } catch (uploadError) {
+                await t.rollback();
                 console.error("File Upload Error:", uploadError);
                 return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
         }
 
         // Create category
-        const category = await Category.create({ name, slug, description, parent_id, updated_by, logo_url });
+        const category = await Category.create({ name, slug, description, parent_id, updated_by, logo_url }, { transaction: t });
 
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(slug, 'category', category.id, t);
+
+        await t.commit();
         return successResponse(res, category, "Category created successfully", 201);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -138,6 +150,7 @@ module.exports.createCategory = async (req, res, next) => {
  * Updates an existing category by ID.
  */
 module.exports.updateCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
         const { name, slug, description, parent_id: rawParentId } = req.body;
@@ -147,6 +160,7 @@ module.exports.updateCategory = async (req, res, next) => {
         // Find category
         const category = await Category.findByPk(id);
         if (!category) {
+            await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
 
@@ -154,6 +168,7 @@ module.exports.updateCategory = async (req, res, next) => {
         const existingCategory = await Category.findOne({ where: { name, id: { [Op.ne]: id } } });
 
         if (existingCategory) {
+            await t.rollback();
             return errorResponse(
                 res,
                 { message: `${existingCategory.name === name ? "Category name" : "Category slug"} already exists` },
@@ -165,6 +180,7 @@ module.exports.updateCategory = async (req, res, next) => {
         // Validate parent category
         const parent_id = rawParentId?.trim() || null;
         if (parent_id && !(await Category.findByPk(parent_id))) {
+            await t.rollback();
             return errorResponse(res, { message: "Parent category does not exist" }, "Invalid parent category", 400);
         }
         // Upload logo if file exists
@@ -186,6 +202,7 @@ module.exports.updateCategory = async (req, res, next) => {
 
                 logo_url = uploadedImage.Location;
             } catch (uploadError) {
+                await t.rollback();
                 console.error("File Upload Error:", uploadError);
                 return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
@@ -199,9 +216,17 @@ module.exports.updateCategory = async (req, res, next) => {
             description: description?.trim() || category.description,
             updated_by,
             parent_id
-        });
+        }, { transaction: t });
+
+        // Update slug if provided
+        if (slug && slug !== category.slug) {
+            await slugManager.createOrUpdateSlug(slug, 'category', id, t);
+        }
+
+        await t.commit();
         return successResponse(res, category, "Category updated successfully");
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -210,17 +235,25 @@ module.exports.updateCategory = async (req, res, next) => {
  * Deletes a category by ID.
  */
 module.exports.deleteCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
         const category = await Category.findByPk(id);
         if (!category) {
+            await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
         
-        // Perform a hard delete
-        await category.destroy();
+        // Delete slug relation first
+        await slugManager.deleteSlug('category', id, t);
+
+        // Delete the category
+        await category.destroy({ transaction: t });
+
+        await t.commit();
         return successResponse(res, {}, "Category deleted successfully", 200);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -229,16 +262,25 @@ module.exports.deleteCategory = async (req, res, next) => {
  * Restores a soft-deleted category by ID.
  */
 module.exports.restoreCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
         const category = await Category.findOne({ where: { id }, paranoid: false });
         if (!category) {
+            await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
 
-        await category.restore();
+        // Restore the category
+        await category.restore({ transaction: t });
+
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
+
+        await t.commit();
         return successResponse(res, {}, "Category restored successfully", 200);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -248,9 +290,11 @@ module.exports.restoreCategory = async (req, res, next) => {
  * If a category does not exist, a new category will be created.
  */
 module.exports.bulkUpdateCategories = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { file } = req;
         if (!file) {
+            await t.rollback();
             return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
         }
 
@@ -309,7 +353,11 @@ module.exports.bulkUpdateCategories = async (req, res, next) => {
                             slug: typeof slug === 'string' ? slug.trim() : slug,
                             description: typeof description === 'string' ? description.trim() : description,
                             parent_id: parentCategory ? parentCategory.id : null,
-                        });
+                        }, { transaction: t });
+
+                        // Create slug relation
+                        await slugManager.createOrUpdateSlug(slug, 'category', category.id, t);
+
                         results.push({ 
                             slug, 
                             status: 'Created', 
@@ -321,7 +369,13 @@ module.exports.bulkUpdateCategories = async (req, res, next) => {
                             name: typeof name === 'string' ? name.trim() : category.name,
                             description: typeof description === 'string' ? description.trim() : category.description,
                             parent_id: parentCategory ? parentCategory.id : null,
-                        });
+                        }, { transaction: t });
+
+                        // Update slug if changed
+                        if (slug !== category.slug) {
+                            await slugManager.createOrUpdateSlug(slug, 'category', category.id, t);
+                        }
+
                         results.push({ 
                             slug, 
                             status: 'Updated', 
@@ -364,12 +418,14 @@ module.exports.bulkUpdateCategories = async (req, res, next) => {
             skipped: results.filter(r => r.status === 'Skipped').length,
         };
 
+        await t.commit();
         return successResponse(res, {
             summary,
             results
         }, "Categories processed successfully");
 
     } catch (error) {
+        await t.rollback();
         console.error('Error during bulk update:', error);
         return errorResponse(res, error, "Error processing categories");
     }

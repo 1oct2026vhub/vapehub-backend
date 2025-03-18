@@ -1,10 +1,13 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Category, Brand } = require("../../../../models");
+const { Product, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Category, Brand, SlugRelation } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs");
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 const ERROR_MESSAGES = {
     VARIANT_NOT_FOUND: "Variant not found",
@@ -390,6 +393,10 @@ const checkExistingCombinations = async (attributes, product_id, transaction) =>
 // Helper function to create variant and its attributes
 const createVariantAndAttributes = async (variant, product_id, updated_by, transaction) => {
     const productVariant = await createVariantRecord(variant, product_id, updated_by, transaction);
+    
+    // Create slug relation
+    await slugManager.createOrUpdateSlug(variant.slug, 'product_variant', productVariant.id, transaction);
+    
     const variantAttributeTerms = variant.attributes.map(attr => ({
         variant_id: productVariant.id,
         attribute_id: attr.attribute_id,
@@ -530,7 +537,11 @@ module.exports.updateProductVariant = async (req, res) => {
 
         // Validate update data
         await validateUpdateData(variantData, existingVariant, variant_id, transaction);
-        
+
+        // Update slug if provided and changed
+        if (variantData.slug && variantData.slug !== existingVariant.slug) {
+            await slugManager.createOrUpdateSlug(variantData.slug, 'product_variant', variant_id, transaction);
+        }
 
         const existingAttributes = await ProductVariantAttribute.findAll({
             where: {
@@ -615,6 +626,9 @@ module.exports.removeProductVariant = async (req, res) => {
         if (!variant) {
             return errorResponse(res, { message: ERROR_MESSAGES.VARIANT_NOT_FOUND }, ERROR_MESSAGES.VARIANT_NOT_FOUND, 404);
         }
+
+        // Delete slug relation first
+        await slugManager.deleteSlug('product_variant', variant_id, transaction);
 
         // Delete images from S3 if they exist
         if (variant.variantImages && variant.variantImages.length > 0) {
@@ -1214,6 +1228,9 @@ module.exports.restoreProductVariant = async (req, res) => {
 
         // Update the updated_by field
         await variant.update({ updated_by }, { transaction });
+
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(variant.slug, 'product_variant', variant.id, transaction);
 
         // Fetch the restored variant with all its associations
         const restoredVariant = await ProductVariant.findByPk(variant_id, {

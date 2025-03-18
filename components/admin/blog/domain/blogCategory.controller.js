@@ -1,7 +1,10 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { BlogCategory } = require("../../../../models");
+const { BlogCategory, SlugRelation, sequelize } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 /**
  * Retrieves all blog categories with pagination and optional search.
@@ -27,10 +30,22 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
 
         const { count, rows: categories } = await BlogCategory.findAndCountAll({
             where: whereCondition,
+            include: [
+                {
+                    model: BlogCategory,
+                    as: 'parent',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
+                    model: BlogCategory,
+                    as: 'children',
+                    attributes: ['id', 'name', 'slug']
+                }
+            ],
             limit,
             offset,
-            order: [["created_at", "DESC"]],
-            paranoid: false, // Include soft-deleted records when deleted flag is used
+            order: [["updated_at", "DESC"]],
+            paranoid: false
         });
 
         return successResponse(res, {
@@ -49,7 +64,20 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
  */
 module.exports.getBlogCategoryById = async (req, res, next) => {
     try {
-        const category = await BlogCategory.findByPk(req.params.id);
+        const category = await BlogCategory.findByPk(req.params.id, {
+            include: [
+                {
+                    model: BlogCategory,
+                    as: 'parent',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
+                    model: BlogCategory,
+                    as: 'children',
+                    attributes: ['id', 'name', 'slug']
+                }
+            ]
+        });
         if (!category) {
             return errorResponse(res, { message: "Blog category not found" }, "Blog category not found", 404);
         }
@@ -63,56 +91,69 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
  * Creates a new blog category.
  */
 module.exports.createBlogCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
-        let { name, slug, description } = req.body;
-        const { id: updated_by } = req.user;
-        let image_url = req.body.image_url || null;
+        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        let parent_id = initialParentId;
         const { file } = req;
 
-        // Trim input values
-        name = name?.trim();
-        slug = slug?.trim();
-        description = description?.trim();
+        // Check if category with same name exists
+        const existingCategory = await BlogCategory.findOne({
+            where: { name }
+        });
 
-        // Check if the category name already exists
-        const categoryExists = await BlogCategory.findOne({ where: { name } });
-        if (categoryExists) {
-            return errorResponse(res, { message: "Category name already exists" }, "Category name already exists", 400);
+        if (existingCategory) {
+            await t.rollback();
+            return errorResponse(res, { message: "A category with this name already exists" }, "Validation error", 400);
         }
 
-        // Upload image to S3 if provided
-        if (file) {
-            try {
-                const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
-                const params = {
-                    Bucket: process.env.AWS_S3_BUCKET,
-                    Key: `blog-categories/${fileName}`,
-                    Body: buffer,
-                    ContentType: mimetype
-                };
-
-                const uploadedImage = await uploadFiletToS3(params);
-                if (!uploadedImage?.Location) throw new Error("File upload failed");
-
-                image_url = uploadedImage.Location;
-            } catch (uploadError) {
-                console.error("File Upload Error:", uploadError);
-                return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
+        // If parent_id is provided, verify it exists
+        if (parent_id) {
+            const parentCategory = await BlogCategory.findByPk(parent_id, { transaction: t });
+            if (!parentCategory) {
+                await t.rollback();
+                return errorResponse(res, { message: "Parent category not found" }, "Validation error", 400);
             }
         }
+        else {
+            parent_id = null;
+        }
 
-        // Create category
+        let image_url = null;
+        if (file) {
+            const { originalname, mimetype, buffer } = file;
+            const fileName = generateUniqueFileName(originalname);
+            const params = {
+                Bucket: process.env.AWS_S3_BUCKET,
+                Key: `blog-categories/${fileName}`,
+                Body: buffer,
+                ContentType: mimetype
+            };
+
+            const uploadedImage = await uploadFiletToS3(params);
+            if (!uploadedImage?.Location) throw new Error("File upload failed");
+            image_url = uploadedImage.Location;
+        }
+
+        // Create the category
         const category = await BlogCategory.create({
             name,
             slug,
             description,
             image_url,
-            updated_by
-        });
+            status,
+            parent_id,
+            updated_by: req.user.id
+        }, { transaction: t });
+
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
+
+        await t.commit();
 
         return successResponse(res, category, "Blog category created successfully", 201);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -121,60 +162,88 @@ module.exports.createBlogCategory = async (req, res, next) => {
  * Updates an existing blog category.
  */
 module.exports.updateBlogCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        let { name, slug, description } = req.body;
-        const { id: updated_by } = req.user;
+        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        let parent_id = initialParentId;
         const { file } = req;
 
         const category = await BlogCategory.findByPk(id);
         if (!category) {
-            return errorResponse(res, { message: "Blog category not found" }, "Blog category not found", 404);
+            await t.rollback();
+            return errorResponse(res, { message: "Category not found" }, "Not found", 404);
         }
 
-        // Check for name uniqueness
-        const existingCategory = await BlogCategory.findOne({
-            where: { name, id: { [Op.ne]: id } }
-        });
+        // Check if name is being changed and if it's already taken
+        if (name && name !== category.name) {
+            const existingCategory = await BlogCategory.findOne({
+                where: { name }
+            });
 
-        if (existingCategory) {
-            return errorResponse(res, { message: "Category name already exists" }, "Duplicate category entry", 400);
-        }
-
-        // Upload image if provided
-        let image_url = category.image_url;
-        if (file) {
-            try {
-                const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
-                const params = {
-                    Bucket: process.env.AWS_S3_BUCKET,
-                    Key: `blog-categories/${fileName}`,
-                    Body: buffer,
-                    ContentType: mimetype
-                };
-
-                const uploadedImage = await uploadFiletToS3(params);
-                if (!uploadedImage?.Location) throw new Error("File upload failed");
-
-                image_url = uploadedImage.Location;
-            } catch (uploadError) {
-                console.error("File Upload Error:", uploadError);
-                return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
+            if (existingCategory) {
+                await t.rollback();
+                return errorResponse(res, { message: "A category with this name already exists" }, "Validation error", 400);
             }
         }
 
-        // Update category
+        // If parent_id is being changed, verify it exists and check for circular reference
+        if (parent_id !== undefined && parent_id !== category.parent_id) {
+            if (parent_id === id) {
+                await t.rollback();
+                return errorResponse(res, { message: "A category cannot be its own parent" }, "Validation error", 400);
+            }
+
+            if (parent_id) {
+                const parentCategory = await BlogCategory.findByPk(parent_id, { transaction: t });
+                if (!parentCategory) {
+                    await t.rollback();
+                    return errorResponse(res, { message: "Parent category not found" }, "Validation error", 400);
+                }
+            }
+        }
+        else {
+            parent_id = category.parent_id || null;
+        }
+
+        // Update slug if name has changed
+        if (slug) {
+            await slugManager.createOrUpdateSlug(slug, 'blog_category', category.id, t);
+        }
+
+        let image_url = category.image_url;
+        if (file) {
+            const { originalname, mimetype, buffer } = file;
+            const fileName = generateUniqueFileName(originalname);
+            const params = {
+                Bucket: process.env.AWS_S3_BUCKET,
+                Key: `blog-categories/${fileName}`,
+                Body: buffer,
+                ContentType: mimetype
+            };
+
+            const uploadedImage = await uploadFiletToS3(params);
+            if (!uploadedImage?.Location) throw new Error("File upload failed");
+            image_url = uploadedImage.Location;
+        }
+
+        // Update the category
         await category.update({
-            name: name?.trim() || category.name,
-            slug: slug?.trim() || category.slug,
-            description: description?.trim() || category.description,
+            name,
+            slug,
+            description,
             image_url,
-            updated_by
-        });
+            status,
+            parent_id,
+            updated_by: req.user.id
+        }, { transaction: t });
+
+
+        await t.commit();
 
         return successResponse(res, category, "Blog category updated successfully");
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -183,16 +252,27 @@ module.exports.updateBlogCategory = async (req, res, next) => {
  * Deletes a blog category (soft delete).
  */
 module.exports.deleteBlogCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+
         const category = await BlogCategory.findByPk(id);
         if (!category) {
-            return errorResponse(res, { message: "Blog category not found" }, "Blog category not found", 404);
+            await t.rollback();
+            return errorResponse(res, { message: "Category not found" }, "Not found", 404);
         }
 
-        await category.destroy(); // This will be a soft delete since paranoid is true
-        return successResponse(res, {}, "Blog category deleted successfully");
+        // Delete slug relation first
+        await slugManager.deleteSlug('blog_category', id, t);
+
+        // Soft delete the category
+        await category.destroy({ transaction: t });
+
+        await t.commit();
+
+        return successResponse(res, null, "Blog category deleted successfully");
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -201,28 +281,31 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
  * Restores a soft-deleted blog category.
  */
 module.exports.restoreBlogCategory = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+
         const category = await BlogCategory.findOne({
             where: { id },
-            paranoid: false // Include soft-deleted records
+            paranoid: false
         });
 
         if (!category) {
-            return errorResponse(res, { message: "Blog category not found" }, "Blog category not found", 404);
+            await t.rollback();
+            return errorResponse(res, { message: "Category not found" }, "Not found", 404);
         }
 
-        if (!category.deleted_at) {
-            return errorResponse(res, { message: "Blog category is not deleted" }, "Blog category is not deleted", 400);
-        }
+        // Restore the category
+        await category.restore({ transaction: t });
 
-        await category.restore();
-        
-        // Fetch the restored category to return updated data
-        const restoredCategory = await BlogCategory.findByPk(id);
-        
-        return successResponse(res, restoredCategory, "Blog category restored successfully");
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
+
+        await t.commit();
+
+        return successResponse(res, category, "Blog category restored successfully");
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 }; 

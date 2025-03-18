@@ -1,8 +1,11 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Brand } = require("../../../../models");
+const { Brand, SlugRelation, sequelize } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 /**
  * Retrieves all brands with pagination and optional search.
@@ -30,7 +33,7 @@ module.exports.listAllBrands = async (req, res, next) => {
             limit,
             offset,
             order: [["createdAt", "DESC"]],
-            paranoid: false, // Include soft-deleted records when deleted flag is used
+            paranoid: false,
         });
 
         return successResponse(res, {
@@ -63,8 +66,8 @@ module.exports.getBrandById = async (req, res, next) => {
  * Creates a new brand.
  */
 module.exports.createBrand = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
-
         let { name, slug, description } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
@@ -75,9 +78,10 @@ module.exports.createBrand = async (req, res, next) => {
         slug = slug?.trim();
         description = description?.trim();
 
-        // Check if the category name already exists
+        // Check if the brand name already exists
         const brandExists = await Brand.findOne({ where: { name } });
         if (brandExists) {
+            await t.rollback();
             return errorResponse(res, { message: "Brand name already exists" }, "Brand name already exists", 400);
         }
 
@@ -98,16 +102,28 @@ module.exports.createBrand = async (req, res, next) => {
 
                 logo_url = uploadedImage.Location;
             } catch (uploadError) {
+                await t.rollback();
                 console.error("File Upload Error:", uploadError);
                 return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
         }
 
         // Create brand
-        const brand = await Brand.create({ name, slug, description, updated_by, logo_url });
+        const brand = await Brand.create({ 
+            name, 
+            slug, 
+            description, 
+            updated_by, 
+            logo_url 
+        }, { transaction: t });
 
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(slug, 'brand', brand.id, t);
+
+        await t.commit();
         return successResponse(res, brand, "Brand created successfully", 201);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -116,6 +132,7 @@ module.exports.createBrand = async (req, res, next) => {
  * Updates an existing brand by ID.
  */
 module.exports.updateBrand = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
         let { name, slug, description } = req.body;
@@ -125,6 +142,7 @@ module.exports.updateBrand = async (req, res, next) => {
         // Find brand
         const brand = await Brand.findByPk(id);
         if (!brand) {
+            await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
 
@@ -134,6 +152,7 @@ module.exports.updateBrand = async (req, res, next) => {
         });
 
         if (existingBrand) {
+            await t.rollback();
             return errorResponse(res, { message: "Brand name already exists" }, "Duplicate brand entry", 400);
         }
 
@@ -155,9 +174,15 @@ module.exports.updateBrand = async (req, res, next) => {
 
                 logo_url = uploadedImage.Location;
             } catch (uploadError) {
+                await t.rollback();
                 console.error("File Upload Error:", uploadError);
                 return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
+        }
+
+        // Update slug if provided
+        if (slug && slug !== brand.slug) {
+            await slugManager.createOrUpdateSlug(slug, 'brand', id, t);
         }
 
         // Update brand
@@ -167,9 +192,12 @@ module.exports.updateBrand = async (req, res, next) => {
             description: description?.trim() || brand.description,
             logo_url,
             updated_by
-        });
+        }, { transaction: t });
+
+        await t.commit();
         return successResponse(res, brand, "Brand updated successfully");
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -178,16 +206,25 @@ module.exports.updateBrand = async (req, res, next) => {
  * Deletes a brand by ID (hard delete).
  */
 module.exports.deleteBrand = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
         const brand = await Brand.findByPk(id);
         if (!brand) {
+            await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
 
-        await brand.destroy(); // Hard delete
-        return successResponse(res, {}, "Brand deleted successfully", 200);
+        // Delete slug relation first
+        await slugManager.deleteSlug('brand', id, t);
+
+        // Soft delete the brand
+        await brand.destroy({ transaction: t });
+
+        await t.commit();
+        return successResponse(res, {}, "Brand soft deleted successfully", 200);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -196,16 +233,25 @@ module.exports.deleteBrand = async (req, res, next) => {
  * Restores a soft-deleted brand by ID.
  */
 module.exports.restoreBrand = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const brand = await Brand.findOne({ where: { id }, paranoid: false });
+        const brand = await Brand.findOne({ where: { id }, paranoid: true });
         if (!brand) {
+            await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
 
-        await brand.restore();
+        // Restore the brand
+        await brand.restore({ transaction: t });
+
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
+
+        await t.commit();
         return successResponse(res, {}, "Brand restored successfully", 200);
     } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
@@ -215,11 +261,13 @@ module.exports.restoreBrand = async (req, res, next) => {
  * If a brand does not exist, a new brand will be created.
  */
 module.exports.bulkUpdateBrands = async (req, res, next) => {
+    const t = await sequelize.transaction();
     try {
         const { file } = req;
         const { id: updated_by } = req.user;
 
         if (!file) {
+            await t.rollback();
             return errorResponse(res, { message: "No file uploaded" }, "No file uploaded", 400);
         }
 
@@ -232,7 +280,7 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
         const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'Name';
 
         let results = [];
-        const promises = []; // Array to store all promises
+        const promises = [];
 
         // Convert worksheet rows to array and skip header
         const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
@@ -276,7 +324,10 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
                             slug: cleanSlug,
                             description: typeof description === 'string' ? description.trim() : description,
                             updated_by
-                        });
+                        }, { transaction: t });
+
+                        // Create slug relation
+                        await slugManager.createOrUpdateSlug(cleanSlug, 'brand', brand.id, t);
 
                         results.push({
                             slug: cleanSlug,
@@ -298,7 +349,13 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
 
                         if (hasChanges) {
                             // Update existing brand
-                            await brand.update(updates);
+                            await brand.update(updates, { transaction: t });
+
+                            // Update slug if changed
+                            if (cleanSlug !== brand.slug) {
+                                await slugManager.createOrUpdateSlug(cleanSlug, 'brand', brand.id, t);
+                            }
+
                             results.push({
                                 slug: cleanSlug,
                                 name: updates.name,
@@ -353,12 +410,14 @@ module.exports.bulkUpdateBrands = async (req, res, next) => {
             skipped: results.filter(r => r.status === 'Skipped').length
         };
 
+        await t.commit();
         return successResponse(res, {
             summary,
             results
         }, "Brands processed successfully");
 
     } catch (error) {
+        await t.rollback();
         console.error('Error during bulk update:', error);
         return errorResponse(res, error, "Error processing brands");
     }
