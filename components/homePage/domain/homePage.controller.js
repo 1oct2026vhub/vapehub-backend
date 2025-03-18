@@ -1,7 +1,17 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
+const { Op } = require('sequelize');
+const { Sequelize } = require('sequelize');
 
+// Priority order for entity types when multiple matches are found
+const ENTITY_TYPE_PRIORITY = {
+  category: 1,
+  brand: 2,
+  product: 3,
+  product_variant: 4,
+  blog: 5
+};
 
 module.exports.getHomeCarousel = async (req, res, next) => {
     try {
@@ -86,3 +96,140 @@ module.exports.getBannerImages = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+/**
+ * Get slug relations based on provided slugs
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getSlugRelations = async (req, res, next) => {
+    try {
+        const { slugs } = req.query;
+
+        // Validate input
+        if (!slugs) {
+            return errorResponse(res, { message: "Slugs parameter is required" }, "Slugs parameter is required", 400);
+        }
+
+        // Parse slugs from query string
+        const slugArray = slugs.split(',').map(slug => slug.trim());
+
+        // Query slug relations
+        const slugRelations = await SlugRelation.findAll({
+            where: {
+                slug: {
+                    [Op.in]: slugArray
+                }
+            },
+            order: [
+                // Order by entity type priority
+                [Sequelize.literal(`FIELD(entity_type, ${Object.keys(ENTITY_TYPE_PRIORITY)
+                    .map(type => `'${type}'`)
+                    .join(',')})`)]
+            ]
+        });
+
+        // Handle no matches
+        if (!slugRelations.length) {
+            return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
+        }
+
+        // Handle single slug query - no validation needed
+        if (slugArray.length === 1) {
+            return successResponse(res, {
+                slug: slugRelations[0].slug,
+                entity_type: slugRelations[0].entity_type,
+                entity_id: slugRelations[0].entity_id
+            }, 'Success');
+        }
+
+        // Handle multiple slugs query
+        const matchedSlugs = new Set(slugRelations.map(relation => relation.slug));
+        const allSlugsMatched = slugArray.every(slug => matchedSlugs.has(slug));
+
+        if (!allSlugsMatched) {
+            return successResponse(res, {
+                message: 'Partial matches found, refine your query if needed',
+                data: slugRelations.map(relation => ({
+                    slug: relation.slug,
+                    entity_type: relation.entity_type,
+                    entity_id: relation.entity_id
+                }))
+            }, 'Success');
+        }
+
+        // For pairs, validate hierarchical relationships
+        if (slugArray.length === 2) {
+            // Sort relations by priority to ensure parent comes first
+            const sortedRelations = slugRelations.sort((a, b) => 
+                ENTITY_TYPE_PRIORITY[a.entity_type] - ENTITY_TYPE_PRIORITY[b.entity_type]
+            );
+
+            const [parent, child] = sortedRelations;
+
+            // Define valid hierarchical relationships
+            const validHierarchy = {
+                category: {
+                    validChildTypes: ['subcategory', 'product'],
+                    errorMessage: 'A category slug can only be followed by a subcategory or product slug'
+                },
+                brand: {
+                    validChildTypes: ['subbrand', 'product'],
+                    errorMessage: 'A brand slug can only be followed by a sub-brand or product slug'
+                },
+                product: {
+                    validChildTypes: ['product_variant'],
+                    errorMessage: 'A product slug can only be followed by a product variant slug'
+                },
+                blog_category: {
+                    validChildTypes: ['blog_variant'],
+                    errorMessage: 'A blog category slug can only be followed by a blog variant slug'
+                }
+            };
+
+            // Validate hierarchy
+            const parentRules = validHierarchy[parent.entity_type];
+            if (!parentRules) {
+                return errorResponse(res, {
+                    message: "Invalid parent slug type",
+                    details: `Only category, brand, product, and blog_category can be parent slugs`,
+                    allowedParents: Object.keys(validHierarchy),
+                    received: parent.entity_type
+                }, "Invalid hierarchy", 400);
+            }
+
+            if (!parentRules.validChildTypes.includes(child.entity_type)) {
+                return errorResponse(res, {
+                    message: "Invalid slug hierarchy",
+                    details: parentRules.errorMessage,
+                    parent: {
+                        slug: parent.slug,
+                        type: parent.entity_type
+                    },
+                    child: {
+                        slug: child.slug,
+                        type: child.entity_type
+                    },
+                    allowedChildTypes: parentRules.validChildTypes
+                }, "Invalid hierarchy", 400);
+            }
+
+            // If validation passes, return the pair
+            return successResponse(res, sortedRelations.map(relation => ({
+                slug: relation.slug,
+                entity_type: relation.entity_type,
+                entity_id: relation.entity_id
+            })), 'Success');
+        }
+
+        // If more than 2 slugs, return error
+        return errorResponse(res, {
+            message: "Invalid number of slugs",
+            details: "Only single slugs or pairs are supported"
+        }, "Invalid request", 400);
+
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};

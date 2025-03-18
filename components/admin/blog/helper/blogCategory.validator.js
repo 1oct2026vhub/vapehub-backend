@@ -28,6 +28,22 @@ const blogCategoryValidation = [
         .customSanitizer(value => (value === "" ? null : value))
         .isString()
         .withMessage("Description must be a string"),
+    check("status")
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage("Status must be either 'active' or 'inactive'"),
+    check("parent_id")
+        .optional({ nullable: true })
+        .customSanitizer(value => (value === "" ? null : value))
+        .custom(value => {
+            if (value !== null && value !== undefined) {
+                console.log(value);
+                if (!Number.isInteger(value)) {
+                    throw new Error("Parent ID must be an integer");
+                }
+            }
+            return true;
+        })
 ];
 
 const blogCategoryUpdatesValidation = [
@@ -43,6 +59,7 @@ const blogCategoryUpdatesValidation = [
     check("slug")
         .optional({ nullable: true })
         .customSanitizer(value => (value === "" ? null : value))
+        .trim()
         .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
         .withMessage("Slug must be a valid URL-friendly string"),
     check("description")
@@ -51,12 +68,20 @@ const blogCategoryUpdatesValidation = [
         .trim()
         .isString()
         .withMessage("Description must be a string"),
-    check("image_url")
+    check("status")
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage("Status must be either 'active' or 'inactive'"),
+    check("parent_id")
         .optional({ nullable: true })
-        .customSanitizer(value => (value === "" ? null : value))
-        .trim()
-        .isString()
-        .withMessage("Image URL must be a string"),
+        .custom(value => {
+            if (value !== null && value !== undefined) {
+                if (!Number.isInteger(value)) {
+                    throw new Error("Parent ID must be an integer");
+                }
+            }
+            return true;
+        })
 ];
 
 // Configure multer for handling file uploads
