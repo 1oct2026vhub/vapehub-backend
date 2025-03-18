@@ -23,6 +23,19 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });
+      this.belongsTo(models.UserAddress, { 
+        foreignKey: 'shipping_address_id', 
+        as: 'shippingAddress',
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
+
+      this.belongsTo(models.UserAddress, { 
+        foreignKey: 'billing_address_id', 
+        as: 'billingAddress',
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
       this.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'orderItems' });
     }
   }
@@ -64,9 +77,22 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'draft'
     },
-    shipping_address: {
-      type: DataTypes.TEXT,
-      allowNull: false
+    
+    shipping_address_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'user_addresses',
+        key: 'id'
+      }
+    },
+    billing_address_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'user_addresses',
+        key: 'id'
+      }
     },
     shipping_method_id: {
       type: DataTypes.INTEGER,
