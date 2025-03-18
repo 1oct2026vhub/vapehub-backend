@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order } = require("../../../models");
 const logger = require("../../../library/logger");
 
 module.exports.checkout = async (req, res, next) => {
@@ -112,16 +112,17 @@ module.exports.checkout = async (req, res, next) => {
             validityMessage = 'Invalid or expired coupon code'
         }
 
-
         if(!couponCode){
             validityMessage = ''
         }
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+        const address = await UserAddress.findOne({ where: {user_id: userId,} });
         const resObj = {
             cart,
             shippingMethod,
             paymentMethod,
+            address,
             totalItems,
             shippingCost,
             subTotal,
