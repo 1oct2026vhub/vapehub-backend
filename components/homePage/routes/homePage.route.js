@@ -179,6 +179,57 @@ router.post("/banner-images",
     homePageController.addBannerImage
 )
 
+/**
+ * @swagger
+ * /api/home/slug-relation:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get slug relations based on provided slugs
+ *     parameters:
+ *       - in: query
+ *         name: slugs
+ *         schema:
+ *           type: string
+ *           description: Single slug or comma-separated list of slugs
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       slug:
+ *                         type: string
+ *                       entity_type:
+ *                         type: string
+ *                       entity_id:
+ *                         type: integer
+ *       400:
+ *         description: Bad request (validation errors)
+ *       404:
+ *         description: No matching slugs found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/slug-relation",
+    validateRequest([
+        query("slugs").notEmpty().withMessage("Slugs parameter is required")
+    ]),
+    homePageController.getSlugRelations
+);
+
 // /**
 //  * @swagger
 //  * /api/home/upload-banner-image:

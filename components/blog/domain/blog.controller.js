@@ -17,37 +17,62 @@ module.exports.listAllBlogs = async (req, res, next) => {
             };
         }
         if (userId) {
-            whereCondition.user_id = userId;
+            whereCondition.author_id = userId;
         }
         if (blog_group) {
             whereCondition.blog_group = blog_group;
         }
         const blogs = await Blog.findAll({
             where: whereCondition,
-            include: {
-                model: User,
-                as: 'author',
-                attributes: ['id', 'first_name', 'last_name', 'email']
-            }
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: BlogCategory,
+                    as: 'categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: [] }
+                }
+            ],
+            order: [['published_at', 'DESC']]
         });
         successResponse(res, blogs, 'Success');
     } catch (error) {
-        console.log("module.exports.listAllblogs= ~ error:", error)
+        console.error("listAllBlogs error:", error);
         return errorResponse(res, error, error.message);
     }
 }
 
-module.exports.getBlogByid = async (req, res, next) => {
+module.exports.getBlogById = async (req, res, next) => {
     try {
         const blog = await Blog.findByPk(req.params.id, {
-            include: {
-                model: User,
-                as: 'User',
-                attributes: ['id', 'first_name', 'last_name', 'email']
-            }
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: BlogCategory,
+                    as: 'categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: [] }
+                },
+                {
+                    model: BlogTag,
+                    as: 'tags',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: [] }
+                }
+            ]
         });
         if (!blog) {
-            throw new Error('Blog not found');
+            const error = new Error('Blog not found');
+            error.statusCode = 404;
+            throw error;
         }
         successResponse(res, blog, 'Success');
     } catch (error) {
@@ -99,9 +124,11 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
     try {
         const category = await BlogCategory.findOne({
             where: { slug: req.params.slug },
+            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'status'],
             include: [{
                 model: Blog,
                 as: 'blogs',
+                attributes: ['id', 'title', 'slug', 'content', 'image_url', 'published_at', 'created_at'],
                 include: [
                     {
                         model: User,
@@ -111,9 +138,11 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     {
                         model: BlogTag,
                         as: 'tags',
+                        attributes: ['id', 'name', 'slug'],
                         through: { attributes: [] }
                     }
                 ],
+                through: { attributes: [] },
                 order: [['published_at', 'DESC']]
             }]
         });
@@ -130,11 +159,12 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
 
 module.exports.getBlogBySlug = async (req, res, next) => {
     try {
-        const { categorySlug, blogSlug } = req.params;
+        const { slug } = req.params;
 
+        // First find the blog by slug
         const blog = await Blog.findOne({
             where: { 
-                slug: blogSlug,
+                slug: slug,
             },
             include: [
                 {
@@ -145,22 +175,25 @@ module.exports.getBlogBySlug = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'categories',
-                    where: { slug: categorySlug },
+                    attributes: ['id', 'name', 'slug'],
                     through: { attributes: [] }
                 },
                 {
                     model: BlogTag,
                     as: 'tags',
+                    attributes: ['id', 'name', 'slug'],
                     through: { attributes: [] }
                 }
             ]
         });
 
         if (!blog) {
-            throw new Error('Blog not found');
+            const error = new Error('Blog not found');
+            error.statusCode = 404;
+            throw error;
         }
 
-        // Get related blogs from the same category
+        // Get related blogs from the same categories
         const relatedBlogs = await Blog.findAll({
             where: {
                 id: { [Op.ne]: blog.id },
@@ -169,11 +202,16 @@ module.exports.getBlogBySlug = async (req, res, next) => {
             include: [{
                 model: BlogCategory,
                 as: 'categories',
-                where: { slug: categorySlug },
+                where: {
+                    id: {
+                        [Op.in]: blog.categories.map(cat => cat.id)
+                    }
+                },
                 through: { attributes: [] }
             }],
             limit: 3,
-            order: [['published_at', 'DESC']]
+            order: [['published_at', 'DESC']],
+            attributes: ['id', 'title', 'slug', 'image_url', 'published_at']
         });
 
         const response = {
@@ -183,7 +221,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
 
         return successResponse(res, response, "Success");
     } catch (error) {
-        console.log("module.exports.getBlogBySlug= ~ error:", error);
-        return errorResponse(res, error, error.message);
+        console.error("getBlogBySlug error:", error);
+        return errorResponse(res, error, error.message, error.statusCode || 500);
     }
 };

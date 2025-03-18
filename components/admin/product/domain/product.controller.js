@@ -1,10 +1,13 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs");
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 module.exports.listAllProducts = async (req, res, next) => {
     try {
@@ -376,6 +379,7 @@ module.exports.createProduct = async (req, res, next) => {
 
         // Validate required fields
         if (!name || !slug) {
+            await transaction.rollback();
             return errorResponse(
                 res, 
                 { message: "Name and slug are required" }, 
@@ -391,11 +395,13 @@ module.exports.createProduct = async (req, res, next) => {
         // Check if category and brand exist
         const categoryExists = await Category.findByPk(category_id);
         if (!categoryExists) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
         }
 
         const brandExists = await Brand.findByPk(brand_id);
         if (!brandExists) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
         }
 
@@ -409,6 +415,7 @@ module.exports.createProduct = async (req, res, next) => {
         });
 
         if (existingProductName) {
+            await transaction.rollback();
             return errorResponse(
                 res, 
                 { 
@@ -423,69 +430,14 @@ module.exports.createProduct = async (req, res, next) => {
             );
         }
 
-        // Check for duplicate slug (case-insensitive)
-        const existingProductSlug = await Product.findOne({
-            where: {
-                slug: cleanSlug
-            }
-        });
-
-        if (existingProductSlug) {
-            return errorResponse(
-                res, 
-                { 
-                    message: "Product with this slug already exists",
-                    existing_product: {
-                        id: existingProductSlug.id,
-                        slug: existingProductSlug.slug
-                    }
-                }, 
-                "Duplicate product slug", 
-                400
-            );
-        }
-
-        // Validate price and discount_price
-        const numericPrice = price ? parseFloat(price) : null;
-        const numericDiscountPrice = discount_price ? parseFloat(discount_price) : null;
-
-        if (numericPrice && numericPrice !== null && (isNaN(numericPrice) || numericPrice <= 0)) {
-            return errorResponse(
-                res, 
-                { message: "Invalid price value" }, 
-                "Invalid price", 
-                400
-            );
-        }
-
-        if (numericDiscountPrice && numericDiscountPrice !== null) {
-            if (isNaN(numericDiscountPrice) || numericDiscountPrice <= 0) {
-                return errorResponse(
-                    res, 
-                    { message: "Invalid discount price value" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-
-            if (numericPrice !== null && numericDiscountPrice >= numericPrice) {
-                return errorResponse(
-                    res, 
-                    { message: "Discount price must be less than regular price" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-        }
-
         // Create the product record
         const product = await Product.create(
             {
                 name: cleanName,
                 slug: cleanSlug,
                 description,
-                price: numericPrice ? numericPrice.toFixed(2) : null,
-                discount_price: numericDiscountPrice ? numericDiscountPrice.toFixed(2) : null,
+                price: price ? parseFloat(price).toFixed(2) : null,
+                discount_price: discount_price ? parseFloat(discount_price).toFixed(2) : null,
                 stock_quantity,
                 is_new,
                 category_id,
@@ -494,6 +446,9 @@ module.exports.createProduct = async (req, res, next) => {
             },
             { transaction }
         );
+
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(cleanSlug, 'product', product.id, transaction);
 
         await transaction.commit();
 
@@ -520,14 +475,13 @@ module.exports.createProduct = async (req, res, next) => {
 
         return successResponse(res, newProduct, "Product created successfully", 201);
     } catch (error) {
-        console.log(error);
         await transaction.rollback();
         logger.error('Create Product Error:', {
             error: error.message,
             stack: error.stack,
             body: req.body
         });
-        return errorResponse(res, error, "Error creating product");
+        return errorResponse(res, error, error.message);
     }
 };
 
@@ -545,6 +499,7 @@ module.exports.updateProduct = async (req, res, next) => {
         // Find the existing product
         const product = await Product.findByPk(id, { transaction });
         if (!product) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
@@ -565,6 +520,7 @@ module.exports.updateProduct = async (req, res, next) => {
             });
 
             if (existingProductName) {
+                await transaction.rollback();
                 return errorResponse(
                     res, 
                     { 
@@ -580,36 +536,11 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Check for duplicate slug if slug is being updated
-        if (cleanSlug && cleanSlug !== product.slug) {
-            const existingProductSlug = await Product.findOne({
-                where: {
-                    slug: cleanSlug,
-                    id: { [Op.ne]: id }
-                },
-                transaction
-            });
-
-            if (existingProductSlug) {
-                return errorResponse(
-                    res, 
-                    { 
-                        message: "Product with this slug already exists",
-                        existing_product: {
-                            id: existingProductSlug.id,
-                            slug: existingProductSlug.slug
-                        }
-                    }, 
-                    "Duplicate product slug", 
-                    400
-                );
-            }
-        }
-
         // Validate category if provided
         if (category_id) {
             const categoryExists = await Category.findByPk(category_id);
             if (!categoryExists) {
+                await transaction.rollback();
                 return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
             }
         }
@@ -618,6 +549,7 @@ module.exports.updateProduct = async (req, res, next) => {
         if (brand_id) {
             const brandExists = await Brand.findByPk(brand_id);
             if (!brandExists) {
+                await transaction.rollback();
                 return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
             }
         }
@@ -631,6 +563,7 @@ module.exports.updateProduct = async (req, res, next) => {
         // Validate price only if provided
         if (price && price !== undefined) {
             if (isNaN(numericPrice) || numericPrice < 0) {
+                await transaction.rollback();
                 return errorResponse(
                     res, 
                     { message: "Invalid price value" }, 
@@ -643,6 +576,7 @@ module.exports.updateProduct = async (req, res, next) => {
         // Validate discount price only if provided
         if (discount_price && discount_price !== undefined) {
             if (numericDiscountPrice !== null && (isNaN(numericDiscountPrice) || numericDiscountPrice < 0)) {
+                await transaction.rollback();
                 return errorResponse(
                     res, 
                     { message: "Invalid discount price value" }, 
@@ -652,6 +586,7 @@ module.exports.updateProduct = async (req, res, next) => {
             }
 
             if (numericDiscountPrice !== null && numericDiscountPrice >= numericPrice) {
+                await transaction.rollback();
                 return errorResponse(
                     res, 
                     { message: "Discount price must be less than regular price" }, 
@@ -678,6 +613,11 @@ module.exports.updateProduct = async (req, res, next) => {
         // Update only if there are changes
         if (Object.keys(updatedFields).length > 0) {
             await product.update(updatedFields, { transaction });
+        }
+
+        // Update slug if provided and changed
+        if (cleanSlug && cleanSlug !== product.slug) {
+            await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
         }
 
         // Fetch the updated product with related models
@@ -722,6 +662,7 @@ module.exports.updateProduct = async (req, res, next) => {
 };
 
 module.exports.deleteProduct = async (req, res, next) => {
+    const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
 
@@ -730,23 +671,29 @@ module.exports.deleteProduct = async (req, res, next) => {
 
         // Check if the product exists
         if (!product) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
-        // Perform a soft delete (if soft delete is enabled in the model)
-        await product.destroy();
+        // Delete slug relation first
+        await slugManager.deleteSlug('product', id, transaction);
 
+        // Perform a soft delete
+        await product.destroy({ transaction });
+
+        await transaction.commit();
         logger.info(`Product ID ${id} deleted successfully`);
 
         return successResponse(res, { message: "Product deleted successfully" });
     } catch (error) {
+        await transaction.rollback();
         logger.error(error);
-
         return errorResponse(res, error, error.message);
     }
 };
 
 module.exports.restoreProduct = async (req, res, next) => {
+    const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
 
@@ -758,22 +705,29 @@ module.exports.restoreProduct = async (req, res, next) => {
 
         // Check if the product exists
         if (!product) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
         // Check if the product is already active
         if (!product.deletedAt) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product is not deleted" }, "Product is not deleted", 400);
         }
 
-        await product.restore();
+        // Restore the product
+        await product.restore({ transaction });
 
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);
+
+        await transaction.commit();
         logger.info(`Product ID ${id} restored successfully`);
 
         return successResponse(res, { message: "Product restored successfully" });
     } catch (error) {
+        await transaction.rollback();
         logger.error(error);
-
         return errorResponse(res, error, error.message);
     }
 };
@@ -1182,6 +1136,9 @@ const processProductRow = async ({ id, name, slug, description, is_new, brand_sl
             product = await Product.create(productData);
             action = 'Created';
         }
+
+        // Create or update slug relation
+        await slugManager.createOrUpdateSlug(product.slug, 'product', product.id);
 
         results.products.push({
             id: product.id,
