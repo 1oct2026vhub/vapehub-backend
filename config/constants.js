@@ -68,18 +68,12 @@ module.exports = {
     },
     // Transaction related constants
     paymentMethods: {
-        CREDIT_CARD: 'CREDIT_CARD',
-        PAYPAL: 'PAYPAL',
-        BANK_TRANSFER: 'BANK_TRANSFER',
-        CRYPTO: 'CRYPTO',
-        OTHER: 'OTHER'
+        worldPay: 'worldPay',
+        vivaWallet: 'vivaWallet'
     },
     transactionTypes: {
         PURCHASE: 'PURCHASE',
-        REFUND: 'REFUND',
-        SUBSCRIPTION: 'SUBSCRIPTION',
-        DEPOSIT: 'DEPOSIT',
-        WITHDRAWAL: 'WITHDRAWAL'
+        REFUND: 'REFUND'
     },
     transactionStatus: {
         PENDING: 'PENDING',
@@ -88,7 +82,7 @@ module.exports = {
         REFUNDED: 'REFUNDED',
         CANCELLED: 'CANCELLED'
     },
-    paymentMethodEnums: ['CREDIT_CARD', 'PAYPAL', 'BANK_TRANSFER', 'CRYPTO', 'OTHER'],
-    transactionTypeEnums: ['PURCHASE', 'REFUND', 'SUBSCRIPTION', 'DEPOSIT', 'WITHDRAWAL'],
+    paymentMethodEnums: ['worldPay', 'vivaWallet'],
+    transactionTypeEnums: ['PURCHASE', 'REFUND'],
     transactionStatusEnums: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED']
 }

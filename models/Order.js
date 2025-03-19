@@ -21,6 +21,7 @@ module.exports = (sequelize, DataTypes) => {
       });
       this.belongsTo(models.ShippingMethod, { 
         foreignKey: 'shipping_method_id', 
+        as: 'shippingMethod',
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });

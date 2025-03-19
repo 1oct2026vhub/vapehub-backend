@@ -1,6 +1,7 @@
 'use strict';
 
-const { Model } = require('sequelize');
+const { Model, Op } = require('sequelize');
+const constants = require('../config/constants'); 
 
 module.exports = (sequelize, DataTypes) => {
   class Transaction extends Model {
@@ -42,11 +43,15 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     static async getTotalRevenue(startDate, endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); 
+
       return this.sum('amount', {
         where: {
-          status: 'COMPLETED',
+          status: constants.transactionStatus.COMPLETED,
           createdAt: {
-            [sequelize.Op.between]: [startDate, endDate]
+            [Op.between]: [start, end]
           }
         }
       });
@@ -55,13 +60,13 @@ module.exports = (sequelize, DataTypes) => {
 
   Transaction.init({
     id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
+      type: DataTypes.BIGINT,
+      autoIncrement: true,
       primaryKey: true,
       allowNull: false
     },
     userId: {
-      type: DataTypes.UUID,
+      type: DataTypes.INTEGER,
       allowNull: false,
       references: {
         model: 'users',
@@ -69,7 +74,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     orderId: {
-      type: DataTypes.UUID,
+      type: DataTypes.BIGINT,
       allowNull: true,
       references: {
         model: 'orders',
@@ -77,11 +82,11 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     paymentMethod: {
-      type: DataTypes.ENUM('CREDIT_CARD', 'PAYPAL', 'BANK_TRANSFER', 'CRYPTO', 'OTHER'),
+      type: DataTypes.ENUM(constants.paymentMethodEnums), 
       allowNull: false
     },
     transactionType: {
-      type: DataTypes.ENUM('PURCHASE', 'REFUND', 'SUBSCRIPTION', 'DEPOSIT', 'WITHDRAWAL'),
+      type: DataTypes.ENUM(constants.transactionTypeEnums), // Use constants
       allowNull: false
     },
     amount: {
@@ -95,15 +100,12 @@ module.exports = (sequelize, DataTypes) => {
     currency: {
       type: DataTypes.STRING(10),
       allowNull: false,
-      defaultValue: 'GBP',
-      validate: {
-        isIn: [['GBP', 'USD', 'EUR']] // Add more currencies as needed
-      }
+      defaultValue: 'GBP'
     },
     status: {
-      type: DataTypes.ENUM('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'),
+      type: DataTypes.ENUM(constants.transactionStatusEnums), // Use constants
       allowNull: false,
-      defaultValue: 'PENDING'
+      defaultValue: constants.transactionStatus.PENDING // Use constants
     },
     referenceNumber: {
       type: DataTypes.STRING(255),
