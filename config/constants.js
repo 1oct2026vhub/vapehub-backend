@@ -65,5 +65,30 @@ module.exports = {
     },
     stockMovementEnums: {
         changeTypes: ['addition', 'deduction', 'adjustment', 'reservation']
-    }
+    },
+    // Transaction related constants
+    paymentMethods: {
+        CREDIT_CARD: 'CREDIT_CARD',
+        PAYPAL: 'PAYPAL',
+        BANK_TRANSFER: 'BANK_TRANSFER',
+        CRYPTO: 'CRYPTO',
+        OTHER: 'OTHER'
+    },
+    transactionTypes: {
+        PURCHASE: 'PURCHASE',
+        REFUND: 'REFUND',
+        SUBSCRIPTION: 'SUBSCRIPTION',
+        DEPOSIT: 'DEPOSIT',
+        WITHDRAWAL: 'WITHDRAWAL'
+    },
+    transactionStatus: {
+        PENDING: 'PENDING',
+        COMPLETED: 'COMPLETED',
+        FAILED: 'FAILED',
+        REFUNDED: 'REFUNDED',
+        CANCELLED: 'CANCELLED'
+    },
+    paymentMethodEnums: ['CREDIT_CARD', 'PAYPAL', 'BANK_TRANSFER', 'CRYPTO', 'OTHER'],
+    transactionTypeEnums: ['PURCHASE', 'REFUND', 'SUBSCRIPTION', 'DEPOSIT', 'WITHDRAWAL'],
+    transactionStatusEnums: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED']
 }
