@@ -1,6 +1,141 @@
 const router = require("express").Router();
 const blogController = require("../domain/blog.controller");
 
+/**
+ * @swagger
+ * /api/blogs/list:
+ *   get:
+ *     summary: Get a paginated list of all blog posts
+ *     description: Retrieve a list of blog posts with optional filtering and pagination
+ *     tags:
+ *       - Blog
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search blogs by title or content
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: integer
+ *         description: Filter blogs by author ID
+ *       - in: query
+ *         name: categoryId
+ *         schema:
+ *           type: integer
+ *         description: Filter blogs by category ID
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved blog posts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     blogs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           title:
+ *                             type: string
+ *                             example: "Best Vaping Practices 2024"
+ *                           slug:
+ *                             type: string
+ *                             example: "best-vaping-practices-2024"
+ *                           content:
+ *                             type: string
+ *                             example: "Detailed blog content here..."
+ *                           image_url:
+ *                             type: string
+ *                             format: uri
+ *                             example: "https://example.com/images/blog-1.jpg"
+ *                           published_at:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2024-03-17T14:30:00Z"
+ *                           author:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 example: 1
+ *                               first_name:
+ *                                 type: string
+ *                                 example: "John"
+ *                               last_name:
+ *                                 type: string
+ *                                 example: "Doe"
+ *                               email:
+ *                                 type: string
+ *                                 example: "john@example.com"
+ *                           categories:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   example: 1
+ *                                 name:
+ *                                   type: string
+ *                                   example: "Vaping Guides"
+ *                                 slug:
+ *                                   type: string
+ *                                   example: "vaping-guides"
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                           example: 25
+ *                         totalPages:
+ *                           type: integer
+ *                           example: 3
+ *                         currentPage:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 10
+ *                         hasNextPage:
+ *                           type: boolean
+ *                           example: true
+ *                         hasPreviousPage:
+ *                           type: boolean
+ *                           example: false
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/list', blogController.listAllBlogs);
 
 /**
  * @swagger
