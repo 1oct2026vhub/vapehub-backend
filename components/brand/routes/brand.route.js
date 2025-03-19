@@ -262,5 +262,90 @@ router.get('/slug/:slug',
     brandController.getBrandBySlug
 );
 
+/**
+ * @swagger
+ * /api/brands/list/paginated:
+ *   get:
+ *     summary: Retrieve a paginated list of brands with search functionality
+ *     tags:
+ *      - Brand
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search term to filter brands by name or description
+ *     responses:
+ *       200:
+ *         description: A paginated list of brands with pagination metadata
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     brands:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           logo_url:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *                         totalItems:
+ *                           type: integer
+ *                         itemsPerPage:
+ *                           type: integer
+ *                         hasNextPage:
+ *                           type: boolean
+ *                         hasPreviousPage:
+ *                           type: boolean
+ *                 message:
+ *                   type: string
+ */
+router.get('/list/paginated',
+    validateRequest([
+        query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('search').optional().isString().withMessage('Search must be a string')
+    ]),
+    brandController.listBrandsWithPagination
+);
 
 module.exports = router;

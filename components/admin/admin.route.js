@@ -24,5 +24,6 @@ router.use('/shipping-methods', require('./shippingMethod/routes/shippingMethod.
 router.use('/banners', require('./banner/routes/banner.route'));
 router.use('/carousels', require('./carousels/routes/carousel.route'));
 router.use('/blog', require('./blog/routes/blog.route'));
-
+router.use('/orders', require('./order/routes/order.route'));
+router.use('/transactions', require('./transaction/routes/transaction.route'));
 module.exports = router;

@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Brand } = require("../../../models");
 const { fetchProducts } = require("../../product/helper/product.helper");
+const { Op } = require("sequelize");
 
 module.exports.listAllbrands = async (req, res, next) => {
     try {
@@ -11,6 +12,7 @@ module.exports.listAllbrands = async (req, res, next) => {
     }
 
 }
+
 module.exports.getBrandByid = async (req, res, next) => {
     try {
         const brand = await Brand.findByPk(req.params.id);
@@ -24,8 +26,8 @@ module.exports.getBrandByid = async (req, res, next) => {
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
-
 }
+
 module.exports.createBrand = async (req, res, next) => {
     try {
         const { name, logo_url, slug, description } = req.body;
@@ -36,6 +38,7 @@ module.exports.createBrand = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
 module.exports.updateBrand = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -61,8 +64,8 @@ module.exports.updateBrand = async (req, res, next) => {
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
-
 }
+
 module.exports.deleteBrand = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -96,6 +99,47 @@ module.exports.getBrandBySlug = async (req, res, next) => {
         return successResponse(res, { ...brand.get({ plain: true }), ...product }, "Success");
     } catch (error) {
         console.log("🚀 ~ module.exports.getBrandBySlug= ~ error:", error)
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.listBrandsWithPagination = async (req, res, next) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const offset = (page - 1) * limit;
+
+        // Build where clause for search
+        const whereClause = search ? {
+            [Op.or]: [
+                { name: { [Op.iLike]: `%${search}%` } },
+                { description: { [Op.iLike]: `%${search}%` } }
+            ]
+        } : {};
+
+        const { count, rows: brands } = await Brand.findAndCountAll({
+            where: whereClause,
+            limit,
+            offset,
+            order: [['id', 'DESC']],
+            attributes: ['id', 'name', 'logo_url', 'slug', 'description']
+        });
+
+        const totalPages = Math.ceil(count / limit);
+
+        successResponse(res, {
+            brands,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems: count,
+                itemsPerPage: limit,
+                hasNextPage: page < totalPages,
+                hasPreviousPage: page > 1
+            }
+        }, 'Success');
+    } catch (error) {
         return errorResponse(res, error, error.message);
     }
 }

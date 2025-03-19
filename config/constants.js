@@ -65,5 +65,24 @@ module.exports = {
     },
     stockMovementEnums: {
         changeTypes: ['addition', 'deduction', 'adjustment', 'reservation']
-    }
+    },
+    // Transaction related constants
+    paymentMethods: {
+        worldPay: 'worldPay',
+        vivaWallet: 'vivaWallet'
+    },
+    transactionTypes: {
+        PURCHASE: 'PURCHASE',
+        REFUND: 'REFUND'
+    },
+    transactionStatus: {
+        PENDING: 'PENDING',
+        COMPLETED: 'COMPLETED',
+        FAILED: 'FAILED',
+        REFUNDED: 'REFUNDED',
+        CANCELLED: 'CANCELLED'
+    },
+    paymentMethodEnums: ['worldPay', 'vivaWallet'],
+    transactionTypeEnums: ['PURCHASE', 'REFUND'],
+    transactionStatusEnums: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED']
 }

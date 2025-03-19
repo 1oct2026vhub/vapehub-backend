@@ -203,15 +203,52 @@ const bulkUpdateVariantsValidator = [
 
 const addProductAttributesValidator = [
     commonValidations.productId,
-    ...commonValidations.attributeValidation,
+    body('attributes')
+        .isArray()
+        .withMessage('Attributes must be an array')
+        .notEmpty()
+        .withMessage('Attributes array cannot be empty'),
+    body('attributes.*.attribute_id')
+        .isInt({ min: 1 })
+        .withMessage('Attribute ID must be a positive integer'),
+    body('attributes.*.term_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Term ID must be a positive integer'),
+    body('attributes.*.term_ids')
+        .optional()
+        .isArray()
+        .withMessage('Term IDs must be an array')
+        .custom((value, { req }) => {
+            if (!value && !req.body.attributes.some(attr => attr.term_id)) {
+                throw new Error('Either term_id or term_ids must be provided');
+            }
+            return true;
+        }),
+    body('attributes.*.term_ids.*')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Each term ID must be a positive integer'),
     body('attributes.*.is_visible_page')
         .optional()
         .isBoolean()
-        .withMessage('is_visible_page must be boolean'),
+        .withMessage('is_visible_page must be a boolean'),
     body('attributes.*.used_in_variation')
         .optional()
         .isBoolean()
-        .withMessage('used_in_variation must be boolean')
+        .withMessage('used_in_variation must be a boolean'),
+    body('attributes')
+        .custom((value, { req }) => {
+            for (const attr of value) {
+                if (!attr.term_id && !attr.term_ids) {
+                    throw new Error('Either term_id or term_ids must be provided for each attribute');
+                }
+                if (attr.term_id && attr.term_ids) {
+                    throw new Error('Cannot provide both term_id and term_ids for the same attribute');
+                }
+            }
+            return true;
+        })
 ];
 
 const createProductVariantsValidator = [
@@ -295,10 +332,50 @@ const updateProductAttributesValidator = [
     commonValidations.productId,
     body('attributes')
         .isArray()
-        .withMessage('Attributes must be an array'),
+        .withMessage('Attributes must be an array')
+        .notEmpty()
+        .withMessage('Attributes array cannot be empty'),
     body('attributes.*.attribute_id')
-        .isInt()
-        .withMessage('Invalid attribute ID')
+        .isInt({ min: 1 })
+        .withMessage('Invalid attribute ID'),
+    body('attributes.*.term_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Invalid term ID'),
+    body('attributes.*.term_ids')
+        .optional()
+        .isArray()
+        .withMessage('term_ids must be an array')
+        .custom((value, { req, path }) => {
+            if (!value || value.length === 0) {
+                throw new Error('term_ids array cannot be empty');
+            }
+            return true;
+        }),
+    body('attributes.*.term_ids.*')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Invalid term ID in term_ids array'),
+    body('attributes.*.is_visible_page')
+        .optional()
+        .isBoolean()
+        .withMessage('is_visible_page must be a boolean'),
+    body('attributes.*.used_in_variation')
+        .optional()
+        .isBoolean()
+        .withMessage('used_in_variation must be a boolean'),
+    body('attributes')
+        .custom((value, { req }) => {
+            for (const attr of value) {
+                if (!attr.term_id && !attr.term_ids) {
+                    throw new Error('Either term_id or term_ids must be provided for each attribute');
+                }
+                if (attr.term_id && attr.term_ids) {
+                    throw new Error('Cannot provide both term_id and term_ids for the same attribute');
+                }
+            }
+            return true;
+        })
 ];
 
 const removeProductAttributeTermValidator = [
