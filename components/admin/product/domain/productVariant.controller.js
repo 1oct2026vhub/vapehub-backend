@@ -41,13 +41,32 @@ module.exports.addProductAttributes = async (req, res) => {
 
         // Validate attributes and terms
         if (Array.isArray(attributes) && attributes.length > 0) {
-            await validateAttributesAndTerms(attributes);
+            // Flatten the attributes array to handle multiple terms per attribute
+            const flattenedAttributes = attributes.flatMap(attr => {
+                // Handle both single term_id and multiple term_ids
+                const termIds = Array.isArray(attr.term_ids) ? attr.term_ids : 
+                              attr.term_id ? [attr.term_id] : [];
+                
+                if (termIds.length === 0) {
+                    throw new Error(`No term IDs provided for attribute ${attr.attribute_id}`);
+                }
+
+                return termIds.map(termId => ({
+                    attribute_id: attr.attribute_id,
+                    term_id: termId,
+                    is_visible_page: attr.is_visible_page ?? true,
+                    used_in_variation: attr.used_in_variation ?? false
+                }));
+            });
+
+            // Validate all attributes and terms
+            await validateAttributesAndTerms(flattenedAttributes);
 
             // Check for existing combinations
             const existingCombinations = await ProductAttributeTerm.findAll({
                 where: {
                     product_id,
-                    [Op.or]: attributes.map(attr => ({
+                    [Op.or]: flattenedAttributes.map(attr => ({
                         [Op.and]: {
                             attribute_id: attr.attribute_id,
                             term_id: attr.term_id
@@ -57,7 +76,7 @@ module.exports.addProductAttributes = async (req, res) => {
             });
 
             // Filter out existing combinations
-            const newAttributes = attributes.filter(attr => 
+            const newAttributes = flattenedAttributes.filter(attr => 
                 !existingCombinations.some(existing => 
                     existing.attribute_id === attr.attribute_id && 
                     existing.term_id === attr.term_id
@@ -112,8 +131,9 @@ module.exports.addProductAttributes = async (req, res) => {
 
 // Helper function to validate attributes and terms
 const validateAttributesAndTerms = async (attributes) => {
-    const attributeIds = attributes.map(attr => attr.attribute_id);
-    const termIds = attributes.map(attr => attr.term_id);
+    // Extract unique attribute IDs and term IDs
+    const attributeIds = [...new Set(attributes.map(attr => attr.attribute_id))];
+    const termIds = [...new Set(attributes.map(attr => attr.term_id))];
 
     // Check if all attributes exist
     const existingAttributes = await Attribute.findAll({
@@ -133,16 +153,28 @@ const validateAttributesAndTerms = async (attributes) => {
         throw new Error("One or more term IDs are invalid.");
     }
 
+    // Get all valid attribute-term relationships
     const attributeTermRelations = await AttributeTerm.findAll({
-        where: { attribute_id: attributeIds }
+        where: { 
+            attribute_id: attributeIds,
+            id: termIds
+        }
     });
 
+    // Create a map for quick lookup of valid attribute-term relationships
+    const validRelationships = new Map(
+        attributeTermRelations.map(relation => 
+            [`${relation.attribute_id}-${relation.id}`, true]
+        )
+    );
+
+    // Check each attribute-term combination
     const invalidTerms = attributes.filter(attr => 
-        !attributeTermRelations.some(term => term.id === attr.term_id && term.attribute_id === attr.attribute_id)
+        !validRelationships.has(`${attr.attribute_id}-${attr.term_id}`)
     );
 
     if (invalidTerms.length > 0) {
-        throw new Error("One or more term IDs are not associated with the provided attribute IDs.");
+        throw new Error(ERROR_MESSAGES.INVALID_ATTRIBUTE_RELATION);
     }
 };
 
@@ -192,20 +224,132 @@ module.exports.updateProductAttributes = async (req, res) => {
 
         // Update existing attributes
         if (Array.isArray(attributes) && attributes.length > 0) {
-            for (const attr of attributes) {
-                const { attribute_id, term_id } = attr;
-
-                // Validate attribute and term
-                await validateAttributesAndTerms([{ attribute_id, term_id }]);
-
-                await ProductAttributeTerm.upsert({
-                    product_id,
+            // Flatten the attributes array to handle multiple terms per attribute
+            const flattenedAttributes = attributes.flatMap(attr => {
+                const termIds = Array.isArray(attr.term_ids) ? attr.term_ids : [attr.term_id];
+                return termIds.map(termId => ({
                     attribute_id: attr.attribute_id,
-                    term_id: attr.term_id,
-                    is_visible_page: attr.is_visible_page !== undefined ? attr.is_visible_page : true,
-                    used_in_variation: attr.used_in_variation !== undefined ? attr.used_in_variation : false,
-                    updated_by
-                }, { transaction });
+                    term_id: termId,
+                    is_visible_page: attr.is_visible_page ?? true,
+                    used_in_variation: attr.used_in_variation ?? false
+                }));
+            });
+
+            // Validate all attributes and terms
+            await validateAttributesAndTerms(flattenedAttributes);
+
+            // Get existing attribute terms for this product
+            const existingAttributeTerms = await ProductAttributeTerm.findAll({
+                where: {
+                    product_id,
+                    attribute_id: [...new Set(flattenedAttributes.map(attr => attr.attribute_id))]
+                }
+            });
+
+            // Create a map of existing terms for quick lookup
+            const existingTermsMap = new Map(
+                existingAttributeTerms.map(term => 
+                    [`${term.attribute_id}-${term.term_id}`, term]
+                )
+            );
+
+            // Identify terms to add, update, and remove
+            const termsToAdd = [];
+            const termsToUpdate = [];
+            const termsToRemove = [];
+
+            // Check each incoming attribute-term combination
+            for (const attr of flattenedAttributes) {
+                const key = `${attr.attribute_id}-${attr.term_id}`;
+                const existingTerm = existingTermsMap.get(key);
+
+                if (existingTerm) {
+                    // Check if visibility or variation settings have changed
+                    if (existingTerm.is_visible_page !== attr.is_visible_page || 
+                        existingTerm.used_in_variation !== attr.used_in_variation) {
+                        termsToUpdate.push({
+                            id: existingTerm.id,
+                            is_visible_page: attr.is_visible_page,
+                            used_in_variation: attr.used_in_variation,
+                            updated_by
+                        });
+                    }
+                } else {
+                    termsToAdd.push({
+                        product_id,
+                        attribute_id: attr.attribute_id,
+                        term_id: attr.term_id,
+                        is_visible_page: attr.is_visible_page,
+                        used_in_variation: attr.used_in_variation,
+                        updated_by
+                    });
+                }
+            }
+
+            // Identify terms to remove (terms that exist but not in the new set)
+            for (const [key, term] of existingTermsMap) {
+                const [attributeId, termId] = key.split('-');
+                if (!flattenedAttributes.some(attr => 
+                    attr.attribute_id === parseInt(attributeId) && 
+                    attr.term_id === parseInt(termId)
+                )) {
+                    termsToRemove.push(term.id);
+                }
+            }
+
+            // Check if any terms to be removed are used in variants
+            if (termsToRemove.length > 0) {
+                const usedTerms = await ProductVariantAttribute.findAll({
+                    include: [{
+                        model: ProductVariant,
+                        as: 'variant',
+                        where: { product_id },
+                        required: true
+                    }],
+                    where: {
+                        attribute_id: [...new Set(termsToRemove.map(id => 
+                            existingAttributeTerms.find(term => term.id === id).attribute_id
+                        ))],
+                        term_id: termsToRemove.map(id => 
+                            existingAttributeTerms.find(term => term.id === id).term_id
+                        )
+                    }
+                });
+
+                if (usedTerms.length > 0) {
+                    throw new Error(ERROR_MESSAGES.ATTRIBUTE_TERM_IN_USE);
+                }
+            }
+
+            // Perform the updates
+            if (termsToRemove.length > 0) {
+                await ProductAttributeTerm.destroy({
+                    where: { id: termsToRemove },
+                    transaction
+                });
+            }
+
+            if (termsToUpdate.length > 0) {
+                await Promise.all(termsToUpdate.map(term => 
+                    ProductAttributeTerm.update(
+                        {
+                            is_visible_page: term.is_visible_page,
+                            used_in_variation: term.used_in_variation,
+                            updated_by: term.updated_by
+                        },
+                        {
+                            where: { id: term.id },
+                            transaction
+                        }
+                    )
+                ));
+            }
+
+            if (termsToAdd.length > 0) {
+                await ProductAttributeTerm.bulkCreate(termsToAdd, { 
+                    transaction,
+                    validate: true
+                });
             }
         }
 
@@ -229,6 +373,12 @@ module.exports.updateProductAttributes = async (req, res) => {
             await transaction.rollback();
         }
         logger.error('Update Product Attributes Error:', error);
+        
+        // Handle specific error cases
+        if (error.message === ERROR_MESSAGES.ATTRIBUTE_TERM_IN_USE) {
+            return errorResponse(res, error, error.message, 409);
+        }
+        
         return errorResponse(res, error, error.message);
     }
 };

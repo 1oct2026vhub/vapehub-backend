@@ -473,18 +473,26 @@ router.get('/product/:product_id',
  *                   type: object
  *                   required:
  *                     - attribute_id
- *                     - term_id
  *                   properties:
  *                     attribute_id:
  *                       type: integer
+ *                       description: ID of the attribute
  *                     term_id:
  *                       type: integer
+ *                       description: ID of the term (use this for single term)
+ *                     term_ids:
+ *                       type: array
+ *                       items:
+ *                         type: integer
+ *                       description: Array of term IDs (use this for multiple terms)
  *                     is_visible_page:
  *                       type: boolean
  *                       default: true
+ *                       description: Whether the attribute is visible on the product page
  *                     used_in_variation:
  *                       type: boolean
  *                       default: false
+ *                       description: Whether the attribute can be used for product variations
  *     responses:
  *       200:
  *         description: Attributes added successfully
@@ -1331,23 +1339,35 @@ router.delete('/product/:product_id/variants/:variant_id/images/:image_id',
  *                   type: object
  *                   required:
  *                     - attribute_id
- *                     - term_id
  *                   properties:
  *                     attribute_id:
  *                       type: integer
+ *                       description: ID of the attribute
  *                     term_id:
  *                       type: integer
+ *                       description: Single term ID for the attribute (mutually exclusive with term_ids)
+ *                     term_ids:
+ *                       type: array
+ *                       items:
+ *                         type: integer
+ *                       description: Array of term IDs for the attribute (mutually exclusive with term_id)
  *                     is_visible_page:
  *                       type: boolean
  *                       default: true
+ *                       description: Whether the attribute should be visible on the product page
  *                     used_in_variation:
  *                       type: boolean
  *                       default: false
+ *                       description: Whether the attribute should be used for product variations
  *     responses:
  *       200:
  *         description: Attributes updated successfully
+ *       400:
+ *         description: Invalid request - either term_id or term_ids must be provided
  *       404:
  *         description: Product not found
+ *       409:
+ *         description: Attribute term is in use by existing variants
  *       500:
  *         description: Internal server error
  */

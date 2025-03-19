@@ -15,6 +15,7 @@ module.exports = {
       const entities = [
         { model: 'Brand', type: 'brand', table: 'brands' },
         { model: 'Blog', type: 'blog', table: 'blogs' },
+        { model: 'BlogCategory', type: 'blog_category', table: 'blog_categories' },
         { model: 'Category', type: 'category', table: 'categories' },
         { model: 'Product', type: 'product', table: 'products' },
         { model: 'ProductVariant', type: 'product_variant', table: 'product_variants' }
@@ -32,81 +33,109 @@ module.exports = {
       for (const entity of entities) {
         logger.log(`Processing ${entity.type} slugs...`);
 
-        // Fetch all records for the current entity
-        const records = await queryInterface.sequelize.query(
-          `SELECT id, slug FROM ${entity.table} WHERE slug IS NOT NULL`,
-          { type: Sequelize.QueryTypes.SELECT, transaction }
-        );
+        try {
+          // Check if table has deleted_at column
+          const tableInfo = await queryInterface.sequelize.query(
+            `SHOW COLUMNS FROM ${entity.table} LIKE 'deleted_at'`,
+            { type: Sequelize.QueryTypes.SELECT }
+          );
+          
+          const hasDeletedAt = tableInfo.length > 0;
+          
+          // Fetch all records for the current entity
+          const records = await queryInterface.sequelize.query(
+            `SELECT id, slug FROM ${entity.table} WHERE slug IS NOT NULL${hasDeletedAt ? ' AND deleted_at IS NULL' : ''}`,
+            { type: Sequelize.QueryTypes.SELECT, transaction }
+          );
 
-        results.total += records.length;
+          results.total += records.length;
+          logger.log(`Found ${records.length} records for ${entity.type}`);
 
-        // Process each record
-        for (const record of records) {
-          try {
-            let currentSlug = record.slug;
-            let attempts = 0;
-            const maxAttempts = 10;
+          // Process each record
+          for (const record of records) {
+            try {
+              let currentSlug = record.slug;
+              let attempts = 0;
+              const maxAttempts = 10;
 
-            while (attempts < maxAttempts) {
-              try {
-                // Try to create the slug relation
-                await slugManager.createOrUpdateSlug(
-                  currentSlug,
-                  entity.type,
-                  record.id,
-                  transaction
-                );
-
-                // If we get here, the slug was successfully created
-                if (attempts > 0) {
-                  // Update the original record with the modified slug
-                  await queryInterface.sequelize.query(
-                    `UPDATE ${entity.table} SET slug = :slug WHERE id = :id`,
-                    {
-                      replacements: { slug: currentSlug, id: record.id },
-                      transaction
-                    }
+              while (attempts < maxAttempts) {
+                try {
+                  // Try to create the slug relation
+                  await slugManager.createOrUpdateSlug(
+                    currentSlug,
+                    entity.type,
+                    record.id,
+                    transaction
                   );
-                  results.modified++;
-                  results.details.push({
-                    entity_type: entity.type,
-                    entity_id: record.id,
-                    original_slug: record.slug,
-                    new_slug: currentSlug
-                  });
-                }
 
-                results.processed++;
-                break;
-              } catch (error) {
-                if (error.message.includes('already taken')) {
-                  attempts++;
-                  // Generate a new slug by appending a random number
-                  currentSlug = `${record.slug}-${Math.floor(Math.random() * 1000)}`;
-                } else {
-                  throw error;
+                  // If we get here, the slug was successfully created
+                  if (attempts > 0) {
+                    // Update the original record with the modified slug
+                    await queryInterface.sequelize.query(
+                      `UPDATE ${entity.table} SET slug = :slug, updated_at = NOW() WHERE id = :id`,
+                      {
+                        replacements: { slug: currentSlug, id: record.id },
+                        transaction
+                      }
+                    );
+                    results.modified++;
+                    results.details.push({
+                      entity_type: entity.type,
+                      entity_id: record.id,
+                      original_slug: record.slug,
+                      new_slug: currentSlug,
+                      status: 'modified'
+                    });
+                  } else {
+                    results.details.push({
+                      entity_type: entity.type,
+                      entity_id: record.id,
+                      slug: currentSlug,
+                      status: 'migrated'
+                    });
+                  }
+
+                  results.processed++;
+                  break;
+                } catch (error) {
+                  if (error.message.includes('already taken')) {
+                    attempts++;
+                    // Generate a new slug by appending a random number
+                    currentSlug = `${record.slug}-${Math.floor(Math.random() * 1000)}`;
+                  } else {
+                    throw error;
+                  }
                 }
               }
-            }
 
-            if (attempts >= maxAttempts) {
-              throw new Error(`Failed to generate unique slug after ${maxAttempts} attempts`);
+              if (attempts >= maxAttempts) {
+                throw new Error(`Failed to generate unique slug after ${maxAttempts} attempts for ${entity.type} ID ${record.id}`);
+              }
+            } catch (error) {
+              results.errors++;
+              results.details.push({
+                entity_type: entity.type,
+                entity_id: record.id,
+                error: error.message,
+                status: 'error'
+              });
+              logger.error(`Error processing ${entity.type} ID ${record.id}:`, error.message);
             }
-          } catch (error) {
-            results.errors++;
-            results.details.push({
-              entity_type: entity.type,
-              entity_id: record.id,
-              error: error.message
-            });
-            logger.error(`Error processing ${entity.type} ID ${record.id}:`, error);
           }
+        } catch (error) {
+          logger.error(`Error processing ${entity.type}:`, error);
+          results.errors++;
+          results.details.push({
+            entity_type: entity.type,
+            error: error.message,
+            status: 'error'
+          });
         }
       }
 
       // Log results
       logger.log('\nMigration Results:');
-      logger.log(`Total records processed: ${results.total}`);
+      logger.log(`Total records found: ${results.total}`);
       logger.log(`Successfully processed: ${results.processed}`);
       logger.log(`Modified slugs: ${results.modified}`);
       logger.log(`Errors: ${results.errors}`);
@@ -114,10 +143,16 @@ module.exports = {
       if (results.details.length > 0) {
         logger.log('\nDetailed Results:');
         results.details.forEach(detail => {
-          if (detail.error) {
-            logger.log(`Error - ${detail.entity_type} ID ${detail.entity_id}: ${detail.error}`);
-          } else {
-            logger.log(`Modified - ${detail.entity_type} ID ${detail.entity_id}: ${detail.original_slug} -> ${detail.new_slug}`);
+          switch (detail.status) {
+            case 'modified':
+              logger.log(`Modified - ${detail.entity_type} ID ${detail.entity_id}: ${detail.original_slug} -> ${detail.new_slug}`);
+              break;
+            case 'migrated':
+              logger.log(`Migrated - ${detail.entity_type} ID ${detail.entity_id}: ${detail.slug}`);
+              break;
+            case 'error':
+              logger.log(`Error - ${detail.entity_type}${detail.entity_id ? ` ID ${detail.entity_id}` : ''}: ${detail.error}`);
+              break;
           }
         });
       }
