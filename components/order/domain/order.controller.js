@@ -102,7 +102,7 @@ module.exports.placeOrder = async (req, res, next) => {
         
         // Ensure Price Integrity
         // if (calculatedTotal !== total) throw { message: "Total price mismatch. Possible price manipulation detected.", statusCode: 400 };
-        
+        calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
         // Create Order
         const order = await Order.create({
             user_id,
@@ -117,8 +117,12 @@ module.exports.placeOrder = async (req, res, next) => {
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
         
         if (coupon) {
-            await Coupon.update({ usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
-            await CouponUsage.findOrCreate({ where: { user_id, coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
+            // First check if user has already used this coupon
+            const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
+            // Only update coupon usage count if this is a new usage
+            if (created) {
+                await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
+            }
         }
         // if(payMethod === "VivaWallet"){
         //     const accessToken = await getVivaAccessToken(payMethod);
@@ -142,23 +146,23 @@ module.exports.placeOrder = async (req, res, next) => {
         //     );
         // }
         // else{
-        //     const response = await axios.post(
-        //         "https://api.worldpay.com/v1/orders",
-        //         {
-        //             amount: amount * 100, // Amount in cents (e.g., $10.00)
-        //             currencyCode: "USD",
-        //             paymentMethod: { encryptedData },
-        //             merchantCode: "YOUR_MERCHANT_CODE",
-        //             orderDescription: "Product Purchase",
-        //         },
-        //         {
-        //             headers: {
-        //                 Authorization: "YOUR WORLDPAY API KEY",
-        //                 "Content-Type": "application/json",
-        //             },
-        //         }
-        //     );
+    //         const response = await axios.post("https://try.access.worldpay.com/orders",
+    //             {
+    //                 token: req.body.token,
+    //                 amount: calculatedTotal *100,
+    //                 currencyCode: "USD",
+    //                 name: "John Doe",
+    //                 orderType: "ECOM"
+    //             },
+    //             {
+    //                 headers: {
+    //                     Authorization: `Basic ${Buffer.from(WORLD_PAY_SERVICE_KEY).toString("base64")}`,
+    //       "Content-Type": "application/json"
+    //     }
+    //   }
+    // );
         // }
+        await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
         return successResponse(res, {
             message: "Order placed successfully",
