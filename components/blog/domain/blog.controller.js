@@ -4,24 +4,39 @@ const { Op } = require("sequelize");
 
 module.exports.listAllBlogs = async (req, res, next) => {
     try {
-        const { search, userId, blog_group } = req.query;
+        const { search, userId, categoryId, page = 1, limit = 10 } = req.query;
         let whereCondition = {};
+        
         if (search) {
             whereCondition = {
                 ...whereCondition,
                 [Op.or]: [
                     { title: { [Op.iLike]: `%${search}%` } },
-                    { content: { [Op.iLike]: `%${search}%` } },
-                    { blog_group: { [Op.iLike]: `%${search}%` } }
+                    { content: { [Op.iLike]: `%${search}%` } }
                 ]
             };
         }
+        
         if (userId) {
             whereCondition.author_id = userId;
         }
-        if (blog_group) {
-            whereCondition.blog_group = blog_group;
-        }
+
+        // Calculate offset
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        const parsedLimit = parseInt(limit);
+
+        // Get total count for pagination
+        const totalCount = await Blog.count({
+            where: whereCondition,
+            include: categoryId ? [{
+                model: BlogCategory,
+                as: 'categories',
+                where: {
+                    id: categoryId
+                }
+            }] : []
+        });
+
         const blogs = await Blog.findAll({
             where: whereCondition,
             include: [
@@ -30,16 +45,41 @@ module.exports.listAllBlogs = async (req, res, next) => {
                     as: 'author',
                     attributes: ['id', 'first_name', 'last_name', 'email']
                 },
-                {
+                ...(categoryId ? [{
+                    model: BlogCategory,
+                    as: 'categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: [] },
+                    where: {
+                        id: categoryId
+                    }
+                }] : [{
                     model: BlogCategory,
                     as: 'categories',
                     attributes: ['id', 'name', 'slug'],
                     through: { attributes: [] }
-                }
+                }])
             ],
-            order: [['published_at', 'DESC']]
+            order: [['published_at', 'DESC']],
+            limit: parsedLimit,
+            offset: offset
         });
-        successResponse(res, blogs, 'Success');
+
+        // Calculate pagination metadata
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+        const currentPage = parseInt(page);
+
+        successResponse(res, {
+            blogs,
+            pagination: {
+                total: totalCount,
+                totalPages,
+                currentPage,
+                limit: parsedLimit,
+                hasNextPage: currentPage < totalPages,
+                hasPreviousPage: currentPage > 1
+            }
+        }, 'Success');
     } catch (error) {
         console.error("listAllBlogs error:", error);
         return errorResponse(res, error, error.message);
