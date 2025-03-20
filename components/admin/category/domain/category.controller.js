@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category, SlugRelation, sequelize } = require("../../../../models");
+const { Category, SlugRelation, sequelize, Product } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
@@ -242,6 +242,22 @@ module.exports.deleteCategory = async (req, res, next) => {
         if (!category) {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
+        }
+
+        // Check if there are any products associated with this category
+        const productsCount = await Product.count({
+            where: {
+                category_id: id
+            }
+        });
+        if (productsCount > 0) {
+            await t.rollback();
+            return errorResponse(
+                res, 
+                { message: "Cannot delete category with associated products" },
+                "Category has associated products",
+                400
+            );
         }
         
         // Delete slug relation first
