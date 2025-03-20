@@ -5,7 +5,12 @@ const { Op } = require("sequelize");
 
 module.exports.listAllbrands = async (req, res, next) => {
     try {
-        const brands = await Brand.findAll();
+        const { sort } = req.query
+        const brands = await Brand.findAll({
+            order: [
+                ['createdAt', sort === 'ASC' ? 'ASC' : 'DESC'],
+            ],
+        });
         successResponse(res, brands, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);

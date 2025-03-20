@@ -11,6 +11,14 @@ const { check, query, param } = require("express-validator");
  *     summary: Retrieve a list of brands
  *     tags:
  *      - Brand
+ *     parameters:
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order for brands (ASC or DESC)
  *     responses:
  *       200:
  *         description: A list of brands
