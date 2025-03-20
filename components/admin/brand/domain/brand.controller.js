@@ -257,6 +257,7 @@ module.exports.restoreBrand = async (req, res, next) => {
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
 
+        
         // Restore the brand
         await brand.restore({ transaction: t });
 
