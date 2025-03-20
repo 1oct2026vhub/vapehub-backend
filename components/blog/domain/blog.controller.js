@@ -4,7 +4,12 @@ const { Op } = require("sequelize");
 
 module.exports.listAllBlogs = async (req, res, next) => {
     try {
-        const { search, userId, categoryId, page = 1, limit = 10 } = req.query;
+        const { search, userId, categoryId, page = 1, limit = 10 ,sortBy = 'published_at', order = 'DESC' } = req.query;
+        const validSortFields = ['published_at', 'created_at', 'title', 'id'];
+        const validOrders = ['ASC', 'DESC'];
+
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'published_at';
+        const sortOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
         let whereCondition = {};
         
         if (search) {
@@ -60,7 +65,9 @@ module.exports.listAllBlogs = async (req, res, next) => {
                     through: { attributes: [] }
                 }])
             ],
-            order: [['published_at', 'DESC']],
+            
+            // order: [['published_at', 'DESC']],
+            order: [[sortField, sortOrder]],
             limit: parsedLimit,
             offset: offset
         });
