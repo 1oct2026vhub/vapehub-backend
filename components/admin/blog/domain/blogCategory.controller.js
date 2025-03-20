@@ -115,9 +115,6 @@ module.exports.createBlogCategory = async (req, res, next) => {
                 return errorResponse(res, { message: "Parent category not found" }, "Validation error", 400);
             }
         }
-        else {
-            parent_id = null;
-        }
 
         let image_url = null;
         if (file) {
@@ -136,15 +133,21 @@ module.exports.createBlogCategory = async (req, res, next) => {
         }
 
         // Create the category
-        const category = await BlogCategory.create({
+        const categoryData = {
             name,
             slug,
             description,
             image_url,
             status,
-            parent_id,
             updated_by: req.user.id
-        }, { transaction: t });
+        };
+
+        // Only add parent_id if it's not null
+        if (parent_id !== null) {
+            categoryData.parent_id = parent_id;
+        }
+
+        const category = await BlogCategory.create(categoryData, { transaction: t });
 
         // Create slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
@@ -228,16 +231,21 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         }
 
         // Update the category
-        await category.update({
+        const updateData = {
             name,
             slug,
             description,
             image_url,
             status,
-            parent_id,
             updated_by: req.user.id
-        }, { transaction: t });
+        };
 
+        // Only add parent_id if it's not null
+        if (parent_id !== null) {
+            updateData.parent_id = parent_id;
+        }
+
+        await category.update(updateData, { transaction: t });
 
         await t.commit();
 

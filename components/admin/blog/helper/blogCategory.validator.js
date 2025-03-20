@@ -34,7 +34,12 @@ const blogCategoryValidation = [
         .withMessage("Status must be either 'active' or 'inactive'"),
     check("parent_id")
         .optional({ nullable: true })
-        .customSanitizer(value => (value === "" ? null : value))
+        .customSanitizer(value => {
+            if (value === "" || value === null || value === undefined) {
+                return null;
+            }
+            return value;
+        })
         .custom(value => {
             if (value !== null && value !== undefined) {
                 console.log(value);
@@ -74,6 +79,12 @@ const blogCategoryUpdatesValidation = [
         .withMessage("Status must be either 'active' or 'inactive'"),
     check("parent_id")
         .optional({ nullable: true })
+        .customSanitizer(value => {
+            if (value === "" || value === null || value === undefined) {
+                return null;
+            }
+            return value;
+        })
         .custom(value => {
             if (value !== null && value !== undefined) {
                 if (!Number.isInteger(value)) {

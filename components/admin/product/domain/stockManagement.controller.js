@@ -23,9 +23,17 @@ module.exports.addStock = async (req, res) => {
             updated_by
         }, { transaction });
 
+        // Fetch the updated variant to get total quantity
+        const updatedVariant = await ProductVariant.findByPk(variant_id, { transaction });
+        if (!updatedVariant) {
+            throw new Error('Variant not found after update');
+        }
 
         await transaction.commit();
-        return successResponse(res, movement, "Stock added successfully", 201);
+        return successResponse(res, {
+            movement,
+            total_quantity: updatedVariant.stock
+        }, "Stock added successfully", 201);
     } catch (error) {
         await transaction.rollback();
         logger.error(`Error adding stock: ${error.message}`);
@@ -52,8 +60,17 @@ module.exports.removeStock = async (req, res) => {
             updated_by
         }, { transaction });
 
+        // Fetch the updated variant to get total quantity
+        const updatedVariant = await ProductVariant.findByPk(variant_id, { transaction });
+        if (!updatedVariant) {
+            throw new Error('Variant not found after update');
+        }
+
         await transaction.commit();
-        return successResponse(res, movement, "Stock removed successfully", 200);
+        return successResponse(res, {
+            movement,
+            total_quantity: updatedVariant.stock
+        }, "Stock removed successfully", 200);
     } catch (error) {
         await transaction.rollback();
         logger.error(`Error removing stock: ${error.message}`);
