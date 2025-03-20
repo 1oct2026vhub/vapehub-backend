@@ -251,7 +251,7 @@ module.exports.restoreBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const brand = await Brand.findOne({ where: { id }, paranoid: true });
+        const brand = await Brand.findOne({ where: { id }, paranoid: false });
         if (!brand) {
             await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
