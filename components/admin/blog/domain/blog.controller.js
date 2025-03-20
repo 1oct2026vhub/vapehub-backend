@@ -246,8 +246,14 @@ module.exports.updateBlog = async (req, res) => {
             updated_by
         }, { transaction });
 
+        // Parse categories and tags
+        const parsedCategories = categories ? 
+            categories.split(',').map(id => parseInt(id.trim())) : [];
+        const parsedTags = tags ? 
+            tags.split(',').map(id => parseInt(id.trim())) : [];
+
         // Update relations
-        await updateBlogRelations(id, { categories, tags }, transaction);
+        await updateBlogRelations(id, { categories: parsedCategories, tags: parsedTags }, transaction);
 
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {

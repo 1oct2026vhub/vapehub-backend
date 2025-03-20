@@ -29,10 +29,17 @@ const router = express.Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [shipping_method]
+ *             required: [shipping_method, shipping_cost]
  *             properties:
  *               shipping_method:
  *                 type: string
+ *                 description: Name of the shipping method
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the shipping method
+ *               shipping_cost:
+ *                 type: number
+ *                 description: Cost of shipping in the base currency
  *               api_key:
  *                 type: string
  *               api_secret:
@@ -48,6 +55,8 @@ router.post(
     authMiddleware(true),
     validateRequest([
         check("shipping_method").notEmpty().withMessage("Shipping method is required"),
+        check("description").optional().isString(),
+        check("shipping_cost").isFloat({ min: 0 }).withMessage("Shipping cost must be a positive number"),
         check("api_key").optional().isString(),
         check("api_secret").optional().isString(),
     ]),
@@ -116,6 +125,13 @@ router.get(
  *             properties:
  *               shipping_method:
  *                 type: string
+ *                 description: Name of the shipping method
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the shipping method
+ *               shipping_cost:
+ *                 type: number
+ *                 description: Cost of shipping in the base currency
  *               api_key:
  *                 type: string
  *               api_secret:
@@ -132,6 +148,8 @@ router.put(
     validateRequest([
         param("id").isInt().withMessage("Invalid ID"),
         check("shipping_method").optional().isString(),
+        check("description").optional().isString(),
+        check("shipping_cost").optional().isFloat({ min: 0 }).withMessage("Shipping cost must be a positive number"),
         check("api_key").optional().isString(),
         check("api_secret").optional().isString(),
         check("updated_by").optional().isInt(),
