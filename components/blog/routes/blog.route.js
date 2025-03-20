@@ -18,6 +18,37 @@ const blogController = require("../domain/blog.controller");
  *           default: 1
  *         description: Page number for pagination
  *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: 
+ *             - published_at
+ *             - created_at
+ *             - updated_at
+ *             - title
+ *             - id
+ *             - author
+ *             - views
+ *             - likes
+ *           default: published_at
+ *         description: |
+ *           Field to sort by:
+ *           * `published_at` - Sort by publication date
+ *           * `created_at` - Sort by creation date
+ *           * `updated_at` - Sort by last update date
+ *           * `title` - Sort alphabetically by title
+ *           * `id` - Sort by ID
+ *           * `author` - Sort by author name
+ *           * `views` - Sort by view count
+ *           * `likes` - Sort by like count
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order (ascending or descending)
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
