@@ -1,38 +1,48 @@
-const { BlogCategoryRelation, BlogTagRelation } = require("../../../../models");
+const { BlogCategoryRelation, BlogTagRelation, BlogCategory } = require("../../../../models");
 
 /**
  * Update blog category relations
  * @param {number} blogId - Blog ID
  * @param {Transaction} transaction - Sequelize transaction
- * @param {number[]} categoryIds - Array of category IDs
+ * @param {number[]|string} categoryIds - Array of category IDs or comma-separated string
  */
-exports.updateBlogCategories = async (blogId, transaction, categoryIds = []) => {
+exports.updateBlogCategories = async (blogId, transaction, categoryIds) => {
     try {
-        // Delete existing relations first
-        await BlogCategoryRelation.destroy({
-            where: { blog_id: blogId },
+        // Convert categoryIds to array if it's a string
+        const categoryIdsArray = Array.isArray(categoryIds) 
+            ? categoryIds 
+            : (typeof categoryIds === 'string' ? categoryIds.split(',').map(id => parseInt(id.trim())) : []);
+
+        // Filter out any invalid IDs
+        const validCategoryIds = categoryIdsArray.filter(id => !isNaN(id));
+
+        
+        if (validCategoryIds.length === 0) {
+            return; // No valid categories to process
+        }
+
+        // First verify if all categories exist
+        const existingCategories = await BlogCategory.findAll({
+            where: {
+                id: validCategoryIds
+            },
             transaction
         });
 
-        // If no categories, we're done
-        if (!categoryIds.length) return;
 
-        // Create new relations
-        const categoryRelations = categoryIds.map(category_id => ({
+        if (existingCategories.length !== validCategoryIds.length) {
+            const foundIds = existingCategories.map(cat => cat.id);
+            const missingIds = validCategoryIds.filter(id => !foundIds.includes(id));
+            throw new Error(`Category IDs ${missingIds.join(', ')} do not exist`);
+        }
+
+        // Then create the relations
+        const categoryRelations = validCategoryIds.map(categoryId => ({
             blog_id: blogId,
-            category_id: parseInt(category_id),
-            created_at: new Date()
+            category_id: categoryId
         }));
 
-        // Use individual inserts instead of bulkCreate to avoid lock timeouts
-        await Promise.all(
-            categoryRelations.map(relation =>
-                BlogCategoryRelation.create(relation, { 
-                    transaction,
-                    logging: false // Reduce log noise
-                })
-            )
-        );
+        return await BlogCategoryRelation.bulkCreate(categoryRelations, { transaction });
     } catch (error) {
         console.error('Error in updateBlogCategories:', error);
         throw error;

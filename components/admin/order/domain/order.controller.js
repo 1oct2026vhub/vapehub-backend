@@ -25,7 +25,7 @@ module.exports.listAllOrders = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
-            whereCondition.created_at = {
+            whereCondition.createdAt = {
                 [Op.between]: [start_date, end_date]
             };
         }
@@ -220,7 +220,7 @@ module.exports.getOrderStats = async (req, res, next) => {
 
         let whereCondition = {};
         if (start_date && end_date) {
-            whereCondition.created_at = {
+            whereCondition.createdAt = {
                 [Op.between]: [start_date, end_date]
             };
         }
@@ -263,7 +263,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
-            whereCondition.created_at = {
+            whereCondition.createdAt = {
                 [Op.between]: [start_date, end_date]
             };
         }

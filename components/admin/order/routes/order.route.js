@@ -15,7 +15,8 @@ const {
  *   get:
  *     summary: Get order statistics
  *     tags:
- *       - Admin Orders
+ *       - Admin 
+ *         - Orders
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -45,7 +46,8 @@ router.get('/stats', [authMiddleware(true), validateRequest(getOrderStatsValidat
  *   get:
  *     summary: Generate Excel report of orders
  *     tags:
- *       - Admin Orders
+ *       - Admin 
+ *         - Orders
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -53,7 +55,7 @@ router.get('/stats', [authMiddleware(true), validateRequest(getOrderStatsValidat
  *         name: status
  *         schema:
  *           type: string
- *           enum: [draft, pending, fail, cancel, return]
+ *           enum: ['draft', 'pending', 'processing', 'shipped', 'delivered', 'completed', 'fail', 'cancel', 'return_requested', 'return_approved', 'return_received', 'refunded']
  *         description: Filter orders by status
  *       - in: query
  *         name: payment_status
@@ -92,7 +94,8 @@ router.get('/report', [authMiddleware(true), validateRequest(getOrderReportValid
  *   put:
  *     summary: Update order status
  *     tags:
- *       - Admin Orders
+ *       - Admin 
+ *         - Orders
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -111,7 +114,7 @@ router.get('/report', [authMiddleware(true), validateRequest(getOrderReportValid
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [draft, pending, fail, cancel, return]
+ *                 enum: ['draft', 'pending', 'processing', 'shipped', 'delivered', 'completed', 'fail', 'cancel', 'return_requested', 'return_approved', 'return_received', 'refunded']
  *     responses:
  *       200:
  *         description: Order status updated successfully
@@ -130,7 +133,8 @@ router.put('/:id/status', [authMiddleware(true), validateRequest(updateOrderStat
  *   get:
  *     summary: List all orders with filtering and pagination
  *     tags:
- *       - Admin Orders
+ *       - Admin 
+ *         - Orders
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -138,7 +142,7 @@ router.put('/:id/status', [authMiddleware(true), validateRequest(updateOrderStat
  *         name: status
  *         schema:
  *           type: string
- *           enum: [draft, pending, fail, cancel, return]
+ *           enum: ['draft', 'pending', 'processing', 'shipped', 'delivered', 'completed', 'fail', 'cancel', 'return_requested', 'return_approved', 'return_received', 'refunded']
  *         description: Filter orders by status
  *       - in: query
  *         name: payment_status
@@ -189,7 +193,8 @@ router.get('/', [authMiddleware(true), validateRequest(listAllOrdersValidation)]
  *   get:
  *     summary: Get order details by ID
  *     tags:
- *       - Admin Orders
+ *       - Admin 
+ *         - Orders
  *     security:
  *       - bearerAuth: []
  *     parameters:

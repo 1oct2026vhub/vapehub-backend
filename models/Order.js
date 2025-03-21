@@ -81,7 +81,20 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     status: {
-      type: DataTypes.ENUM('draft', 'pending', 'fail', 'cancel', 'return'),
+      type: DataTypes.ENUM(
+        'draft',          // Initial cart state
+        'pending',        // Order placed but payment not confirmed
+        'processing',     // Payment confirmed, preparing for shipment
+        'shipped',        // Order has been shipped
+        'delivered',      // Order has been delivered
+        'completed',      // Order successfully fulfilled
+        'fail',          // Order/payment failed
+        'cancel',         // Order cancelled
+        'return_requested', // Customer requested a return
+        'return_approved', // Return request approved
+        'return_received', // Returned items received
+        'refunded'        // Money refunded to customer
+      ),
       allowNull: false,
       defaultValue: 'draft'
     },

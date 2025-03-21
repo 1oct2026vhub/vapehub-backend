@@ -18,7 +18,7 @@ module.exports.listAllProducts = async (req, res, next) => {
 
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
-        const whereClause = { [Op.and]: [] };
+        const whereClause = { };
 
         // Keyword search
         if (keyword) {
@@ -75,10 +75,10 @@ module.exports.listAllProducts = async (req, res, next) => {
         }
 
         // Deleted filter (Soft-delete support)
-        if (deleted !== undefined) {
-            whereClause.deletedAt = deleted === "true" || deleted === true ? { [Op.ne]: null } : null;
+        if (deleted !== undefined && (deleted === "true" || deleted === true)) {
+            whereClause.deletedAt = { [Op.ne]: null }
         }
-
+        console.log(whereClause);
         // Define relationships to include with LEFT JOIN
         const includeClause = [
             { 
@@ -203,7 +203,8 @@ module.exports.listAllProducts = async (req, res, next) => {
                 ...include,
                 attributes: [] // Don't need attributes for counting
             })),
-            distinct: true
+            distinct: true,
+            paranoid: deleted === "true" || deleted === true ? false : true // Include soft-deleted records if requested
         });
 
         // Calculate pagination details
@@ -224,7 +225,8 @@ module.exports.listAllProducts = async (req, res, next) => {
             include: includeClause,
             order: [[sort_by, order]],
             limit: parsedLimit,
-            offset: parsedOffset
+            offset: parsedOffset,
+            paranoid: !(deleted === "true" || deleted === true)
         });
 
         return successResponse(res, { products, pagination }, 'Success');
