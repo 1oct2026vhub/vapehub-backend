@@ -48,19 +48,16 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *         name: price_range
  *         schema:
  *           type: string
- *           example: "10-100"
  *         description: Filter by price range (min-max)
  *       - in: query
  *         name: categories
  *         schema:
  *           type: string
- *           example: "1,2,3"
  *         description: Filter by category IDs (comma-separated)
  *       - in: query
  *         name: brands
  *         schema:
  *           type: string
- *           example: "1,2"
  *         description: Filter by brand IDs (comma-separated)
  *       - in: query
  *         name: deleted
