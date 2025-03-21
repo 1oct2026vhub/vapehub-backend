@@ -1,5 +1,6 @@
 'use strict';
 const { Model } = require('sequelize');
+const { v4: uuidv4 } = require('uuid'); // Import UUID generator
 
 module.exports = (sequelize, DataTypes) => {
   class Order extends Model {
@@ -49,6 +50,11 @@ module.exports = (sequelize, DataTypes) => {
       autoIncrement: true,
       unique: true,
       allowNull: false
+    },
+    order_unique_id: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true
     },
     user_id: {
       type: DataTypes.INTEGER,
@@ -123,7 +129,12 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'Order',
     tableName: 'orders',
     timestamps: true,
-    paranoid: true // Enables soft delete
+    paranoid: true, // Enables soft delete
+    hooks: {
+      beforeCreate: async (order, options) => {
+        order.order_unique_id = `ORD-${uuidv4().split('-')[0].toUpperCase()}`; // Generates unique ID like "ORD-ABC123"
+      }
+    }
   });
 
   return Order;

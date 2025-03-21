@@ -3,6 +3,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaTransactionToken} = require("../helper/order.helper")
 const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize} = require("../../../models");
 const logger = require("../../../library/logger");
+const { v4: uuidv4 } = require('uuid');
 
 
 module.exports.placeOrder = async (req, res, next) => {
@@ -103,6 +104,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // Ensure Price Integrity
         // if (calculatedTotal !== total) throw { message: "Total price mismatch. Possible price manipulation detected.", statusCode: 400 };
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
+        const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}`;
         // Create Order
         const order = await Order.create({
             user_id,
@@ -111,9 +113,9 @@ module.exports.placeOrder = async (req, res, next) => {
             status: "pending",
             shipping_address_id: shippingAddrs.id,
             billing_address_id: billingAddrs.id,
-            shipping_method_id
+            shipping_method_id,
+            order_unique_id: orderUniqueId
         }, { transaction });
-        
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
         
         if (coupon) {
@@ -168,6 +170,7 @@ module.exports.placeOrder = async (req, res, next) => {
             message: "Order placed successfully",
             data: {
                 order_details: {
+                    order_id: order.order_unique_id,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
