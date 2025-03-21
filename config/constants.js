@@ -22,12 +22,34 @@ module.exports = {
         },
     },
     orderStatus: {
-         //   0 for pending 1 for successful 2 for returned 3 for payment_failed 4 for canceled
-         PENDING: 0,
-         SUCCESS: 1,
-         PAYMENT_FAILED : 2,
-         CANCELED : 4
+        //   0 for pending 1 for successful 2 for returned 3 for payment_failed 4 for canceled
+        DRAFT: 'draft',                // Initial cart state
+        PENDING: 'pending',            // Order placed but payment not confirmed
+        PROCESSING: 'processing',       // Payment confirmed, preparing for shipment
+        SHIPPED: 'shipped',            // Order has been shipped
+        DELIVERED: 'delivered',        // Order has been delivered
+        COMPLETED: 'completed',        // Order successfully fulfilled
+        FAIL: 'fail',                 // Order/payment failed
+        CANCEL: 'cancel',             // Order cancelled
+        RETURN_REQUESTED: 'return_requested', // Customer requested a return
+        RETURN_APPROVED: 'return_approved',   // Return request approved
+        RETURN_RECEIVED: 'return_received',   // Returned items received
+        REFUNDED: 'refunded'          // Money refunded to customer
     },
+    orderStatusEnums: [
+        'draft',
+        'pending',
+        'processing',
+        'shipped',
+        'delivered',
+        'completed',
+        'fail',
+        'cancel',
+        'return_requested',
+        'return_approved',
+        'return_received',
+        'refunded'
+    ],
     attributes: {
         types: {
             SELECT: 'select',
