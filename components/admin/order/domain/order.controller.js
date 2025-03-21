@@ -221,8 +221,23 @@ module.exports.getOrderStats = async (req, res, next) => {
 
         let whereCondition = {};
         if (start_date && end_date) {
+            // Add start of time to start_date and end of time to end_date
+            const startDateTime = start_date;//`${start_date} 00:00:00`;
+            const endDateTime = start_date === end_date 
+                ? `${end_date} 23:59:59`
+                : end_date;
+
             whereCondition.createdAt = {
-                [Op.between]: [start_date, end_date]
+                [Op.between]: [startDateTime, endDateTime]
+            };
+        } else {
+            // If no dates provided, fetch today's data
+            const today = new Date();
+            const startOfDay = today.toISOString().split('T')[0];
+            const endOfDay = `${startOfDay} 23:59:59`;
+            
+            whereCondition.createdAt = {
+                [Op.between]: [startOfDay, endOfDay]
             };
         }
 
