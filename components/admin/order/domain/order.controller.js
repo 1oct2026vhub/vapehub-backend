@@ -1,9 +1,9 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, OrderStatus, PaymentStatus, ProductImage, UserAddress, sequelize } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, UserAddress, sequelize } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
-
+const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
 module.exports.listAllOrders = async (req, res, next) => {
     try {
         const { 
@@ -179,7 +179,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         }
 
         // Validate status
-        if (status && !Object.values(OrderStatus).includes(status)) {
+        if (status && !Object.values(orderStatusEnums).includes(status)) {
             const error = new Error('Invalid order status');
             error.statusCode = 400;
             throw error;
@@ -192,7 +192,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         });
 
         // If order is cancelled, restore product stock
-        if (status === OrderStatus.CANCELLED) {
+        if (status === orderStatus.CANCELLED) {
             const orderItems = await OrderItem.findAll({
                 where: { order_id: id },
                 include: [
@@ -210,6 +210,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
 
         successResponse(res, order, 'Order status updated successfully');
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };
