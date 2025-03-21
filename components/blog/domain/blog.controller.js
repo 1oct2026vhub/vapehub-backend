@@ -143,6 +143,8 @@ module.exports.deleteBlog = async (req, res, next) => {
 
 module.exports.listAllCategories = async (req, res, next) => {
     try {
+        const { order = 'DESC' } = req.query;
+        const sortOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
         const categories = await BlogCategory.findAll({
             attributes: ['id', 'name', 'slug', 'description', 'image_url'],
             include: [{
@@ -151,13 +153,13 @@ module.exports.listAllCategories = async (req, res, next) => {
                 attributes: ['id'],
                 through: { attributes: [] }
             }],
-            order: [['name', 'ASC']]
+            order: [['created_at', sortOrder]]
         });
 
         // Add blog count to each category
         const categoriesWithCount = categories.map(category => ({
             ...category.toJSON(),
-            blog_count: category.blogs.length
+            blog_count: category.blogs.length,
         }));
 
         successResponse(res, categoriesWithCount, 'Success');
