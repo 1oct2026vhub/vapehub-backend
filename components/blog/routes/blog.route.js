@@ -175,6 +175,14 @@ router.get('/list', blogController.listAllBlogs);
  *     summary: Get all blog categories
  *     tags:
  *       - Blog
+ *     parameters:
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order for blogs within categories (ascending or descending by publication date)
  *     responses:
  *       200:
  *         description: List of blog categories
