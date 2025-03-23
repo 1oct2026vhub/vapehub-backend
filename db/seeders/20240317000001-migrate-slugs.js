@@ -18,7 +18,9 @@ module.exports = {
         { model: 'BlogCategory', type: 'blog_category', table: 'blog_categories' },
         { model: 'Category', type: 'category', table: 'categories' },
         { model: 'Product', type: 'product', table: 'products' },
-        { model: 'ProductVariant', type: 'product_variant', table: 'product_variants' }
+        { model: 'ProductVariant', type: 'product_variant', table: 'product_variants' },
+        { model: 'Attribute', type: 'attribute', table: 'attributes' },
+        { model: 'AttributeTerm', type: 'attribute_term', table: 'attribute_terms' }
       ];
 
       const results = {
@@ -70,9 +72,17 @@ module.exports = {
 
                   // If we get here, the slug was successfully created
                   if (attempts > 0) {
+                    // Check if table has updated_at or updatedAt column
+                    const tableInfo = await queryInterface.sequelize.query(
+                      `SHOW COLUMNS FROM ${entity.table} WHERE FIELD IN ('updated_at', 'updatedAt')`,
+                      { type: Sequelize.QueryTypes.SELECT }
+                    );
+                    
+                    const updateTimestampField = tableInfo.length > 0 ? tableInfo[0].Field : null;
+                    
                     // Update the original record with the modified slug
                     await queryInterface.sequelize.query(
-                      `UPDATE ${entity.table} SET slug = :slug, updated_at = NOW() WHERE id = :id`,
+                      `UPDATE ${entity.table} SET slug = :slug${updateTimestampField ? `, ${updateTimestampField} = NOW()` : ''} WHERE id = :id`,
                       {
                         replacements: { slug: currentSlug, id: record.id },
                         transaction

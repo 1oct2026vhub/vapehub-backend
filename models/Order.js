@@ -41,6 +41,30 @@ module.exports = (sequelize, DataTypes) => {
       });
       this.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'orderItems' });
     }
+
+    /**
+     * Generate a unique order ID
+     * @returns {string} The generated order ID
+     */
+    static generateOrderId() {
+      return `ORD-${uuidv4().split('-')[0].toUpperCase()}`;
+    }
+
+    /**
+     * Check if order can be cancelled
+     * @returns {boolean} Whether the order can be cancelled
+     */
+    canBeCancelled() {
+      return ['pending', 'processing'].includes(this.status);
+    }
+
+    /**
+     * Check if order can be returned
+     * @returns {boolean} Whether the order can be returned
+     */
+    canBeReturned() {
+      return ['delivered', 'completed'].includes(this.status);
+    }
   }
 
   Order.init({
@@ -54,7 +78,11 @@ module.exports = (sequelize, DataTypes) => {
     order_unique_id: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true
+      unique: true,
+      defaultValue: () => Order.generateOrderId(),
+      validate: {
+        is: /^ORD-[A-Z0-9]{8}$/i
+      }
     },
     user_id: {
       type: DataTypes.INTEGER,
@@ -74,11 +102,17 @@ module.exports = (sequelize, DataTypes) => {
     },
     total: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        min: 0
+      }
     },
     discount_price: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: true
+      allowNull: true,
+      validate: {
+        min: 0
+      }
     },
     status: {
       type: DataTypes.ENUM(
@@ -145,7 +179,17 @@ module.exports = (sequelize, DataTypes) => {
     paranoid: true, // Enables soft delete
     hooks: {
       beforeCreate: async (order, options) => {
-        order.order_unique_id = `ORD-${uuidv4().split('-')[0].toUpperCase()}`; // Generates unique ID like "ORD-ABC123"
+        if (!order.order_unique_id) {
+          order.order_unique_id = Order.generateOrderId();
+        }
+      },
+      beforeUpdate: async (order, options) => {
+        if (order.changed('status')) {
+          // Add any status change validation logic here
+          if (order.status === 'completed' && order.previous('status') !== 'delivered') {
+            throw new Error('Order must be delivered before being marked as completed');
+          }
+        }
       }
     }
   });

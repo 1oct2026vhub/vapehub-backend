@@ -48,7 +48,8 @@ module.exports.listAllOrders = async (req, res, next) => {
             
             // Then build the order search condition
             whereCondition[Op.or] = [
-                { id: { [Op.like]: `%${search}%` } }
+                { id: { [Op.like]: `%${search}%` } },
+                { order_unique_id: { [Op.like]: `%${search}%` } }
             ];
 
             if (userIds.length > 0) {
@@ -238,7 +239,7 @@ module.exports.getOrderStats = async (req, res, next) => {
         let whereCondition = {};
         if (start_date && end_date) {
             // Add start of time to start_date and end of time to end_date
-            const startDateTime = start_date;//`${start_date} 00:00:00`;
+            const startDateTime = start_date;
             const endDateTime = start_date === end_date 
                 ? `${end_date} 23:59:59`
                 : end_date;
@@ -344,6 +345,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
         // Define columns
         worksheet.columns = [
             { header: 'Order ID', key: 'orderId', width: 15 },
+            { header: 'Unique Order ID', key: 'orderUniqueId', width: 20 },
             { header: 'Order Date', key: 'orderDate', width: 20 },
             { header: 'Order Status', key: 'orderStatus', width: 15 },
             { header: 'Customer Name', key: 'customerName', width: 30 },
@@ -376,6 +378,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
 
             worksheet.addRow({
                 orderId: order.id,
+                orderUniqueId: order.order_unique_id,
                 orderDate: moment(order.createdAt).format('YYYY-MM-DD HH:mm:ss'),
                 orderStatus: order.status,
                 customerName,
