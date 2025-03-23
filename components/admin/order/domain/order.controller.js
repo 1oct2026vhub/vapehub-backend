@@ -32,12 +32,28 @@ module.exports.listAllOrders = async (req, res, next) => {
 
         // Search filter
         if (search) {
+            // First find matching user IDs
+            const matchingUsers = await User.findAll({
+                where: {
+                    [Op.or]: [
+                        { first_name: { [Op.like]: `%${search}%` } },
+                        { last_name: { [Op.like]: `%${search}%` } },
+                        { email: { [Op.like]: `%${search}%` } }
+                    ]
+                },
+                attributes: ['id']
+            });
+
+            const userIds = matchingUsers.map(user => user.id);
+            
+            // Then build the order search condition
             whereCondition[Op.or] = [
-                { order_number: { [Op.iLike]: `%${search}%` } },
-                { '$user.first_name$': { [Op.iLike]: `%${search}%` } },
-                { '$user.last_name$': { [Op.iLike]: `%${search}%` } },
-                { '$user.email$': { [Op.iLike]: `%${search}%` } }
+                { id: { [Op.like]: `%${search}%` } }
             ];
+
+            if (userIds.length > 0) {
+                whereCondition[Op.or].push({ user_id: { [Op.in]: userIds } });
+            }
         }
 
         const orders = await Order.findAndCountAll({
