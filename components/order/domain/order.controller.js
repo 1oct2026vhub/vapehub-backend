@@ -28,7 +28,7 @@ module.exports.placeOrder = async (req, res, next) => {
             ],
             transaction
         });
-        if (!cartItems.length) throw { message: "Cart is empty", statusCode: 400 };
+        if (!cartItems.length) throw new Error("Cart is empty");
         
         let subTotal = 0;
         const orderItems = [];
@@ -37,12 +37,12 @@ module.exports.placeOrder = async (req, res, next) => {
 
         for (const item of cartItems) {
             const { product, variant_id, quantity } = item;
-            if (!product) throw { message: `Product ${item.product_id} not found.`, statusCode: 404 };
+            if (!product) throw new Error(`Product ${item.product_id} not found.`);
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
             
             // Validate Stock
-            if (variant && variant.stock < quantity) throw { message: `Not enough stock for variant ${variant.id}.`, statusCode: 409 };
-            if (!variant && product.stock_quantity < quantity) throw { message: `Not enough stock for ${product.name}.`, statusCode: 409 };
+            if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.id}.`);
+            if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
             subTotal += unitPrice * quantity;
@@ -79,7 +79,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // Update Stock in Batch
         for (const { model, updateData, whereClause } of stockUpdates) {
             const [updatedStock] = await model.update(updateData, { where: whereClause, transaction });
-            if (updatedStock === 0) throw { message: "Stock update failed.", statusCode: 404 };
+            if (updatedStock === 0) throw new Error("Stock update failed.");
         }
         
         // Apply Coupon
