@@ -1,8 +1,11 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Attribute, AttributeTerm, ProductVariantAttribute, ProductVariant, User } = require("../../../../models");
+const { Attribute, AttributeTerm, ProductVariantAttribute, ProductVariant, User, SlugRelation } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const ExcelJS = require('exceljs');
+const SlugManager = require("../../../../utils/slugManager");
+
+const slugManager = new SlugManager(SlugRelation);
 
 module.exports.createAttribute = async (req, res, next) => {
     const transaction = await Attribute.sequelize.transaction();
@@ -40,6 +43,9 @@ module.exports.createAttribute = async (req, res, next) => {
             sort_order,
             updated_by
         }, { transaction });
+
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(newAttribute.slug, 'attribute', newAttribute.id, transaction);
 
         // Commit transaction
         await transaction.commit();
@@ -109,6 +115,11 @@ module.exports.updateAttribute = async (req, res, next) => {
             sort_order: sort_order || attribute.sort_order,
             updated_by
         }, { transaction });
+
+        // Update slug relation if slug has changed
+        if (slug && slug.toLowerCase() !== attribute.slug) {
+            await slugManager.createOrUpdateSlug(slug.toLowerCase(), 'attribute', id, transaction);
+        }
 
         // Commit transaction
         await transaction.commit();
@@ -192,6 +203,9 @@ module.exports.deleteAttribute = async (req, res, next) => {
             updated_by: deleted_by
         }, { transaction });
 
+        // Delete slug relation first
+        await slugManager.deleteSlug('attribute', id, transaction);
+
         // Soft delete the attribute
         await attribute.destroy({ transaction });
 
@@ -261,6 +275,9 @@ module.exports.restoreAttribute = async (req, res, next) => {
 
         // Restore the attribute
         await attribute.restore({ transaction });
+
+        // Recreate slug relation
+        await slugManager.createOrUpdateSlug(attribute.slug, 'attribute', attribute.id, transaction);
 
         // Commit transaction
         await transaction.commit();
