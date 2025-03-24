@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Transaction, Order, User, sequelize } = require("../../../../models");
+const { Transaction, Order, User, sequelize, Role } = require("../../../../models");
 const { Op } = require('sequelize');
 const dashboardHelper = require('../helper/dashboard.helper');
 const logger = require("../../../../library/logger");
@@ -94,8 +94,14 @@ module.exports.getUserGrowthChart = async (req, res) => {
         const userData = await User.findAll({
             attributes: [
                 [dateFormat, 'date'],
-                [sequelize.fn('COUNT', sequelize.col('id')), 'newUsersCount']
+                [sequelize.fn('COUNT', sequelize.literal('CASE WHEN roles.is_admin_panel = true THEN 1 END')), 'adminUsersCount'],
+                [sequelize.fn('COUNT', sequelize.literal('CASE WHEN roles.is_admin_panel = false THEN 1 END')), 'customerUsersCount']
             ],
+            include: [{
+                model: Role,
+                as: 'roles',
+                attributes: []
+            }],
             where: {
                 createdAt: {
                     [Op.between]: [start, end]
@@ -107,7 +113,8 @@ module.exports.getUserGrowthChart = async (req, res) => {
 
         const formattedData = userData.map(item => ({
             date: item.getDataValue('date'),
-            newUsersCount: parseInt(item.getDataValue('newUsersCount'))
+            admin: parseInt(item.getDataValue('adminUsersCount') || 0),
+            customer: parseInt(item.getDataValue('customerUsersCount') || 0)
         }));
 
         logger.info('User growth chart data retrieved successfully');
