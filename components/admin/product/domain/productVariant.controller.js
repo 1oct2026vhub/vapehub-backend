@@ -647,7 +647,8 @@ const updateVariantAttributes = async (variantId, attributes, productId, updated
     // Update attributes
     await ProductVariantAttribute.destroy({
         where: { variant_id: variantId },
-        transaction
+        transaction,
+        force: true // Force delete instead of soft delete
     });
 
     if (attributes.length > 0) {
@@ -1281,16 +1282,17 @@ module.exports.getVariantById = async (req, res) => {
                 {
                     model: ProductVariantAttribute,
                     as: 'variantAttributes',
+                    // paranoid: false, // Include soft-deleted records
                     include: [
                         {
                             model: Attribute,
                             as: 'attribute',
-                            attributes: ['id', 'name']
+                            attributes: ['id', 'name', 'type']
                         },
                         {
                             model: AttributeTerm,
                             as: 'term',
-                            attributes: ['id', 'name']
+                            attributes: ['id', 'name', 'slug']
                         }
                     ]
                 }
