@@ -27,5 +27,5 @@ router.use('/blog', require('./blog/routes/blog.route'));
 router.use('/orders', require('./order/routes/order.route'));
 router.use('/transactions', require('./transaction/routes/transaction.route'));
 router.use('/dashboard', require('./dashboard/routes/dashboard.route'));
-
+router.use('/footer', require('./footer/routes/footer.route'));
 module.exports = router;

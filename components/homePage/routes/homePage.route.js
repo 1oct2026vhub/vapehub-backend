@@ -266,4 +266,61 @@ router.get("/slug-relation",
 // )
 
 
+
+
+/**
+ * @swagger
+ * /api/home/footer:
+ *   get:
+ *     summary: Get all active footer sections with their links
+ *     tags:
+ *       - HomePage
+ *     parameters:
+ *       - in: query
+ *         name: is_active
+ *         schema:
+ *           type: boolean
+ *         description: Filter by active status
+ *     responses:
+ *       200:
+ *         description: List of active footer sections with their links
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   title:
+ *                     type: string
+ *                   order:
+ *                     type: integer
+ *                   is_active:
+ *                     type: boolean
+ *                   links:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         label:
+ *                           type: string
+ *                         url:
+ *                           type: string
+ *                         order:
+ *                           type: integer
+ *                         is_active:
+ *                           type: boolean
+ */
+router.get('/footer', validateRequest([
+    query('is_active')
+        .optional()
+        .isBoolean()
+        .withMessage('is_active must be a boolean')
+]), homePageController.getFooterSections);
+
+
 module.exports = router

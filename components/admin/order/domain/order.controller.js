@@ -25,8 +25,11 @@ module.exports.listAllOrders = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
+            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
+            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            
             whereCondition.createdAt = {
-                [Op.between]: [start_date, end_date]
+                [Op.between]: [startDateTime, endDateTime]
             };
         }
 
@@ -296,8 +299,11 @@ module.exports.generateOrderReport = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
+            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
+            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            
             whereCondition.createdAt = {
-                [Op.between]: [start_date, end_date]
+                [Op.between]: [startDateTime, endDateTime]
             };
         }
         console.log(whereCondition);
