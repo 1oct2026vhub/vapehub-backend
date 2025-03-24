@@ -18,7 +18,7 @@ module.exports.listAllProducts = async (req, res, next) => {
 
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
-        const whereClause = { };
+        const whereClause = { [Op.and]: [] };
 
         // Keyword search
         if (keyword) {
@@ -231,6 +231,7 @@ module.exports.listAllProducts = async (req, res, next) => {
 
         return successResponse(res, { products, pagination }, 'Success');
     } catch (error) {
+        console.log(error);
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
