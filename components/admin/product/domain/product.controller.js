@@ -18,11 +18,21 @@ module.exports.listAllProducts = async (req, res, next) => {
 
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
-        const whereClause = { [Op.and]: [] };
+        let whereClause = { 
+            [Op.and]: []
+        };
 
         // Keyword search
         if (keyword) {
-            whereClause[Op.and].push({ name: { [Op.like]: `%${keyword}%` } });
+            whereClause = { 
+                [Op.and]: [],
+                [Op.or]: []
+            };
+            whereClause[Op.or].push(
+                { name: { [Op.like]: `%${keyword}%` } },
+                { id : { [Op.like]: `%${keyword}%` } },
+                { slug: { [Op.like]: `%${keyword}%` } }
+            );
         }
 
         // Price range filter based on product variants or product price
@@ -78,7 +88,6 @@ module.exports.listAllProducts = async (req, res, next) => {
         if (deleted !== undefined && (deleted === "true" || deleted === true)) {
             whereClause.deletedAt = { [Op.ne]: null }
         }
-        console.log(whereClause);
         // Define relationships to include with LEFT JOIN
         const includeClause = [
             { 
