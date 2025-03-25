@@ -275,6 +275,7 @@ module.exports.updateProductAttributes = async (req, res) => {
                         });
                     }
                 } else {
+                    
                     termsToAdd.push({
                         product_id,
                         attribute_id: attr.attribute_id,
@@ -325,10 +326,10 @@ module.exports.updateProductAttributes = async (req, res) => {
             if (termsToRemove.length > 0) {
                 await ProductAttributeTerm.destroy({
                     where: { id: termsToRemove },
+                    force: true,
                     transaction
                 });
             }
-
             if (termsToUpdate.length > 0) {
                 await Promise.all(termsToUpdate.map(term => 
                     ProductAttributeTerm.update(
@@ -369,6 +370,7 @@ module.exports.updateProductAttributes = async (req, res) => {
 
         return successResponse(res, updatedProduct, "Product attributes updated successfully");
     } catch (error) {
+        console.log(error);
         if (transaction && !transaction.finished) {
             await transaction.rollback();
         }
@@ -1458,10 +1460,10 @@ module.exports.removeProductAttributeTerm = async (req, res) => {
         }
 
         // Remove the attribute term
-        await attributeTerm.destroy({ transaction });
+        await attributeTerm.destroy({ force: true, transaction });
 
         // Update the updated_by field
-        await attributeTerm.update({ updated_by }, { transaction });
+        // await attributeTerm.update({ updated_by }, { transaction });
 
         await transaction.commit();
 
