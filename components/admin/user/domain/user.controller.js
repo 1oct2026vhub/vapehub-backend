@@ -171,6 +171,19 @@ module.exports.listUsers = async (req, res) => {
             verified = "all" 
         } = req.query;
 
+        // Validate sort_by parameter and set default if invalid
+        const allowedSortFields = [
+            'id', 'first_name', 'last_name', 'email', 'phone', 
+            'gender', 'createdAt', 'updatedAt', 'deletedAt',
+            'email_verified_at'
+        ];
+        
+        const validatedSortBy = allowedSortFields.includes(sort_by) ? sort_by : 'createdAt';
+
+        // Validate order parameter and set default if invalid
+        const validOrders = ['ASC', 'DESC'];
+        const validatedOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+
         const offset = (page - 1) * limit;
         const whereCondition = {};
 
@@ -182,6 +195,7 @@ module.exports.listUsers = async (req, res) => {
         // Search by first name, last name, email, phone number, or gender
         if (search) {
             whereCondition[Op.or] = [
+                { id: { [Op.like]: `%${search}%` } },
                 { first_name: { [Op.like]: `%${search}%` } },
                 { last_name: { [Op.like]: `%${search}%` } },
                 { email: { [Op.like]: `%${search}%` } },
@@ -211,7 +225,7 @@ module.exports.listUsers = async (req, res) => {
             include: [{ model: Role, as: "roles", attributes: ["id", "role"] }],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [[sort_by, order]],
+            order: [[validatedSortBy, validatedOrder]],
             paranoid: false,
         });
 

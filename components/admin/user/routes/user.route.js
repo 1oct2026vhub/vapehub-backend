@@ -201,12 +201,12 @@ router.put(
  *         name: search
  *         schema:
  *           type: string
- *         description: Search users by first name, last name, email, phone, or gender
+ *         description: Search users by Id, first name, last name, email, phone, or gender
  *       - in: query
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [createdAt, first_name, last_name, email]
+ *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt]
  *         description: Sort users by field (default - createdAt)
  *       - in: query
  *         name: order

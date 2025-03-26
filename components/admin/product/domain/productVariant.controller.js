@@ -696,26 +696,41 @@ module.exports.updateProductVariant = async (req, res) => {
             await slugManager.createOrUpdateSlug(variantData.slug, 'product_variant', variant_id, transaction);
         }
 
-        const existingAttributes = await ProductVariantAttribute.findAll({
-            where: {
-                variant_id: {
-                    [Op.ne]: variant_id // Exclude the current variant
+        // Check for existing attribute combinations
+        if (Array.isArray(variantData.attributes) && variantData.attributes.length > 0) {
+            // Get all variants of the same product
+            const productVariants = await ProductVariant.findAll({
+                where: { 
+                    product_id: product_id,
+                    id: { [Op.ne]: variant_id } // Exclude current variant
                 },
-                attribute_id: Array.isArray(variantData.attributes) ? variantData.attributes.map(attr => attr.attribute_id) : [],
-                term_id: Array.isArray(variantData.attributes) ? variantData.attributes.map(attr => attr.term_id) : [],
-            },
-            include: [
-                {
-                    model: ProductVariant,
-                    as: "variant", // Ensure to use the correct alias here
-                    where: { product_id: product_id } 
-                }
-            ],
-            transaction
-        });
+                include: [{
+                    model: ProductVariantAttribute,
+                    as: 'variantAttributes'
+                }],
+                transaction
+            });
 
-        if (existingAttributes.length > 0) {
-            throw new Error("Attribute combination already exists for another variant of the same brand");
+            // Check each variant's attributes
+            for (const variant of productVariants) {
+                const variantAttributeCount = variant.variantAttributes.length;
+                const newAttributeCount = variantData.attributes.length;
+
+                // Skip if attribute counts don't match
+                if (variantAttributeCount !== newAttributeCount) continue;
+
+                // Check if all attributes match exactly
+                const isExactMatch = variantData.attributes.every(newAttr => 
+                    variant.variantAttributes.some(existingAttr => 
+                        existingAttr.attribute_id === newAttr.attribute_id && 
+                        existingAttr.term_id === newAttr.term_id
+                    )
+                );
+
+                if (isExactMatch) {
+                    throw new Error("This exact attribute combination already exists for another variant of this product");
+                }
+            }
         }
 
         // Update basic info
@@ -1127,6 +1142,7 @@ module.exports.listAllVariants = async (req, res) => {
         if (keyword) {
             whereClause[Op.and].push({
                 [Op.or]: [
+                    { id: { [Op.like]: `%${keyword}%` } },
                     { slug: { [Op.like]: `%${keyword}%` } },
                     { barcode: { [Op.like]: `%${keyword}%` } }
                 ]
