@@ -16,50 +16,119 @@ const customerController = require('../domain/customer.controller');
  *         name: page
  *         schema:
  *           type: integer
- *         description: Page number for pagination (default - 1)
+ *           minimum: 1
+ *         description: Page number for pagination (default 1)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Number of records per page (default - 10)
+ *           minimum: 1
+ *         description: Number of records per page (default 10)
  *       - in: query
  *         name: search
  *         schema:
  *           type: string
- *         description: Search users by first name, last name, email, phone, or gender
+ *         description: Search users by Id, first name, last name, email, phone, or gender
  *       - in: query
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [createdAt, first_name, last_name, email]
- *         description: Sort users by field (default - createdAt)
+ *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob]
+ *         description: Sort users by field (default createdAt) Valid fields are  id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob
  *       - in: query
  *         name: order
  *         schema:
  *           type: string
  *           enum: [ASC, DESC]
- *         description: Order of sorting (default - DESC)
+ *         description: Order of sorting (default DESC) Valid values are ASC (ascending) or DESC (descending)
  *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean
- *         description: Filter users based on soft delete flag (true = only deleted users, false = only active users)
+ *         description: Filter users based on soft delete flag (true only deleted users, false only active users)
  *       - in: query
  *         name: blocked
  *         schema:
  *           type: boolean
- *         description: Filter users by blocked status
+ *         description: Filter users by blocked status (true only blocked users, false only active users)
  *       - in: query    
  *         name: verified
  *         schema:
  *           type: string
  *           enum: [all, true, false]
- *         description: Filter users by email verification status
+ *         description: Filter users by email verification status (all = all users, true = only verified users, false = only unverified users)
  *     responses:
  *       200:
  *         description: Users retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of users
+ *                 page:
+ *                   type: integer
+ *                   description: Current page number
+ *                 limit:
+ *                   type: integer
+ *                   description: Number of records per page
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       first_name:
+ *                         type: string
+ *                       last_name:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       gender:
+ *                         type: string
+ *                       blocked:
+ *                         type: boolean
+ *                       email_verified_at:
+ *                         type: string
+ *                         format: date-time
+ *                       profile_pic_url:
+ *                         type: string
+ *                       dob:
+ *                         type: string
+ *                         format: date
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       deletedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       orders:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             status:
+ *                               type: string
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
+ *                             updatedAt:
+ *                               type: string
+ *                               format: date-time
  *       400:
  *         description: Validation error
+ *       500:
+ *         description: Server error
  */
 
 router.get(

@@ -28,9 +28,18 @@ module.exports.listAllProducts = async (req, res, next) => {
                 [Op.and]: [],
                 [Op.or]: []
             };
+            
+            // Check if keyword is a number for ID search
+            const numericKeyword = parseInt(keyword, 10);
+            if (!isNaN(numericKeyword)) {
+                whereClause[Op.or].push(
+                    { id: numericKeyword }
+                );
+            }
+            
+            // Add text-based searches
             whereClause[Op.or].push(
                 { name: { [Op.like]: `%${keyword}%` } },
-                { id : { [Op.like]: `%${keyword}%` } },
                 { slug: { [Op.like]: `%${keyword}%` } }
             );
         }

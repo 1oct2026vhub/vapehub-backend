@@ -163,8 +163,12 @@ const userListValidationRules = [
   
     query("sort_by")
       .optional()
-      .isIn(["createdAt", "first_name", "last_name", "email"])
-      .withMessage("sort_by must be one of: createdAt, first_name, last_name, email"),
+      .isIn([
+        'id', 'first_name', 'last_name', 'email', 'phone', 
+        'gender', 'createdAt', 'updatedAt', 'deletedAt',
+        'email_verified_at'
+      ])
+      .withMessage("sort_by must be one of: id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at"),
   
     query("order")
       .optional()

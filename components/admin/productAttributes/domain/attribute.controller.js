@@ -404,23 +404,22 @@ module.exports.getAttributes = async (req, res, next) => {
 
         // Add keyword search if provided
         if (keyword) {
-            queryOptions.where[Op.or] = [
-                {
-                    name: {
-                        [Op.like]: `%${keyword}%`
-                    }
-                },
-                {
-                    slug: {
-                        [Op.like]: `%${keyword}%`
-                    }
-                },
-                {
-                    description: {
-                        [Op.like]: `%${keyword}%`
-                    }
-                }
-            ];
+            const searchConditions = [];
+            
+            // Check if keyword is numeric for ID search
+            const numericKeyword = parseInt(keyword);
+            if (!isNaN(numericKeyword)) {
+                searchConditions.push({ id: numericKeyword });
+            }
+            
+            // Add text field searches
+            searchConditions.push(
+                { name: { [Op.like]: `%${keyword}%` } },
+                { slug: { [Op.like]: `%${keyword}%` } },
+                { description: { [Op.like]: `%${keyword}%` } }
+            );
+            
+            queryOptions.where[Op.or] = searchConditions;
         }
 
         // Handle deleted records
