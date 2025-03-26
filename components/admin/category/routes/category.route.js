@@ -28,15 +28,71 @@ const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, upl
  *         name: search
  *         schema:
  *           type: string
- *         description: Search categories by name, slug, or description
+ *         description: Search categories by ID, name, slug, or description
  *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean
  *         description: Filter categories based on soft deletion status (true = only deleted, false = only active)
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [id, name, slug, description, createdAt, updatedAt]
+ *           default: createdAt
+ *         description: Field to sort the results by
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order (ASC for ascending, DESC for descending)
  *     responses:
  *       200:
  *         description: Successfully retrieved categories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of categories
+ *                 page:
+ *                   type: integer
+ *                   description: Current page number
+ *                 limit:
+ *                   type: integer
+ *                   description: Number of records per page
+ *                 sortBy:
+ *                   type: string
+ *                   description: Field used for sorting
+ *                 sortOrder:
+ *                   type: string
+ *                   description: Sort order applied
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       slug:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       parent:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
  *       400:
  *         description: Invalid request parameters
  */
@@ -249,5 +305,30 @@ router.get('/download/sample-excel', [authMiddleware(true)], categoryController.
  *         description: Internal server error
  */
 router.post('/bulk-update/categories', [authMiddleware(true), uploadXlxFileMiddleware, validateRequest(bulkUpdateCategoriesValidation)], categoryController.bulkUpdateCategories);
+
+/**
+ * @swagger
+ * /api/admin/category/{id}/remove-image:
+ *   delete:
+ *     summary: Remove a category's image from S3 and update the category record
+ *     tags:
+ *      - ADMIN - Categories
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Category image removed successfully
+ *       404:
+ *         description: Category not found
+ *       400:
+ *         description: Category has no image to remove
+ */
+router.delete('/:id/remove-image', [authMiddleware(true), validateRequest(categoryIdValidation)], categoryController.removeCategoryImage);
 
 module.exports = router;
