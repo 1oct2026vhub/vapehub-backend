@@ -378,7 +378,7 @@ module.exports.getTerms = async (req, res, next) => {
             queryOptions.where.deleted_at = {
                 [Op.ne]: null  // Only show deleted records
             };
-        }
+        } 
 
         // Get total count for pagination
         const totalCount = await AttributeTerm.count({
