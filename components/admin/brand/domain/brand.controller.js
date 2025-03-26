@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Brand, SlugRelation, sequelize, Product } = require("../../../../models");
 const { Op } = require("sequelize");
-const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
 
@@ -12,14 +12,35 @@ const slugManager = new SlugManager(SlugRelation);
  */
 module.exports.listAllBrands = async (req, res, next) => {
     try {
-        let { page = 1, limit = 10, search, deleted = "false" } = req.query;
+        let { 
+            page = 1, 
+            limit = 10, 
+            search, 
+            deleted = "false",
+            sortBy = "createdAt",
+            order = "DESC"
+        } = req.query;
+        
         page = parseInt(page);
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
 
+        // Validate sort order
+        order = order.toUpperCase();
+        if (!["ASC", "DESC"].includes(order)) {
+            order = "DESC";
+        }
+
+        // Validate sort field
+        const allowedSortFields = ["id", "name", "slug", "description", "createdAt", "updatedAt"];
+        if (!allowedSortFields.includes(sortBy)) {
+            sortBy = "createdAt";
+        }
+
         const whereCondition = {};
         if (search) {
             whereCondition[Op.or] = [
+                { id: { [Op.like]: `%${search}%` } },
                 { name: { [Op.like]: `%${search}%` } },
                 { slug: { [Op.like]: `%${search}%` } },
                 { description: { [Op.like]: `%${search}%` } }
@@ -32,7 +53,7 @@ module.exports.listAllBrands = async (req, res, next) => {
             where: whereCondition,
             limit,
             offset,
-            order: [["createdAt", "DESC"]],
+            order: [[sortBy, order]],
             paranoid: false,
         });
 
@@ -41,6 +62,8 @@ module.exports.listAllBrands = async (req, res, next) => {
             page,
             limit,
             brands,
+            sortBy,
+            order
         }, "Brands retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -469,6 +492,42 @@ module.exports.downloadSampleBrands = async (req, res, next) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Removes a brand's image from S3 and updates the brand record.
+ */
+module.exports.removeBrandImage = async (req, res, next) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const brand = await Brand.findByPk(id);
+        
+        if (!brand) {
+            await t.rollback();
+            return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
+        }
+
+        if (!brand.logo_url) {
+            await t.rollback();
+            return errorResponse(res, { message: "Brand has no image to remove" }, "No image to remove", 400);
+        }
+
+        // Extract the S3 key from the image URL
+        const imageKey = brand.logo_url.split(".amazonaws.com/")[1];
+
+        // Delete the image from S3
+        await deleteFile(imageKey);
+
+        // Update brand record to remove logo_url
+        await brand.update({ logo_url: null }, { transaction: t });
+
+        await t.commit();
+        return successResponse(res, brand, "Brand image removed successfully");
+    } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };

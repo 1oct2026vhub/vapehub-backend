@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Category, SlugRelation, sequelize, Product } = require("../../../../models");
 const { Op } = require("sequelize");
-const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
 const SlugManager = require("../../../../utils/slugManager");
 
@@ -12,14 +12,20 @@ const slugManager = new SlugManager(SlugRelation);
  */
 module.exports.listAllCategories = async (req, res, next) => {
     try {
-        let { page = 1, limit = 10, search, deleted = "false" } = req.query;
+        let { page = 1, limit = 10, search, deleted = "false", sortBy = "createdAt", sortOrder = "DESC" } = req.query;
         page = parseInt(page);
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
 
+        // Validate sort parameters
+        const allowedSortFields = ["id", "name", "slug", "description", "createdAt", "updatedAt"];
+        sortBy = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+        sortOrder = ["ASC", "DESC"].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : "DESC";
+
         const whereCondition = {};
         if (search) {
             whereCondition[Op.or] = [
+                { id: { [Op.like]: `%${search}%` } },
                 { name: { [Op.like]: `%${search}%` } },
                 { slug: { [Op.like]: `%${search}%` } },
                 { description: { [Op.like]: `%${search}%` } }
@@ -32,7 +38,7 @@ module.exports.listAllCategories = async (req, res, next) => {
             where: whereCondition,
             limit,
             offset,
-            order: [["createdAt", "DESC"]],
+            order: [[sortBy, sortOrder]],
             paranoid: false, // Include soft-deleted records when deleted flag is used
             include: [
                 {
@@ -47,6 +53,8 @@ module.exports.listAllCategories = async (req, res, next) => {
             total: count,
             page,
             limit,
+            sortBy,
+            sortOrder,
             categories,
         }, "Categories retrieved successfully");
     } catch (error) {
@@ -478,6 +486,42 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Removes a category's image from S3 and updates the category record.
+ */
+module.exports.removeCategoryImage = async (req, res, next) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const category = await Category.findByPk(id);
+        
+        if (!category) {
+            await t.rollback();
+            return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
+        }
+
+        if (!category.logo_url) {
+            await t.rollback();
+            return errorResponse(res, { message: "Category has no image to remove" }, "No image to remove", 400);
+        }
+
+        // Extract the S3 key from the image URL
+        const imageKey = category.logo_url.split(".amazonaws.com/")[1];
+
+        // Delete the image from S3
+        await deleteFile(imageKey);
+
+        // Update category record to remove logo_url
+        await category.update({ logo_url: null }, { transaction: t });
+
+        await t.commit();
+        return successResponse(res, category, "Category image removed successfully");
+    } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
