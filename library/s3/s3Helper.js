@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const generateSignedUrl = async (objectKey, operation = 'getObject') => {
   try {
     const params = {
-      Bucket: process.env.AWS_BUCKET,
+      Bucket: process.env.AWS_S3_BUCKET,
       Key: objectKey,
       Expires: 604800, // URL expiration time in seconds
       ResponseContentDisposition: 'inline'
@@ -35,7 +35,7 @@ const generateSignedUrl = async (objectKey, operation = 'getObject') => {
  */
 const deleteFile = async (key) => {
   const params = {
-    Bucket: process.env.AWS_BUCKET,
+    Bucket: process.env.AWS_S3_BUCKET,
     Key: key
   };
 
@@ -44,6 +44,7 @@ const deleteFile = async (key) => {
     await s3.deleteObject(params).promise();
   } catch (error) {
     console.error('Error deleting file:', error);
+    throw error; // Re-throw the error to handle it in the controller
   }
 };
 
