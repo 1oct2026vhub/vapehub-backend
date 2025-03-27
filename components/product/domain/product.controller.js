@@ -332,6 +332,14 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             where: { slug: req.params.slug }, include: [
                 { model: Category, as: 'Category' },
                 { model: Brand, as: 'Brand' },
+                {
+                    model: ProductAttributeTerm,
+                    as: 'productAttributeTerms',
+                    include: [
+                        { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+                        { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+                    ]
+                },
                 { model: ProductImage, as: 'ProductImages' },
                 {
                     model: Flavor, as: 'Flavors', through: {
@@ -346,7 +354,39 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 statusCode: 400,
             }
         }
-        successResponse(res, product, 'Success');
+        // **Transform the response** to group attribute terms
+        const attributeTermsMap = new Map();
+
+        product.productAttributeTerms.forEach((pat) => {
+            const attribute = pat.attribute;
+
+            if (!attributeTermsMap.has(attribute.id)) {
+                attributeTermsMap.set(attribute.id, {
+                    attribute: {
+                        id: attribute.id,
+                        name: attribute.name,
+                        type: attribute.type,
+                        is_visible_page: pat.is_visible_page
+                    },
+                    terms: []
+                });
+            }
+            attributeTermsMap.get(attribute.id).terms.push({
+                id: pat.term.id,
+                name: pat.term.name,
+                slug: pat.term.slug
+            });
+        });
+
+
+    //    Convert Map to array
+       const attributeTerms = Array.from(attributeTermsMap.values());
+       // **Modify the response**
+       const response = {
+           ...product.toJSON(),  // Convert Sequelize object to plain JSON
+           attributeTerms
+       };
+        successResponse(res, response, 'Success');
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
