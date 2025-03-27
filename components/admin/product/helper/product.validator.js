@@ -11,10 +11,6 @@ const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('price').optional().isDecimal().withMessage('Price must be a decimal number'),
-    check('discount_price').optional().isDecimal().withMessage('Discount price must be a decimal number'),
-    check('stock_quantity').optional().isInt().withMessage('Stock quantity must be an integer'),
-    check('is_new').optional().isBoolean().withMessage('is_new must be a boolean'),
     check('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
     check('brand_id').isInt().withMessage('Brand ID must be an integer').notEmpty().withMessage('Brand ID is required'),
    
@@ -24,10 +20,6 @@ const updateProductValidations = [
     check('name').optional().isString().withMessage('Name must be a string'),
     check('slug').optional().isString().withMessage('Slug must be a string'),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('price').optional().isDecimal().withMessage('Price must be a decimal number'),
-    check('discount_price').optional().isDecimal().withMessage('Discount price must be a decimal number'),
-    check('stock_quantity').optional().isInt().withMessage('Stock quantity must be an integer'),
-    check('is_new').optional().isBoolean().withMessage('is_new must be a boolean'),
     check('category_id').optional().isInt().withMessage('Category ID must be an integer'),
     check('brand_id').optional().isInt().withMessage('Brand ID must be an integer'),
     
