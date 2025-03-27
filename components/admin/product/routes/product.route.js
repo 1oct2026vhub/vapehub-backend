@@ -139,20 +139,6 @@ router.get('/fetch/:id',
  *               description:
  *                 type: string
  *                 description: Description of the product
- *               price:
- *                 type: number
- *                 format: decimal
- *                 description: Price of the product
- *               discount_price:
- *                 type: number
- *                 format: decimal
- *                 description: Discounted price of the product
- *               stock_quantity:
- *                 type: integer
- *                 description: Available stock quantity
- *               is_new:
- *                 type: boolean
- *                 description: Indicates if the product is new
  *               category_id:
  *                 type: integer
  *                 description: ID of the associated category
@@ -207,20 +193,6 @@ router.post('/',
  *               description:
  *                 type: string
  *                 description: Description of the product
- *               price:
- *                 type: number
- *                 format: decimal
- *                 description: Price of the product
- *               discount_price:
- *                 type: number
- *                 format: decimal
- *                 description: Discounted price of the product
- *               stock_quantity:
- *                 type: integer
- *                 description: Available stock quantity
- *               is_new:
- *                 type: boolean
- *                 description: Indicates if the product is new
  *               category_id:
  *                 type: integer
  *                 description: ID of the associated category

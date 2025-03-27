@@ -392,8 +392,7 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, price, discount_price, stock_quantity,
-            category_id, brand_id
+            name, slug, description, category_id, brand_id
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -457,9 +456,6 @@ module.exports.createProduct = async (req, res, next) => {
                 name: cleanName,
                 slug: cleanSlug,
                 description,
-                price: price ? parseFloat(price).toFixed(2) : null,
-                discount_price: discount_price ? parseFloat(discount_price).toFixed(2) : null,
-                stock_quantity,
                 category_id,
                 brand_id,
                 updated_by
@@ -510,8 +506,7 @@ module.exports.updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
-            name, slug, description, price, discount_price, stock_quantity, is_new,
-            category_id, brand_id, flavour_ids, product_images
+            name, slug, description, category_id, brand_id
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -574,57 +569,12 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Validate and parse prices if provided
-        let numericPrice = price !== undefined ? parseFloat(price) : product.price;
-        let numericDiscountPrice = discount_price !== undefined ? 
-            (discount_price ? parseFloat(discount_price) : null) : 
-            product.discount_price;
-
-        // Validate price only if provided
-        if (price && price !== undefined) {
-            if (isNaN(numericPrice) || numericPrice < 0) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Invalid price value" }, 
-                    "Invalid price", 
-                    400
-                );
-            }
-        }
-
-        // Validate discount price only if provided
-        if (discount_price && discount_price !== undefined) {
-            if (numericDiscountPrice !== null && (isNaN(numericDiscountPrice) || numericDiscountPrice < 0)) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Invalid discount price value" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-
-            if (numericDiscountPrice !== null && numericDiscountPrice >= numericPrice) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Discount price must be less than regular price" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-        }
 
         // Prepare update fields
         const updatedFields = {
             ...(cleanName && { name: cleanName }),
             ...(cleanSlug && { slug: cleanSlug }),
             ...(description && { description: description.trim() }),
-            ...(price !== undefined && { price: numericPrice.toFixed(2) }),
-            ...(discount_price !== undefined && { discount_price: numericDiscountPrice ? numericDiscountPrice.toFixed(2) : null }),
-            ...(stock_quantity !== undefined && { stock_quantity }),
-            ...(is_new !== undefined && { is_new }),
             ...(category_id && { category_id }),
             ...(brand_id && { brand_id }),
             updated_by
