@@ -1006,11 +1006,11 @@ module.exports.deleteVariantImage = async (req, res) => {
 
         // Delete image from S3
         const key = image.image_url.split('.com/')[1]; // Extract key from URL
-        const params = {
-            Bucket: process.env.AWS_S3_BUCKET,
-            Key: key
-        };
-        await deleteFile(params);
+        // const params = {
+        //     Bucket: process.env.AWS_S3_BUCKET,
+        //     Key: key
+        // };
+        await deleteFile(key);
 
         // Delete image record
         await image.destroy({ transaction });
