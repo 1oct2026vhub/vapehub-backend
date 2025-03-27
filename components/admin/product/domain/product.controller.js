@@ -392,7 +392,7 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, price, discount_price, stock_quantity, is_new,
+            name, slug, description, price, discount_price, stock_quantity,
             category_id, brand_id
         } = req.body;
 
@@ -460,7 +460,6 @@ module.exports.createProduct = async (req, res, next) => {
                 price: price ? parseFloat(price).toFixed(2) : null,
                 discount_price: discount_price ? parseFloat(discount_price).toFixed(2) : null,
                 stock_quantity,
-                is_new,
                 category_id,
                 brand_id,
                 updated_by
@@ -637,7 +636,7 @@ module.exports.updateProduct = async (req, res, next) => {
         }
 
         // Update slug if provided and changed
-        if (cleanSlug && cleanSlug !== product.slug) {
+        if (cleanSlug) {
             await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
         }
 
@@ -1008,7 +1007,6 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     name,
                     slug,
                     description,
-                    is_new,
                     brand_slug,
                     category_slug
                 ] = rowValues;
@@ -1025,7 +1023,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                 }
 
                 promises.push(processProductRow({
-                    id, name, slug, description, is_new, 
+                    id, name, slug, description, 
                     brand_slug, category_slug, updated_by, 
                     results
                 }));
@@ -1099,7 +1097,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
 };
 
 // Helper function to process a product row
-const processProductRow = async ({ id, name, slug, description, is_new, brand_slug, category_slug, updated_by, results }) => {
+const processProductRow = async ({ id, name, slug, description, brand_slug, category_slug, updated_by, results }) => {
     try {
         // Find brand if brand_slug exists
         let brand = null;
@@ -1119,7 +1117,6 @@ const processProductRow = async ({ id, name, slug, description, is_new, brand_sl
             name: typeof name === 'string' ? name.trim() : name,
             slug: typeof slug === 'string' ? slug.trim() : slug,
             description: typeof description === 'string' ? description.trim() : description,
-            is_new: is_new === 'true' || is_new === true,
             brand_id: brand?.id,
             category_id: category?.id,
             updated_by
@@ -1279,7 +1276,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             { header: 'Name', key: 'name', width: 30 },
             { header: 'Slug', key: 'slug', width: 30 },
             { header: 'Description', key: 'description', width: 50 },
-            { header: 'Is New', key: 'is_new', width: 10 },
             { header: 'Brand Slug', key: 'brand_slug', width: 20 },
             { header: 'Category Slug', key: 'category_slug', width: 20 }
         ];
@@ -1290,7 +1286,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Sample Product',
             slug: 'sample-product',
             description: 'This is a sample product description',
-            is_new: true,
             brand_slug: 'sample-brand',
             category_slug: 'sample-category'
         });
@@ -1300,7 +1295,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Existing Product',
             slug: 'existing-product',
             description: 'This is an existing product',
-            is_new: false,
             brand_slug: 'existing-brand',
             category_slug: 'existing-category'
         });
