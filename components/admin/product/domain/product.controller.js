@@ -392,8 +392,7 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, price, discount_price, stock_quantity, is_new,
-            category_id, brand_id
+            name, slug, description, category_id, brand_id
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -457,10 +456,6 @@ module.exports.createProduct = async (req, res, next) => {
                 name: cleanName,
                 slug: cleanSlug,
                 description,
-                price: price ? parseFloat(price).toFixed(2) : null,
-                discount_price: discount_price ? parseFloat(discount_price).toFixed(2) : null,
-                stock_quantity,
-                is_new,
                 category_id,
                 brand_id,
                 updated_by
@@ -511,8 +506,7 @@ module.exports.updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
-            name, slug, description, price, discount_price, stock_quantity, is_new,
-            category_id, brand_id, flavour_ids, product_images
+            name, slug, description, category_id, brand_id
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -575,57 +569,12 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Validate and parse prices if provided
-        let numericPrice = price !== undefined ? parseFloat(price) : product.price;
-        let numericDiscountPrice = discount_price !== undefined ? 
-            (discount_price ? parseFloat(discount_price) : null) : 
-            product.discount_price;
-
-        // Validate price only if provided
-        if (price && price !== undefined) {
-            if (isNaN(numericPrice) || numericPrice < 0) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Invalid price value" }, 
-                    "Invalid price", 
-                    400
-                );
-            }
-        }
-
-        // Validate discount price only if provided
-        if (discount_price && discount_price !== undefined) {
-            if (numericDiscountPrice !== null && (isNaN(numericDiscountPrice) || numericDiscountPrice < 0)) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Invalid discount price value" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-
-            if (numericDiscountPrice !== null && numericDiscountPrice >= numericPrice) {
-                await transaction.rollback();
-                return errorResponse(
-                    res, 
-                    { message: "Discount price must be less than regular price" }, 
-                    "Invalid discount price", 
-                    400
-                );
-            }
-        }
 
         // Prepare update fields
         const updatedFields = {
             ...(cleanName && { name: cleanName }),
             ...(cleanSlug && { slug: cleanSlug }),
             ...(description && { description: description.trim() }),
-            ...(price !== undefined && { price: numericPrice.toFixed(2) }),
-            ...(discount_price !== undefined && { discount_price: numericDiscountPrice ? numericDiscountPrice.toFixed(2) : null }),
-            ...(stock_quantity !== undefined && { stock_quantity }),
-            ...(is_new !== undefined && { is_new }),
             ...(category_id && { category_id }),
             ...(brand_id && { brand_id }),
             updated_by
@@ -637,7 +586,7 @@ module.exports.updateProduct = async (req, res, next) => {
         }
 
         // Update slug if provided and changed
-        if (cleanSlug && cleanSlug !== product.slug) {
+        if (cleanSlug) {
             await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
         }
 
@@ -1008,7 +957,6 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     name,
                     slug,
                     description,
-                    is_new,
                     brand_slug,
                     category_slug
                 ] = rowValues;
@@ -1025,7 +973,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                 }
 
                 promises.push(processProductRow({
-                    id, name, slug, description, is_new, 
+                    id, name, slug, description, 
                     brand_slug, category_slug, updated_by, 
                     results
                 }));
@@ -1099,7 +1047,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
 };
 
 // Helper function to process a product row
-const processProductRow = async ({ id, name, slug, description, is_new, brand_slug, category_slug, updated_by, results }) => {
+const processProductRow = async ({ id, name, slug, description, brand_slug, category_slug, updated_by, results }) => {
     try {
         // Find brand if brand_slug exists
         let brand = null;
@@ -1119,7 +1067,6 @@ const processProductRow = async ({ id, name, slug, description, is_new, brand_sl
             name: typeof name === 'string' ? name.trim() : name,
             slug: typeof slug === 'string' ? slug.trim() : slug,
             description: typeof description === 'string' ? description.trim() : description,
-            is_new: is_new === 'true' || is_new === true,
             brand_id: brand?.id,
             category_id: category?.id,
             updated_by
@@ -1279,7 +1226,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             { header: 'Name', key: 'name', width: 30 },
             { header: 'Slug', key: 'slug', width: 30 },
             { header: 'Description', key: 'description', width: 50 },
-            { header: 'Is New', key: 'is_new', width: 10 },
             { header: 'Brand Slug', key: 'brand_slug', width: 20 },
             { header: 'Category Slug', key: 'category_slug', width: 20 }
         ];
@@ -1290,7 +1236,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Sample Product',
             slug: 'sample-product',
             description: 'This is a sample product description',
-            is_new: true,
             brand_slug: 'sample-brand',
             category_slug: 'sample-category'
         });
@@ -1300,7 +1245,6 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Existing Product',
             slug: 'existing-product',
             description: 'This is an existing product',
-            is_new: false,
             brand_slug: 'existing-brand',
             category_slug: 'existing-category'
         });
