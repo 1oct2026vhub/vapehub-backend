@@ -262,17 +262,72 @@ const createProductVariantsValidator = [
         .isObject()
         .withMessage('Each variant must be an object'),
     body('variants.*.slug')
+        .notEmpty()
+        .withMessage('Slug is required')
         .isString()
         .trim()
         .isLength({ min: 3, max: 100 })
         .withMessage('Variant slug must be between 3 and 100 characters'),
     body('variants.*.price')
+        .notEmpty()
+        .withMessage('Price is required')
         .isFloat({ min: 0 })
         .withMessage('Variant price must be a positive number'),
-    ...commonValidations.variantBaseFields,
+    body('variants.*.stock')
+        .notEmpty()
+        .withMessage('Stock is required')
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a positive integer'),
+    body('variants.*.discount_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Discount price must be a positive number')
+        .custom((value, { req, path }) => {
+            const variantIndex = parseInt(path.split('[')[1]);
+            if (value >= req.body.variants[variantIndex].price) {
+                throw new Error('Discount price must be less than regular price');
+            }
+            return true;
+        }),
+    body('variants.*.purchase_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Purchase price must be a positive number'),
+    body('variants.*.low_stock_threshold')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Low stock threshold must be a positive integer'),
+    body('variants.*.weight')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Weight must be a positive number'),
+    body('variants.*.length')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Length must be a positive number'),
+    body('variants.*.width')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Width must be a positive number'),
+    body('variants.*.height')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Height must be a positive number'),
+    body('variants.*.barcode')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Barcode must be between 3 and 50 characters'),
+    body('variants.*.status')
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage('Status must be either active or inactive'),
     body('variants.*.attributes')
         .isArray()
-        .withMessage('Variant attributes must be an array'),
+        .withMessage('Variant attributes must be an array')
+        .notEmpty()
+        .withMessage('Variant attributes cannot be empty'),
     body('variants.*.attributes.*.attribute_id')
         .notEmpty()
         .withMessage('Attribute ID is required')
@@ -283,6 +338,25 @@ const createProductVariantsValidator = [
         .withMessage('Term ID is required')
         .isInt({ min: 1 })
         .withMessage('Term ID must be a positive integer'),
+    body('variants')
+        .custom((value, { req }) => {
+            const attributeCombinations = new Set();
+            
+            for (const variant of value) {
+                const combination = variant.attributes
+                    .map(attr => `${attr.attribute_id}:${attr.term_id}`)
+                    .sort()
+                    .join('|');
+                
+                if (attributeCombinations.has(combination)) {
+                    throw new Error('Duplicate attribute combination found. Each variant must have a unique combination of attributes.');
+                }
+                
+                attributeCombinations.add(combination);
+            }
+            
+            return true;
+        })
 ];
 
 const updateProductVariantValidator = [

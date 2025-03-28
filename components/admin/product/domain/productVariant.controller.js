@@ -523,22 +523,35 @@ const validateVariantData = async (variant, product_id, transaction) => {
 
 // Helper function to check existing combinations
 const checkExistingCombinations = async (attributes, product_id, transaction) => {
-    const existingCombinations = await ProductVariantAttribute.findAll({
-        include: [
-            {
-                model: ProductVariant,
-                as: "variant", // Specify the alias here
-                where: { product_id: product_id }, // Ensure we only check for the current product
-            }
-        ],
-        where: {
-            attribute_id: attributes.map(attr => attr.attribute_id),
-            term_id: attributes.map(attr => attr.term_id),
-        },
-        transaction // Include the transaction in the query
+    // Get all variants of the same product
+    const productVariants = await ProductVariant.findAll({
+        where: { product_id },
+        include: [{
+            model: ProductVariantAttribute,
+            as: 'variantAttributes'
+        }],
+        transaction
     });
-    if (existingCombinations.length > 0) {
-        throw new Error("Attribute-term combination conflict detected for the current variant.");
+
+    // Check each variant's attributes
+    for (const variant of productVariants) {
+        const variantAttributeCount = variant.variantAttributes.length;
+        const newAttributeCount = attributes.length;
+
+        // Skip if attribute counts don't match
+        if (variantAttributeCount !== newAttributeCount) continue;
+
+        // Check if all attributes match exactly
+        const isExactMatch = attributes.every(newAttr => 
+            variant.variantAttributes.some(existingAttr => 
+                existingAttr.attribute_id === newAttr.attribute_id && 
+                existingAttr.term_id === newAttr.term_id
+            )
+        );
+
+        if (isExactMatch) {
+            throw new Error("This exact attribute combination already exists for another variant of this product");
+        }
     }
 };
 
