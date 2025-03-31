@@ -192,7 +192,6 @@ const fetchProducts = async (query) => {
       variant, // Expected format: { "12": [56,6,3,5], "29": [33,669,55] }
       is_new
     } = query;
-
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
@@ -213,12 +212,12 @@ const fetchProducts = async (query) => {
     // Build Product where clause
     let productWhereClause = {};
     if (keyword) {
-      productWhereClause.name = { [Op.iLike]: `%${keyword}%` };
+      productWhereClause.name = { [Op.like]: `%${keyword}%` };
     }
     if (is_new) {
       const lastMonthDate = new Date();
       lastMonthDate.setDate(lastMonthDate.getDate() - 30);
-      productWhereClause.created_at = { [Op.gte]: lastMonthDate };
+      productWhereClause.createdAt = { [Op.gte]: lastMonthDate };
     }
     if (brands) {
       productWhereClause.brand_id = { [Op.in]: brands.split(',').map(Number) };
@@ -247,7 +246,6 @@ const fetchProducts = async (query) => {
             throw new Error(`Invalid termIds format for ${variantIdOrAttributeId}: must be a valid JSON array`);
           }
         }
-
         // Ensure termIdsArray is an array and has elements
         if (Array.isArray(termIdsArray) && termIdsArray.length > 0) {
           const numericId = parseInt(variantIdOrAttributeId);
@@ -332,7 +330,6 @@ const fetchProducts = async (query) => {
       limit: parsedLimit,
       offset: parsedOffset
     };
-
     // Fetch products
     const products = await Product.findAll({
       where: productWhereClause,
@@ -345,12 +342,53 @@ const fetchProducts = async (query) => {
       offset: parsedOffset,
       distinct: true,
     });
+    // **Transform the response to match required structure**
+    const productAttributeTerms = products.map((product) => {
+      const attributeMap = new Map();
+    
+      if (product.productAttributeTerms) {
+        product.productAttributeTerms.forEach((pat) => {
+          const attribute = pat.attribute;
+          if (!attribute) return;
+    
+          if (!attributeMap.has(attribute.id)) {
+            attributeMap.set(attribute.id, {
+              attribute: {
+                id: attribute.id,
+                name: attribute.name,
+                type: attribute.type,
+                is_visible_page: pat.is_visible_page
+              },
+              terms: []
+            });
+          }
+    
+          attributeMap.get(attribute.id).terms.push({
+            id: pat.term.id,
+            name: pat.term.name,
+            slug: pat.term.slug
+          });
+        });
+      }
+    
+      return {
+        product_id: product.id,
+        attribute: Array.from(attributeMap.values()) // Convert Map to array
+      };
+    });
 
-    return { products, pagination };
+
+    // // Convert Map to array
+    
+
+    return { products, productAttributeTerms, pagination };  //, attributeTerms
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
   }
 };
+
+
+
 
 module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts };

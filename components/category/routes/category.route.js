@@ -196,6 +196,19 @@ router.delete('/:id', authenticateJWT,
  *           type: string
  *         description: Comma-separated flavor IDs (e.g., 1,2,3)
  *       - in: query
+ *         name: variants
+ *         schema:
+ *           type: object
+ *           additionalProperties:
+ *             type: array
+ *             items:
+ *               type: integer
+ *           example:
+ *             "variant": 
+ *               "12": [475, 477, 851, 5]
+ *               "29": [33, 669, 55]
+ *         description: A map of product IDs to variant IDs 
+ *       - in: query
  *         name: bottle_size
  *         schema:
  *           type: string
