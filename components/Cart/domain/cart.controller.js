@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Cart, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order } = require("../../../models");
+const { User, Cart, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, sequelize } = require("../../../models");
 const Sequelize = require("sequelize");
 const { Op } = Sequelize
 
@@ -180,6 +180,70 @@ module.exports.updateCart = async (req, res, next) => {
         return errorResponse(res, error, error.message || 'Failed to update cart');
     }
 };
+
+//cart bulk update
+exports.bulkUpdateCart = async (req, res) => {
+    const user_id = req.user.id;
+    const { cartItems } = req.body;
+    console.log("bulk>>>>", cartItems)
+    if (!user_id || !Array.isArray(cartItems) || cartItems.length === 0) {
+        return errorResponse(res, {}, 'Invalid request data', 400);
+    }
+
+    const transaction = await sequelize.transaction(); // Start transaction
+
+    try {
+        const cartUpdates = [];
+
+        for (const item of cartItems) {
+            const { product_id, variant_id, quantity } = item;
+
+            // Check if the product is already in the cart
+            const existingCartItem = await Cart.findOne({
+                where: { user_id, product_id, variant_id },
+                transaction
+            });
+
+            if (!existingCartItem) {
+                cartUpdates.push({
+                    user_id,
+                    product_id,
+                    variant_id,
+                    quantity
+                });
+            }
+
+            // if (existingCartItem) {
+            //     // If exists, update the quantity instead of adding a new entry
+            //     existingCartItem.quantity += quantity;
+            //     await existingCartItem.save({ transaction });
+            // } else {
+            //     // If not exists, create a new cart entry
+            //     cartUpdates.push({
+            //         user_id,
+            //         product_id,
+            //         variant_id,
+            //         quantity
+            //     });
+            // }
+        }
+
+        // Bulk insert new items
+        if (cartUpdates.length > 0) {
+            await Cart.bulkCreate(cartUpdates, { transaction });
+        }
+
+        await transaction.commit(); // Commit transaction
+        
+        successResponse(res, cartUpdates, 'Cart updated successfully');
+
+    } catch (error) {
+        await transaction.rollback(); // Rollback on error
+        console.error('Bulk update error:', error);
+        return errorResponse(res, error, error.message || 'Failed to update cart');
+    }
+};
+
 
 // Delete Cart
 module.exports.deleteCart = async (req, res, next) => {
