@@ -470,6 +470,9 @@ module.exports.createProductVariants = async (req, res) => {
         const hasVariationAttributes = await validateVariationAttributes(product_id, transaction);
 
         const createdVariants = await Promise.all(variantsData.map(async (variant) => {
+            if (variant.purchase_price && variant.purchase_price >= variant.price) {
+                throw new Error("Purchase price must be less than selling price");
+            }
             await validateVariantData(variant, product_id, transaction);
             return await createVariantAndAttributes(variant, product_id, updated_by, transaction);
         }));
