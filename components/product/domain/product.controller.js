@@ -67,44 +67,170 @@ module.exports.getProductByid = async (req, res, next) => {
                 statusCode: 400,
             }
         }
-         // **Transform the response** to group attribute terms
-         const attributeTermsMap = new Map();
 
-         product.productAttributeTerms.forEach((pat) => {
-             const attribute = pat.attribute;
- 
-             if (!attributeTermsMap.has(attribute.id)) {
-                 attributeTermsMap.set(attribute.id, {
-                     attribute: {
-                         id: attribute.id,
-                         name: attribute.name,
-                         type: attribute.type,
-                         is_visible_page: pat.is_visible_page
-                     },
-                     terms: []
-                 });
-             }
-             attributeTermsMap.get(attribute.id).terms.push({
-                 id: pat.term.id,
-                 name: pat.term.name,
-                 slug: pat.term.slug
-             });
-         });
- 
+        // Group attributes and their terms
+        const attributeTermsMap = new Map();
+        product.productAttributeTerms.forEach((pat) => {
+            const attribute = pat.attribute;
+            if (!attributeTermsMap.has(attribute.id)) {
+                attributeTermsMap.set(attribute.id, {
+                    attribute: {
+                        id: attribute.id,
+                        name: attribute.name,
+                        type: attribute.type,
+                        is_visible_page: pat.is_visible_page,
+                        used_in_variation: pat.used_in_variation
+                    },
+                    terms: []
+                });
+            }
+            attributeTermsMap.get(attribute.id).terms.push({
+                id: pat.term.id,
+                name: pat.term.name,
+                slug: pat.term.slug,
+                used_in_variation: pat.used_in_variation,
+                is_visible_page: pat.is_visible_page
+            });
+        });
+
+        // Generate all possible combinations of attributes and terms
+        const generateCombinations = (attributes) => {
+            const combinations = [];
+            // Filter attributes to only include those used in variations
+            const variationAttributes = Array.from(attributes.values())
+                .filter(attr => attr.attribute.used_in_variation);
+            
+            const combine = (current, index) => {
+                if (index === variationAttributes.length) {
+                    combinations.push([...current]);
+                    return;
+                }
+
+                const { terms } = variationAttributes[index];
+                // Filter terms to only include those used in variations
+                const variationTerms = terms.filter(term => term.used_in_variation);
+                
+                variationTerms.forEach(term => {
+                    current.push({
+                        attributeId: variationAttributes[index].attribute.id,
+                        attributeName: variationAttributes[index].attribute.name,
+                        termId: term.id,
+                        termName: term.name,
+                        termSlug: term.slug
+                    });
+                    combine(current, index + 1);
+                    current.pop();
+                });
+            };
+
+            combine([], 0);
+            return combinations;
+        };
+
+        const attributeCombinations = generateCombinations(attributeTermsMap);
+
+        // Map combinations to variant stock information
+        const variantStockMap = new Map();
+        product.variants.forEach(variant => {
+            const variantAttributes = variant.variantAttributes.map(va => ({
+                attributeId: va.attribute.id,
+                termId: va.term.id,
+                isVisible: va.is_visible,
+                usedInVariation: va.used_in_variation
+            }));
+            
+            // Create a key for the combination
+            const combinationKey = variantAttributes
+                .map(va => `${va.attributeId}:${va.termId}`)
+                .sort()
+                .join('|');
+
+            // Get primary image
+            const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
+
+            variantStockMap.set(combinationKey, {
+                variantId: variant.id,
+                slug: variant.slug,
+                price: variant.price,
+                discountPrice: variant.discount_price,
+                purchasePrice: variant.purchase_price,
+                weight: variant.weight,
+                dimensions: {
+                    length: variant.length,
+                    width: variant.width,
+                    height: variant.height
+                },
+                description: variant.description,
+                barcode: variant.barcode,
+                stock: variant.stock,
+                low_stock_threshold: variant.low_stock_threshold,
+                stock_status: variant.stock_status,
+                status: variant.status,
+                isInStock: variant.stock > 0,
+                primaryImage: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    altText: primaryImage.alt_text,
+                    isPrimary: primaryImage.is_primary,
+                    sortOrder: primaryImage.sort_order
+                } : null,
+                allImages: variant.variantImages.map(img => ({
+                    id: img.id,
+                    url: img.image_url,
+                    altText: img.alt_text,
+                    isPrimary: img.is_primary,
+                    sortOrder: img.sort_order
+                }))
+            });
+        });
+
+        // Find default variant (first active in-stock variant)
+        let defaultVariant = null;
+        for (const combination of attributeCombinations) {
+            const combinationKey = combination
+                .map(c => `${c.attributeId}:${c.termId}`)
+                .sort()
+                .join('|');
+            
+            const variantInfo = variantStockMap.get(combinationKey);
+            if (variantInfo && 
+                variantInfo.isInStock && 
+                variantInfo.status === 'active' && 
+                variantInfo.stock_status !== 'out_of_stock') {
+                defaultVariant = {
+                    combination,
+                    ...variantInfo
+                };
+                break;
+            }
+        }
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
-        // **Modify the response**
+        
+        // Prepare the response
         const response = {
-            ...product.toJSON(),  // Convert Sequelize object to plain JSON
-            attributeTerms
+            ...product.toJSON(),
+            attributeTerms,
+            attributeCombinations,
+            variantStockMap: Object.fromEntries(variantStockMap),
+            defaultVariant,
+            stockSummary: {
+                totalVariants: product.variants.length,
+                inStockVariants: product.variants.filter(v => v.stock > 0).length,
+                lowStockVariants: product.variants.filter(v => 
+                    v.stock > 0 && v.stock <= v.low_stock_threshold
+                ).length,
+                outOfStockVariants: product.variants.filter(v => v.stock <= 0).length
+            }
         };
+
         successResponse(res, response, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
-
 }
+
 module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
@@ -171,6 +297,7 @@ module.exports.createProduct = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
 module.exports.updateProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
@@ -261,8 +388,8 @@ module.exports.updateProduct = async (req, res, next) => {
         logger.error(error)
         return errorResponse(res, error, error.message);
     }
-
 }
+
 module.exports.deleteProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
