@@ -1,5 +1,6 @@
+const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User } = require("../../../models");
+const { User, UserAddress } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
@@ -53,6 +54,165 @@ const updateUserProfile = async (req, res, next) => {
 
 }
 
+const fetchUserAddress = async (req, res, next) => {
+    try {
+        // Assuming the user ID comes from the authenticated request (e.g., from a JWT token)
+        const userId = req.user.id;
+
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['first_name', 'last_name', 'email', 'phone'], // Exclude sensitive data
+            include: [{
+                model: UserAddress, // Ensure UserAddress is correctly referenced (Uppercase 'U')
+                as: 'UserAddresses', // Must match the alias defined in the model association
+                attributes: [
+                    'name', 'last_name', 'company_name', 'country', 
+                    'street', 'apartment', 'town', 'county', 'post_code', 'phone'
+                ]
+            }]
+        });
+
+        if (!user) {
+            return errorResponse(res, error, {message: 'User not found'}, 404);
+        }
+
+        successResponse(res, user,  'Success');
+    } catch (error) {
+        console.error('Error fetching user address:', error);
+        return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
+    }
+
+}
+
+
+const createUserAddress = async (req, res, next) => {
+    try {
+        const userId = req.user.id; // Get authenticated user ID
+        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone } = req.body;
+
+        // Create new address
+        const newAddress = await UserAddress.create({
+            user_id: userId,
+            updated_by: userId,
+            name,
+            last_name,
+            company_name,
+            country,
+            street,
+            apartment,
+            town,
+            county,
+            post_code,
+            phone
+        });
+
+        successResponse(res, newAddress,  'Address added successfully', 201);
+
+    } catch (error) {
+        console.error('Error adding user address:', error);
+        return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
+    }
+
+}
+
+const updateUserAddress = async (req, res, next) => {
+    try {
+        const userId = req.user.id; // Get authenticated user ID
+        const addressId = req.params.id; // Get address ID from request params
+        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone } = req.body;
+
+        // Find the address in the database
+        const userAddress = await UserAddress.findOne({
+            where: { id: addressId, user_id: userId }
+        });
+
+        if (!userAddress) {
+            return errorResponse(res, {}, {message: 'Address not found'}, 404);
+        }
+
+        // Update the address
+        await userAddress.update({
+            name: name || userAddress.name,
+            last_name: last_name || userAddress.last_name,
+            company_name: company_name || userAddress.company_name,
+            country: country || userAddress.country,
+            street: street || userAddress.street,
+            apartment: apartment || userAddress.apartment,
+            town: town || userAddress.town,
+            county: county || userAddress.county,
+            post_code: post_code || userAddress.post_code,
+            phone: phone || userAddress.phone,
+            updated_by: userId
+        });
+        successResponse(res, userAddress,  'Address updated successfully', 200);
+
+    } catch (error) {
+        console.error('Error updating user address:', error);
+        return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
+    }
+
+}
+
+const deleteUserAddress = async (req, res, next) => {
+    try {
+        const userId = req.user.id; // Get user ID from JWT
+        const addressId = req.params.id; // Get address ID from request params
+
+        // Find the address in the database
+        const userAddress = await UserAddress.findOne({
+            where: { id: addressId, user_id: userId }
+        });
+
+        if (!userAddress) {
+            console.log("userAddress enter>>>>", userAddress)
+            return errorResponse(res, {}, {message: 'Address not found'}, 404);
+        }
+
+        // Delete the address
+        await userAddress.destroy();
+
+        successResponse(res, userAddress,  'Address deleted successfully', 200);
+
+    } catch (error) {
+        console.error('Error deleting user address:', error);
+        return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
+    }
+
+}
+
+const changeUserPassword = async (req, res, next) => {
+    const { email, currentPassword, newPassword } = req.body;
+    const user_id = req.user.id; // Assuming `user` is added to `req` by authentication middleware
+    try {
+        // Find the user by ID
+        const user = await User.findOne({where:{id:user_id, email}});
+        if (!user) {
+            return errorResponse(res, {}, {message: 'User not found'}, 404);
+        }
+
+        // Verify the current password
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
+            return errorResponse(res, {}, {message: 'Current password is incorrect'}, 401);
+        }
+
+        // Hash the new password
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password in the database
+        user.password = hashedNewPassword;
+        await user.save();
+
+        successResponse(res, user,  'Password updated successfully', 200);
+
+    } catch (error) {
+        console.error('Error changing password:', error);
+        return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
+    }
+
+
+}
+
 const referFriend = async (req, res, next) => {
     try {
         const { email } = req.body;
@@ -88,4 +248,25 @@ const referFriend = async (req, res, next) => {
 
 }
 
-module.exports = {userProfile, updateUserProfile, referFriend}
+const deleteAccount = async (req, res) => {
+    const userId = req.user.id; // Assuming you have the user ID in the JWT token
+    
+    try {
+        // Find the user
+        const user = await User.findByPk(userId);
+
+        if (!user) {
+            return errorResponse(res, {}, {message: 'User not found'}, 401);
+        }
+
+        // Delete the user account
+        await user.destroy();
+
+        successResponse(res, user,  'Account deleted successfully', 200);
+    } catch (error) {
+        console.error('Error deleting account:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, deleteAccount}

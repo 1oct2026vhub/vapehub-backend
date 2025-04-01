@@ -1,16 +1,99 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaTransactionToken} = require("../helper/order.helper")
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize} = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
+const crypto = require("crypto");
+
+module.exports.getOrders = async (req, res) => {
+    try {
+        const userId = req.user.id; // Get user ID from authenticated token
+
+        const orders = await Order.findAll({
+            where: { user_id: userId }, // Fetch only current user's orders
+            attributes: [
+                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt'
+            ],
+            include: [
+                {
+                    model: OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'unit', 'unit_price', 'quantity', 'discount_price', 'total'],
+                    include: [
+                        {
+                            model: Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'price']
+                        },
+                        {
+                            model: ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price'],
+                            include: [
+                                {
+                                    model: ProductVariantImage, // Include product variant images
+                                    as: 'variantImages',
+                                    attributes: ['image_url'],  // Select the image_url from the variant images
+                                    where: { is_primary: true }, // Get the primary image for each variant
+                                    required: false // Allow orders to fetch variants even if no primary image exists
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    model: UserAddress,
+                    as: 'shippingAddress',
+                    attributes: ['name', 'street', 'town', 'post_code', 'phone']
+                },
+                {
+                    model: UserAddress,
+                    as: 'billingAddress',
+                    attributes: ['name', 'street', 'town', 'post_code', 'phone']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        if (!orders) {
+            return errorResponse(res, {}, {message: 'Orders not found'}, 404);
+        }
+
+        // Mapping orders to include the image URL for each order item
+        const mappedOrders = orders.map(order => {
+            order.orderItems.forEach(item => {
+                if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
+                    // Set the primary image URL on the product variant
+                    item.variant.primary_image_url = item.variant.variantImages[0].image_url;
+                }
+            });
+            return order;
+        });
+
+        successResponse(res, mappedOrders,  'Orders fetched successfully', 200);
+
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch orders",
+            error: error.message
+        });
+    }
+};
 
 
 module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, shipping_method_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total } = req.body;
+        const { email, phone, couponCode, shipping_method_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
 
         // Save Addresses
         const shippingData = { ...shipping_address, name: shipping_address.first_name, street: shipping_address.address_line_1 + " " + shipping_address.address_line_2, state: shipping_address.region, town: shipping_address.city };
@@ -148,21 +231,48 @@ module.exports.placeOrder = async (req, res, next) => {
         //     );
         // }
         // else{
-    //         const response = await axios.post("https://try.access.worldpay.com/orders",
-    //             {
-    //                 token: req.body.token,
-    //                 amount: calculatedTotal *100,
-    //                 currencyCode: "USD",
-    //                 name: "John Doe",
-    //                 orderType: "ECOM"
-    //             },
-    //             {
-    //                 headers: {
-    //                     Authorization: `Basic ${Buffer.from(WORLD_PAY_SERVICE_KEY).toString("base64")}`,
-    //       "Content-Type": "application/json"
-    //     }
-    //   }
-    // );
+            // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
+            // const ACCOUNT_ID = process.env.ACCOUNT_ID; //"364806707";  // Your Worldpay Account ID
+            // const API_KEY = process.env.API_KEY; //"D072A3884FA9DE021EF37D36F07F1338C007F7386F58DF4A1A7DBCF1415328638D22C901";
+            
+            // const paymentData = {
+            //     transactionReference: `TXN-${Date.now()}`,
+            //     merchant: { entity: "default" },
+            //     instruction: {
+            //         method: 'card',
+            //         paymentInstrument: {
+            //           type: 'plain',
+            //           cardHolderName: 'Sherlock Holmes',
+            //           cardNumber: '4000000000001091',
+            //           expiryDate: {month: 5, year: 2035},
+            //           billingAddress: {
+            //             address1: '221B Baker Street',
+            //             address2: 'Marylebone',
+            //             address3: 'Westminster',
+            //             postalCode: 'SW1 1AA',
+            //             city: 'London',
+            //             state: 'Greater London',
+            //             countryCode: 'GB'
+            //           },
+            //           cvc: '123'
+            //         },
+            //         narrative: {line1: 'trading name'},
+            //         value: {
+            //           currency: 'GBP',
+            //           amount: 42
+            //         }
+            //     }
+            // };
+    
+            // const response = await axios.post(PAYMENT_URL, paymentData, {
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //         'WP-Api-Version': '2024-06-01',
+            //         Authorization: `Basic ${Buffer.from(`${ACCOUNT_ID}:${API_KEY}`).toString("base64")}`
+            //       },
+            // });
+    
+            // console.log("Payment Successful:", response.data);
         // }
         await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
@@ -190,3 +300,101 @@ module.exports.placeOrder = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+// module.exports.handleVivaWebhook = async (req, res)=>{
+//     const VIVA_WALLET_SECRET = "your_viva_wallet_secret";
+//     // Function to verify webhook signature
+//     function verifySignature(req) {
+//         const signature = req.headers["x-viva-signature"]; // Correct header name
+//         const payload = req.rawBody;
+//         const hmac = crypto.createHmac("sha256", VIVA_WALLET_SECRET).update(payload).digest("hex");
+//         return signature === hmac;
+//     }
+//     if (!verifySignature(req)) {
+//         return res.status(401).send("Invalid signature");
+//     }   
+//     const eventData = req.body;
+//     console.log("Received Viva Wallet Webhook:", eventData);
+
+//     // Extract payment status
+//     if (eventData.eventType === "TransactionStatusChanged") {
+//         const transactionId = eventData.eventData.TransactionId;
+//         const status = eventData.eventData.StatusId;
+
+//         console.log(`Transaction ID: ${transactionId}, Status: ${status}`);
+        
+//         // Process the payment status here (e.g., update database, send notification, etc.)
+//         if (status === "F") {
+//             console.log(`Payment successful for Transaction ID: ${transactionId}`);
+//             // TODO: Update order/payment status in the database
+//             // TODO: Send email/notification to the user
+//         } else if (status === "X") {
+//             console.log(`Payment failed for Transaction ID: ${transactionId}`);
+//             // TODO: Mark payment as failed in the database
+//             // TODO: Notify the user and ask for a retry
+//         } else if (status === "A") {
+//             console.log(`Payment pending for Transaction ID: ${transactionId}`);
+//             // TODO: Keep monitoring until final status is received
+//         } else {
+//             console.log(`⚠️ Unhandled payment status (${status}) for Transaction ID: ${transactionId}`);
+//             // TODO: Log or handle unknown statuses
+//         }
+//     }
+
+//     res.status(200).send("Webhook received");
+// }
+
+// module.exports.handleWorldpayWebhook = async (req, res) => {
+//     function verifySignature(req) {
+//         const signatureHeader = req.headers["x-wp-signature"]; // Correct header
+//         if (!signatureHeader) {
+//             console.warn("❌ Signature missing");
+//             return false;
+//         }
+    
+//         // Compute HMAC SHA-256 signature using Worldpay secret key
+//         const computedSignature = crypto.createHmac("sha256", WORLDPAY_SECRET)
+//             .update(req.rawBody)
+//             .digest("hex");
+    
+//         return signatureHeader === computedSignature;
+//     }
+//     if (!verifySignature(req)) {
+//         console.error("❌ Invalid signature: Potential tampering detected!");
+//         return res.status(401).send("Invalid signature");
+//     }
+
+//     const eventData = req.body;
+//     console.log("📩 Received Worldpay Webhook:", eventData);
+
+//     // Extract Payment Status
+//     if (eventData.paymentStatus) {
+//         const transactionId = eventData.orderCode; // Unique transaction ID
+//         const status = eventData.paymentStatus; // Payment status
+
+//         console.log(`Transaction ID: ${transactionId}, Status: ${status}`);
+
+//         // ✅ Handle Payment Success
+//         if (status === "SUCCESS") {
+//             console.log(`Payment successful for Transaction ID: ${transactionId}`);
+//             // TODO: Update order/payment status in the database
+//             // TODO: Send email/notification to the user
+//         } 
+//         // ❌ Handle Payment Failure
+//         else if (status === "FAILED") {
+//             console.log(`Payment failed for Transaction ID: ${transactionId}`);
+//             // TODO: Mark payment as failed in the database
+//             // TODO: Notify the user and ask for a retry
+//         } 
+//         // 🔄 Handle Payment Pending
+//         else if (status === "PENDING") {
+//             console.log(`Payment pending for Transaction ID: ${transactionId}`);
+//             // TODO: Keep monitoring until final status is received
+//         } 
+//         // ⚠️ Handle Other Payment Statuses
+//         else {
+//             console.log(`Unhandled payment status (${status}) for Transaction ID: ${transactionId}`);
+//             // TODO: Log or handle unknown statuses
+//         }
+//     }
+// };

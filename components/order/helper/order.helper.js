@@ -3,7 +3,6 @@ const { UserAddress } = require("../../../models");
 // const redis = require("../../../config/redis");
 
 const saveShippingAddress = async (user_id, addressData, transaction)=>{
-    console.log("user_id", user_id, addressData)
     const existingAddress = await UserAddress.findOne({
         where: { 
             user_id, 
@@ -14,9 +13,7 @@ const saveShippingAddress = async (user_id, addressData, transaction)=>{
             post_code: addressData.post_code, 
         }
       });
-      const address = await UserAddress.findAll()
-    console.log("address>>>>", address)
-    console.log("existingAddress>>>>", existingAddress)
+    //   const address = await UserAddress.findAll()
       return existingAddress || await UserAddress.create({ user_id, ...addressData, updated_by: user_id }, { transaction });
 }
 
