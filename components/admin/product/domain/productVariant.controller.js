@@ -1161,7 +1161,17 @@ module.exports.listAllVariants = async (req, res) => {
                 [Op.or]: [
                     { id: { [Op.like]: `%${keyword}%` } },
                     { slug: { [Op.like]: `%${keyword}%` } },
-                    { barcode: { [Op.like]: `%${keyword}%` } }
+                    { barcode: { [Op.like]: `%${keyword}%` } },
+                    { price: { [Op.like]: `%${keyword}%` } },
+                    { discount_price: { [Op.like]: `%${keyword}%` } },
+                    { purchase_price: { [Op.like]: `%${keyword}%` } },
+                    { stock: { [Op.like]: `%${keyword}%` } },
+                    { low_stock_threshold: { [Op.like]: `%${keyword}%` } },
+                    Sequelize.literal(`EXISTS (
+                        SELECT 1 FROM products 
+                        WHERE products.id = ProductVariant.product_id 
+                        AND products.name LIKE '%${keyword}%'
+                    )`)
                 ]
             });
         }
@@ -1243,11 +1253,21 @@ module.exports.listAllVariants = async (req, res) => {
             offset: parsedOffset
         };
 
+        // Handle sorting
+        let orderClause;
+        if (sort_by === 'product_name') {
+            orderClause = [
+                [{ model: Product, as: 'product' }, 'name', order]
+            ];
+        } else {
+            orderClause = [[sort_by, order]];
+        }
+
         // Fetch paginated variant data
         const variants = await ProductVariant.findAll({
             where: whereClause,
             include: includeClause,
-            order: [[sort_by, order]],
+            order: orderClause,
             limit: parsedLimit,
             offset: parsedOffset,
             attributes: {
@@ -1660,6 +1680,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                             // First validate all pairs before making any changes
                             for (const pair of attributePairs) {
                                 try {
+                                    console.log(pair);
                                     const parts = pair.split(':');
                                     if (parts.length !== 2) {
                                         throw new Error(`Invalid attribute format: ${pair}. Use format: attribute_slug:term_slug`);
@@ -1779,13 +1800,13 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
             skipped: results.filter(r => r.status === 'Skipped').length,
         };
 
+        await transaction.commit();
         return successResponse(res, { summary, results }, "Product variants processed successfully");
 
     } catch (error) {
         logger.error('Error during bulk update:', error);
-        return errorResponse(res, error, "Error processing product variants");
-    } finally {
         await transaction.rollback();
+        return errorResponse(res, error, "Error processing product variants");
     }
 };
 
