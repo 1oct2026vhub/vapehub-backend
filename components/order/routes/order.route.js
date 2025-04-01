@@ -8,6 +8,161 @@ const {validatePlaceOrder} = require("../helper/order.validator")
 /**
  * @swagger
  * /api/order:
+ *   get:
+ *     summary: Fetch all my orders
+ *     description: Retrieve all orders of the logged-in user, including order items, product details, and shipping information.
+ *     tags: 
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Orders fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Orders fetched successfully"
+ *                 orders:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       order_unique_id:
+ *                         type: string
+ *                         example: "ORD-12345678"
+ *                       total:
+ *                         type: string
+ *                         example: "99.99"
+ *                       discount_price:
+ *                         type: string
+ *                         example: "10.00"
+ *                       status:
+ *                         type: string
+ *                         enum: [draft, pending, processing, shipped, delivered, completed, fail, cancel, return_requested, return_approved, return_received, refunded]
+ *                         example: "delivered"
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2024-03-20T14:30:00Z"
+ *                       orderItems:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                               example: 1
+ *                             unit:
+ *                               type: string
+ *                               example: "pcs"
+ *                             unit_price:
+ *                               type: string
+ *                               example: "49.99"
+ *                             quantity:
+ *                               type: integer
+ *                               example: 2
+ *                             discount_price:
+ *                               type: string
+ *                               example: "5.00"
+ *                             total:
+ *                               type: string
+ *                               example: "89.98"
+ *                             product:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   example: 101
+ *                                 name:
+ *                                   type: string
+ *                                   example: "Nike Sneakers"
+ *                                 image:
+ *                                   type: string
+ *                                   example: "nike.jpg"
+ *                                 price:
+ *                                   type: string
+ *                                   example: "50.00"
+ *                             variant:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   example: 201
+ *                                 name:
+ *                                   type: string
+ *                                   example: "Red Size 10"
+ *                                 additional_price:
+ *                                   type: string
+ *                                   example: "5.00"
+ *                       shippingAddress:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "John Doe"
+ *                           street:
+ *                             type: string
+ *                             example: "123 Main St"
+ *                           town:
+ *                             type: string
+ *                             example: "New York"
+ *                           post_code:
+ *                             type: string
+ *                             example: "10001"
+ *                           phone:
+ *                             type: string
+ *                             example: "1234567890"
+ *                       billingAddress:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "John Doe"
+ *                           street:
+ *                             type: string
+ *                             example: "123 Main St"
+ *                           town:
+ *                             type: string
+ *                             example: "New York"
+ *                           post_code:
+ *                             type: string
+ *                             example: "10001"
+ *                           phone:
+ *                             type: string
+ *                             example: "1234567890"
+ *                       shippingMethod:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           name:
+ *                             type: string
+ *                             example: "Express Delivery"
+ *                           price:
+ *                             type: string
+ *                             example: "5.99"
+ *       401:
+ *         description: Unauthorized - No token or invalid token provided
+ *       500:
+ *         description: Internal Server Error - Failed to fetch orders
+ */
+
+router.get('/', authenticateJWT, orderController.getOrders);
+
+/**
+ * @swagger
+ * /api/order:
  *   post:
  *     summary: Place an order
  *     description: Creates a new order based on the user's cart, payment method, and shipping details.
@@ -244,5 +399,10 @@ const {validatePlaceOrder} = require("../helper/order.validator")
 
 router.post("/", authenticateJWT, validateRequest(validatePlaceOrder), orderController.placeOrder)
 // validateRequest(validatePlaceOrder),
+
+// router.post("/webhook/viva", orderController.handleVivaWebhook)
+
+// router.post("/webhook/worldpay", orderController.handleWorldpayWebhook)
+
 
 module.exports = router
