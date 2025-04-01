@@ -62,10 +62,7 @@ module.exports.getProductByid = async (req, res, next) => {
             where: { id: req.params.id }, include: includeClause
         });
         if (!product) {
-            throw {
-                message: "Product not found",
-                statusCode: 400,
-            }
+            throw new Error("Product not found");
         }
 
         // Group attributes and their terms
@@ -240,10 +237,7 @@ module.exports.createProduct = async (req, res, next) => {
         // find product by slug
         const existingProduct = await Product.findOne({ where: { slug } });
         if (existingProduct) {
-            throw {
-                statusCode: 400,
-                message: 'Product already exists'
-            }
+            throw new Error('Product already exists');
         }
 
         // Create the product
@@ -309,10 +303,7 @@ module.exports.updateProduct = async (req, res, next) => {
         const product = await Product.findByPk(id, { transaction });
         if (!product) {
             await transaction.rollback();
-            throw {
-                statusCode: 404,
-                message: 'Product not found'
-            }
+            throw new Error('Product not found');
         }
         // Update product fields
         const updatedFields = {
@@ -395,10 +386,7 @@ module.exports.deleteProduct = async (req, res, next) => {
         const { id } = req.params;
         const product = await Product.findByPk(id);
         if (!product) {
-            throw {
-                statusCode: 404,
-                message: 'Product not found'
-            }
+            throw new Error('Product not found');
         }
         await product.destroy();
         successResponse(res, { message: 'Product deleted successfully' });
@@ -476,10 +464,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             ]
         });
         if (!product) {
-            throw {
-                message: "Product not found",
-                statusCode: 400,
-            }
+            throw new Error('Product not found');
         }
         // **Transform the response** to group attribute terms
         const attributeTermsMap = new Map();
@@ -519,3 +504,164 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+module.exports.filterVariantsByAttributes = async (req, res, next) => {
+    try {
+        const { product_id, attribute_terms } = req.body;
+        
+        // Validate input
+        if (!product_id || !attribute_terms || !Array.isArray(attribute_terms)) {
+            throw new Error('Invalid input parameters');
+        }
+
+        // Find product with all necessary relations
+        const product = await Product.findOne({
+            where: { id: product_id },
+            include: [
+                {
+                    model: ProductVariant,
+                    as: 'variants',
+                    include: [
+                        {
+                            model: ProductVariantAttribute,
+                            as: 'variantAttributes',
+                            include: [
+                                { model: Attribute, as: 'attribute' },
+                                { model: AttributeTerm, as: 'term' }
+                            ]
+                        },
+                        {
+                            model: ProductVariantImage,
+                            as: 'variantImages'
+                        }
+                    ]
+                },
+                {
+                    model: ProductAttributeTerm,
+                    as: 'productAttributeTerms',
+                    include: [
+                        { model: Attribute, as: 'attribute' },
+                        { model: AttributeTerm, as: 'term' }
+                    ]
+                }
+            ]
+        });
+
+        if (!product) {
+            throw new Error('Product not found');
+        }
+
+        // Group attributes and their terms
+        const attributeTermsMap = new Map();
+        product.productAttributeTerms.forEach((pat) => {
+            const attribute = pat.attribute;
+            if (!attributeTermsMap.has(attribute.id)) {
+                attributeTermsMap.set(attribute.id, {
+                    attribute: {
+                        id: attribute.id,
+                        name: attribute.name,
+                        type: attribute.type,
+                        is_visible_page: pat.is_visible_page,
+                        used_in_variation: pat.used_in_variation
+                    },
+                    terms: []
+                });
+            }
+            attributeTermsMap.get(attribute.id).terms.push({
+                id: pat.term.id,
+                name: pat.term.name,
+                slug: pat.term.slug,
+                used_in_variation: pat.used_in_variation,
+                is_visible_page: pat.is_visible_page
+            });
+        });
+
+        // Filter variants based on provided attribute terms
+        const filteredVariants = product.variants.filter(variant => {
+            return attribute_terms.every(filter => {
+                return variant.variantAttributes.some(va => 
+                    va.attribute.id === filter.attribute_id && 
+                    va.term.id === filter.term_id
+                );
+            });
+        });
+
+        // Get available terms for other attributes
+        const availableTermsMap = new Map();
+        filteredVariants.forEach(variant => {
+            variant.variantAttributes.forEach(va => {
+                const attributeId = va.attribute.id;
+                if (!attribute_terms.some(f => f.attribute_id === attributeId)) {
+                    if (!availableTermsMap.has(attributeId)) {
+                        availableTermsMap.set(attributeId, {
+                            attribute: {
+                                id: va.attribute.id,
+                                name: va.attribute.name,
+                                type: va.attribute.type
+                            },
+                            terms: new Set()
+                        });
+                    }
+                    availableTermsMap.get(attributeId).terms.add(JSON.stringify({
+                        id: va.term.id,
+                        name: va.term.name,
+                        slug: va.term.slug,
+                        stock_status: variant.stock_status,
+                        is_in_stock: variant.stock > 0
+                    }));
+                }
+            });
+        });
+
+        // Convert Sets to arrays and parse JSON strings
+        availableTermsMap.forEach(value => {
+            value.terms = Array.from(value.terms).map(term => JSON.parse(term));
+        });
+
+        // Calculate stock summary
+        const stockSummary = {
+            total: filteredVariants.length,
+            in_stock: filteredVariants.filter(v => v.stock > 0).length,
+            low_stock: filteredVariants.filter(v => 
+                v.stock > 0 && v.stock <= v.low_stock_threshold
+            ).length,
+            out_of_stock: filteredVariants.filter(v => v.stock <= 0).length
+        };
+
+        // Prepare variant information
+        const variants = filteredVariants.map(variant => ({
+            id: variant.id,
+            slug: variant.slug,
+            price: variant.price,
+            discount_price: variant.discount_price,
+            stock: variant.stock,
+            stock_status: variant.stock_status,
+            status: variant.status,
+            is_in_stock: variant.stock > 0,
+            primary_image: variant.variantImages.find(img => img.is_primary) || variant.variantImages[0],
+            attributes: variant.variantAttributes.map(va => ({
+                attribute_id: va.attribute.id,
+                attribute_name: va.attribute.name,
+                term_id: va.term.id,
+                term_name: va.term.name,
+                term_slug: va.term.slug
+            }))
+        }));
+
+        const response = {
+            product: {
+                id: product.id,
+                name: product.name,
+                slug: product.slug
+            },
+            variants,
+            available_terms: Array.from(availableTermsMap.values()),
+            stock_summary: stockSummary
+        };
+
+        return successResponse(res, response, 'Variants filtered successfully');
+    } catch (error) {
+        logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+};
