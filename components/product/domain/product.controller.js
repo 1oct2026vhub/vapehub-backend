@@ -687,12 +687,24 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
+                description: product.description,
+                category: product.Category ? {
+                    id: product.Category.id,
+                    name: product.Category.name,
+                    slug: product.Category.slug
+                } : null,
+                brand: product.Brand ? {
+                    id: product.Brand.id,
+                    name: product.Brand.name,
+                    slug: product.Brand.slug
+                } : null,
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
                     url: primaryProductImage.image_url,
                     is_primary: primaryProductImage.is_primary
                 } : null,
-                all_images: productImages
+                all_images: productImages,
+                attribute_terms: Array.from(attributeTermsMap.values())
             },
             variants,
             available_terms: Array.from(availableTermsMap.values()),
