@@ -532,7 +532,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         },
                         {
                             model: ProductVariantImage,
-                            as: 'variantImages'
+                            as: 'variantImages',
+                            attributes: ['id', 'variant_id', 'image_url', 'alt_text', 'is_primary', 'sort_order']
                         }
                     ]
                 },
@@ -543,6 +544,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         { model: Attribute, as: 'attribute' },
                         { model: AttributeTerm, as: 'term' }
                     ]
+                },
+                {
+                    model: ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['id', 'product_id', 'image_url', 'is_primary']
                 }
             ]
         });
@@ -628,31 +634,65 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             out_of_stock: filteredVariants.filter(v => v.stock <= 0).length
         };
 
-        // Prepare variant information
-        const variants = filteredVariants.map(variant => ({
-            id: variant.id,
-            slug: variant.slug,
-            price: variant.price,
-            discount_price: variant.discount_price,
-            stock: variant.stock,
-            stock_status: variant.stock_status,
-            status: variant.status,
-            is_in_stock: variant.stock > 0,
-            primary_image: variant.variantImages.find(img => img.is_primary) || variant.variantImages[0],
-            attributes: variant.variantAttributes.map(va => ({
-                attribute_id: va.attribute.id,
-                attribute_name: va.attribute.name,
-                term_id: va.term.id,
-                term_name: va.term.name,
-                term_slug: va.term.slug
-            }))
+        // Prepare variant information with images
+        const variants = filteredVariants.map(variant => {
+            // Get primary image or first image
+            const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
+            
+            return {
+                id: variant.id,
+                slug: variant.slug,
+                price: variant.price,
+                discount_price: variant.discount_price,
+                stock: variant.stock,
+                stock_status: variant.stock_status,
+                status: variant.status,
+                is_in_stock: variant.stock > 0,
+                primary_image: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    alt_text: primaryImage.alt_text,
+                    is_primary: primaryImage.is_primary,
+                    sort_order: primaryImage.sort_order
+                } : null,
+                all_images: variant.variantImages.map(img => ({
+                    id: img.id,
+                    url: img.image_url,
+                    alt_text: img.alt_text,
+                    is_primary: img.is_primary,
+                    sort_order: img.sort_order
+                })),
+                attributes: variant.variantAttributes.map(va => ({
+                    attribute_id: va.attribute.id,
+                    attribute_name: va.attribute.name,
+                    term_id: va.term.id,
+                    term_name: va.term.name,
+                    term_slug: va.term.slug
+                }))
+            };
+        });
+
+        // Prepare product images
+        const productImages = product.ProductImages.map(img => ({
+            id: img.id,
+            url: img.image_url,
+            is_primary: img.is_primary
         }));
+
+        // Get primary product image
+        const primaryProductImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
 
         const response = {
             product: {
                 id: product.id,
                 name: product.name,
-                slug: product.slug
+                slug: product.slug,
+                primary_image: primaryProductImage ? {
+                    id: primaryProductImage.id,
+                    url: primaryProductImage.image_url,
+                    is_primary: primaryProductImage.is_primary
+                } : null,
+                all_images: productImages
             },
             variants,
             available_terms: Array.from(availableTermsMap.values()),
