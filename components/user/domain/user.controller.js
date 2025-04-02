@@ -61,12 +61,12 @@ const fetchUserAddress = async (req, res, next) => {
 
         const user = await User.findOne({
             where: { id: userId },
-            attributes: ['first_name', 'last_name', 'email', 'phone'], // Exclude sensitive data
+            attributes: ['id', 'first_name', 'last_name', 'email', 'phone'], // Exclude sensitive data
             include: [{
                 model: UserAddress, // Ensure UserAddress is correctly referenced (Uppercase 'U')
                 as: 'UserAddresses', // Must match the alias defined in the model association
                 attributes: [
-                    'name', 'last_name', 'company_name', 'country', 
+                    'id', 'name', 'last_name', 'company_name', 'country', 
                     'street', 'apartment', 'town', 'county', 'post_code', 'phone'
                 ]
             }]
