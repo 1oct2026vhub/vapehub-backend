@@ -4,6 +4,7 @@ const { User, UserAddress } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
+const { createSystemNotification } = require("../../notification/helper/notification.helper");
 
 const userProfile = async (req, res, next) => {
     try {
@@ -105,6 +106,17 @@ const createUserAddress = async (req, res, next) => {
             post_code,
             phone
         });
+        console.log("newAddress>>>>>", newAddress)
+        // Create notification for address creation
+        await createSystemNotification({
+            userId,
+            title: "New Address Added",
+            message: `A new shipping address has been added: ${street}, ${town}`,
+            data: {
+                addressId: newAddress.id,
+                address: `${street}, ${town}, ${post_code}`
+            }
+        });
 
         successResponse(res, newAddress,  'Address added successfully', 201);
 
@@ -130,6 +142,9 @@ const updateUserAddress = async (req, res, next) => {
             return errorResponse(res, {}, {message: 'Address not found'}, 404);
         }
 
+        // Store old address for notification
+        const oldAddress = `${userAddress.street}, ${userAddress.town}, ${userAddress.post_code}`;
+
         // Update the address
         await userAddress.update({
             name: name || userAddress.name,
@@ -144,6 +159,19 @@ const updateUserAddress = async (req, res, next) => {
             phone: phone || userAddress.phone,
             updated_by: userId
         });
+
+        // Create notification for address update
+        await createSystemNotification({
+            userId,
+            title: "Address Updated",
+            message: `Your shipping address has been updated from ${oldAddress} to ${street}, ${town}`,
+            data: {
+                addressId: userAddress.id,
+                oldAddress,
+                newAddress: `${street}, ${town}, ${post_code}`
+            }
+        });
+
         successResponse(res, userAddress,  'Address updated successfully', 200);
 
     } catch (error) {
@@ -168,8 +196,22 @@ const deleteUserAddress = async (req, res, next) => {
             return errorResponse(res, {}, {message: 'Address not found'}, 404);
         }
 
+        // Store address details for notification
+        const addressDetails = `${userAddress.street}, ${userAddress.town}, ${userAddress.post_code}`;
+
         // Delete the address
         await userAddress.destroy();
+
+        // Create notification for address deletion
+        await createSystemNotification({
+            userId,
+            title: "Address Deleted",
+            message: `Your shipping address has been deleted: ${addressDetails}`,
+            data: {
+                addressId,
+                deletedAddress: addressDetails
+            }
+        });
 
         successResponse(res, userAddress,  'Address deleted successfully', 200);
 
