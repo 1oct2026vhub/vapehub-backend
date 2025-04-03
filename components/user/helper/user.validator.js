@@ -38,13 +38,18 @@ exports.validateCreateUserAddress = [
     body('post_code')
         .notEmpty().withMessage('Post code is required')
         .isPostalCode('any').withMessage('Invalid post code format'),
+
+    body('phone')
+        .notEmpty().withMessage('Phone number is required')
+        .isMobilePhone().withMessage('Invalid phone number format')
 ];
 
 exports.validateUpdateUserAddress = [
     check('name').notEmpty().withMessage('Name is required'),
     check('street').notEmpty().withMessage('Street is required'),
     check('town').notEmpty().withMessage('Town is required'),
-    check('post_code').notEmpty().withMessage('Post code is required')
+    check('post_code').notEmpty().withMessage('Post code is required'),
+    check('phone').notEmpty().withMessage('Phone number is required')
 ];
 
 exports.validateChangePassword = [

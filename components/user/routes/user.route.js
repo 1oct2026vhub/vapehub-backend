@@ -465,7 +465,7 @@ router.post('/user-address', authenticateJWT, validateRequest(validateCreateUser
  *       500:
  *         description: Internal Server Error.
  */
-router.put('/user-address/:id', authenticateJWT, userController.updateUserAddress) //validateRequest(validateUpdateUserAddress),
+router.put('/user-address/:id', authenticateJWT, validateRequest(validateUpdateUserAddress), userController.updateUserAddress)
 
 /**
  * @swagger
@@ -610,6 +610,7 @@ router.delete('/user-address/:id', authenticateJWT,  userController.deleteUserAd
  *           type: string
  *           example: Bearer <your-jwt-token>
  */
+
 
 router.put('/change-password', authenticateJWT, validateRequest(validateChangePassword), userController.changeUserPassword);
 
