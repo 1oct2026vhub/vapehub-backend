@@ -668,7 +668,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     term_id: va.term.id,
                     term_name: va.term.name,
                     term_slug: va.term.slug
-                }))
+                })),
+                created_at: variant.created_at,
+                updated_at: variant.updated_at
             };
         });
 
@@ -688,6 +690,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 name: product.name,
                 slug: product.slug,
                 description: product.description,
+                created_at: product.createdAt,
+                updated_at: product.updatedAt,
                 category: product.Category ? {
                     id: product.Category.id,
                     name: product.Category.name,
@@ -706,7 +710,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values())
             },
-            variants,
+            variants: variants.map(variant => ({
+                ...variant,
+                created_at: variant.created_at,
+                updated_at: variant.updated_at
+            })),
             available_terms: Array.from(availableTermsMap.values()),
             stock_summary: stockSummary
         };
