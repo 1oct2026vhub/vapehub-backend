@@ -342,7 +342,40 @@ const fetchProducts = async (query) => {
       offset: parsedOffset,
       distinct: true,
     });
-    // **Transform the response to match required structure**
+
+    // First, get all products to count terms across all products
+    const allProducts = await Product.findAll({
+      where: productWhereClause,
+      include: [{
+        model: ProductAttributeTerm,
+        as: 'productAttributeTerms',
+        include: [
+          { model: Attribute, as: 'attribute' },
+          { model: AttributeTerm, as: 'term' }
+        ]
+      }]
+    });
+
+    // Create a map to store term counts
+    const termCountMap = new Map();
+
+    // Count occurrences of each term across all products
+    allProducts.forEach(product => {
+      if (product.productAttributeTerms) {
+        product.productAttributeTerms.forEach(pat => {
+          const attributeId = pat.attribute.id;
+          const termId = pat.term.id;
+          const key = `${attributeId}-${termId}`;
+          
+          if (!termCountMap.has(key)) {
+            termCountMap.set(key, 0);
+          }
+          termCountMap.set(key, termCountMap.get(key) + 1);
+        });
+      }
+    });
+
+    // Transform the response to match required structure with term counts
     const productAttributeTerms = products.map((product) => {
       const attributeMap = new Map();
     
@@ -363,32 +396,51 @@ const fetchProducts = async (query) => {
             });
           }
     
-          attributeMap.get(attribute.id).terms.push({
-            id: pat.term.id,
-            name: pat.term.name,
-            slug: pat.term.slug
-          });
+          // Check if term already exists to avoid duplicates
+          const existingAttribute = attributeMap.get(attribute.id);
+          const termExists = existingAttribute.terms.some(term => term.id === pat.term.id);
+          
+          if (!termExists) {
+            // Get the count for this term
+            const termCount = termCountMap.get(`${attribute.id}-${pat.term.id}`) || 0;
+            
+            existingAttribute.terms.push({
+              id: pat.term.id,
+              name: pat.term.name,
+              slug: pat.term.slug,
+              product_count: termCount
+            });
+          }
         });
       }
     
+      // Convert Map to array and sort attributes by ID
+      const sortedAttributes = Array.from(attributeMap.values())
+        .sort((a, b) => a.attribute.id - b.attribute.id);
+    
       return {
         product_id: product.id,
-        attribute: Array.from(attributeMap.values()) // Convert Map to array
+        attributes: sortedAttributes
       };
     });
 
+    // Transform the response to include both products and their attributes
+    const transformedProducts = products.map(product => {
+      const productAttributes = productAttributeTerms.find(pat => pat.product_id === product.id);
+      return {
+        ...product.toJSON(),
+        attributes: productAttributes ? productAttributes.attributes : []
+      };
+    });
 
-    // // Convert Map to array
-    
-
-    return { products, productAttributeTerms, pagination };  //, attributeTerms
+    return { 
+      products: transformedProducts, 
+      pagination 
+    };
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
   }
 };
-
-
-
 
 module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts };

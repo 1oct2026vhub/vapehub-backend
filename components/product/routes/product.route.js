@@ -45,7 +45,10 @@ const multer = require("multer");
  *         name: variant
  *         schema:
  *           type: string
- *           example: '{"12": [56,6,3,5], "29": [33,669,55]}'
+ *           example:
+ *             "variant": 
+ *               "12": [475, 477, 851, 5]
+ *               "29": [33, 669, 55]
  *         description: JSON string of variant/attribute filters where key is variant ID or attribute ID and value is array of term IDs
  *       - in: query
  *         name: sort_by
