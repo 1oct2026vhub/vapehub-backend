@@ -375,17 +375,18 @@ const fetchProducts = async (query) => {
       }
     });
 
-    // Transform the response to match required structure with term counts
-    const productAttributeTerms = products.map((product) => {
-      const attributeMap = new Map();
+    // Create a common attributes structure
+    const commonAttributes = new Map();
     
+    // Process all products to build common attributes
+    products.forEach(product => {
       if (product.productAttributeTerms) {
         product.productAttributeTerms.forEach((pat) => {
           const attribute = pat.attribute;
           if (!attribute) return;
-    
-          if (!attributeMap.has(attribute.id)) {
-            attributeMap.set(attribute.id, {
+
+          if (!commonAttributes.has(attribute.id)) {
+            commonAttributes.set(attribute.id, {
               attribute: {
                 id: attribute.id,
                 name: attribute.name,
@@ -395,9 +396,9 @@ const fetchProducts = async (query) => {
               terms: []
             });
           }
-    
+
           // Check if term already exists to avoid duplicates
-          const existingAttribute = attributeMap.get(attribute.id);
+          const existingAttribute = commonAttributes.get(attribute.id);
           const termExists = existingAttribute.terms.some(term => term.id === pat.term.id);
           
           if (!termExists) {
@@ -413,28 +414,15 @@ const fetchProducts = async (query) => {
           }
         });
       }
-    
-      // Convert Map to array and sort attributes by ID
-      const sortedAttributes = Array.from(attributeMap.values())
-        .sort((a, b) => a.attribute.id - b.attribute.id);
-    
-      return {
-        product_id: product.id,
-        attributes: sortedAttributes
-      };
     });
 
-    // Transform the response to include both products and their attributes
-    const transformedProducts = products.map(product => {
-      const productAttributes = productAttributeTerms.find(pat => pat.product_id === product.id);
-      return {
-        ...product.toJSON(),
-        attributes: productAttributes ? productAttributes.attributes : []
-      };
-    });
+    // Convert Map to array and sort attributes by ID
+    const sortedAttributes = Array.from(commonAttributes.values())
+      .sort((a, b) => a.attribute.id - b.attribute.id);
 
     return { 
-      products: transformedProducts, 
+      products,
+      attributes: sortedAttributes,
       pagination 
     };
   } catch (error) {
