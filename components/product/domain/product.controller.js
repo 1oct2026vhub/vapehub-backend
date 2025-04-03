@@ -519,6 +519,16 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             where: { id: product_id },
             include: [
                 {
+                    model: Category,
+                    as: 'Category',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
+                    model: Brand,
+                    as: 'Brand',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
                     model: ProductVariant,
                     as: 'variants',
                     include: [
