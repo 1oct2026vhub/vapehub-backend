@@ -7,8 +7,8 @@ const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
-        const { products, productAttributeTerms, pagination } = await fetchProducts(req.query)
-        return successResponse(res, { products, productAttributeTerms, pagination }, 'Success');
+        const { products, attributes, pagination } = await fetchProducts(req.query)
+        return successResponse(res, { products, attributes, pagination }, 'Success');
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
