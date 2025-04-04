@@ -91,17 +91,23 @@ module.exports.deleteBrand = async (req, res, next) => {
 module.exports.getBrandBySlug = async (req, res, next) => {
     try {
         const brand = await Brand.findOne({ where: { slug: req.params.slug } });
-        // fetch related product
-        req.query.brands = `${brand.id}`
-        const product = await fetchProducts(req.query)
-
         if (!brand) {
             throw {
                 message: "Brand not found",
                 statusCode: 400,
             };
         }
-        return successResponse(res, { ...brand.get({ plain: true }), ...product }, "Success");
+        req.query.brands = `${brand.id}`;
+        req.query.source = 'brand';
+        const { products, attributes, pagination, price_ranges, categories } = await fetchProducts(req.query);
+
+        return successResponse(res, { 
+            ...brand.get({ plain: true }), 
+            products, 
+            attributes, 
+            pagination,
+            price_ranges, categories // Since we're querying by slug, there will be only one brand
+        }, "Success");
     } catch (error) {
         console.log("🚀 ~ module.exports.getBrandBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);
