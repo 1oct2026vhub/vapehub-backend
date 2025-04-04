@@ -939,9 +939,8 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
             products: [],
             attributes: []
         };
-        const promises = [];
-
-        // Process Products Sheet
+        
+        // First, process all products
         if (productSheet) {
             const headerRow = productSheet.getRow(1).values;
             const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'ID';
@@ -972,15 +971,15 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     continue;
                 }
 
-                promises.push(processProductRow({
+                await processProductRow({
                     id, name, slug, description, 
                     brand_slug, category_slug, updated_by, 
                     results
-                }));
+                });
             }
         }
 
-        // Process Attributes Sheet
+        // Then, process all attributes after products are created/updated
         if (attributeSheet) {
             const attrHeaderRow = attributeSheet.getRow(1).values;
             const isFirstAttrHeaderEmpty = !attrHeaderRow[0] || attrHeaderRow[0] !== 'Product Slug';
@@ -1010,7 +1009,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     continue;
                 }
 
-                promises.push(processAttributeRow({
+                await processAttributeRow({
                     product_slug,
                     attribute_slug,
                     term_slugs,
@@ -1018,12 +1017,9 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     used_in_variation,
                     updated_by,
                     results
-                }));
+                });
             }
         }
-
-        // Wait for all promises to resolve
-        await Promise.all(promises);
 
         // Sort results
         results.products.sort(sortByStatus);
@@ -1154,25 +1150,31 @@ const processAttributeRow = async ({ product_slug, attribute_slug, term_slugs, i
             throw new Error(`Some terms not found: ${missingSlugs.join(', ')}`);
         }
 
-        // Remove existing attribute terms for this product-attribute combination
-        await ProductAttributeTerm.destroy({
-            where: {
-                product_id: product.id,
-                attribute_id: attribute.id
-            }
-        });
+        // Process each term
+        for (const term of terms) {
+            // Use findOrCreate to handle existing records
+            const [attributeTerm, created] = await ProductAttributeTerm.findOrCreate({
+                where: {
+                    product_id: product.id,
+                    attribute_id: attribute.id,
+                    term_id: term.id
+                },
+                defaults: {
+                    is_visible_page: is_visible_page === 'true' || is_visible_page === true,
+                    used_in_variation: used_in_variation === 'true' || used_in_variation === true,
+                    updated_by
+                }
+            });
 
-        // Create new attribute terms
-        await Promise.all(terms.map(term => 
-            ProductAttributeTerm.create({
-                product_id: product.id,
-                attribute_id: attribute.id,
-                term_id: term.id,
-                is_visible_page: is_visible_page === 'true' || is_visible_page === true,
-                used_in_variation: used_in_variation === 'true' || used_in_variation === true,
-                updated_by
-            })
-        ));
+            // If the record already existed, update its properties
+            if (!created) {
+                await attributeTerm.update({
+                    is_visible_page: is_visible_page === 'true' || is_visible_page === true,
+                    used_in_variation: used_in_variation === 'true' || used_in_variation === true,
+                    updated_by
+                });
+            }
+        }
 
         results.attributes.push({
             product_slug,
