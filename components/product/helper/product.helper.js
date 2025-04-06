@@ -223,7 +223,6 @@ const fetchProducts = async (query) => {
     if (brands) {
       productWhereClause.brand_id = { [Op.in]: brands.split(',').map(Number) };
     }
-    console.log("productWhereClause>>>",productWhereClause)
     if (categories) {
       productWhereClause.category_id = { [Op.in]: categories.split(',').map(Number) };
     }
@@ -234,7 +233,6 @@ const fetchProducts = async (query) => {
       const [minPrice, maxPrice] = price_range.split('-').map(Number);
       variantWhereClause.price = { [Op.between]: [minPrice || 0, maxPrice || Infinity] };
     }
-
     // Build ProductAttributeTerm where clause for variant filtering
     let productAttributeConditions = [];
     if (variantObject && Object.keys(variantObject).length > 0) {
@@ -269,26 +267,29 @@ const fetchProducts = async (query) => {
         }
       }
     }
-console.log("variantWhereClause>>>>",variantWhereClause )
+    
     // Combine product attribute conditions
     let productAttributeWhereClause = {};
     if (productAttributeConditions.length > 0) {
       productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
     }
-
     // Build include clause
     const includeClause = [
-      { model: Category, as: 'Category' },
-      { model: Brand, as: 'Brand' },
+
+      { model: Category, as: 'Category'},   // , attributes: ['id', 'name'] 
+      { model: Brand, as: 'Brand' },//, attributes: ['id', 'name'] 
       {
         model: ProductVariant,
         as: 'variants',
         where: variantWhereClause,
         required: Object.keys(variantWhereClause).length > 0, // Only require if variant ID is specified
+        // attributes: ['id', 'slug'],
         include: [
           {
             model: ProductVariantAttribute,
             as: 'variantAttributes',
+            where: productAttributeWhereClause,
+            //attributes: ['id', 'variant_id', 'attribute_id'],
             include: [
               { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
               { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
@@ -304,7 +305,8 @@ console.log("variantWhereClause>>>>",variantWhereClause )
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: productAttributeWhereClause,
+        // where: productAttributeWhereClause,
+        //attributes: ['id', 'product_id', 'attribute_id' ],
         required: productAttributeConditions.length > 0, // Require if filtering by attributes
         include: [
           { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
@@ -335,6 +337,7 @@ console.log("variantWhereClause>>>>",variantWhereClause )
     // Fetch products
     const products = await Product.findAll({
       where: productWhereClause,
+      //attributes: ['id', 'name'],
       include: includeClause,
       order: [
         [sort_by, order],
@@ -344,409 +347,220 @@ console.log("variantWhereClause>>>>",variantWhereClause )
       offset: parsedOffset,
       distinct: true,
     });
-// console.log("products>>>>>", products)
-    // First, get all products to count terms across all products
-    const allProducts = await Product.findAll({
-      where: productWhereClause,
-      include: [{
-        model: ProductAttributeTerm,
-        as: 'productAttributeTerms',
-        include: [
-          { model: Attribute, as: 'attribute' },
-          { model: AttributeTerm, as: 'term' }
-        ]
-      }]
-    });
 
-    // Create a map to store term counts
-    const termCountMap = new Map();
+    const attributeTermMap = new Map();
+    const categoriesMap = new Map();
+    const brandMap = new Map();
+    products.forEach((product, index) => {
+      if(source == "brand"){
+        if(product.category_id && product.Category){
+          if(!categoriesMap.get(product.category_id)){
+            categoriesMap.set(product.category_id, {
+              id: product.Category.id,
+              name: product.Category.name,
+              slug: product.Category.slug,
+              product_count: 1
+            })
+          }
+          else{
+            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
+          }
+        }
+      }
+      else if(source == "category"){
+        if(product.brand_id && product.Brand){
+          if(!brandMap.get(product.brand_id)){
+            brandMap.set(product.brand_id, {
+              id: product.Brand.id,
+              name: product.Brand.name,
+              slug: product.Brand.slug,
+              product_count: 1
+            })
+          }
+          else{
+            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
+          }
+        }
+      }
+      else{
+        if(product.category_id && product.Category){
+          if(!categoriesMap.get(product.category_id)){
+            categoriesMap.set(product.category_id, {
+              id: product.Category.id,
+              name: product.Category.name,
+              slug: product.Category.slug,
+              product_count: 1
+            })
+          }
+          else{
+            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
+          }
+        }
 
-    // Count occurrences of each term across all products
-    allProducts.forEach(product => {
+        if(product.brand_id && product.Brand){
+          if(!brandMap.get(product.brand_id)){
+            // console.log("product brand>>>>", product)
+            brandMap.set(product.brand_id, {
+              id: product.Brand.id,
+              name: product.Brand.name,
+              slug: product.Brand.slug,
+              product_count: 1
+            })
+          }
+          else{
+            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
+          }
+        }
+      }
+
+      
+      
+      product.variants.forEach((variant)=>{
+        variant.variantAttributes.forEach((attribute)=>{
+          if (!attributeTermMap.has(attribute.attribute_id)) {
+            attributeTermMap.set(attribute.attribute_id, {
+              attribute: {
+                id: attribute.attribute.id,
+                name: attribute.attribute.name,
+                type: attribute.attribute.type,
+                is_visible_page: attribute.attribute.is_visible_page
+              },
+              terms: []
+            });
+          }
+          const existingAttribute = attributeTermMap.get(attribute.attribute_id);
+            const termExists = existingAttribute.terms.findIndex(term => term.id === attribute.term.id);
+            // console.log("termExists>>", termExists)
+            if (termExists === -1) {
+              // Get the count for this term
+              // const termCount = termCountMap.get(`${attribute.id}-${pat.term.id}`) || 0;
+              
+              existingAttribute.terms.push({
+                id: attribute.term.id,
+                name: attribute.term.name,
+                slug: attribute.term.slug,
+                product_count: 1
+              });
+            }
+            else{
+              existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1
+            }
+            // console.log("existingAttribute second>>>", existingAttribute)
+        })
+      })
+
+      // Process ProductAttributeTerm data
       if (product.productAttributeTerms) {
         product.productAttributeTerms.forEach(pat => {
           const attributeId = pat.attribute.id;
           const termId = pat.term.id;
-          const key = `${attributeId}-${termId}`;
-          
-          if (!termCountMap.has(key)) {
-            termCountMap.set(key, 0);
+
+          if (!attributeTermMap.has(attributeId)) {
+            attributeTermMap.set(attributeId, {
+              attribute: {
+                id: pat.attribute.id,
+                name: pat.attribute.name,
+                type: pat.attribute.type,
+                is_visible_page: pat.attribute.is_visible_page
+              },
+              terms: []
+            });
           }
-          termCountMap.set(key, termCountMap.get(key) + 1);
+
+          const existingAttribute = attributeTermMap.get(attributeId);
+          const termExists = existingAttribute.terms.findIndex(term => term.id === termId);
+          
+          if (termExists === -1) {
+            existingAttribute.terms.push({
+              id: termId,
+              name: pat.term.name,
+              slug: pat.term.slug,
+              product_count: 0 // Initialize with 0, will be updated later
+            });
+          }
         });
       }
     });
 
-    // Get all attributes and their terms
-    const allAttributes = await Attribute.findAll({
-      include: [{
-        model: AttributeTerm,
-        as: 'terms'
-      }]
-    });
-
-    // Create a common attributes structure
-    const commonAttributes = new Map();
-    
-    // Process all attributes and their terms
-    allAttributes.forEach(attribute => {
-      if (!commonAttributes.has(attribute.id)) {
-        commonAttributes.set(attribute.id, {
-          attribute: {
-            id: attribute.id,
-            name: attribute.name,
-            type: attribute.type,
-            is_visible_page: attribute.is_visible_page
-          },
-          terms: []
+    // Now process the variant attributes to get actual counts
+    const variantAttributeMap = new Map();
+    products.forEach(product => {
+      if (product.variants) {
+        product.variants.forEach(variant => {
+          if (variant.variantAttributes) {
+            variant.variantAttributes.forEach(va => {
+              const attributeId = va.attribute.id;
+              const termId = va.term.id;
+              
+              if (!variantAttributeMap.has(attributeId)) {
+                variantAttributeMap.set(attributeId, new Map());
+              }
+              
+              const termMap = variantAttributeMap.get(attributeId);
+              if (!termMap.has(termId)) {
+                termMap.set(termId, 0);
+              }
+              termMap.set(termId, termMap.get(termId) + 1);
+            });
+          }
         });
       }
+    });
 
-      // Add only terms that have products in the current filter results
-      attribute.terms.forEach(term => {
-        const termCount = termCountMap.get(`${attribute.id}-${term.id}`) || 0;
-        if (termCount > 0) { // Only add terms with product_count > 0
-          commonAttributes.get(attribute.id).terms.push({
-            id: term.id,
-            name: term.name,
-            slug: term.slug,
-            product_count: termCount
-          });
+    // Update product counts in attributeTermMap based on variantAttributeMap
+    attributeTermMap.forEach((attributeData, attributeId) => {
+      const variantTermMap = variantAttributeMap.get(attributeId);
+      
+      attributeData.terms.forEach(term => {
+        if (variantTermMap && variantTermMap.has(term.id)) {
+          term.product_count = variantTermMap.get(term.id);
+        } else {
+          term.product_count = 0;
         }
       });
-
-      // Remove attributes that have no terms with products
-      if (commonAttributes.get(attribute.id).terms.length === 0) {
-        commonAttributes.delete(attribute.id);
-      }
     });
 
-    // Convert Map to array and sort attributes by ID
-    const sortedAttributes = Array.from(commonAttributes.values())
-      .sort((a, b) => a.attribute.id - b.attribute.id);
+    const attributes = Array.from(attributeTermMap.values());
+    const category = Array.from(categoriesMap.values());
+    const brand = Array.from(brandMap.values());
 
     // Define price ranges
     const priceRanges = [
-      { label: "Under £10", min: 0, max: 10, value: "0-10" },
+      { label: "£0 - £10", min: 0, max: 10, value: "0-10" },
       { label: "£10 - £25", min: 10, max: 25, value: "10-25" },
       { label: "£25 - £50", min: 25, max: 50, value: "25-50" },
-      { label: "£50 - £100", min: 50, max: 100, value: "50-100" },
+      { label: "£50 - £75", min: 50, max: 75, value: "50-75" },
+      { label: "£75 - £100", min: 75, max: 100, value: "75-100" },
       { label: "£100 - £200", min: 100, max: 200, value: "100-200" },
       { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
     ];
 
-    // Function to calculate price range counts
-    const calculatePriceRanges = (products) => {
-      return priceRanges.map(range => {
-        const count = products.filter(product => 
-          product.price >= range.min && product.price < range.max
-        ).length;
-        return {
-          label: range.label,
-          count,
-          value: range.value
-        };
-      });
-    };
-
     // Calculate price range counts
-    const priceRangeCounts = calculatePriceRanges(products);
+    const priceRangeCounts = priceRanges.map(range => {
+      const count = products.reduce((total, product) => {
+        if (product.variants) {
+          return total + product.variants.filter(variant => {
+            const price = variant.price || 0;
+            return price >= range.min && price < range.max;
+          }).length;
+        }
+        return total;
+      }, 0);
 
-    // Calculate rating distribution
-    const ratingDistribution = [
-      { label: "4★ & above", value: 4, count: products.filter(p => p.rating >= 4).length },
-      { label: "3★ & above", value: 3, count: products.filter(p => p.rating >= 3).length },
-      { label: "2★ & above", value: 2, count: products.filter(p => p.rating >= 2).length },
-      { label: "1★ & above", value: 1, count: products.filter(p => p.rating >= 1).length }
-    ];
-
-    // Calculate discount distribution
-    const discountDistribution = [
-      { label: "50% or more", value: 50, count: products.filter(p => p.discount_percentage >= 50).length },
-      { label: "40% or more", value: 40, count: products.filter(p => p.discount_percentage >= 40).length },
-      { label: "30% or more", value: 30, count: products.filter(p => p.discount_percentage >= 30).length },
-      { label: "20% or more", value: 20, count: products.filter(p => p.discount_percentage >= 20).length },
-      { label: "10% or more", value: 10, count: products.filter(p => p.discount_percentage >= 10).length }
-    ];
-
-    // Calculate availability counts
-    const availabilityCounts = {
-      in_stock: products.filter(p => p.stock_quantity > 0).length,
-      out_of_stock: products.filter(p => p.stock_quantity === 0).length
-    };
-
-    // Fetch additional data based on source
-    let additionalData = {};
-    
-    if (source === 'category' && categories) {
-      // Get all products for pricing calculation
-      const allProducts = await Product.findAll({
-        attributes: ['price', 'brand_id'],
-        include: [{
-          model: Brand,
-          as: 'Brand',
-          attributes: ['id', 'name', 'slug']
-        }]
-      });
-
-      // Calculate price ranges from all products
-      const priceRanges = calculatePriceRanges(allProducts);
-
-      // Get brands filtered by price range if specified
-      let filteredBrands = [];
-      if (price_range) {
-        const [minPrice, maxPrice] = price_range.split('-').map(Number);
-        const brandsInPriceRange = new Map();
-
-        allProducts.forEach(product => {
-          if (!product.Brand) return;
-          
-          const price = product.price;
-          if (price !== null && 
-              price >= minPrice && 
-              (maxPrice === undefined || price < maxPrice)) {
-            
-            const brandId = product.Brand.id;
-            if (!brandsInPriceRange.has(brandId)) {
-              brandsInPriceRange.set(brandId, {
-                id: product.Brand.id,
-                name: product.Brand.name,
-                slug: product.Brand.slug,
-                product_count: 0
-              });
-            }
-            brandsInPriceRange.get(brandId).product_count++;
-          }
-        });
-
-        filteredBrands = Array.from(brandsInPriceRange.values());
-      } else {
-        // If no price range selected, get all unique brands with their total product counts
-        const brandProductCounts = new Map();
-        
-        allProducts.forEach(product => {
-          if (!product.Brand) return;
-          
-          const brandId = product.Brand.id;
-          if (!brandProductCounts.has(brandId)) {
-            brandProductCounts.set(brandId, {
-              id: product.Brand.id,
-              name: product.Brand.name,
-              slug: product.Brand.slug,
-              product_count: 0
-            });
-          }
-          brandProductCounts.get(brandId).product_count++;
-        });
-
-        filteredBrands = Array.from(brandProductCounts.values());
-      }
-
-      additionalData = {
-        price_ranges: priceRanges,
-        brands: filteredBrands
+      return {
+        label: range.label,
+        count,
+        value: range.value
       };
-    } 
-    else if (source === 'brand' && brands) {
-      // Get all products for pricing calculation
-      const allProducts = await Product.findAll({
-        attributes: ['price', 'category_id'],
-        include: [{
-          model: Category,
-          as: 'Category',
-          attributes: ['id', 'name', 'slug']
-        }]
-      });
+    });
 
-      // Calculate price ranges from all products
-      const priceRanges = calculatePriceRanges(allProducts);
-
-      // Get categories based on price range
-      let filteredCategories = [];
-      if (price_range) {
-        const [minPrice, maxPrice] = price_range.split('-').map(Number);
-        const categoriesInPriceRange = new Map();
-
-        allProducts.forEach(product => {
-          if (!product.Category) return;
-          
-          const price = product.price;
-          if (price !== null && 
-              price >= minPrice && 
-              (maxPrice === undefined || price < maxPrice)) {
-            
-            const categoryId = product.Category.id;
-            if (!categoriesInPriceRange.has(categoryId)) {
-              categoriesInPriceRange.set(categoryId, {
-                id: product.Category.id,
-                name: product.Category.name,
-                slug: product.Category.slug,
-                product_count: 0
-              });
-            }
-            categoriesInPriceRange.get(categoryId).product_count++;
-          }
-        });
-
-        // Only include categories that have products in the selected price range
-        filteredCategories = Array.from(categoriesInPriceRange.values())
-          .filter(category => category.product_count > 0);
-      } else {
-        // If no price range selected, get all unique categories with their total product counts
-        const categoryProductCounts = new Map();
-        
-        allProducts.forEach(product => {
-          if (!product.Category) return;
-          
-          const categoryId = product.Category.id;
-          if (!categoryProductCounts.has(categoryId)) {
-            categoryProductCounts.set(categoryId, {
-              id: product.Category.id,
-              name: product.Category.name,
-              slug: product.Category.slug,
-              product_count: 0
-            });
-          }
-          categoryProductCounts.get(categoryId).product_count++;
-        });
-
-        // Only include categories that have products
-        filteredCategories = Array.from(categoryProductCounts.values())
-          .filter(category => category.product_count > 0);
-      }
-
-      additionalData = {
-        price_ranges: priceRanges,
-        categories: filteredCategories
-      };
-    } 
-    else if (source === 'product') {
-      // Get all products for pricing calculation
-      const allProducts = await Product.findAll({
-        attributes: ['price', 'category_id', 'brand_id'],
-        include: [
-          {
-            model: Category,
-            as: 'Category',
-            attributes: ['id', 'name', 'slug']
-          },
-          {
-            model: Brand,
-            as: 'Brand',
-            attributes: ['id', 'name', 'slug']
-          }
-        ]
-      });
-
-      // Calculate price ranges from all products
-      const priceRanges = calculatePriceRanges(allProducts);
-
-      // Get categories and brands based on price range
-      let filteredCategories = [];
-      let filteredBrands = [];
-
-      if (price_range) {
-        const [minPrice, maxPrice] = price_range.split('-').map(Number);
-        const categoriesInPriceRange = new Map();
-        const brandsInPriceRange = new Map();
-
-        allProducts.forEach(product => {
-          if (!product.Category || !product.Brand) return;
-          
-          const price = product.price;
-          if (price !== null && 
-              price >= minPrice && 
-              (maxPrice === undefined || price < maxPrice)) {
-            
-            // Process category
-            const categoryId = product.Category.id;
-            if (!categoriesInPriceRange.has(categoryId)) {
-              categoriesInPriceRange.set(categoryId, {
-                id: product.Category.id,
-                name: product.Category.name,
-                slug: product.Category.slug,
-                product_count: 0
-              });
-            }
-            categoriesInPriceRange.get(categoryId).product_count++;
-
-            // Process brand
-            const brandId = product.Brand.id;
-            if (!brandsInPriceRange.has(brandId)) {
-              brandsInPriceRange.set(brandId, {
-                id: product.Brand.id,
-                name: product.Brand.name,
-                slug: product.Brand.slug,
-                product_count: 0
-              });
-            }
-            brandsInPriceRange.get(brandId).product_count++;
-          }
-        });
-
-        // Only include categories and brands that have products in the selected price range
-        filteredCategories = Array.from(categoriesInPriceRange.values())
-          .filter(category => category.product_count > 0);
-        filteredBrands = Array.from(brandsInPriceRange.values())
-          .filter(brand => brand.product_count > 0);
-      } else {
-        // If no price range selected, get all unique categories and brands with their total product counts
-        const categoryProductCounts = new Map();
-        const brandProductCounts = new Map();
-        
-        allProducts.forEach(product => {
-          if (!product.Category || !product.Brand) return;
-          
-          // Process category
-          const categoryId = product.Category.id;
-          if (!categoryProductCounts.has(categoryId)) {
-            categoryProductCounts.set(categoryId, {
-              id: product.Category.id,
-              name: product.Category.name,
-              slug: product.Category.slug,
-              product_count: 0
-            });
-          }
-          categoryProductCounts.get(categoryId).product_count++;
-
-          // Process brand
-          const brandId = product.Brand.id;
-          if (!brandProductCounts.has(brandId)) {
-            brandProductCounts.set(brandId, {
-              id: product.Brand.id,
-              name: product.Brand.name,
-              slug: product.Brand.slug,
-              product_count: 0
-            });
-          }
-          brandProductCounts.get(brandId).product_count++;
-        });
-
-        // Only include categories and brands that have products
-        filteredCategories = Array.from(categoryProductCounts.values())
-          .filter(category => category.product_count > 0);
-        filteredBrands = Array.from(brandProductCounts.values())
-          .filter(brand => brand.product_count > 0);
-      }
-
-      additionalData = {
-        price_ranges: priceRanges,
-        categories: filteredCategories,
-        brands: filteredBrands
-      };
-    }
-console.log("additional daat>>>", additionalData)
     return { 
       products,
-      attributes: sortedAttributes,
+      category,
+      brand,
+      attributes,
+      price_ranges: priceRangeCounts,
       pagination,
-      // filters: {
-      //   price_ranges: priceRangeCounts,
-      //   ratings: ratingDistribution,
-      //   discounts: discountDistribution,
-      //   availability: availabilityCounts
-      // },
-      ...additionalData
     };
   } catch (error) {
     console.log((error))

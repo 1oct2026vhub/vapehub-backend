@@ -46,7 +46,6 @@ const multer = require("multer");
  *         schema:
  *           type: string
  *           example:
- *             "variant": 
  *               "12": [475, 477, 851, 5]
  *               "29": [33, 669, 55]
  *         description: JSON string of variant/attribute filters where key is variant ID or attribute ID and value is array of term IDs

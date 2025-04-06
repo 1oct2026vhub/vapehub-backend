@@ -99,14 +99,15 @@ module.exports.getBrandBySlug = async (req, res, next) => {
         }
         req.query.brands = `${brand.id}`;
         req.query.source = 'brand';
-        const { products, attributes, pagination, price_ranges, categories } = await fetchProducts(req.query);
+        const { products, attributes, category, price_ranges, pagination } = await fetchProducts(req.query);
 
         return successResponse(res, { 
-            ...brand.get({ plain: true }), 
+            // ...brand.get({ plain: true }), 
             products, 
-            attributes, 
-            pagination,
-            price_ranges, categories // Since we're querying by slug, there will be only one brand
+            attributes,  
+            category,
+            price_ranges, 
+            pagination 
         }, "Success");
     } catch (error) {
         console.log("🚀 ~ module.exports.getBrandBySlug= ~ error:", error)
