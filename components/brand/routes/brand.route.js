@@ -199,7 +199,7 @@ router.delete('/:id', authenticateJWT,
  *       - in: query
  *         name: brand
  *         schema:
- *           type: integer
+ *           type: string
  *         description: Brand ID
  *       - in: query
  *         name: flavours
