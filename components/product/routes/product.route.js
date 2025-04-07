@@ -36,7 +36,7 @@ const multer = require("multer");
  *           example: "1,2,3"
  *         description: Comma-separated category IDs
  *       - in: query
- *         name: brands
+ *         name: brand
  *         schema:
  *           type: string
  *           example: "1,2,3"
