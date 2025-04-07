@@ -423,7 +423,8 @@ const fetchProducts = async (query) => {
                 id: attribute.attribute.id,
                 name: attribute.attribute.name,
                 type: attribute.attribute.type,
-                is_visible_page: attribute.attribute.is_visible_page
+                is_visible: attribute.is_visible,
+                is_visible_page: attribute.is_visible
               },
               terms: []
             });
@@ -461,7 +462,8 @@ const fetchProducts = async (query) => {
                 id: pat.attribute.id,
                 name: pat.attribute.name,
                 type: pat.attribute.type,
-                is_visible_page: pat.attribute.is_visible_page
+                is_visible: pat.is_visible_page,
+                is_visible_page: pat.is_visible_page
               },
               terms: []
             });
