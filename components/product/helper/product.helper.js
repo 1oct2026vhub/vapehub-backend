@@ -189,8 +189,9 @@ const fetchProducts = async (query) => {
       price_range,
       categories,
       brands,
-      variant, // Expected format: { "12": [56,6,3,5], "29": [33,669,55] }
-      is_new
+      variant,
+      is_new,
+      source
     } = query;
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
@@ -232,7 +233,6 @@ const fetchProducts = async (query) => {
       const [minPrice, maxPrice] = price_range.split('-').map(Number);
       variantWhereClause.price = { [Op.between]: [minPrice || 0, maxPrice || Infinity] };
     }
-
     // Build ProductAttributeTerm where clause for variant filtering
     let productAttributeConditions = [];
     if (variantObject && Object.keys(variantObject).length > 0) {
@@ -267,26 +267,29 @@ const fetchProducts = async (query) => {
         }
       }
     }
-
+    
     // Combine product attribute conditions
     let productAttributeWhereClause = {};
     if (productAttributeConditions.length > 0) {
       productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
     }
-
     // Build include clause
     const includeClause = [
-      { model: Category, as: 'Category' },
-      { model: Brand, as: 'Brand' },
+
+      { model: Category, as: 'Category'},   // , attributes: ['id', 'name'] 
+      { model: Brand, as: 'Brand' },//, attributes: ['id', 'name'] 
       {
         model: ProductVariant,
         as: 'variants',
         where: variantWhereClause,
         required: Object.keys(variantWhereClause).length > 0, // Only require if variant ID is specified
+        // attributes: ['id', 'slug'],
         include: [
           {
             model: ProductVariantAttribute,
             as: 'variantAttributes',
+            where: productAttributeWhereClause,
+            //attributes: ['id', 'variant_id', 'attribute_id'],
             include: [
               { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
               { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
@@ -302,7 +305,8 @@ const fetchProducts = async (query) => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: productAttributeWhereClause,
+        // where: productAttributeWhereClause,
+        //attributes: ['id', 'product_id', 'attribute_id' ],
         required: productAttributeConditions.length > 0, // Require if filtering by attributes
         include: [
           { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
@@ -333,6 +337,7 @@ const fetchProducts = async (query) => {
     // Fetch products
     const products = await Product.findAll({
       where: productWhereClause,
+      //attributes: ['id', 'name'],
       include: includeClause,
       order: [
         [sort_by, order],
@@ -343,89 +348,222 @@ const fetchProducts = async (query) => {
       distinct: true,
     });
 
-    // First, get all products to count terms across all products
-    const allProducts = await Product.findAll({
-      where: productWhereClause,
-      include: [{
-        model: ProductAttributeTerm,
-        as: 'productAttributeTerms',
-        include: [
-          { model: Attribute, as: 'attribute' },
-          { model: AttributeTerm, as: 'term' }
-        ]
-      }]
-    });
+    const attributeTermMap = new Map();
+    const categoriesMap = new Map();
+    const brandMap = new Map();
+    products.forEach((product, index) => {
+      if(source == "brand"){
+        if(product.category_id && product.Category){
+          if(!categoriesMap.get(product.category_id)){
+            categoriesMap.set(product.category_id, {
+              id: product.Category.id,
+              name: product.Category.name,
+              slug: product.Category.slug,
+              product_count: 1
+            })
+          }
+          else{
+            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
+          }
+        }
+      }
+      else if(source == "category"){
+        if(product.brand_id && product.Brand){
+          if(!brandMap.get(product.brand_id)){
+            brandMap.set(product.brand_id, {
+              id: product.Brand.id,
+              name: product.Brand.name,
+              slug: product.Brand.slug,
+              product_count: 1
+            })
+          }
+          else{
+            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
+          }
+        }
+      }
+      else{
+        if(product.category_id && product.Category){
+          if(!categoriesMap.get(product.category_id)){
+            categoriesMap.set(product.category_id, {
+              id: product.Category.id,
+              name: product.Category.name,
+              slug: product.Category.slug,
+              product_count: 1
+            })
+          }
+          else{
+            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
+          }
+        }
 
-    // Create a map to store term counts
-    const termCountMap = new Map();
+        if(product.brand_id && product.Brand){
+          if(!brandMap.get(product.brand_id)){
+            // console.log("product brand>>>>", product)
+            brandMap.set(product.brand_id, {
+              id: product.Brand.id,
+              name: product.Brand.name,
+              slug: product.Brand.slug,
+              product_count: 1
+            })
+          }
+          else{
+            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
+          }
+        }
+      }
 
-    // Count occurrences of each term across all products
-    allProducts.forEach(product => {
+      
+      
+      product.variants.forEach((variant)=>{
+        variant.variantAttributes.forEach((attribute)=>{
+          if (!attributeTermMap.has(attribute.attribute_id)) {
+            attributeTermMap.set(attribute.attribute_id, {
+              attribute: {
+                id: attribute.attribute.id,
+                name: attribute.attribute.name,
+                type: attribute.attribute.type,
+                is_visible_page: attribute.attribute.is_visible_page
+              },
+              terms: []
+            });
+          }
+          const existingAttribute = attributeTermMap.get(attribute.attribute_id);
+            const termExists = existingAttribute.terms.findIndex(term => term.id === attribute.term.id);
+            // console.log("termExists>>", termExists)
+            if (termExists === -1) {
+              // Get the count for this term
+              // const termCount = termCountMap.get(`${attribute.id}-${pat.term.id}`) || 0;
+              
+              existingAttribute.terms.push({
+                id: attribute.term.id,
+                name: attribute.term.name,
+                slug: attribute.term.slug,
+                product_count: 1
+              });
+            }
+            else{
+              existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1
+            }
+            // console.log("existingAttribute second>>>", existingAttribute)
+        })
+      })
+
+      // Process ProductAttributeTerm data
       if (product.productAttributeTerms) {
         product.productAttributeTerms.forEach(pat => {
           const attributeId = pat.attribute.id;
           const termId = pat.term.id;
-          const key = `${attributeId}-${termId}`;
-          
-          if (!termCountMap.has(key)) {
-            termCountMap.set(key, 0);
-          }
-          termCountMap.set(key, termCountMap.get(key) + 1);
-        });
-      }
-    });
 
-    // Create a common attributes structure
-    const commonAttributes = new Map();
-    
-    // Process all products to build common attributes
-    products.forEach(product => {
-      if (product.productAttributeTerms) {
-        product.productAttributeTerms.forEach((pat) => {
-          const attribute = pat.attribute;
-          if (!attribute) return;
-
-          if (!commonAttributes.has(attribute.id)) {
-            commonAttributes.set(attribute.id, {
+          if (!attributeTermMap.has(attributeId)) {
+            attributeTermMap.set(attributeId, {
               attribute: {
-                id: attribute.id,
-                name: attribute.name,
-                type: attribute.type,
-                is_visible_page: pat.is_visible_page
+                id: pat.attribute.id,
+                name: pat.attribute.name,
+                type: pat.attribute.type,
+                is_visible_page: pat.attribute.is_visible_page
               },
               terms: []
             });
           }
 
-          // Check if term already exists to avoid duplicates
-          const existingAttribute = commonAttributes.get(attribute.id);
-          const termExists = existingAttribute.terms.some(term => term.id === pat.term.id);
+          const existingAttribute = attributeTermMap.get(attributeId);
+          const termExists = existingAttribute.terms.findIndex(term => term.id === termId);
           
-          if (!termExists) {
-            // Get the count for this term
-            const termCount = termCountMap.get(`${attribute.id}-${pat.term.id}`) || 0;
-            
+          if (termExists === -1) {
             existingAttribute.terms.push({
-              id: pat.term.id,
+              id: termId,
               name: pat.term.name,
               slug: pat.term.slug,
-              product_count: termCount
+              product_count: 0 // Initialize with 0, will be updated later
             });
           }
         });
       }
     });
 
-    // Convert Map to array and sort attributes by ID
-    const sortedAttributes = Array.from(commonAttributes.values())
-      .sort((a, b) => a.attribute.id - b.attribute.id);
+    // Now process the variant attributes to get actual counts
+    const variantAttributeMap = new Map();
+    products.forEach(product => {
+      if (product.variants) {
+        product.variants.forEach(variant => {
+          if (variant.variantAttributes) {
+            variant.variantAttributes.forEach(va => {
+              const attributeId = va.attribute.id;
+              const termId = va.term.id;
+              
+              if (!variantAttributeMap.has(attributeId)) {
+                variantAttributeMap.set(attributeId, new Map());
+              }
+              
+              const termMap = variantAttributeMap.get(attributeId);
+              if (!termMap.has(termId)) {
+                termMap.set(termId, 0);
+              }
+              termMap.set(termId, termMap.get(termId) + 1);
+            });
+          }
+        });
+      }
+    });
+
+    // Update product counts in attributeTermMap based on variantAttributeMap
+    attributeTermMap.forEach((attributeData, attributeId) => {
+      const variantTermMap = variantAttributeMap.get(attributeId);
+      
+      attributeData.terms.forEach(term => {
+        if (variantTermMap && variantTermMap.has(term.id)) {
+          term.product_count = variantTermMap.get(term.id);
+        } else {
+          term.product_count = 0;
+        }
+      });
+    });
+
+    const attributes = Array.from(attributeTermMap.values());
+    const category = Array.from(categoriesMap.values());
+    const brand = Array.from(brandMap.values());
+
+    // Define price ranges
+    const priceRanges = [
+      { label: "£0 - £10", min: 0, max: 10, value: "0-10" },
+      { label: "£10 - £25", min: 10, max: 25, value: "10-25" },
+      { label: "£25 - £50", min: 25, max: 50, value: "25-50" },
+      { label: "£50 - £75", min: 50, max: 75, value: "50-75" },
+      { label: "£75 - £100", min: 75, max: 100, value: "75-100" },
+      { label: "£100 - £200", min: 100, max: 200, value: "100-200" },
+      { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
+    ];
+
+    // Calculate price range counts
+    const priceRangeCounts = priceRanges.map(range => {
+      const count = products.reduce((total, product) => {
+        if (product.variants) {
+          return total + product.variants.filter(variant => {
+            const price = variant.price || 0;
+            return price >= range.min && price < range.max;
+          }).length;
+        }
+        return total;
+      }, 0);
+
+      return {
+        label: range.label,
+        count,
+        value: range.value
+      };
+    });
 
     return { 
       products,
-      attributes: sortedAttributes,
-      pagination 
+      category,
+      brand,
+      attributes,
+      price_ranges: priceRangeCounts,
+      pagination,
     };
   } catch (error) {
+    console.log((error))
     console.error('Error fetching products:', error);
     throw error;
   }
