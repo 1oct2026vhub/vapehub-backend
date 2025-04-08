@@ -110,6 +110,20 @@ module.exports = (sequelize, DataTypes) => {
         referral_code: {
             type: DataTypes.STRING(15),
             allowNull: true,
+            unique: true
+        },
+        referred_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'users',
+                key: 'id'
+            }
+        },
+        referral_points: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
         },
         blocked: {
             type: DataTypes.BOOLEAN,
@@ -129,16 +143,51 @@ module.exports = (sequelize, DataTypes) => {
         return bcrypt.compareSync(providedPassword, this.password);
     };
 
+    // Add method to generate referral code
+    User.prototype.generateReferralCode = async function() {
+        let isUnique = false;
+        let referralCode;
+        
+        while (!isUnique) {
+            // Generate a random string of 6 characters
+            const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
+            // Combine user ID with random string
+            referralCode = `${this.id}${randomString}`;
+            
+            // Check if the code already exists
+            const existingUser = await User.findOne({
+                where: { referral_code: referralCode }
+            });
+            
+            if (!existingUser) {
+                isUnique = true;
+            }
+        }
+        
+        return referralCode;
+    };
+
+    // Add method to add referral points
+    User.prototype.addReferralPoints = async function(points) {
+        this.referral_points += points;
+        await this.save();
+    };
+
     User.beforeCreate(async (user, options) => {
         if (user.password) {
-            user.password = await bcrypt.hash(user.password, 10); // Hash password before saving
+            user.password = await bcrypt.hash(user.password, 10);
+        }
+        if (!user.referral_code) {
+            user.referral_code = await user.generateReferralCode();
         }
     });
+
+    // Add afterCreate hook to ensure referral code is set
     User.afterCreate(async (user, options) => {
         if (!user.referral_code) {
-            user.referral_code = User.generateReferralCode(user.id);
+            user.referral_code = await user.generateReferralCode();
+            await user.save();
         }
-        await user.save();
     });
 
     return User;
