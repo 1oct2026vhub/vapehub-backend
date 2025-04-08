@@ -64,6 +64,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    region: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
     post_code: {
       type: DataTypes.STRING,
       allowNull: true

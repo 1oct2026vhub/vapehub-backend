@@ -103,7 +103,7 @@ exports.validatePlaceOrder = [
   body("payment_method").isObject().withMessage("Payment method is required"),
   body("payment_method.method")
     .isIn(["Worldpay", "VivaWallet"])
-    .withMessage("Payment method must be 'Worldpay' or 'vivaWallet'"),
+    .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
     .isFloat({ min: 0 })

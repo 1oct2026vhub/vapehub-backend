@@ -211,7 +211,7 @@ router.get('/profile', authenticateJWT, userController.userProfile);
  *                   example: Internal server error
  */
 
-router.put('/profile', authenticateJWT,  userController.updateUserProfile)  // validateRequest(validateProfileUpdate),
+router.put('/profile', authenticateJWT, validateRequest(validateProfileUpdate),  userController.updateUserProfile)  // validateRequest(validateProfileUpdate),
 
 /**
  * @swagger
@@ -334,6 +334,7 @@ router.get('/user-address', authenticateJWT, userController.fetchUserAddress)
  *               - town
  *               - post_code
  *               - phone
+ *               - region
  *             properties:
  *               name:
  *                 type: string
@@ -365,6 +366,9 @@ router.get('/user-address', authenticateJWT, userController.fetchUserAddress)
  *               phone:
  *                 type: string
  *                 example: "1234567890"
+ *               region:
+ *                 type: string
+ *                 example: "New York"
  *     responses:
  *       201:
  *         description: Address added successfully.
@@ -387,6 +391,8 @@ router.get('/user-address', authenticateJWT, userController.fetchUserAddress)
  *                     last_name:
  *                       type: string
  *                     street:
+ *                       type: string
+ *                     region:
  *                       type: string
  *       400:
  *         description: Validation error.
@@ -453,6 +459,9 @@ router.post('/user-address', authenticateJWT, validateRequest(validateCreateUser
  *               phone:
  *                 type: string
  *                 example: "1234567890"
+ *               region:
+ *                 type: string
+ *                 example: "New York"
  *     responses:
  *       200:
  *         description: Address updated successfully.
