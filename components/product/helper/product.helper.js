@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
+const { Console } = require('console');
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -196,7 +197,8 @@ const fetchProducts = async (query) => {
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
-
+console.log(limit, parsedLimit)
+console.log(offset, parsedOffset)
     // Handle variant parameter
     let variantObject = variant;
     if (typeof variant === 'string') {
@@ -273,6 +275,9 @@ const fetchProducts = async (query) => {
     if (productAttributeConditions.length > 0) {
       productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
     }
+    console.log("variantObject>>>>", variantObject)
+    console.log("variantWhereClause>>>>", variantWhereClause)
+    console.log("productAttributeWhereClause>>>>", productAttributeWhereClause)
     // Build include clause
     const includeClause = [
 
@@ -282,13 +287,13 @@ const fetchProducts = async (query) => {
         model: ProductVariant,
         as: 'variants',
         where: variantWhereClause,
-        required: Object.keys(variantWhereClause).length > 0, // Only require if variant ID is specified
+        required: Object.keys(variantWhereClause). length > 0, // Only require if variant ID is specified
         // attributes: ['id', 'slug'],
         include: [
           {
             model: ProductVariantAttribute,
             as: 'variantAttributes',
-            where: productAttributeWhereClause,
+            // where: productAttributeWhereClause,
             //attributes: ['id', 'variant_id', 'attribute_id'],
             include: [
               { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
@@ -305,7 +310,7 @@ const fetchProducts = async (query) => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        // where: productAttributeWhereClause,
+        where: productAttributeWhereClause,
         //attributes: ['id', 'product_id', 'attribute_id' ],
         required: productAttributeConditions.length > 0, // Require if filtering by attributes
         include: [
@@ -320,7 +325,7 @@ const fetchProducts = async (query) => {
     const totalCount = await Product.count({
       where: productWhereClause,
       include: includeClause,
-      distinct: true
+      // distinct: true
     });
 
     // Calculate pagination
@@ -337,7 +342,6 @@ const fetchProducts = async (query) => {
     // Fetch products
     const products = await Product.findAll({
       where: productWhereClause,
-      //attributes: ['id', 'name'],
       include: includeClause,
       order: [
         [sort_by, order],
@@ -345,12 +349,34 @@ const fetchProducts = async (query) => {
       ],
       limit: parsedLimit,
       offset: parsedOffset,
-      distinct: true,
+      // distinct: true,
     });
 
+    const allAttributeTerms = await Product.findAll({
+      where: productWhereClause,
+      include: [{
+        model: ProductAttributeTerm,
+        as: 'productAttributeTerms',
+        // where: productAttributeWhereClause,
+        required: productAttributeConditions.length > 0,
+        include: [
+          { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+          { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+        ]
+      }],
+      limit: parsedLimit,
+      offset: parsedOffset,
+      // distinct: true
+    });
+
+    // console.log("sproducts>>>>", sproducts);
+    
     const attributeTermMap = new Map();
+    const allAttributeTermMap = new Map();
     const categoriesMap = new Map();
     const brandMap = new Map();
+
+    // Process products data
     products.forEach((product, index) => {
       if(source == "brand"){
         if(product.category_id && product.Category){
@@ -399,7 +425,6 @@ const fetchProducts = async (query) => {
 
         if(product.brand_id && product.Brand){
           if(!brandMap.get(product.brand_id)){
-            // console.log("product brand>>>>", product)
             brandMap.set(product.brand_id, {
               id: product.Brand.id,
               name: product.Brand.name,
@@ -413,116 +438,79 @@ const fetchProducts = async (query) => {
         }
       }
 
-      
-      
-      product.variants.forEach((variant)=>{
-        variant.variantAttributes.forEach((attribute)=>{
-          if (!attributeTermMap.has(attribute.attribute_id)) {
-            attributeTermMap.set(attribute.attribute_id, {
-              attribute: {
-                id: attribute.attribute.id,
-                name: attribute.attribute.name,
-                type: attribute.attribute.type,
-                is_visible: attribute.is_visible,
-                is_visible_page: attribute.is_visible
-              },
-              terms: []
-            });
-          }
-          const existingAttribute = attributeTermMap.get(attribute.attribute_id);
-            const termExists = existingAttribute.terms.findIndex(term => term.id === attribute.term.id);
-            // console.log("termExists>>", termExists)
-            if (termExists === -1) {
-              // Get the count for this term
-              // const termCount = termCountMap.get(`${attribute.id}-${pat.term.id}`) || 0;
-              
-              existingAttribute.terms.push({
-                id: attribute.term.id,
-                name: attribute.term.name,
-                slug: attribute.term.slug,
-                product_count: 1
-              });
-            }
-            else{
-              existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1
-            }
-            // console.log("existingAttribute second>>>", existingAttribute)
-        })
-      })
-
       // Process ProductAttributeTerm data
       if (product.productAttributeTerms) {
-        product.productAttributeTerms.forEach(pat => {
-          const attributeId = pat.attribute.id;
-          const termId = pat.term.id;
-
-          if (!attributeTermMap.has(attributeId)) {
-            attributeTermMap.set(attributeId, {
+        product.productAttributeTerms.forEach((pat) => {
+          if (!attributeTermMap.has(pat.attribute_id)) {
+            attributeTermMap.set(pat.attribute_id, {
               attribute: {
                 id: pat.attribute.id,
                 name: pat.attribute.name,
                 type: pat.attribute.type,
                 is_visible: pat.is_visible_page,
-                is_visible_page: pat.is_visible_page
               },
               terms: []
             });
           }
-
-          const existingAttribute = attributeTermMap.get(attributeId);
-          const termExists = existingAttribute.terms.findIndex(term => term.id === termId);
-          
+          const existingAttribute = attributeTermMap.get(pat.attribute_id);
+          console.log("existingAttribute>>>",existingAttribute)
+          const termExists = existingAttribute.terms.findIndex(term => term.id === pat.term.id);
+          console.log("terms>>>>", pat.attribute_id, pat.term.id, termExists)
           if (termExists === -1) {
             existingAttribute.terms.push({
-              id: termId,
+              id: pat.term.id,
               name: pat.term.name,
               slug: pat.term.slug,
-              product_count: 0 // Initialize with 0, will be updated later
+              product_count: 1
             });
+          } else {
+            existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1;
           }
         });
       }
     });
 
-    // Now process the variant attributes to get actual counts
-    const variantAttributeMap = new Map();
-    products.forEach(product => {
-      if (product.variants) {
-        product.variants.forEach(variant => {
-          if (variant.variantAttributes) {
-            variant.variantAttributes.forEach(va => {
-              const attributeId = va.attribute.id;
-              const termId = va.term.id;
+    // Process allAttributeTerms data
+    // console.log("allAttributeTerms>>>>", allAttributeTerms);
+    if (allAttributeTerms) {
+      allAttributeTerms.forEach((product) => {
+        if (product.productAttributeTerms) {
+          product.productAttributeTerms.forEach((pat) => {
+            if (!allAttributeTermMap.has(pat.attribute_id)) {
+              allAttributeTermMap.set(pat.attribute_id, {
+                attribute: {
+                  id: pat.attribute.id,
+                  name: pat.attribute.name,
+                  type: pat.attribute.type,
+                  is_visible: pat.is_visible_page,
+                  is_visible_page: pat.is_visible_page
+                },
+                terms: []
+              });
+            }
+            const existingAttribute = allAttributeTermMap.get(pat.attribute_id);
+            const termExists = existingAttribute.terms.findIndex(term => term.id === pat.term.id);
+            
+            if (termExists === -1) {
+              existingAttribute.terms.push({
+                id: pat.term.id,
+                name: pat.term.name,
+                slug: pat.term.slug,
+                product_count: 1
+              });
+              console.log("existingAttribute.terms[termExists] if>>>>>", existingAttribute.terms)
+            } else {
+              console.log("existingAttribute.terms[termExists] else>>>>>", existingAttribute.terms[termExists])
               
-              if (!variantAttributeMap.has(attributeId)) {
-                variantAttributeMap.set(attributeId, new Map());
-              }
-              
-              const termMap = variantAttributeMap.get(attributeId);
-              if (!termMap.has(termId)) {
-                termMap.set(termId, 0);
-              }
-              termMap.set(termId, termMap.get(termId) + 1);
-            });
-          }
-        });
-      }
-    });
-
-    // Update product counts in attributeTermMap based on variantAttributeMap
-    attributeTermMap.forEach((attributeData, attributeId) => {
-      const variantTermMap = variantAttributeMap.get(attributeId);
-      
-      attributeData.terms.forEach(term => {
-        if (variantTermMap && variantTermMap.has(term.id)) {
-          term.product_count = variantTermMap.get(term.id);
-        } else {
-          term.product_count = 0;
+              existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1;
+            }
+          });
         }
       });
-    });
+    }
 
-    const attributes = Array.from(attributeTermMap.values());
+    // const attributes = Array.from(attributeTermMap.values());
+    const attributes = Array.from(allAttributeTermMap.values());
     const category = Array.from(categoriesMap.values());
     const brand = Array.from(brandMap.values());
 
@@ -561,6 +549,7 @@ const fetchProducts = async (query) => {
       category,
       brand,
       attributes,
+      // allAttributes,
       price_ranges: priceRangeCounts,
       pagination,
     };

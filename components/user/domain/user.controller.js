@@ -4,6 +4,7 @@ const { User, UserAddress } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
+const { createNotification } = require('../../notification/helper/notification.helper');
 
 const userProfile = async (req, res, next) => {
     try {
@@ -32,8 +33,7 @@ const updateUserProfile = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         const { first_name, last_name, email, phone } = req.body;
-
-        const user = await User.findByPk(user_id);
+        const user = await User.findOne({where: { id: user_id }});
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
@@ -46,12 +46,22 @@ const updateUserProfile = async (req, res, next) => {
 
         await user.save();
 
+        // Create notification for profile update
+        await createNotification({
+            userId: user_id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Your profile has been updated successfully'
+            },
+            title: 'Profile Updated'
+        });
+
         return res.status(200).json({ success: true, message: 'Profile updated successfully' });
     } catch (error) {
         console.error('Error updating profile:', error);
         return res.status(500).json({ success: false, message: 'Internal server error' });
     }
-
 }
 
 const fetchUserAddress = async (req, res, next) => {
@@ -87,8 +97,8 @@ const fetchUserAddress = async (req, res, next) => {
 
 const createUserAddress = async (req, res, next) => {
     try {
-        const userId = req.user.id; // Get authenticated user ID
-        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone } = req.body;
+        const userId = req.user.id;
+        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone, region } = req.body;
 
         // Create new address
         const newAddress = await UserAddress.create({
@@ -103,10 +113,22 @@ const createUserAddress = async (req, res, next) => {
             town,
             county,
             post_code,
-            phone
+            phone,
+            region
         });
 
-        successResponse(res, newAddress,  'Address added successfully', 201);
+        // Create notification for new address
+        await createNotification({
+            userId: userId,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'New address has been added successfully'
+            },
+            title: 'New Address Added'
+        });
+
+        successResponse(res, newAddress, 'Address added successfully', 201);
 
     } catch (error) {
         console.error('Error adding user address:', error);
@@ -117,11 +139,10 @@ const createUserAddress = async (req, res, next) => {
 
 const updateUserAddress = async (req, res, next) => {
     try {
-        const userId = req.user.id; // Get authenticated user ID
-        const addressId = req.params.id; // Get address ID from request params
-        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone } = req.body;
+        const userId = req.user.id;
+        const addressId = req.params.id;
+        const { name, last_name, company_name, country, street, apartment, town, county, post_code, phone, region } = req.body;
 
-        // Find the address in the database
         const userAddress = await UserAddress.findOne({
             where: { id: addressId, user_id: userId }
         });
@@ -130,7 +151,6 @@ const updateUserAddress = async (req, res, next) => {
             return errorResponse(res, {}, {message: 'Address not found'}, 404);
         }
 
-        // Update the address
         await userAddress.update({
             name: name || userAddress.name,
             last_name: last_name || userAddress.last_name,
@@ -142,91 +162,120 @@ const updateUserAddress = async (req, res, next) => {
             county: county || userAddress.county,
             post_code: post_code || userAddress.post_code,
             phone: phone || userAddress.phone,
+            region: region || userAddress.region,
             updated_by: userId
         });
-        successResponse(res, userAddress,  'Address updated successfully', 200);
 
+        // Create notification for address update
+        await createNotification({
+            userId: userId,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Address has been updated successfully'
+            },
+            title: 'Address Updated'
+        });
+
+        successResponse(res, userAddress, 'Address updated successfully', 200);
     } catch (error) {
         console.error('Error updating user address:', error);
         return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
     }
-
 }
 
 const deleteUserAddress = async (req, res, next) => {
     try {
-        const userId = req.user.id; // Get user ID from JWT
-        const addressId = req.params.id; // Get address ID from request params
+        const userId = req.user.id;
+        const addressId = req.params.id;
 
-        // Find the address in the database
         const userAddress = await UserAddress.findOne({
             where: { id: addressId, user_id: userId }
         });
 
         if (!userAddress) {
-            console.log("userAddress enter>>>>", userAddress)
             return errorResponse(res, {}, {message: 'Address not found'}, 404);
         }
 
-        // Delete the address
         await userAddress.destroy();
 
-        successResponse(res, userAddress,  'Address deleted successfully', 200);
+        // Create notification for address deletion
+        await createNotification({
+            userId: userId,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Address has been deleted successfully'
+            },
+            title: 'Address Deleted'
+        });
 
+        successResponse(res, userAddress, 'Address deleted successfully', 200);
     } catch (error) {
         console.error('Error deleting user address:', error);
         return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
     }
-
 }
 
 const changeUserPassword = async (req, res, next) => {
     const { email, currentPassword, newPassword } = req.body;
-    const user_id = req.user.id; // Assuming `user` is added to `req` by authentication middleware
+    const user_id = req.user.id;
     try {
-        // Find the user by ID
         const user = await User.findOne({where:{id:user_id, email}});
         if (!user) {
             return errorResponse(res, {}, {message: 'User not found'}, 404);
         }
 
-        // Verify the current password
+        // Check if current and new passwords are the same
+        if (currentPassword === newPassword) {
+            return errorResponse(res, {}, {message: 'New password cannot be the same as current password'}, 400);
+        }
+
         const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isPasswordValid) {
             return errorResponse(res, {}, {message: 'Current password is incorrect'}, 401);
         }
 
-        // Hash the new password
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-        // Update the user's password in the database
         user.password = hashedNewPassword;
         await user.save();
 
-        successResponse(res, user,  'Password updated successfully', 200);
+        // Create notification for password change
+        await createNotification({
+            userId: user_id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Your password has been changed successfully'
+            },
+            title: 'Password Changed'
+        });
 
+        successResponse(res, user, 'Password updated successfully', 200);
     } catch (error) {
         console.error('Error changing password:', error);
         return errorResponse(res, error, {message: 'Internal Server Error'}, 500);
     }
-
-
 }
 
 const referFriend = async (req, res, next) => {
     try {
-        const { email } = req.body;
-        const { referral_code } = req.user
-        // check if the user email already exists
-        const user = await User.findOne({ where: { email } })
-        if (user) {
-            throw {
-                message: "user already exists",
-                statusCode: 400,
-                errors: { email: "user already exists" },
-            }
+        const { email, referral_code } = req.body;
+        const referrer_id = req.user.id;
+
+        // Check if the email is already registered
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return errorResponse(res, {}, { message: 'User with this email already exists' }, 400);
         }
 
+        // Check if the referral code is valid
+        const referrer = await User.findOne({ where: { referral_code } });
+        if (!referrer) {
+            return errorResponse(res, {}, { message: 'Invalid referral code' }, 400);
+        }
+
+        // Send referral email
         const username = email.split('@')[0];
         const data = {
             emailTypes: constants.emailTypes.REFER_A_FRIEND,
@@ -237,36 +286,171 @@ const referFriend = async (req, res, next) => {
                 token: referral_code
             },
             attachments: ""
-        }
+        };
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-        console.log("Invitation email sent.");
-        successResponse(res, { message: "invitation email sent" }, 'Success');
-    } catch (error) {
-        console.log("🚀 ~ module.exports.listAllblogs= ~ error:", error)
-        return errorResponse(res, error, error.message);
-    }
 
-}
+        // Create notification for referrer
+        await createNotification({
+            userId: referrer_id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `Referral invitation sent to ${email}`
+            },
+            title: 'Friend Referral'
+        });
+
+        successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+    } catch (error) {
+        console.error('Error in referFriend:', error);
+        return errorResponse(res, error, { message: 'Internal Server Error' }, 500);
+    }
+};
+
+const processReferral = async (userId, referralCode) => {
+    try {
+        const referrer = await User.findOne({ where: { referral_code: referralCode } });
+        if (!referrer) {
+            return;
+        }
+
+        // Define point values for different actions
+        const POINTS = {
+            SIGNUP: 100,           // Points for successful signup
+            FIRST_PURCHASE: 200,   // Points for first purchase
+            COMPLETE_PROFILE: 50   // Points for completing profile
+        };
+
+        // Update referred user
+        await User.update(
+            { referred_by: referrer.id },
+            { where: { id: userId } }
+        );
+
+        // Add signup points to referrer
+        await referrer.addReferralPoints(POINTS.SIGNUP);
+
+        // Create notification for referrer
+        await createNotification({
+            userId: referrer.id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `You earned ${POINTS.SIGNUP} points for a successful referral signup!`
+            },
+            title: 'Referral Points Earned'
+        });
+
+        // Create notification for referred user
+        await createNotification({
+            userId: userId,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `You joined through ${referrer.first_name}'s referral!`
+            },
+            title: 'Welcome Through Referral'
+        });
+
+        return POINTS;
+    } catch (error) {
+        console.error('Error processing referral:', error);
+    }
+};
+
+// Add function to award points for first purchase
+const awardFirstPurchasePoints = async (userId) => {
+    try {
+        const user = await User.findByPk(userId);
+        if (!user || !user.referred_by) return;
+
+        const referrer = await User.findByPk(user.referred_by);
+        if (!referrer) return;
+
+        const POINTS = {
+            FIRST_PURCHASE: 200
+        };
+
+        await referrer.addReferralPoints(POINTS.FIRST_PURCHASE);
+
+        // Create notification for referrer
+        await createNotification({
+            userId: referrer.id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `You earned ${POINTS.FIRST_PURCHASE} points for your referral's first purchase!`
+            },
+            title: 'Referral Purchase Points'
+        });
+
+        return POINTS.FIRST_PURCHASE;
+    } catch (error) {
+        console.error('Error awarding first purchase points:', error);
+    }
+};
+
+// Add function to award points for profile completion
+const awardProfileCompletionPoints = async (userId) => {
+    try {
+        const user = await User.findByPk(userId);
+        if (!user || !user.referred_by) return;
+
+        const referrer = await User.findByPk(user.referred_by);
+        if (!referrer) return;
+
+        const POINTS = {
+            COMPLETE_PROFILE: 50
+        };
+
+        await referrer.addReferralPoints(POINTS.COMPLETE_PROFILE);
+
+        // Create notification for referrer
+        await createNotification({
+            userId: referrer.id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `You earned ${POINTS.COMPLETE_PROFILE} points for your referral completing their profile!`
+            },
+            title: 'Profile Completion Points'
+        });
+
+        return POINTS.COMPLETE_PROFILE;
+    } catch (error) {
+        console.error('Error awarding profile completion points:', error);
+    }
+};
 
 const deleteAccount = async (req, res) => {
-    const userId = req.user.id; // Assuming you have the user ID in the JWT token
+    const userId = req.user.id;
     
     try {
-        // Find the user
         const user = await User.findByPk(userId);
 
         if (!user) {
             return errorResponse(res, {}, {message: 'User not found'}, 401);
         }
 
+        // Create notification before account deletion
+        await createNotification({
+            userId: userId,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Your account has been deleted successfully'
+            },
+            title: 'Account Deleted'
+        });
+
         // Delete the user account
         await user.destroy();
 
-        successResponse(res, user,  'Account deleted successfully', 200);
+        successResponse(res, user, 'Account deleted successfully', 200);
     } catch (error) {
         console.error('Error deleting account:', error);
         return res.status(500).json({ success: false, message: 'Internal server error' });
     }
 };
 
-module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, deleteAccount}
+module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, processReferral, awardFirstPurchasePoints, awardProfileCompletionPoints, deleteAccount}
