@@ -705,6 +705,36 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get primary product image
         const primaryProductImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
 
+        // Prepare filtered attribute terms with full data
+        const filteredAttributeTerms = attribute_terms.map(filter => {
+            const attribute = product.productAttributeTerms.find(pat => 
+                pat.attribute.id === filter.attribute_id
+            )?.attribute;
+            
+            const term = product.productAttributeTerms.find(pat => 
+                pat.attribute.id === filter.attribute_id && pat.term.id === filter.term_id
+            )?.term;
+            
+            if (attribute && term) {
+                return {
+                    attribute: {
+                        id: attribute.id,
+                        name: attribute.name,
+                        type: attribute.type,
+                        slug: attribute.slug,
+                        description: attribute.description
+                    },
+                    term: {
+                        id: term.id,
+                        name: term.name,
+                        slug: term.slug,
+                        description: term.description
+                    }
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
         const response = {
             product: {
                 id: product.id,
@@ -737,6 +767,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 updated_at: variant.updated_at
             })),
             available_terms: Array.from(availableTermsMap.values()),
+            filtered_attribute_terms: filteredAttributeTerms,
             stock_summary: stockSummary
         };
 
