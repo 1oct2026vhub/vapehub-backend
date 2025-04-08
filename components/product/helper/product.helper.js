@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
-const { Console } = require('console');
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -189,7 +188,7 @@ const fetchProducts = async (query) => {
       keyword,
       price_range,
       categories,
-      brands,
+      brand,
       variant,
       is_new,
       source
@@ -197,8 +196,6 @@ const fetchProducts = async (query) => {
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
-console.log(limit, parsedLimit)
-console.log(offset, parsedOffset)
     // Handle variant parameter
     let variantObject = variant;
     if (typeof variant === 'string') {
@@ -222,8 +219,8 @@ console.log(offset, parsedOffset)
       lastMonthDate.setDate(lastMonthDate.getDate() - 30);
       productWhereClause.createdAt = { [Op.gte]: lastMonthDate };
     }
-    if (brands) {
-      productWhereClause.brand_id = { [Op.in]: brands.split(',').map(Number) };
+    if (brand) {
+      productWhereClause.brand_id = { [Op.in]: brand.split(',').map(Number) };
     }
     if (categories) {
       productWhereClause.category_id = { [Op.in]: categories.split(',').map(Number) };
@@ -275,9 +272,7 @@ console.log(offset, parsedOffset)
     if (productAttributeConditions.length > 0) {
       productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
     }
-    console.log("variantObject>>>>", variantObject)
-    console.log("variantWhereClause>>>>", variantWhereClause)
-    console.log("productAttributeWhereClause>>>>", productAttributeWhereClause)
+    
     // Build include clause
     const includeClause = [
 
@@ -325,7 +320,7 @@ console.log(offset, parsedOffset)
     const totalCount = await Product.count({
       where: productWhereClause,
       include: includeClause,
-      // distinct: true
+      distinct: true
     });
 
     // Calculate pagination
@@ -349,7 +344,7 @@ console.log(offset, parsedOffset)
       ],
       limit: parsedLimit,
       offset: parsedOffset,
-      // distinct: true,
+      distinct: true,
     });
 
     const allAttributeTerms = await Product.findAll({
@@ -366,10 +361,9 @@ console.log(offset, parsedOffset)
       }],
       limit: parsedLimit,
       offset: parsedOffset,
-      // distinct: true
+      distinct: true
     });
 
-    // console.log("sproducts>>>>", sproducts);
     
     const attributeTermMap = new Map();
     const allAttributeTermMap = new Map();
@@ -453,9 +447,7 @@ console.log(offset, parsedOffset)
             });
           }
           const existingAttribute = attributeTermMap.get(pat.attribute_id);
-          console.log("existingAttribute>>>",existingAttribute)
           const termExists = existingAttribute.terms.findIndex(term => term.id === pat.term.id);
-          console.log("terms>>>>", pat.attribute_id, pat.term.id, termExists)
           if (termExists === -1) {
             existingAttribute.terms.push({
               id: pat.term.id,
@@ -471,7 +463,6 @@ console.log(offset, parsedOffset)
     });
 
     // Process allAttributeTerms data
-    // console.log("allAttributeTerms>>>>", allAttributeTerms);
     if (allAttributeTerms) {
       allAttributeTerms.forEach((product) => {
         if (product.productAttributeTerms) {
@@ -498,10 +489,7 @@ console.log(offset, parsedOffset)
                 slug: pat.term.slug,
                 product_count: 1
               });
-              console.log("existingAttribute.terms[termExists] if>>>>>", existingAttribute.terms)
             } else {
-              console.log("existingAttribute.terms[termExists] else>>>>>", existingAttribute.terms[termExists])
-              
               existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1;
             }
           });
@@ -509,10 +497,42 @@ console.log(offset, parsedOffset)
       });
     }
 
-    // const attributes = Array.from(attributeTermMap.values());
-    const attributes = Array.from(allAttributeTermMap.values());
-    const category = Array.from(categoriesMap.values());
-    const brand = Array.from(brandMap.values());
+    const attributes = Array.from(attributeTermMap.values());
+    const allAttributes = Array.from(allAttributeTermMap.values());
+    const category_items = Array.from(categoriesMap.values());
+    const brand_items = Array.from(brandMap.values());
+
+    // Compare and update product_count in attributeTermMap based on allAttributeTermMap
+    allAttributeTermMap.forEach((allAttributeData, attributeId) => {
+        if (attributeTermMap.has(attributeId)) {
+            const attributeData = attributeTermMap.get(attributeId);
+            allAttributeData.terms.forEach(allTerm => {
+                const matchingTerm = attributeData.terms.find(term => term.id === allTerm.id);
+                if (matchingTerm) {
+                    matchingTerm.product_count = allTerm.product_count;
+                } else {
+                    // Add the unmatched term with product_count 0
+                    attributeData.terms.push({
+                        id: allTerm.id,
+                        name: allTerm.name,
+                        slug: allTerm.slug,
+                        product_count: 0
+                    });
+                }
+            });
+        } else {
+            // If attribute doesn't exist in attributeTermMap, add it with all terms having product_count 0
+            attributeTermMap.set(attributeId, {
+                attribute: allAttributeData.attribute,
+                terms: allAttributeData.terms.map(term => ({
+                    id: term.id,
+                    name: term.name,
+                    slug: term.slug,
+                    product_count: 0
+                }))
+            });
+        }
+    });
 
     // Define price ranges
     const priceRanges = [
@@ -543,11 +563,23 @@ console.log(offset, parsedOffset)
         value: range.value
       };
     });
+    let additionalData = {}
+    if(source == "category"){
+      additionalData.id = products[0].Category.id
+      additionalData.name = products[0].Category.name
+      additionalData.slug = products[0].Category.slug
+    }
+    if(source == "brand"){
+      additionalData.id = products[0].Brand.id
+      additionalData.name = products[0].Brand.name
+      additionalData.slug = products[0].Brand.slug
+    }
 
     return { 
+      additionalData,
       products,
-      category,
-      brand,
+      category_items,
+      brand_items,
       attributes,
       // allAttributes,
       price_ranges: priceRangeCounts,
