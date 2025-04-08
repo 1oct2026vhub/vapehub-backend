@@ -398,7 +398,86 @@ router.get('/', authenticateJWT, orderController.getOrders);
 
 
 router.post("/", authenticateJWT, validateRequest(validatePlaceOrder), orderController.placeOrder)
-// validateRequest(validatePlaceOrder),
+
+/**
+ * @swagger
+ * /api/order/viva-wallet-order-code:
+ *   post:
+ *     summary: Generate Viva Wallet order code
+ *     description: Generates a unique order code for Viva Wallet payment processing
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - order_id
+ *               - amount
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: The total amount to be charged
+ *                 example: 100.50
+ *     responses:
+ *       200:
+ *         description: Order code generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Order code generated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orderCode:
+ *                       type: string
+ *                       description: The generated Viva Wallet order code
+ *                       example: "VW-123456789"
+ *                     paymentUrl:
+ *                       type: string
+ *                       description: The payment URL for Viva Wallet
+ *                       example: "https://payment.vivawallet.com/checkout/123456789"
+ *       400:
+ *         description: Bad Request - Invalid input data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid order ID or amount"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       500:
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to generate order code"
+ */
+router.post("/viva-wallet-order-code", authenticateJWT, orderController.generateVivaOrdercode)
 
 // router.post("/webhook/viva", orderController.handleVivaWebhook)
 
