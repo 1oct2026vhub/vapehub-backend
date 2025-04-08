@@ -18,18 +18,18 @@ const saveShippingAddress = async (user_id, addressData, transaction)=>{
 }
 
 const getVivaAccessToken = async (payMethod)=> {
-        const VIVA_API_BASE = process.env.VIVA_API_BASE;
+    try{
+        const VIVA_API_BASE_1 = process.env.VIVA_API_BASE_1;
         const CLIENT_ID = process.env.VIVA_CLIENT_ID;
         const CLIENT_SECRET = process.env.VIVA_CLIENT_SECRET;
-        const API_KEY = process.env.VIVA_API_KEY;
+        // const API_KEY = process.env.VIVA_API_KEY;
         let cachedAccessToken = null;
         let tokenExpiration = 0;
         // const cachedAccessToken = await redisClient.get("accessToken");
         if (cachedAccessToken && Date.now() < tokenExpiration) {
             return cachedAccessToken;
         }
-
-        const response = await axios.post("https://accounts.vivapayments.com/connect/token", 
+        const response = await axios.post(`${VIVA_API_BASE_1}/connect/token`, 
             new URLSearchParams({
                 grant_type: "client_credentials"
             }), 
@@ -44,27 +44,21 @@ const getVivaAccessToken = async (payMethod)=> {
             }
         );
 
-        // const response = await axios.post(
-        // `${VIVA_API_BASE}/connect/token`,
-        // "grant_type=client_credentials",
-        // {
-        // headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        // auth: { username: CLIENT_ID, password: CLIENT_SECRET },
-        // }
-        // );
-
-        const {access_token, expires_in} = response.data.access_token;
+        const {access_token, expires_in} = response.data;
         tokenExpiration = Date.now() + expires_in * 1000;
-        // Store token in Redis with expiration time
-        // await redisClient.setEx("accessToken", expires_in, access_token);
         cachedAccessToken = access_token;
     
-    return cachedAccessToken;
+        return cachedAccessToken;
+    }
+    catch(error){
+        console.log("error>>>>", error)
+    }
+
 }
 
 const createVivaOrder = async (accessToken, amount) => {
-    const response = await axios.post(
-        "https://api.vivapayments.com/orders",
+    const VIVA_API_BASE_2 = process.env.VIVA_API_BASE_2;
+    const response = await axios.post(`${VIVA_API_BASE_2}/checkout/v2/orders`,
         {
             amount: amount * 100, // Amount in cents
             customerTrns: "Order Payment",
@@ -81,17 +75,17 @@ const createVivaOrder = async (accessToken, amount) => {
     return response.data.orderCode;
 }
 
-const getVivaTransactionToken = async (accessToken, orderCode) => {
-    const response = await axios.get(
-        `https://api.vivapayments.com/nativecheckout/v2/transactions/${orderCode}`,
-        {
-            headers: {
-                Authorization: `Bearer ${accessToken}`
-            }
-        }
-    );
+// const getVivaTransactionToken = async (accessToken, orderCode) => {
+//     const response = await axios.get(
+//         `https://api.vivapayments.com/nativecheckout/v2/transactions/${orderCode}`,
+//         {
+//             headers: {
+//                 Authorization: `Bearer ${accessToken}`
+//             }
+//         }
+//     );
 
-    return response.data.transactionId;
-}
+//     return response.data.transactionId;
+// }
 
-module.exports = {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaTransactionToken}
+module.exports = {saveShippingAddress, getVivaAccessToken, createVivaOrder}

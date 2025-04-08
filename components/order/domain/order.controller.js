@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaTransactionToken} = require("../helper/order.helper")
+const {saveShippingAddress, getVivaAccessToken, createVivaOrder} = require("../helper/order.helper")
 const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
@@ -300,6 +300,20 @@ module.exports.placeOrder = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+module.exports.generateVivaOrdercode = async (req,res)=>{
+    try {
+        const { cardNumber, expiryMonth, expiryYear, cvv, amount, cardToken } = req.body;
+        const accessToken = await getVivaAccessToken();
+        const orderCode = await createVivaOrder(accessToken,amount); // Amount in EUR/USD, etc.
+        console.log("orderCode>>>>", orderCode)
+        res.json({ success: true, orderCode: orderCode });
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({ success: false, message: error.response?.data || error.message });
+    }
+}
+
 
 // module.exports.handleVivaWebhook = async (req, res)=>{
 //     const VIVA_WALLET_SECRET = "your_viva_wallet_secret";
