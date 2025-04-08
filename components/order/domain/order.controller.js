@@ -209,27 +209,17 @@ module.exports.placeOrder = async (req, res, next) => {
                 await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
             }
         }
-        // if(payMethod === "VivaWallet"){
-        //     const accessToken = await getVivaAccessToken(payMethod);
-        //     const orderCode = await createVivaOrder(accessToken, 10.00); // Amount in EUR/USD, etc.
-        //     const transactionId = await getVivaTransactionToken(accessToken, orderCode);
-    
-        //     const response = await axios.post(
-        //         "https://api.vivapayments.com/nativecheckout/v2/transactions",
-        //         {
-        //             amount: 1000, // Amount in cents (10.00 EUR/USD)
-        //             transactionId: transactionId,
-        //             preauth: false,
-        //             cardToken: req.body.cardToken
-        //         },
-        //         {
-        //             headers: {
-        //             Authorization: `Bearer ${accessToken}`,
-        //             "Content-Type": "application/json"
-        //         }
-        //         }
-        //     );
-        // }
+        let orderCode = 0;
+        if(payMethod === "VivaWallet"){
+            try {
+                const accessToken = await getVivaAccessToken();
+                orderCode = await createVivaOrder(accessToken,calculatedTotal); // Amount in EUR/USD, etc.
+                // res.json({ success: true, orderCode: orderCode });
+            } catch (error) {
+                console.log(error)
+                // res.status(500).json({ success: false, message: error.response?.data || error.message });
+            }
+        }
         // else{
             // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
             // const ACCOUNT_ID = process.env.ACCOUNT_ID; //"364806707";  // Your Worldpay Account ID
@@ -279,12 +269,14 @@ module.exports.placeOrder = async (req, res, next) => {
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
+                orderCode: orderCode,
                 order_details: {
                     order_id: order.order_unique_id,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
+                    orderCode: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
@@ -306,7 +298,6 @@ module.exports.generateVivaOrdercode = async (req,res)=>{
         const { cardNumber, expiryMonth, expiryYear, cvv, amount, cardToken } = req.body;
         const accessToken = await getVivaAccessToken();
         const orderCode = await createVivaOrder(accessToken,amount); // Amount in EUR/USD, etc.
-        console.log("orderCode>>>>", orderCode)
         res.json({ success: true, orderCode: orderCode });
     } catch (error) {
         console.log(error)
