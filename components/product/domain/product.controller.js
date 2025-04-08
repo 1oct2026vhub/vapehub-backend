@@ -8,15 +8,14 @@ const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const {products, category, brand, attributes,allAttributes, price_ranges, pagination } = await fetchProducts(req.query);
-        // console.log("attributeTermMap>>", attributeTermMap)
+        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts(req.query);
         return successResponse(res, { 
-
+            ...additionalData,
             products, 
             attributes,  
-            allAttributes,
-            category,
-            brand,
+            // allAttributes,
+            category:category_items,
+            brand:brand_items,
             price_ranges, 
             pagination
         }, 'Success');
