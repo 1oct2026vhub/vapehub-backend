@@ -9,42 +9,62 @@ const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelation
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false } = req.query;
+        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false, category_id, tag_id, status } = req.query;
         const offset = (page - 1) * limit;
 
         let whereCondition = {};
         if (search) {
             whereCondition = {
                 [Op.or]: [
-                    { title: { [Op.iLike]: `%${search}%` } },
-                    { content: { [Op.iLike]: `%${search}%` } }
+                    { id: { [Op.like]: `%${search}%` } },
+                    { title: { [Op.like]: `%${search}%` } },
+                    { content: { [Op.like]: `%${search}%` } }
                 ]
             };
         }
 
+        // Add status filter if provided
+        if (status) {
+            whereCondition.status = status;
+        }
+
+        // Parse category_id and tag_id
+        const categoryIds = category_id ? 
+            category_id.split(',').map(id => parseInt(id.trim())) : [];
+        const tagIds = tag_id ? 
+            tag_id.split(',').map(id => parseInt(id.trim())) : [];
+
+        // Add category and tag filtering
+        let includeConditions = [
+            {
+                model: User,
+                as: 'author',
+                attributes: ['id', 'first_name', 'last_name']
+            },
+            {
+                model: BlogCategory,
+                as: 'categories',
+                through: { attributes: [] },
+                ...(categoryIds.length > 0 && { where: { id: { [Op.in]: categoryIds } } })
+            },
+            {
+                model: BlogTag,
+                as: 'tags',
+                through: { attributes: [] },
+                ...(tagIds.length > 0 && { where: { id: { [Op.in]: tagIds } } })
+            }
+        ];
+
+        // Convert deleted string to boolean
+        const showDeleted = deleted === 'true' || deleted === true;
+
         const { count, rows: blogs } = await Blog.findAndCountAll({
             where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
-                },
-                {
-                    model: BlogCategory,
-                    as: 'categories',
-                    through: { attributes: [] }
-                },
-                {
-                    model: BlogTag,
-                    as: 'tags',
-                    through: { attributes: [] }
-                }
-            ],
+            include: includeConditions,
             order: [[sort, order]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !deleted
+            paranoid: !showDeleted
         });
 
         successResponse(res, {
@@ -130,6 +150,7 @@ module.exports.createBlog = async (req, res) => {
             image_url,
             author_id,
             published_at,
+            status: req.body.status || 'draft',
             updated_by: author_id
         }, { transaction });
 
@@ -243,6 +264,7 @@ module.exports.updateBlog = async (req, res) => {
             ...(slug && { slug }),
             ...(image_url && { image_url }),
             ...(published_at && { published_at }),
+            ...(req.body.status && { status: req.body.status }),
             updated_by
         }, { transaction });
 

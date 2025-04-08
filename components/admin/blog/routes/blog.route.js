@@ -55,6 +55,22 @@ const blogTagRoute = require('./blogTag.route');
  *         schema:
  *           type: boolean
  *           default: false
+ *       - in: query
+ *         name: category_id
+ *         schema:
+ *           type: string
+ *         description: Filter blogs by category ID(s). Can be a single ID or a comma-separated list of IDs (e.g., "1,2,3").
+ *       - in: query
+ *         name: tag_id
+ *         schema:
+ *           type: string
+ *         description: Filter blogs by tag ID(s). Can be a single ID or a comma-separated list of IDs (e.g., "1,2,3").
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *         description: Filter blogs by status (draft, published, or archived)
  *     responses:
  *       200:
  *         description: Successfully retrieved blog posts
@@ -158,6 +174,11 @@ router.get('/posts/:id',
  *                 example: "<h1>Blog Title</h1><p>This is a paragraph with <strong>bold</strong> text.</p>"
  *               slug:
  *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [draft, published, archived]
+ *                 description: The blog post status
+ *                 default: draft
  *               image:
  *                 type: string
  *                 format: binary
@@ -275,6 +296,10 @@ router.post('/posts',
  *                 example: "<h1>Blog Title</h1><p>This is a paragraph with <strong>bold</strong> text.</p>"
  *               slug:
  *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [draft, published, archived]
+ *                 description: The blog post status
  *               image:
  *                 type: string
  *                 format: binary
@@ -378,6 +403,10 @@ router.use('/tags', blogTagRoute);
  *         image_url:
  *           type: string
  *           description: URL of the blog post's featured image
+ *         status:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *           description: The blog post status
  *         published_at:
  *           type: string
  *           format: date-time

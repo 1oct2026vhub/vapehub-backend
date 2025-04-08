@@ -35,6 +35,11 @@ const blogValidation = [
         .isLength({ max: 255 })
         .withMessage('Slug must be less than 255 characters'),
     
+    body('status')
+        .optional()
+        .isIn(['draft', 'published', 'archived'])
+        .withMessage('Status must be either draft, published, or archived'),
+    
     body('published_at')
         .optional()
         .isISO8601()
@@ -109,6 +114,11 @@ const blogUpdateValidation = [
             return true;
         }),
     
+    body('status')
+        .optional()
+        .isIn(['draft', 'published', 'archived'])
+        .withMessage('Status must be either draft, published, or archived'),
+    
     body('categories')
         .optional()
         .custom((value) => {
@@ -141,11 +151,6 @@ const blogUpdateValidation = [
         .trim()
         .isLength({ max: 160 })
         .withMessage('Meta description must be less than 160 characters'),
-    
-    body('status')
-        .optional()
-        .isIn(['draft', 'published', 'archived'])
-        .withMessage('Invalid status value'),
     
     body('published_at')
         .custom((value, { req }) => {
@@ -210,13 +215,27 @@ const filterValidations = [
     
     query('category_id')
         .optional()
-        .isInt()
-        .withMessage('Invalid category ID'),
+        .custom((value) => {
+            if (!value) return true;
+            // Handle comma-separated string of numbers
+            const categoryIds = value.split(',').map(id => parseInt(id.trim()));
+            if (categoryIds.some(id => isNaN(id))) {
+                throw new Error('Category IDs must be valid integers');
+            }
+            return true;
+        }),
     
     query('tag_id')
         .optional()
-        .isInt()
-        .withMessage('Invalid tag ID')
+        .custom((value) => {
+            if (!value) return true;
+            // Handle comma-separated string of numbers
+            const tagIds = value.split(',').map(id => parseInt(id.trim()));
+            if (tagIds.some(id => isNaN(id))) {
+                throw new Error('Tag IDs must be valid integers');
+            }
+            return true;
+        })
 ];
 
 // Configure multer storage
