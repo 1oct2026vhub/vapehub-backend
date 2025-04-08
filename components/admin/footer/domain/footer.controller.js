@@ -8,7 +8,16 @@ class FooterController {
   // Admin: Get all sections
   async getFooterSectionsAdmin(req, res) {
     try {
+      const { is_active } = req.query;
+      
+      // Build where clause for filtering by active status if provided
+      const where = {};
+      if (is_active !== undefined) {
+        where.is_active = is_active === 'true';
+      }
+      
       const sections = await FooterSection.findAll({
+        where,
         order: [['order', 'ASC']],
         include: [{
           model: FooterLink,
@@ -16,6 +25,14 @@ class FooterController {
           order: [['order', 'ASC']]
         }]
       });
+      
+      // Ensure links are properly sorted by order
+      sections.forEach(section => {
+        if (section.links && section.links.length > 0) {
+          section.links.sort((a, b) => a.order - b.order);
+        }
+      });
+      
       res.json({
         success: true,
         data: sections
@@ -113,7 +130,19 @@ class FooterController {
   // Get links by section ID
   async getFooterLinks(req, res) {
     try {
-      const where = req.query.section_id ? { section_id: req.query.section_id } : {};
+      const { section_id, is_active } = req.query;
+      
+      // Build where clause
+      const where = {};
+      if (section_id) {
+        where.section_id = section_id;
+      }
+      
+      // Add active status filter if provided
+      if (is_active !== undefined) {
+        where.is_active = is_active === 'true';
+      }
+      
       const links = await FooterLink.findAll({
         where,
         order: [['order', 'ASC']]
