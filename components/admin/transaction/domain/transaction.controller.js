@@ -22,9 +22,13 @@ exports.listTransactions = async (req, res) => {
     }
     if (search) {
       where[Op.or] = [
-        { '$user.firstName$': { [Op.iLike]: `%${search}%` } },
-        { '$user.lastName$': { [Op.iLike]: `%${search}%` } },
-        { '$user.email$': { [Op.iLike]: `%${search}%` } }
+        { '$user.first_name$': { [Op.like]: `%${search}%` } },
+        { '$user.last_name$': { [Op.like]: `%${search}%` } },
+        { '$user.email$': { [Op.like]: `%${search}%` } },
+        { amount: { [Op.like]: `%${search}%` } },
+        { referenceNumber: { [Op.like]: `%${search}%` } },
+        { paymentMethod: { [Op.like]: `%${search}%` } },
+        { '$order.order_unique_id$': { [Op.like]: `%${search}%` } }
       ];
     }
 
