@@ -29,60 +29,141 @@ exports.validateProfileUpdate = [
 exports.validateCreateUserAddress = [
     body('name')
         .notEmpty().withMessage('Name is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Name cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ max: 50 }).withMessage('Name must be between 2 and 50 characters long'),
 
     body('last_name')
         .notEmpty().withMessage('Last name is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Last name cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({max: 50 }).withMessage('Last name must be between 2 and 50 characters long'),
 
     body('street')
         .notEmpty().withMessage('Street is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Street cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Street name must be at least 3 characters long'),
 
     body('town')
         .notEmpty().withMessage('Town is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Town cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Town name must be at least 3 characters long'),
 
     body('post_code')
-        .notEmpty().withMessage('Post code is required'),
+        .notEmpty().withMessage('Post code is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Post code cannot be empty or contain only spaces');
+            }
+            return true;
+        }),
 
     body('region')
         .notEmpty().withMessage('Region is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Region cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Region must be at least 2 characters long'),
 
     body('country')
         .notEmpty().withMessage('Country is required')
+        .custom((value) => {
+            if (value.trim().length === 0) {
+                throw new Error('Country cannot be empty or contain only spaces');
+            }
+            return true;
+        })
 ];
 
 exports.validateUpdateUserAddress = [
     check('name')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Name cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({max: 50 }).withMessage('Name must be between 2 and 50 characters long'),
     
     check('last_name')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Last name cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({max: 50 }).withMessage('Last name must be between 2 and 50 characters long'),
     
     check('street')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Street cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Street name must be at least 2 characters long'),
     
     check('town')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Town cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Town name must be at least 2 characters long'),
     
     check('post_code')
-        .optional(),
-    
-    check('phone')
-        .optional(),
+        .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Post code cannot be empty or contain only spaces');
+            }
+            return true;
+        }),
     
     check('region')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Region cannot be empty or contain only spaces');
+            }
+            return true;
+        })
         .isLength({ min: 2 }).withMessage('Region must be at least 2 characters long'),
     
     check('country')
         .optional()
+        .custom((value) => {
+            if (value && value.trim().length === 0) {
+                throw new Error('Country cannot be empty or contain only spaces');
+            }
+            return true;
+        })
 ];
 
 exports.validateChangePassword = [
