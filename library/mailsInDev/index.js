@@ -5,36 +5,50 @@ const previewEmail = require('preview-email')
 
 const hbs = require('handlebars')
 
-const indexFilePath = path.join(__dirname, '../../emails/index')
+const emailsDir = path.join(__dirname, '../../emails')
+const indexFilePath = path.join(emailsDir, 'index')
 
 /**
  * Function to render a new email, save it as file and add it to index file
  */
 exports.newEmail = async(email) => {
     const fileId = uuid.v4();
+
+    // Ensure emails directory exists
+    try {
+        await fs.access(emailsDir);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            await fs.mkdir(emailsDir, { recursive: true });
+        } else {
+            throw error;
+        }
+    }
+
     await previewEmail(email, {
         hasDownloadOriginalButton: false,
         openSimulator: false,
         open: false,
         template: path.join(__dirname, 'emailTemplate.pug'),
-        dir: path.join(__dirname, '../../emails'),
+        dir: emailsDir,
         id: fileId,
     })
+
     let oldIndexText;
     try {
         oldIndexText = await fs.readFile(indexFilePath, 'utf8');
     } catch (error) {
-        if(error.code==='ENOENT') {
+        if(error.code === 'ENOENT') {
             await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n`)
             return;
         }
         throw error;
     }
     const oldIndex = oldIndexText.split('\n').filter(i => i);
-    if(oldIndex.length>=50) {
+    if(oldIndex.length >= 50) {
         const toDel = oldIndex.splice(49);
         for(let i of toDel) {
-            await fs.rm(path.join(__dirname, '../../emails', i.substring(0, i.indexOf(' '))+'.html'));
+            await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
         }
     }
     await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`)
@@ -86,7 +100,7 @@ const readEmail = async(id) => {
     if(indexText[lineEndIndex-1]!=='o') {
         await fs.writeFile(indexFilePath, indexText.substring(0, lineEndIndex-1)+'o'+indexText.substring(lineEndIndex))
     }
-    const fh = await fs.open(path.join(__dirname, '../../emails', id+'.html'));;
+    const fh = await fs.open(path.join(emailsDir, id+'.html'));;
     const rs = fh.createReadStream();
     return rs;
 }

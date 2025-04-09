@@ -16,7 +16,7 @@ module.exports = {
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         REFER_A_FRIEND: {
-            folderName: 'referFriend',
+            folderName: 'refer_a_friend',
             subject: 'Invite Your Friends to Join | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },

@@ -77,7 +77,7 @@ const fetchUserAddress = async (req, res, next) => {
                 as: 'UserAddresses', // Must match the alias defined in the model association
                 attributes: [
                     'id', 'name', 'last_name', 'company_name', 'country', 
-                    'street', 'apartment', 'town', 'county', 'post_code', 'phone'
+                    'street', 'apartment', 'town', 'county', 'post_code', 'phone', 'region'
                 ]
             }]
         });
@@ -275,32 +275,49 @@ const referFriend = async (req, res, next) => {
             return errorResponse(res, {}, { message: 'Invalid referral code' }, 400);
         }
 
-        // Send referral email
-        const username = email.split('@')[0];
-        const data = {
-            emailTypes: constants.emailTypes.REFER_A_FRIEND,
-            to: email,
-            context: {
-                userName: username,
-                referralLink: `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`,
-                token: referral_code
-            },
-            attachments: ""
-        };
-        await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+        try {
+            // Send referral email
+            const username = email.split('@')[0];
+            const referralLink = `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`;
+            
+            const data = {
+                emailTypes: constants.emailTypes.REFER_A_FRIEND,
+                to: email,
+                context: {
+                    userName: username,
+                    referralLink: referralLink,
+                    currentYear: new Date().getFullYear()
+                },
+                attachments: ""
+            };
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
-        // Create notification for referrer
-        await createNotification({
-            userId: referrer_id,
-            type: 'system',
-            action: 'alert',
-            data: {
-                message: `Referral invitation sent to ${email}`
-            },
-            title: 'Friend Referral'
-        });
+            // Create notification for referrer
+            await createNotification({
+                userId: referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Referral invitation sent to ${email}`
+                },
+                title: 'Friend Referral'
+            });
 
-        successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+            successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+        } catch (emailError) {
+            console.error('Error sending referral email:', emailError);
+            // Still create notification but indicate email failed
+            await createNotification({
+                userId: referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Failed to send referral invitation to ${email}. Please try again later.`
+                },
+                title: 'Referral Email Failed'
+            });
+            return errorResponse(res, emailError, { message: 'Failed to send referral email' }, 500);
+        }
     } catch (error) {
         console.error('Error in referFriend:', error);
         return errorResponse(res, error, { message: 'Internal Server Error' }, 500);
