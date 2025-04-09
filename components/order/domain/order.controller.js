@@ -116,6 +116,8 @@ module.exports.placeOrder = async (req, res, next) => {
         const shippingAddrs = await saveShippingAddress(user_id, shippingData, transaction);
         const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
         const payMethod = payment_method.method;
+        
+        let wallet_check = {};
 
         // Fetch Cart Items
         const cartItems = await Cart.findAll({
@@ -225,15 +227,23 @@ module.exports.placeOrder = async (req, res, next) => {
             }
         }
         let orderCode = 0;
+        wallet_check.payMethod = payMethod;
         if(payMethod === "VivaWallet"){
+            wallet_check.start = true;
             try {
                 const accessToken = await getVivaAccessToken();
+                wallet_check.accessToken = accessToken;
                 orderCode = await createVivaOrder(accessToken,calculatedTotal); // Amount in EUR/USD, etc.
                 // res.json({ success: true, orderCode: orderCode });
+                wallet_check.orderCode = orderCode;
             } catch (error) {
+                wallet_check.error = true;
+                wallet_check.message = error.response?.data || error.message;
+
                 console.log(error)
                 // res.status(500).json({ success: false, message: error.response?.data || error.message });
             }
+            wallet_check.end = true;
         }
         // else{
             // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
@@ -299,7 +309,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         total: calculatedTotal
                     },
                     shipping: { address: shippingAddrs }
-                }
+                },
+                wallet_log: wallet_check
             }
         }, "Success");
     } catch (error) {
@@ -423,7 +434,6 @@ module.exports.getOrderById = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
         const orderId = req.params.id;
-console.log("order id>>>", orderId)
         const order = await Order.findOne({
             where: { 
                 id: orderId,
