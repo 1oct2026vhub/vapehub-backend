@@ -710,11 +710,41 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 pat.attribute.id === filter.attribute_id
             )?.attribute;
             
-            const term = product.productAttributeTerms.find(pat => 
-                pat.attribute.id === filter.attribute_id && pat.term.id === filter.term_id
-            )?.term;
+            // Find all terms for this attribute from product variants
+            const allTermsForAttribute = new Set();
             
-            if (attribute && term) {
+            // Add terms from product attribute terms
+            product.productAttributeTerms
+                .filter(pat => pat.attribute.id === filter.attribute_id)
+                .forEach(pat => {
+                    allTermsForAttribute.add(JSON.stringify({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug,
+                        description: pat.term.description,
+                        is_selected: pat.term.id === filter.term_id
+                    }));
+                });
+            
+            // Add terms from variant attributes
+            product.variants.forEach(variant => {
+                variant.variantAttributes
+                    .filter(va => va.attribute.id === filter.attribute_id)
+                    .forEach(va => {
+                        allTermsForAttribute.add(JSON.stringify({
+                            id: va.term.id,
+                            name: va.term.name,
+                            slug: va.term.slug,
+                            description: va.term.description,
+                            is_selected: va.term.id === filter.term_id
+                        }));
+                    });
+            });
+            
+            // Convert Set to array and parse JSON strings
+            const terms = Array.from(allTermsForAttribute).map(term => JSON.parse(term));
+            
+            if (attribute) {
                 return {
                     attribute: {
                         id: attribute.id,
@@ -723,12 +753,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         slug: attribute.slug,
                         description: attribute.description
                     },
-                    term: {
-                        id: term.id,
-                        name: term.name,
-                        slug: term.slug,
-                        description: term.description
-                    }
+                    terms: terms
                 };
             }
             return null;
