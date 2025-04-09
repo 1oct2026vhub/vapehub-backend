@@ -3,33 +3,37 @@ const { check, param, body } = require("express-validator");
 exports.validateProfileUpdate = [
     check('first_name')
         .optional()
-        .isLength({ min: 2, max: 20 })
-        .withMessage('First name must be between 2 and 20 characters long'),
+        .isLength({max: 50 })
+        .withMessage('First name must be within 50 characters long'),
 
     check('last_name')
         .optional()
-        .isLength({ min: 2, max: 20 })
-        .withMessage('First name must be between 2 and 20 characters long'),
+        .isLength({ max: 50 })
+        .withMessage('First name must be within 50 characters long'),
 
-    check('email')
-        .optional()
-        .isEmail()
-        .withMessage('Invalid email format'),
+    // check('email')
+    //     .optional()
+    //     .isEmail()
+    //     .withMessage('Invalid email format'),
 
-    check('phone')
-        .optional()
-        .matches(/^[\d-]{10,15}$/)
-        .custom((value) => {
-            const digitCount = value.replace(/-/g, '').length;
-            return digitCount >= 10 && digitCount <= 15;
-        })
-        .withMessage('Phone number must be between 10 to 15 digits (excluding hyphens)'),
+    // check('phone')
+    //     .optional()
+    //     .matches(/^[\d-]{10,15}$/)
+    //     .custom((value) => {
+    //         const digitCount = value.replace(/-/g, '').length;
+    //         return digitCount >= 10 && digitCount <= 15;
+    //     })
+    //     .withMessage('Phone number must be between 10 to 15 digits (excluding hyphens)'),
 ];
 
 exports.validateCreateUserAddress = [
     body('name')
         .notEmpty().withMessage('Name is required')
-        .isLength({ min: 2 }).withMessage('Name must be at least 3 characters long'),
+        .isLength({ max: 50 }).withMessage('Name must be between 2 and 50 characters long'),
+
+    body('last_name')
+        .notEmpty().withMessage('Last name is required')
+        .isLength({max: 50 }).withMessage('Last name must be between 2 and 50 characters long'),
 
     body('street')
         .notEmpty().withMessage('Street is required')
@@ -40,12 +44,7 @@ exports.validateCreateUserAddress = [
         .isLength({ min: 2 }).withMessage('Town name must be at least 3 characters long'),
 
     body('post_code')
-        .notEmpty().withMessage('Post code is required')
-        .isLength({ min: 5, max: 5 }).withMessage('Post code must be exactly 5 characters'),
-
-    body('phone')
-        .notEmpty().withMessage('Phone number is required')
-        .isMobilePhone().withMessage('Invalid phone number format'),
+        .notEmpty().withMessage('Post code is required'),
 
     body('region')
         .notEmpty().withMessage('Region is required')
@@ -56,16 +55,34 @@ exports.validateCreateUserAddress = [
 ];
 
 exports.validateUpdateUserAddress = [
-    check('name').notEmpty().withMessage('Name is required'),
-    check('street').notEmpty().withMessage('Street is required'),
-    check('town').notEmpty().withMessage('Town is required'),
-    check('post_code').notEmpty().withMessage('Post code is required').isLength({ min: 5, max: 5 }).withMessage('Post code must be exactly 5 characters'),
-    check('phone').notEmpty().withMessage('Phone number is required'),
+    check('name')
+        .optional()
+        .isLength({max: 50 }).withMessage('Name must be between 2 and 50 characters long'),
+    
+    check('last_name')
+        .optional()
+        .isLength({max: 50 }).withMessage('Last name must be between 2 and 50 characters long'),
+    
+    check('street')
+        .optional()
+        .isLength({ min: 2 }).withMessage('Street name must be at least 2 characters long'),
+    
+    check('town')
+        .optional()
+        .isLength({ min: 2 }).withMessage('Town name must be at least 2 characters long'),
+    
+    check('post_code')
+        .optional(),
+    
+    check('phone')
+        .optional(),
+    
     check('region')
-        .notEmpty().withMessage('Region is required')
+        .optional()
         .isLength({ min: 2 }).withMessage('Region must be at least 2 characters long'),
+    
     check('country')
-        .notEmpty().withMessage('Country is required')
+        .optional()
 ];
 
 exports.validateChangePassword = [

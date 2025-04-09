@@ -9,15 +9,28 @@ const {validatePlaceOrder} = require("../helper/order.validator")
  * @swagger
  * /api/order:
  *   get:
- *     summary: Fetch all my orders
- *     description: Retrieve all orders of the logged-in user, including order items, product details, and shipping information.
- *     tags: 
+ *     summary: Get user's orders with pagination
+ *     description: Retrieve a paginated list of orders for the authenticated user
+ *     tags:
  *       - Orders
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
  *     responses:
  *       200:
- *         description: Orders fetched successfully
+ *         description: Orders retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -29,136 +42,344 @@ const {validatePlaceOrder} = require("../helper/order.validator")
  *                 message:
  *                   type: string
  *                   example: "Orders fetched successfully"
- *                 orders:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                         example: 1
- *                       order_unique_id:
- *                         type: string
- *                         example: "ORD-12345678"
- *                       total:
- *                         type: string
- *                         example: "99.99"
- *                       discount_price:
- *                         type: string
- *                         example: "10.00"
- *                       status:
- *                         type: string
- *                         enum: [draft, pending, processing, shipped, delivered, completed, fail, cancel, return_requested, return_approved, return_received, refunded]
- *                         example: "delivered"
- *                       createdAt:
- *                         type: string
- *                         format: date-time
- *                         example: "2024-03-20T14:30:00Z"
- *                       orderItems:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             id:
- *                               type: integer
- *                               example: 1
- *                             unit:
- *                               type: string
- *                               example: "pcs"
- *                             unit_price:
- *                               type: string
- *                               example: "49.99"
- *                             quantity:
- *                               type: integer
- *                               example: 2
- *                             discount_price:
- *                               type: string
- *                               example: "5.00"
- *                             total:
- *                               type: string
- *                               example: "89.98"
- *                             product:
- *                               type: object
- *                               properties:
- *                                 id:
- *                                   type: integer
- *                                   example: 101
- *                                 name:
- *                                   type: string
- *                                   example: "Nike Sneakers"
- *                                 image:
- *                                   type: string
- *                                   example: "nike.jpg"
- *                                 price:
- *                                   type: string
- *                                   example: "50.00"
- *                             variant:
- *                               type: object
- *                               properties:
- *                                 id:
- *                                   type: integer
- *                                   example: 201
- *                                 name:
- *                                   type: string
- *                                   example: "Red Size 10"
- *                                 additional_price:
- *                                   type: string
- *                                   example: "5.00"
- *                       shippingAddress:
- *                         type: object
- *                         properties:
- *                           name:
- *                             type: string
- *                             example: "John Doe"
- *                           street:
- *                             type: string
- *                             example: "123 Main St"
- *                           town:
- *                             type: string
- *                             example: "New York"
- *                           post_code:
- *                             type: string
- *                             example: "10001"
- *                           phone:
- *                             type: string
- *                             example: "1234567890"
- *                       billingAddress:
- *                         type: object
- *                         properties:
- *                           name:
- *                             type: string
- *                             example: "John Doe"
- *                           street:
- *                             type: string
- *                             example: "123 Main St"
- *                           town:
- *                             type: string
- *                             example: "New York"
- *                           post_code:
- *                             type: string
- *                             example: "10001"
- *                           phone:
- *                             type: string
- *                             example: "1234567890"
- *                       shippingMethod:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
  *                         type: object
  *                         properties:
  *                           id:
  *                             type: integer
  *                             example: 1
- *                           name:
+ *                           order_unique_id:
  *                             type: string
- *                             example: "Express Delivery"
- *                           price:
+ *                             example: "ORD-12345678"
+ *                           total:
+ *                             type: number
+ *                             example: 99.99
+ *                           discount_price:
+ *                             type: number
+ *                             example: 10.00
+ *                           status:
  *                             type: string
- *                             example: "5.99"
+ *                             enum: [draft, pending, processing, shipped, delivered, completed, fail, cancel, return_requested, return_approved, return_received, refunded]
+ *                             example: "delivered"
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                             example: "2024-03-20T14:30:00Z"
+ *                           orderItems:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   example: 1
+ *                                 unit:
+ *                                   type: string
+ *                                   example: "pcs"
+ *                                 unit_price:
+ *                                   type: number
+ *                                   example: 49.99
+ *                                 quantity:
+ *                                   type: integer
+ *                                   example: 2
+ *                                 discount_price:
+ *                                   type: number
+ *                                   example: 5.00
+ *                                 total:
+ *                                   type: number
+ *                                   example: 89.98
+ *                                 product:
+ *                                   type: object
+ *                                   properties:
+ *                                     id:
+ *                                       type: integer
+ *                                       example: 101
+ *                                     name:
+ *                                       type: string
+ *                                       example: "Nike Sneakers"
+ *                                     price:
+ *                                       type: number
+ *                                       example: 50.00
+ *                                 variant:
+ *                                   type: object
+ *                                   properties:
+ *                                     id:
+ *                                       type: integer
+ *                                       example: 201
+ *                                     slug:
+ *                                       type: string
+ *                                       example: "red-size-10"
+ *                                     price:
+ *                                       type: number
+ *                                       example: 5.00
+ *                                     primary_image_url:
+ *                                       type: string
+ *                                       example: "https://example.com/variant-image.jpg"
+ *                           shippingAddress:
+ *                             type: object
+ *                             properties:
+ *                               name:
+ *                                 type: string
+ *                                 example: "John Doe"
+ *                               street:
+ *                                 type: string
+ *                                 example: "123 Main St"
+ *                               town:
+ *                                 type: string
+ *                                 example: "New York"
+ *                               post_code:
+ *                                 type: string
+ *                                 example: "10001"
+ *                               phone:
+ *                                 type: string
+ *                                 example: "1234567890"
+ *                           billingAddress:
+ *                             type: object
+ *                             properties:
+ *                               name:
+ *                                 type: string
+ *                                 example: "John Doe"
+ *                               street:
+ *                                 type: string
+ *                                 example: "123 Main St"
+ *                               town:
+ *                                 type: string
+ *                                 example: "New York"
+ *                               post_code:
+ *                                 type: string
+ *                                 example: "10001"
+ *                               phone:
+ *                                 type: string
+ *                                 example: "1234567890"
+ *                           shippingMethod:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 example: 1
+ *                               shipping_method:
+ *                                 type: string
+ *                                 example: "Express Delivery"
+ *                               shipping_cost:
+ *                                 type: number
+ *                                 example: 5.99
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                           example: 100
+ *                         page:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 10
+ *                         total_pages:
+ *                           type: integer
+ *                           example: 10
  *       401:
- *         description: Unauthorized - No token or invalid token provided
+ *         description: Unauthorized - Invalid or missing token
  *       500:
- *         description: Internal Server Error - Failed to fetch orders
+ *         description: Internal server error
  */
 
 router.get('/', authenticateJWT, orderController.getOrders);
+
+/**
+ * @swagger
+ * /api/order/{id}:
+ *   get:
+ *     summary: Get order details by ID
+ *     description: Retrieve detailed information about a specific order including items, addresses, and shipping details
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the order to retrieve
+ *     responses:
+ *       200:
+ *         description: Order details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Order fetched successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_unique_id:
+ *                       type: string
+ *                       example: "ORD-12345678"
+ *                     total:
+ *                       type: number
+ *                       example: 99.99
+ *                     discount_price:
+ *                       type: number
+ *                       example: 10.00
+ *                     status:
+ *                       type: string
+ *                       enum: [draft, pending, processing, shipped, delivered, completed, fail, cancel, return_requested, return_approved, return_received, refunded]
+ *                       example: "delivered"
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-20T14:30:00Z"
+ *                     orderItems:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           unit:
+ *                             type: string
+ *                             example: "pcs"
+ *                           unit_price:
+ *                             type: number
+ *                             example: 49.99
+ *                           quantity:
+ *                             type: integer
+ *                             example: 2
+ *                           discount_price:
+ *                             type: number
+ *                             example: 5.00
+ *                           total:
+ *                             type: number
+ *                             example: 89.98
+ *                           product:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 example: 101
+ *                               name:
+ *                                 type: string
+ *                                 example: "Nike Sneakers"
+ *                               price:
+ *                                 type: number
+ *                                 example: 50.00
+ *                               primary_image_url:
+ *                                 type: string
+ *                                 example: "https://example.com/image.jpg"
+ *                           variant:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 example: 201
+ *                               slug:
+ *                                 type: string
+ *                                 example: "red-size-10"
+ *                               price:
+ *                                 type: number
+ *                                 example: 5.00
+ *                               primary_image_url:
+ *                                 type: string
+ *                                 example: "https://example.com/variant-image.jpg"
+ *                     shippingAddress:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           example: "John Doe"
+ *                         street:
+ *                           type: string
+ *                           example: "123 Main St"
+ *                         town:
+ *                           type: string
+ *                           example: "New York"
+ *                         post_code:
+ *                           type: string
+ *                           example: "10001"
+ *                         phone:
+ *                           type: string
+ *                           example: "1234567890"
+ *                         region:
+ *                           type: string
+ *                           example: "NY"
+ *                         country:
+ *                           type: string
+ *                           example: "USA"
+ *                     billingAddress:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           example: "John Doe"
+ *                         street:
+ *                           type: string
+ *                           example: "123 Main St"
+ *                         town:
+ *                           type: string
+ *                           example: "New York"
+ *                         post_code:
+ *                           type: string
+ *                           example: "10001"
+ *                         phone:
+ *                           type: string
+ *                           example: "1234567890"
+ *                         region:
+ *                           type: string
+ *                           example: "NY"
+ *                         country:
+ *                           type: string
+ *                           example: "USA"
+ *                     shippingMethod:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         shipping_method:
+ *                           type: string
+ *                           example: "Express Delivery"
+ *                         shipping_cost:
+ *                           type: number
+ *                           example: 5.99
+ *                     coupon:
+ *                       type: object
+ *                       properties:
+ *                         code:
+ *                           type: string
+ *                           example: "SUMMER20"
+ *                         discount_type:
+ *                           type: string
+ *                           enum: [percentage, fixed]
+ *                           example: "percentage"
+ *                         discount_value:
+ *                           type: number
+ *                           example: 20
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+
+router.get('/:id', authenticateJWT, orderController.getOrderById);
 
 /**
  * @swagger
