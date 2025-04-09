@@ -57,10 +57,14 @@ module.exports = (sequelize, DataTypes) => {
         sequelize,
         modelName: 'BlogTag',
         tableName: 'blog_tags',
-        paranoid: false,
+        paranoid: true,
         timestamps: true,
         createdAt: 'created_at',
-        updatedAt: 'updated_at'
+        updatedAt: 'updated_at',
+        deletedAt: 'deleted_at',
+        defaultScope: {
+            attributes: { exclude: ['deleted_at'] }
+        }
     });
 
     return BlogTag;
