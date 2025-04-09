@@ -9,7 +9,7 @@ exports.validateProfileUpdate = [
     check('last_name')
         .optional()
         .isLength({ max: 50 })
-        .withMessage('First name must be within 50 characters long'),
+        .withMessage('Last name must be within 50 characters long'),
 
     // check('email')
     //     .optional()
