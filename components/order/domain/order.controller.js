@@ -9,7 +9,15 @@ const crypto = require("crypto");
 module.exports.getOrders = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
+        const { page = 1, limit = 10 } = req.query; // Default page 1 and 10 items per page
+        const offset = (page - 1) * limit;
 
+        // First get the total count of user's orders
+        const totalCount = await Order.count({
+            where: { user_id: userId }
+        });
+
+        // Then get the paginated orders
         const orders = await Order.findAll({
             where: { user_id: userId }, // Fetch only current user's orders
             attributes: [
@@ -32,11 +40,11 @@ module.exports.getOrders = async (req, res) => {
                             attributes: ['id', 'slug', 'price'],
                             include: [
                                 {
-                                    model: ProductVariantImage, // Include product variant images
+                                    model: ProductVariantImage,
                                     as: 'variantImages',
-                                    attributes: ['image_url'],  // Select the image_url from the variant images
-                                    where: { is_primary: true }, // Get the primary image for each variant
-                                    required: false // Allow orders to fetch variants even if no primary image exists
+                                    attributes: ['image_url'],
+                                    where: { is_primary: true },
+                                    required: false
                                 }
                             ]
                         }
@@ -58,7 +66,9 @@ module.exports.getOrders = async (req, res) => {
                     attributes: ['id', 'shipping_method', 'shipping_cost']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'DESC']],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
 
         if (!orders) {
@@ -69,22 +79,27 @@ module.exports.getOrders = async (req, res) => {
         const mappedOrders = orders.map(order => {
             order.orderItems.forEach(item => {
                 if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
-                    // Set the primary image URL on the product variant
                     item.variant.primary_image_url = item.variant.variantImages[0].image_url;
                 }
             });
             return order;
         });
 
-        successResponse(res, mappedOrders,  'Orders fetched successfully', 200);
+        const totalPages = Math.ceil(totalCount / limit);
+
+        successResponse(res, {
+            orders: mappedOrders,
+            pagination: {
+                total: totalCount,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total_pages: totalPages
+            }
+        }, 'Orders fetched successfully', 200);
 
     } catch (error) {
         console.error("Error fetching orders:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch orders",
-            error: error.message
-        });
+        return errorResponse(res, error, {message: "Failed to fetch orders"});
     }
 };
 
@@ -111,6 +126,7 @@ module.exports.placeOrder = async (req, res, next) => {
             ],
             transaction
         });
+        // console.log("cartItems>>", cartItems)
         if (!cartItems.length) throw new Error("Cart is empty");
         
         let subTotal = 0;
@@ -122,7 +138,6 @@ module.exports.placeOrder = async (req, res, next) => {
             const { product, variant_id, quantity } = item;
             if (!product) throw new Error(`Product ${item.product_id} not found.`);
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
-            
             // Validate Stock
             if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.id}.`);
             if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
@@ -269,14 +284,14 @@ module.exports.placeOrder = async (req, res, next) => {
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
-                orderCode: orderCode,
+                order_code: orderCode,
                 order_details: {
                     order_id: order.order_unique_id,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
-                    orderCode: orderCode,
+                    order_code: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
@@ -403,3 +418,97 @@ module.exports.generateVivaOrdercode = async (req,res)=>{
 //         }
 //     }
 // };
+
+module.exports.getOrderById = async (req, res) => {
+    try {
+        const userId = req.user.id; // Get user ID from authenticated token
+        const orderId = req.params.id;
+console.log("order id>>>", orderId)
+        const order = await Order.findOne({
+            where: { 
+                id: orderId,
+                user_id: userId // Ensure the order belongs to the authenticated user
+            },
+            attributes: [
+                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt'
+            ],
+            include: [
+                {
+                    model: OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'unit', 'unit_price', 'quantity', 'discount_price', 'total'],
+                    include: [
+                        {
+                            model: Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'price'],
+                            include: [
+                                {
+                                    model: ProductImage,
+                                    as: 'ProductImages',
+                                    attributes: ['image_url'],
+                                    where: { is_primary: true },
+                                    required: false
+                                }
+                            ]
+                        },
+                        {
+                            model: ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price'],
+                            include: [
+                                {
+                                    model: ProductVariantImage,
+                                    as: 'variantImages',
+                                    attributes: ['image_url'],
+                                    where: { is_primary: true },
+                                    required: false
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    model: UserAddress,
+                    as: 'shippingAddress',
+                    attributes: ['name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: UserAddress,
+                    as: 'billingAddress',
+                    attributes: ['name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                },
+                {
+                    model: Coupon,
+                    as: 'coupon',
+                    attributes: ['code', 'discount_type', 'discount_value']
+                }
+            ]
+        });
+
+        if (!order) {
+            return errorResponse(res, {}, {message: 'Order not found'}, 404);
+        }
+
+        // Add primary image URL to each order item
+        order.orderItems.forEach(item => {
+            if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
+                item.product.primary_image_url = item.product.ProductImages[0].image_url;
+            }
+            if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
+                item.variant.primary_image_url = item.variant.variantImages[0].image_url;
+            }
+        });
+
+        successResponse(res, order, 'Order fetched successfully', 200);
+
+    } catch (error) {
+        console.error("Error fetching order:", error);
+        return errorResponse(res, error, {message: "Failed to fetch order"});
+    }
+};

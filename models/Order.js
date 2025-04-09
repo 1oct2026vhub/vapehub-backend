@@ -17,6 +17,7 @@ module.exports = (sequelize, DataTypes) => {
 
       this.belongsTo(models.Coupon, { 
         foreignKey: 'coupon_id', 
+        as: 'coupon',
         onDelete: 'SET NULL', 
         onUpdate: 'CASCADE' 
       });

@@ -145,12 +145,6 @@ router.get('/profile', authenticateJWT, userController.userProfile);
  *               last_name:
  *                 type: string
  *                 example: Doe
- *               email:
- *                 type: string
- *                 example: johndoe@example.com
- *               phone:
- *                 type: string
- *                 example: "123-456-7890"
  *     responses:
  *       200:
  *         description: Profile updated successfully
@@ -368,6 +362,7 @@ router.get('/user-address', authenticateJWT, userController.fetchUserAddress)
  *                 example: "1234567890"
  *               region:
  *                 type: string
+ *                 description: The region/state of the address
  *                 example: "New York"
  *     responses:
  *       201:
