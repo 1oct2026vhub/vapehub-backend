@@ -497,42 +497,30 @@ const fetchProducts = async (query) => {
       });
     }
 
-    const attributes = Array.from(attributeTermMap.values());
-    const allAttributes = Array.from(allAttributeTermMap.values());
-    const category_items = Array.from(categoriesMap.values());
-    const brand_items = Array.from(brandMap.values());
-
-    // Compare and update product_count in attributeTermMap based on allAttributeTermMap
+    // Update product_count in allAttributeTermMap based on attributeTermMap
     allAttributeTermMap.forEach((allAttributeData, attributeId) => {
+        // First set all terms' product_count to 0
+        allAttributeData.terms.forEach(term => {
+            term.product_count = 0;
+        });
+
+        // Then update counts for matching terms from attributeTermMap
         if (attributeTermMap.has(attributeId)) {
             const attributeData = attributeTermMap.get(attributeId);
-            allAttributeData.terms.forEach(allTerm => {
-                const matchingTerm = attributeData.terms.find(term => term.id === allTerm.id);
+            attributeData.terms.forEach(term => {
+                const matchingTerm = allAttributeData.terms.find(allTerm => allTerm.id === term.id);
                 if (matchingTerm) {
-                    matchingTerm.product_count = allTerm.product_count;
-                } else {
-                    // Add the unmatched term with product_count 0
-                    attributeData.terms.push({
-                        id: allTerm.id,
-                        name: allTerm.name,
-                        slug: allTerm.slug,
-                        product_count: 0
-                    });
+                    matchingTerm.product_count = term.product_count;
                 }
-            });
-        } else {
-            // If attribute doesn't exist in attributeTermMap, add it with all terms having product_count 0
-            attributeTermMap.set(attributeId, {
-                attribute: allAttributeData.attribute,
-                terms: allAttributeData.terms.map(term => ({
-                    id: term.id,
-                    name: term.name,
-                    slug: term.slug,
-                    product_count: 0
-                }))
             });
         }
     });
+
+    // Convert maps to arrays for response
+    // const attributes = Array.from(attributeTermMap.values());
+    const attributes = Array.from(allAttributeTermMap.values());
+    const category_items = Array.from(categoriesMap.values());
+    const brand_items = Array.from(brandMap.values());
 
     // Define price ranges
     const priceRanges = [
