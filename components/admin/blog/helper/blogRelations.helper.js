@@ -16,6 +16,11 @@ exports.updateBlogCategories = async (blogId, transaction, categoryIds) => {
         // Filter out any invalid IDs
         const validCategoryIds = categoryIdsArray.filter(id => !isNaN(id));
 
+        // Delete existing relations first
+        await BlogCategoryRelation.destroy({
+            where: { blog_id: blogId },
+            transaction
+        });
         
         if (validCategoryIds.length === 0) {
             return; // No valid categories to process
@@ -28,7 +33,6 @@ exports.updateBlogCategories = async (blogId, transaction, categoryIds) => {
             },
             transaction
         });
-
 
         if (existingCategories.length !== validCategoryIds.length) {
             const foundIds = existingCategories.map(cat => cat.id);
