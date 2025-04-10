@@ -40,7 +40,12 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });
-      this.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'orderItems' });
+      this.hasMany(models.OrderItem, { 
+        foreignKey: 'order_id', 
+        as: 'orderItems',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
     }
 
     /**
@@ -84,6 +89,10 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         is: /^ORD-[A-Z0-9]{8}$/i
       }
+    },
+    order_code: {
+      type: DataTypes.STRING,
+      allowNull: true
     },
     user_id: {
       type: DataTypes.INTEGER,
@@ -157,6 +166,11 @@ module.exports = (sequelize, DataTypes) => {
         model: 'shipping_methods',
         key: 'id'
       }
+    },
+    shipping_cost: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0
     },
     createdAt: {
       type: DataTypes.DATE,

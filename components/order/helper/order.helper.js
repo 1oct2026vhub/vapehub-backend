@@ -15,22 +15,30 @@ const saveShippingAddress = async (user_id, addressData, transaction)=>{
       return existingAddress || await UserAddress.create({ user_id, ...addressData, updated_by: user_id },{ transaction } ); //{ transaction }
 }
 
-const getVivaAccessToken = async (payMethod)=> {
-    try{
+const getVivaAccessToken = async (payMethod) => {
+    try {
         const VIVA_API_BASE_1 = process.env.VIVA_API_BASE_1;
         const CLIENT_ID = process.env.VIVA_CLIENT_ID;
         const CLIENT_SECRET = process.env.VIVA_CLIENT_SECRET;
-        // const API_KEY = process.env.VIVA_API_KEY;
+
+        // Validate required environment variables
+        if (!VIVA_API_BASE_1 || !CLIENT_ID || !CLIENT_SECRET) {
+            throw new Error("Missing required Viva Wallet configuration");
+        }
+
         let cachedAccessToken = null;
         let tokenExpiration = 0;
-        // const cachedAccessToken = await redisClient.get("accessToken");
+
+        // Check if we have a valid cached token
         if (cachedAccessToken && Date.now() < tokenExpiration) {
             return cachedAccessToken;
         }
-        const response = await axios.post(`${VIVA_API_BASE_1}/connect/token`, 
+
+        const response = await axios.post(
+            `${VIVA_API_BASE_1}/connect/token`,
             new URLSearchParams({
                 grant_type: "client_credentials"
-            }), 
+            }),
             {
                 auth: {
                     username: CLIENT_ID,
@@ -42,35 +50,55 @@ const getVivaAccessToken = async (payMethod)=> {
             }
         );
 
-        const {access_token, expires_in} = response.data;
+        if (!response.data || !response.data.access_token) {
+            throw new Error("Invalid response from Viva Wallet authentication");
+        }
+
+        const { access_token, expires_in } = response.data;
         tokenExpiration = Date.now() + expires_in * 1000;
         cachedAccessToken = access_token;
-    
-        return cachedAccessToken;
-    }
-    catch(error){
-        console.log("error>>>>", error)
-    }
 
-}
+        return cachedAccessToken;
+    } catch (error) {
+        console.error("Error getting Viva Wallet access token:", error.response?.data || error.message);
+        throw new Error("Failed to authenticate with Viva Wallet");
+    }
+};
 
 const createVivaOrder = async (accessToken, amount) => {
-    const VIVA_API_BASE_2 = process.env.VIVA_API_BASE_2;
-    const response = await axios.post(`${VIVA_API_BASE_2}/checkout/v2/orders`,
-        {
-            amount: amount * 100, // Amount in cents
-            customerTrns: "Order Payment",
-            sourceCode: "2305"
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json"
-            }
+    try {
+        if (!accessToken) {
+            throw new Error("Access token is required");
         }
-    );
 
-    return response.data.orderCode;
+        if (!amount || amount <= 0) {
+            throw new Error("Invalid amount");
+        }
+
+        const VIVA_API_BASE_2 = process.env.VIVA_API_BASE_2;
+        const response = await axios.post(`${VIVA_API_BASE_2}/checkout/v2/orders`,
+            {
+                amount: Math.round(amount * 100), // Convert to cents and ensure it's an integer
+                customerTrns: "Order Payment",
+                sourceCode: "2305"
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        if (!response.data || !response.data.orderCode) {
+            throw new Error("Invalid response from Viva Wallet API");
+        }
+
+        return response.data.orderCode;
+    } catch (error) {
+        console.error("Error creating Viva Wallet order:", error.response?.data || error.message);
+        throw error;
+    }
 }
 
 // const getVivaTransactionToken = async (accessToken, orderCode) => {
