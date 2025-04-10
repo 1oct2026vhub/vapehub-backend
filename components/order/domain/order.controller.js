@@ -157,8 +157,6 @@ module.exports.placeOrder = async (req, res, next) => {
             ],
             transaction
         });
-        console.log("user_id>>", user_id)
-        console.log("cartItems>>", cartItems)
         if (!cartItems.length) throw new Error("Cart is empty");
         
         let subTotal = 0;
@@ -271,7 +269,7 @@ module.exports.placeOrder = async (req, res, next) => {
             billing_address_id: billingAddrs.id,
             shipping_method_id,
             order_unique_id: orderUniqueId,
-            order_code: orderCode,
+            order_code: parseInt(orderCode).toString(),
             shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
@@ -586,6 +584,7 @@ module.exports.getOrderById = async (req, res) => {
 };
 
 module.exports.getVivaWalletPaymentDetails = async (req, res) => {
+    const userId = req.user.id;
     try {
         const { transactionId } = req.params;
         const accessToken = await getVivaAccessToken();
@@ -606,11 +605,14 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
         if (transactionData.statusId === "F" && transactionData.orderCode) {
             // Find the order by orderCode
             const order = await Order.findOne({
-                where: { order_code: transactionData.orderCode },
+                where: { user_id: userId, order_code: transactionData.orderCode },
                 include: [{ model: User, as: 'user' }]
             });
 
             if (order) {
+                // Update order status to processing
+                await order.update({ status: 'processing' });
+                
                 // Clear the user's cart
                 await Cart.destroy({ 
                     where: { user_id: order.user_id }
@@ -622,7 +624,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
         if (transactionData.statusId === "E") {
             // Find and destroy the order
             const order = await Order.findOne({
-                where: { order_code: transactionData.orderCode }
+                where: {user_id: userId, order_code: transactionData.orderCode }
             });
 
             if (order) {
