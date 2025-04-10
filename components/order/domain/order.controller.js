@@ -157,8 +157,7 @@ module.exports.placeOrder = async (req, res, next) => {
             ],
             transaction
         });
-        console.log("user_id>>", user_id)
-        console.log("cartItems>>", cartItems)
+
         if (!cartItems.length) throw new Error("Cart is empty");
         
         let subTotal = 0;
