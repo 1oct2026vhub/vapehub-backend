@@ -414,11 +414,18 @@ router.get('/:id', authenticateJWT, orderController.getOrderById);
  *               phone:
  *                 type: string
  *                 example: "+1234567890"
+ *               receive_promotions:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Whether the user wants to receive promotional emails
  *               couponCode:
  *                 type: string
  *                 nullable: true
  *                 example: "DISCOUNT10"
  *               shipping_method_id:
+ *                 type: integer
+ *                 example: 1
+ *               shipping_address_id:
  *                 type: integer
  *                 example: 1
  *               shipping_address:

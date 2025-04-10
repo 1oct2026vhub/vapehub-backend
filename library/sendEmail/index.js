@@ -12,7 +12,7 @@ let transporter;
 if (process.env.EMAIL_TEST_MODE !== 'true') {
     transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT || 2525, // || 2525,
+        port: process.env.EMAIL_PORT || 2525,
         auth: {
             user: process.env.EMAIL_USERNAME,
             pass: process.env.EMAIL_PASSWORD

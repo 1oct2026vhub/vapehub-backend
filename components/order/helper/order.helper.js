@@ -3,18 +3,16 @@ const { UserAddress } = require("../../../models");
 // const redis = require("../../../config/redis");
 
 const saveShippingAddress = async (user_id, addressData, transaction)=>{
+    
+    let shipping_address_id = addressData.shipping_address_id;
+    if(shipping_address_id == undefined){
+        shipping_address_id = 0;
+    }
     const existingAddress = await UserAddress.findOne({
-        where: { 
-            user_id, 
-            name: addressData.name,
-            last_name: addressData.last_name,
-            street: addressData.street,
-            town: addressData.town,
-            post_code: addressData.post_code, 
-        }
+        where: {id:shipping_address_id}
       });
     //   const address = await UserAddress.findAll()
-      return existingAddress || await UserAddress.create({ user_id, ...addressData, updated_by: user_id }, { transaction });
+      return existingAddress || await UserAddress.create({ user_id, ...addressData, updated_by: user_id },{ transaction } ); //{ transaction }
 }
 
 const getVivaAccessToken = async (payMethod)=> {

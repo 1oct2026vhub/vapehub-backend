@@ -12,6 +12,16 @@ module.exports.getOrders = async (req, res) => {
         const { page = 1, limit = 10 } = req.query; // Default page 1 and 10 items per page
         const offset = (page - 1) * limit;
 
+        // Get user data
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'receive_promotions']
+        });
+
+        if (!user) {
+            return errorResponse(res, {}, 'User not found', 404);
+        }
+
         // First get the total count of user's orders
         const totalCount = await Order.count({
             where: { user_id: userId }
@@ -88,6 +98,14 @@ module.exports.getOrders = async (req, res) => {
         const totalPages = Math.ceil(totalCount / limit);
 
         successResponse(res, {
+            user: {
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                phone: user.phone,
+                receive_promotions: user.receive_promotions
+            },
             orders: mappedOrders,
             pagination: {
                 total: totalCount,
@@ -108,14 +126,24 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, shipping_method_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+
+        // Update user's receive_promotions preference if provided
+        if (typeof receive_promotions === 'boolean') {
+            await User.update(
+                { receive_promotions },
+                { where: { id: user_id } }
+            );
+        }
 
         // Save Addresses
-        const shippingData = { ...shipping_address, name: shipping_address.first_name, street: shipping_address.address_line_1 + " " + shipping_address.address_line_2, state: shipping_address.region, town: shipping_address.city };
+        const shippingData = { ...shipping_address, shipping_address_id, name: shipping_address.first_name, street: shipping_address.address_line_1 + " " + shipping_address.address_line_2, state: shipping_address.region, town: shipping_address.city, };
         const billingData = { ...billing_address, name: billing_address.first_name, street: billing_address.address_line_1 + " " + billing_address.address_line_2, state: billing_address.region, town: billing_address.city };
         const shippingAddrs = await saveShippingAddress(user_id, shippingData, transaction);
         const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
         const payMethod = payment_method.method;
+
+        
         
         let wallet_check = {};
 
@@ -434,6 +462,17 @@ module.exports.getOrderById = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
         const orderId = req.params.id;
+        console.log("orderId>>>>", orderId)
+        // Get user data
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'receive_promotions']
+        });
+
+        if (!user) {
+            return errorResponse(res, {}, 'User not found', 404);
+        }
+
         const order = await Order.findOne({
             where: { 
                 id: orderId,
@@ -502,7 +541,7 @@ module.exports.getOrderById = async (req, res) => {
         });
 
         if (!order) {
-            return errorResponse(res, {}, {message: 'Order not found'}, 404);
+            return errorResponse(res, {}, 'Order not found', 404);
         }
 
         // Add primary image URL to each order item
@@ -514,8 +553,19 @@ module.exports.getOrderById = async (req, res) => {
                 item.variant.primary_image_url = item.variant.variantImages[0].image_url;
             }
         });
+        console.log("order>>>>", order)
 
-        successResponse(res, order, 'Order fetched successfully', 200);
+        successResponse(res, {
+            user: {
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                phone: user.phone,
+                receive_promotions: user.receive_promotions
+            },
+            order: order
+        }, 'Order fetched successfully', 200);
 
     } catch (error) {
         console.error("Error fetching order:", error);
