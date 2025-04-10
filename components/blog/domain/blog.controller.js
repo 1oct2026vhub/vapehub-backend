@@ -10,7 +10,9 @@ module.exports.listAllBlogs = async (req, res, next) => {
 
         const sortField = validSortFields.includes(sortBy) ? sortBy : 'published_at';
         const sortOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
-        let whereCondition = {};
+        let whereCondition = {
+            status: 'published' 
+        };
         
         if (search) {
             whereCondition = {
@@ -32,7 +34,10 @@ module.exports.listAllBlogs = async (req, res, next) => {
 
         // Get total count for pagination
         const totalCount = await Blog.count({
-            where: whereCondition,
+            where: {
+                ...whereCondition,
+                status: 'published'  
+            },
             include: categoryId ? [{
                 model: BlogCategory,
                 as: 'categories',
@@ -116,7 +121,7 @@ module.exports.getBlogById = async (req, res, next) => {
                 }
             ]
         });
-        if (!blog) {
+        if (!blog || blog.status != 'published') {
             const error = new Error('Blog not found');
             error.statusCode = 404;
             throw error;
@@ -177,7 +182,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             include: [{
                 model: Blog,
                 as: 'blogs',
-                attributes: ['id', 'title', 'slug', 'content', 'image_url', 'published_at', 'created_at'],
+                attributes: ['id', 'title', 'slug', 'content', 'image_url', 'published_at', 'created_at', 'status'],
                 include: [
                     {
                         model: User,
@@ -192,7 +197,10 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     }
                 ],
                 through: { attributes: [] },
-                order: [['published_at', 'DESC']]
+                order: [['published_at', 'DESC']],
+                where: {
+                    status: 'published'
+                }
             }]
         });
 
@@ -214,6 +222,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
         const blog = await Blog.findOne({
             where: { 
                 slug: slug,
+                status: 'published'
             },
             include: [
                 {
@@ -246,7 +255,8 @@ module.exports.getBlogBySlug = async (req, res, next) => {
         const relatedBlogs = await Blog.findAll({
             where: {
                 id: { [Op.ne]: blog.id },
-                published_at: { [Op.ne]: null }
+                published_at: { [Op.ne]: null },
+                status: 'published'
             },
             include: [{
                 model: BlogCategory,
@@ -260,7 +270,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
             }],
             limit: 3,
             order: [['published_at', 'DESC']],
-            attributes: ['id', 'title', 'slug', 'image_url', 'published_at']
+            attributes: ['id', 'title', 'slug', 'image_url', 'published_at', 'status']
         });
 
         const response = {
