@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { check, query } = require("express-validator");
+const { check, query, param } = require("express-validator");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 
 const authController = require('../domain/auth.controller')
@@ -50,6 +50,14 @@ router.post("/login", authController.login);
  *     description: Registers a new user by accepting email and password, then hashing the password and returning a JWT token.
  *     tags:
  *      - Authentication
+ *     parameters:
+ *       - in: query
+ *         name: referral_code
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Optional referral code from an existing user
+ *         example: ABC123
  *     requestBody:
  *       required: true
  *       content:
@@ -90,6 +98,7 @@ router.post('/register',
   validateRequest([
     check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required").normalizeEmail(),
     check("password").notEmpty().withMessage("Password is required").isLength({ min: 8 }).withMessage("Password must be at least 8 characters").matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/).withMessage("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"),
+    query("referral_code").optional().isString().withMessage("Referral code must be a string")
   ]),
   authController.register
 );
