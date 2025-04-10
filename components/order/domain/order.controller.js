@@ -5,6 +5,7 @@ const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, 
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
+const axios = require("axios");
 
 module.exports.getOrders = async (req, res) => {
     try {
@@ -552,7 +553,6 @@ module.exports.getOrderById = async (req, res) => {
                 item.variant.primary_image_url = item.variant.variantImages[0].image_url;
             }
         });
-        console.log("order>>>>", order)
 
         successResponse(res, {
             user: {
@@ -569,5 +569,37 @@ module.exports.getOrderById = async (req, res) => {
     } catch (error) {
         console.error("Error fetching order:", error);
         return errorResponse(res, error, {message: "Failed to fetch order"});
+    }
+};
+
+module.exports.getVivaWalletPaymentDetails = async (req, res) => {
+    try {
+        const { transactionId } = req.params;
+        const accessToken = await getVivaAccessToken();
+
+        // Make request to Viva Wallet API to get transaction details
+        const response = await axios.get(
+            `${process.env.VIVA_API_BASE_2}/checkout/v2/transactions/${transactionId}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        const transactionData = response.data;
+
+        // Format the response data
+        const paymentDetails = { ...transactionData};
+
+        return successResponse(res, paymentDetails, 'Payment details retrieved successfully');
+    } catch (error) {
+        console.error('Error fetching Viva Wallet payment details:', error);
+        
+        if (error.response?.status === 404) {
+            return errorResponse(res, {}, 'Transaction not found', 404);
+        }
+        
+        return errorResponse(res, error, 'Failed to fetch payment details');
     }
 };

@@ -707,6 +707,83 @@ router.post("/", authenticateJWT, validateRequest(validatePlaceOrder), orderCont
  */
 router.post("/viva-wallet-order-code", authenticateJWT, orderController.generateVivaOrdercode)
 
+/**
+ * @swagger
+ * /api/order/viva-wallet/payment-details/{transactionId}:
+ *   get:
+ *     summary: Get Viva Wallet payment details by transaction ID
+ *     description: Retrieve payment details for a specific Viva Wallet transaction
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: transactionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The Viva Wallet transaction ID
+ *         example: "123456789"
+ *     responses:
+ *       200:
+ *         description: Payment details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Payment details retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     transactionId:
+ *                       type: string
+ *                       example: "123456789"
+ *                     status:
+ *                       type: string
+ *                       enum: [pending, completed, failed, refunded]
+ *                       example: "completed"
+ *                     amount:
+ *                       type: number
+ *                       example: 100.50
+ *                     currency:
+ *                       type: string
+ *                       example: "EUR"
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-20T14:30:00Z"
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-20T14:35:00Z"
+ *                     paymentMethod:
+ *                       type: string
+ *                       example: "credit_card"
+ *                     cardDetails:
+ *                       type: object
+ *                       properties:
+ *                         lastFourDigits:
+ *                           type: string
+ *                           example: "1234"
+ *                         cardType:
+ *                           type: string
+ *                           example: "VISA"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Transaction not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/viva-wallet/payment-details/:transactionId", authenticateJWT, orderController.getVivaWalletPaymentDetails);
+
 // router.post("/webhook/viva", orderController.handleVivaWebhook)
 
 // router.post("/webhook/worldpay", orderController.handleWorldpayWebhook)
