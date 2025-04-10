@@ -39,7 +39,7 @@ module.exports.listAllBlogs = async (req, res) => {
             {
                 model: User,
                 as: 'author',
-                attributes: ['id', 'first_name', 'last_name']
+                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
             },
             {
                 model: BlogCategory,
@@ -87,7 +87,7 @@ module.exports.getBlogById = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
@@ -174,7 +174,7 @@ module.exports.createBlog = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
@@ -280,7 +280,7 @@ module.exports.updateBlog = async (req, res) => {
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {
             include: [
-                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name'] },
+                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
                 { model: BlogTag, as: 'tags', through: { attributes: [] } }
             ],
