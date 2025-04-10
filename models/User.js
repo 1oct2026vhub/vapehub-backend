@@ -11,6 +11,20 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
             this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
             this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
+            
+            // Referral relations
+            this.hasMany(models.Referral, { 
+                foreignKey: 'referrer_id', 
+                as: 'referralsMade' 
+            });
+            this.hasOne(models.Referral, { 
+                foreignKey: 'referred_user_id', 
+                as: 'referralReceived' 
+            });
+            this.belongsTo(models.User, { 
+                foreignKey: 'referred_by', 
+                as: 'referrer' 
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -124,6 +138,11 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 0
+        },
+        receive_promotions: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         },
         blocked: {
             type: DataTypes.BOOLEAN,
