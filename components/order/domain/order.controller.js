@@ -157,6 +157,7 @@ module.exports.placeOrder = async (req, res, next) => {
             ],
             transaction
         });
+
         if (!cartItems.length) throw new Error("Cart is empty");
         
         let subTotal = 0;

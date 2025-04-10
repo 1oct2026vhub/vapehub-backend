@@ -53,7 +53,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 ...(categoryId ? [{
                     model: BlogCategory,
@@ -105,7 +105,7 @@ module.exports.getBlogById = async (req, res, next) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
@@ -187,7 +187,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     {
                         model: User,
                         as: 'author',
-                        attributes: ['id', 'first_name', 'last_name', 'email']
+                        attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                     },
                     {
                         model: BlogTag,
@@ -228,7 +228,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
