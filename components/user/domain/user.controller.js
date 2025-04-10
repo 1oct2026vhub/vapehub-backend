@@ -83,7 +83,7 @@ const fetchUserAddress = async (req, res, next) => {
         });
 
         if (!user) {
-            return errorResponse(res, error, {message: 'User not found'}, 404);
+            return errorResponse(res, error, 'User not found', 404);
         }
 
         successResponse(res, user,  'Success');
@@ -148,7 +148,7 @@ const updateUserAddress = async (req, res, next) => {
         });
 
         if (!userAddress) {
-            return errorResponse(res, {}, {message: 'Address not found'}, 404);
+            return errorResponse(res, {},  'Address not found', 404);
         }
 
         await userAddress.update({
@@ -223,17 +223,17 @@ const changeUserPassword = async (req, res, next) => {
     try {
         const user = await User.findOne({where:{id:user_id, email}});
         if (!user) {
-            return errorResponse(res, {}, {message: 'User not found'}, 404);
+            return errorResponse(res, {}, 'User not found', 404);
         }
 
         // Check if current and new passwords are the same
         if (currentPassword === newPassword) {
-            return errorResponse(res, {}, {message: 'New password cannot be the same as current password'}, 400);
+            return errorResponse(res, {}, 'New password cannot be the same as current password', 400);
         }
 
         const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isPasswordValid) {
-            return errorResponse(res, {}, {message: 'Current password is incorrect'}, 401);
+            return errorResponse(res, {}, 'Current password is incorrect', 401);
         }
 
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
@@ -266,27 +266,27 @@ const referFriend = async (req, res, next) => {
         // Check if the email is already registered
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
-            return errorResponse(res, {}, { message: 'User with this email already exists' }, 400);
+            return errorResponse(res, {}, 'User with this email already exists' , 400);
         }
 
         // Check if the referral code is valid
         const referrer = await User.findOne({ where: { referral_code } });
         if (!referrer) {
-            return errorResponse(res, {}, { message: 'Invalid referral code' }, 400);
+            return errorResponse(res, {}, 'Invalid referral code' , 400);
         }
 
         try {
             // Send referral email
             const username = email.split('@')[0];
             const referralLink = `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`;
-            
             const data = {
                 emailTypes: constants.emailTypes.REFER_A_FRIEND,
                 to: email,
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    currentYear: new Date().getFullYear()
+                    token: referral_code,
+                    // currentYear: new Date().getFullYear()
                 },
                 attachments: ""
             };

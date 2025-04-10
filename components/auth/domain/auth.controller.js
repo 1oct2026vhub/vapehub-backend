@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role } = require("../../../models");
+const { User, Role, Referral } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -87,7 +87,7 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, referral_code } = req.body;
         //  check email already exists
         const userExists = await User.findOne({ where: { email } });
         if (userExists) {
@@ -97,8 +97,24 @@ module.exports.register = async (req, res, next) => {
                 errors: { email: "User eamil already exists" },
             }
         }
+
+        // If referral code is provided, find the referrer
+        let referrer = null;
+        if (referral_code) {
+            referrer = await User.findOne({
+                where: { referral_code }
+            });
+            if (!referrer) {
+                throw {
+                    message: "Invalid referral code",
+                    statusCode: 400,
+                    errors: { referral_code: "The provided referral code is invalid" }
+                };
+            }
+        }
+
         const role = await Role.findOne({
-            attributes: ['id'], // Only fetch the required column
+            attributes: ['id'],
             where: { permission: 'user' },
         });
         const roleId = role?.id || null;
@@ -110,8 +126,20 @@ module.exports.register = async (req, res, next) => {
             password: password,
             token,
             token_expiry,
-            roleId
+            roleId,
+            referred_by: referrer ? referrer.id : null
         });
+
+        // Create referral record if referrer exists
+        if (referrer) {
+            await Referral.create({
+                referrer_id: referrer.id,
+                referred_user_id: user.id,
+                referral_code: referral_code,
+                points_awarded: 10,
+                status: 'pending'
+            });
+        }
 
         const username = user?.first_name ?? user.email.split('@')[0];
 
@@ -125,7 +153,14 @@ module.exports.register = async (req, res, next) => {
             },
             attachments: ""
         }
+        console.log("refereer1>>>>", referrer)
+        // If user was referred, add referral points to referrer
+        if (referrer) {
+            console.log("refereer2>>>>", referrer)
+            await referrer.addReferralPoints(10); // Add 10 points for successful referral
+        }
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
         return errorResponse(res, error);
