@@ -60,7 +60,7 @@ const createVivaOrder = async (accessToken, amount) => {
         {
             amount: amount * 100, // Amount in cents
             customerTrns: "Order Payment",
-            sourceCode: "Default"
+            sourceCode: "2305"
         },
         {
             headers: {
