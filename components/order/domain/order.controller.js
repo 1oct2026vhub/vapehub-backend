@@ -233,6 +233,32 @@ module.exports.placeOrder = async (req, res, next) => {
         // Ensure Price Integrity
         // if (calculatedTotal !== total) throw { message: "Total price mismatch. Possible price manipulation detected.", statusCode: 400 };
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
+
+        let orderCode = 0;
+        wallet_check.payMethod = payMethod;
+        if(payMethod === "VivaWallet"){
+            wallet_check.start = true;
+            try {
+                const accessToken = await getVivaAccessToken();
+                wallet_check.accessToken = accessToken;
+                orderCode = await createVivaOrder(accessToken,calculatedTotal); // Amount in EUR/USD, etc.
+                
+                // Check if order code is valid
+                if (!orderCode || orderCode === 0) {
+                    throw new Error("Failed to generate Viva Wallet order code");
+                }
+                
+                wallet_check.orderCode = orderCode;
+            } catch (error) {
+                wallet_check.error = true;
+                wallet_check.message = error.response?.data || error.message;
+                console.log(error);
+                await transaction.rollback();
+                return errorResponse(res, error, "Failed to process payment with Viva Wallet");
+            }
+            wallet_check.end = true;
+        }
+
         const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}`;
         // Create Order
         const order = await Order.create({
@@ -243,7 +269,9 @@ module.exports.placeOrder = async (req, res, next) => {
             shipping_address_id: shippingAddrs.id,
             billing_address_id: billingAddrs.id,
             shipping_method_id,
-            order_unique_id: orderUniqueId
+            order_unique_id: orderUniqueId,
+            order_code: orderCode,
+            shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
         
@@ -255,25 +283,7 @@ module.exports.placeOrder = async (req, res, next) => {
                 await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
             }
         }
-        let orderCode = 0;
-        wallet_check.payMethod = payMethod;
-        if(payMethod === "VivaWallet"){
-            wallet_check.start = true;
-            try {
-                const accessToken = await getVivaAccessToken();
-                wallet_check.accessToken = accessToken;
-                orderCode = await createVivaOrder(accessToken,calculatedTotal); // Amount in EUR/USD, etc.
-                // res.json({ success: true, orderCode: orderCode });
-                wallet_check.orderCode = orderCode;
-            } catch (error) {
-                wallet_check.error = true;
-                wallet_check.message = error.response?.data || error.message;
-
-                console.log(error)
-                // res.status(500).json({ success: false, message: error.response?.data || error.message });
-            }
-            wallet_check.end = true;
-        }
+        
         // else{
             // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
             // const ACCOUNT_ID = process.env.ACCOUNT_ID; //"364806707";  // Your Worldpay Account ID
@@ -318,19 +328,21 @@ module.exports.placeOrder = async (req, res, next) => {
     
             // console.log("Payment Successful:", response.data);
         // }
-        await Cart.destroy({ where: { user_id }, transaction });
+        // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
                 order_code: orderCode,
                 order_details: {
-                    order_id: order.order_unique_id,
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    order_code: order.order_code,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
-                    order_code: orderCode,
+                    // order_code: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
@@ -588,6 +600,34 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
             }
         );
         const transactionData = response.data;
+
+        // Handle successful payment (statusId: F)
+        if (transactionData.statusId === "F" && transactionData.orderCode) {
+            // Find the order by orderCode
+            const order = await Order.findOne({
+                where: { order_code: transactionData.orderCode },
+                include: [{ model: User, as: 'user' }]
+            });
+
+            if (order) {
+                // Clear the user's cart
+                await Cart.destroy({ 
+                    where: { user_id: order.user_id }
+                });
+            }
+        }
+
+        // Handle failed payment (statusId: E)
+        if (transactionData.statusId === "E") {
+            // Find and destroy the order
+            const order = await Order.findOne({
+                where: { order_code: transactionData.orderCode }
+            });
+
+            if (order) {
+                await order.destroy();
+            }
+        }
 
         // Format the response data
         const paymentDetails = { ...transactionData};
