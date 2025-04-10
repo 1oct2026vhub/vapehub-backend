@@ -32,7 +32,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                 [Op.between]: [startDateTime, endDateTime]
             };
         }
-
+       
         // Search filter
         if (search) {
             // First find matching user IDs
@@ -59,24 +59,33 @@ module.exports.listAllOrders = async (req, res, next) => {
                 whereCondition[Op.or].push({ user_id: { [Op.in]: userIds } });
             }
         }
-
-        const orders = await Order.findAndCountAll({
+        
+        // Get total count separately to ensure accuracy
+        const totalCount = await Order.count({
+            where: whereCondition
+        });
+        
+        // Get orders with pagination
+        const orders = await Order.findAll({
             where: whereCondition,
             include: [
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                    required: false
                 },
                 {
                     model: UserAddress,
                     as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                    required: false
                 },
                 {
                     model: UserAddress,
                     as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                    required: false
                 },
                 {
                     model: OrderItem,
@@ -86,6 +95,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                             model: Product,
                             as: 'product',
                             attributes: ['id', 'name', 'slug'],
+                            required: false,
                             include: [
                                 {
                                     model: ProductImage,
@@ -99,7 +109,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'slug']
+                            attributes: ['id', 'barcode', 'price', 'slug'],
+                            required: false
                         }
                     ]
                 }
@@ -110,12 +121,12 @@ module.exports.listAllOrders = async (req, res, next) => {
         });
 
         const response = {
-            orders: orders.rows,
+            orders: orders,
             pagination: {
-                total: orders.count,
+                total: totalCount,
                 page: parseInt(page),
                 limit: parseInt(limit),
-                total_pages: Math.ceil(orders.count / limit)
+                total_pages: Math.ceil(totalCount / limit)
             }
         };
 
