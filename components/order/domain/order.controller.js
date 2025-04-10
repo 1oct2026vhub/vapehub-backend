@@ -42,7 +42,7 @@ module.exports.getOrders = async (req, res) => {
                         {
                             model: Product,
                             as: 'product',
-                            attributes: ['id', 'name', 'price']
+                            attributes: ['id', 'name', 'slug', 'price']
                         },
                         {
                             model: ProductVariant,
@@ -462,7 +462,6 @@ module.exports.getOrderById = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
         const orderId = req.params.id;
-        console.log("orderId>>>>", orderId)
         // Get user data
         const user = await User.findOne({
             where: { id: userId },
@@ -490,7 +489,7 @@ module.exports.getOrderById = async (req, res) => {
                         {
                             model: Product,
                             as: 'product',
-                            attributes: ['id', 'name', 'price'],
+                            attributes: ['id', 'name', 'price', 'slug'],
                             include: [
                                 {
                                     model: ProductImage,

@@ -87,7 +87,9 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password, referral_code } = req.body;
+        const { email, password } = req.body;
+        console.log("referral_code>>>>", req.query.referral_code)
+        const referral_code = req.query.referral_code;
         //  check email already exists
         const userExists = await User.findOne({ where: { email } });
         if (userExists) {
