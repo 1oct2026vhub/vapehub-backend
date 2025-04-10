@@ -387,6 +387,8 @@ module.exports.updateProductAttributes = async (req, res) => {
 
 // Helper functions (add these before the main function)
 const validateVariantSlug = async (slug, transaction) => {
+    if (!slug) return; // Skip validation if slug is not provided
+    
     const existingSlug = await ProductVariant.findOne({
         where: { slug },
         transaction
@@ -433,9 +435,9 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         throw new Error(ERROR_MESSAGES.INVALID_DISCOUNT);
     }
 
-    return await ProductVariant.create({
+    // Create base variant data object
+    const variantData = {
         product_id,
-        slug: variant.slug,
         price: variant.price,
         discount_price: variant.discount_price || null,
         purchase_price: variant.purchase_price || null,
@@ -450,7 +452,14 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         stock_status: updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 5),
         status: variant.status || 'active',
         updated_by
-    }, { transaction });
+    };
+
+    // Only add slug if it's provided (not null or undefined)
+    if (variant.slug) {
+        variantData.slug = variant.slug;
+    }
+
+    return await ProductVariant.create(variantData, { transaction });
 };
 
 // Refactored main function
@@ -519,7 +528,11 @@ const validateVariationAttributes = async (product_id, transaction) => {
 
 // Helper function to validate variant data
 const validateVariantData = async (variant, product_id, transaction) => {
-    await validateVariantSlug(variant.slug, transaction);
+    // Only validate slug if it's provided
+    if (variant.slug) {
+        await validateVariantSlug(variant.slug, transaction);
+    }
+    
     await validateVariantBarcode(variant.barcode, transaction);
     await validateVariantAttributes(variant.attributes, product_id, transaction);
     await checkExistingCombinations(variant.attributes, product_id, transaction);

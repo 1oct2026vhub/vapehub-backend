@@ -262,8 +262,7 @@ const createProductVariantsValidator = [
         .isObject()
         .withMessage('Each variant must be an object'),
     body('variants.*.slug')
-        .notEmpty()
-        .withMessage('Slug is required')
+        .optional()
         .isString()
         .trim()
         .isLength({ min: 3, max: 100 })
