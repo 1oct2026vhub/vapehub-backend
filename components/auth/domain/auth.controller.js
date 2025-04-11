@@ -88,7 +88,6 @@ module.exports.login = async (req, res, next) => {
 module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
-        console.log("referral_code>>>>", req.query.referral_code)
         const referral_code = req.query.referral_code;
         //  check email already exists
         const userExists = await User.findOne({ where: { email } });
@@ -123,6 +122,8 @@ module.exports.register = async (req, res, next) => {
 
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        
+        // Create user with initial data
         const user = await User.create({
             email,
             password: password,
@@ -155,10 +156,8 @@ module.exports.register = async (req, res, next) => {
             },
             attachments: ""
         }
-        console.log("refereer1>>>>", referrer)
         // If user was referred, add referral points to referrer
         if (referrer) {
-            console.log("refereer2>>>>", referrer)
             await referrer.addReferralPoints(10); // Add 10 points for successful referral
         }
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
