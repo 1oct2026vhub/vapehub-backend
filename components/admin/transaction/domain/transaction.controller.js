@@ -190,28 +190,30 @@ exports.exportTransactions = async (req, res) => {
       where,
       include: [
         { model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] },
-        { model: Order, as: 'order', attributes: ['id'] }
+        { model: Order, as: 'order', attributes: ['id', 'order_unique_id'] }
       ],
       order: [['createdAt', 'DESC']]
     });
 
     if (format === 'csv') {
       // Prepare data for CSV
-      const csvFields = ['transactionId', 'userName', 'userEmail', 'orderNumber', 'amount', 'currency', 'status', 'createdAt'];
+      const csvFields = ['ID','Reference', 'Order ID', 'Status', 'Customer', 'Email', 'Type', 'Payment Method', 'Amount', 'Date'];
       const csvData = transactions.map(transaction => {
-        const userName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
-        const userEmail = transaction.user ? transaction.user.email : 'N/A';
-        const orderNumber = transaction.order ? `ORD-${transaction.order.id}` : 'N/A';
+        const customerName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
+        const customerEmail = transaction.user ? transaction.user.email : 'N/A';
+        const orderId = transaction.order ? transaction.order.order_unique_id : 'N/A';
 
         return {
-          transactionId: transaction.id,
-          userName,
-          userEmail,
-          orderNumber,
-          amount: transaction.amount,
-          currency: transaction.currency,
+          ID: transaction.id,
+          reference: transaction.referenceNumber || 'N/A',
+          orderId,
           status: transaction.status,
-          createdAt: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
+          customerName,
+          customerEmail,
+          type: transaction.transactionType || 'N/A',
+          paymentMethod: transaction.paymentMethod || 'N/A',
+          amount: transaction.amount,
+          date: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
         };
       });
 
@@ -231,31 +233,35 @@ exports.exportTransactions = async (req, res) => {
 
       // Define columns
       worksheet.columns = [
-        { header: 'Transaction ID', key: 'transactionId', width: 20 },
-        { header: 'User Name', key: 'userName', width: 30 },
-        { header: 'User Email', key: 'userEmail', width: 30 },
-        { header: 'Order Number', key: 'orderNumber', width: 20 },
-        { header: 'Amount', key: 'amount', width: 15 },
-        { header: 'Currency', key: 'currency', width: 10 },
+        { header: 'ID', key: 'id', width: 20 },
+        { header: 'Reference', key: 'reference', width: 20 },
+        { header: 'Order ID', key: 'orderId', width: 20 },
         { header: 'Status', key: 'status', width: 15 },
-        { header: 'Created At', key: 'createdAt', width: 20 }
+        { header: 'Customer', key: 'customerName', width: 30 },
+        { header: 'Email', key: 'customerEmail', width: 30 },
+        { header: 'Type', key: 'type', width: 15 },
+        { header: 'Payment Method', key: 'paymentMethod', width: 20 },
+        { header: 'Amount', key: 'amount', width: 15 },
+        { header: 'Date', key: 'date', width: 20 }
       ];
 
       // Add data rows
       transactions.forEach(transaction => {
-        const userName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
-        const userEmail = transaction.user ? transaction.user.email : 'N/A';
-        const orderNumber = transaction.order ? `ORD-${transaction.order.id}` : 'N/A';
+        const customerName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
+        const customerEmail = transaction.user ? transaction.user.email : 'N/A';
+        const orderId = transaction.order ? transaction.order.order_unique_id : 'N/A';
 
         worksheet.addRow({
-          transactionId: transaction.id,
-          userName,
-          userEmail,
-          orderNumber,
-          amount: transaction.amount,
-          currency: transaction.currency,
+          id: transaction.id,
+          reference: transaction.referenceNumber || 'N/A',
+          orderId,
           status: transaction.status,
-          createdAt: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
+          customerName,
+          customerEmail,
+          type: transaction.transactionType || 'N/A',
+          paymentMethod: transaction.paymentMethod || 'N/A',
+          amount: transaction.amount,
+          date: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
         });
       });
 
