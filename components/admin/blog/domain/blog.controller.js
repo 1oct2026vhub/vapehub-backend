@@ -72,7 +72,8 @@ module.exports.listAllBlogs = async (req, res) => {
             pagination: {
                 total: count,
                 page: parseInt(page),
-                limit: parseInt(limit)
+                limit: parseInt(limit),
+                total_pages: Math.ceil(count / parseInt(limit))
             }
         });
     } catch (error) {
