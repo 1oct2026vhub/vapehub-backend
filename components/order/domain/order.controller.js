@@ -32,7 +32,7 @@ module.exports.getOrders = async (req, res) => {
         const orders = await Order.findAll({
             where: { user_id: userId }, // Fetch only current user's orders
             attributes: [
-                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt'
+                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
             ],
             include: [
                 {
@@ -128,7 +128,6 @@ module.exports.placeOrder = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
-
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
             await User.update(
@@ -170,7 +169,7 @@ module.exports.placeOrder = async (req, res, next) => {
             if (!product) throw new Error(`Product ${item.product_id} not found.`);
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
             // Validate Stock
-            if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.id}.`);
+            if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.slug}.`);
             if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
@@ -271,7 +270,9 @@ module.exports.placeOrder = async (req, res, next) => {
             shipping_method_id,
             order_unique_id: orderUniqueId,
             order_code: parseInt(orderCode).toString(),
-            shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0
+            shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
+            email: email,
+            phone: phone
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
         
@@ -491,7 +492,7 @@ module.exports.getOrderById = async (req, res) => {
                 user_id: userId // Ensure the order belongs to the authenticated user
             },
             attributes: [
-                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt'
+                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
             ],
             include: [
                 {

@@ -200,7 +200,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         }); 
-
         if (!coupon) {
             throw {
                 statusCode: 404,
@@ -264,7 +263,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             totalItems,
             shippingCost,
             subTotal,
-            total
+            total,
+            coupon
         }
         successResponse(res, resObj, 'Success');
     } catch (error) {

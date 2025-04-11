@@ -3,6 +3,29 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Coupon, CouponUsage, User, Product, ProductVariant, Cart, ShippingMethod } = require("../../../models");
 const logger = require("../../../library/logger");
 
+/**
+ * Get all shipping methods
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+module.exports.getAllShippingMethods = async (req, res, next) => {
+    try {
+        const shippingMethods = await ShippingMethod.findAll();
+
+        return successResponse(res, shippingMethods, 'Shipping methods retrieved successfully');
+    } catch (error) {
+        logger.error('Error in getAllShippingMethods:', error);
+        return errorResponse(res, error, 'Failed to retrieve shipping methods');
+    }
+};
+
+/**
+ * Apply shipping method to cart
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
 module.exports.shippingMethod = async (req, res, next) => {
     try {
         const userId = req.user.id;

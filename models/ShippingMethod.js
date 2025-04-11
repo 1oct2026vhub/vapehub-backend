@@ -11,13 +11,12 @@ module.exports = (sequelize, DataTypes) => {
                 onUpdate: "CASCADE",
             });
 
-             // If orders are linked to shipping methods
-            //  ShippingMethod.hasMany(models.Order, {
-            //     as: "orders",
-            //     foreignKey: "shipping_method_id",
-            //     onDelete: "SET NULL",
-            //     onUpdate: "CASCADE",
-            // });
+            ShippingMethod.hasMany(models.Order, {
+                as: "orders",
+                foreignKey: "shipping_method_id",
+                onDelete: "SET NULL",
+                onUpdate: "CASCADE",
+            });
         }
     }
     ShippingMethod.init(
@@ -28,14 +27,14 @@ module.exports = (sequelize, DataTypes) => {
                 autoIncrement: true,
                 unique: true,
             },
-            shipping_method:{
+            shipping_method: {
                 type: DataTypes.STRING,
                 allowNull: false
             },
-            shipping_cost: {  // <-- New field added
-                type: DataTypes.DECIMAL( 8, 2),
+            shipping_cost: {
+                type: DataTypes.DECIMAL(8, 2),
                 allowNull: false,
-                defaultValue: 0.0, // Ensuring default value to prevent NULL errors
+                defaultValue: 0.0,
             },
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,

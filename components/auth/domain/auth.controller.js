@@ -122,6 +122,8 @@ module.exports.register = async (req, res, next) => {
 
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        
+        // Create user with initial data
         const user = await User.create({
             email,
             password: password,

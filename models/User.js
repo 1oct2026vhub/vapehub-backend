@@ -196,17 +196,12 @@ module.exports = (sequelize, DataTypes) => {
         if (user.password) {
             user.password = await bcrypt.hash(user.password, 10);
         }
-        if (!user.referral_code) {
-            user.referral_code = await user.generateReferralCode();
-        }
     });
 
-    // Add afterCreate hook to ensure referral code is set
+    // Add afterCreate hook to generate referral code
     User.afterCreate(async (user, options) => {
-        if (!user.referral_code) {
-            user.referral_code = await user.generateReferralCode();
-            await user.save();
-        }
+        const referralCode = await user.generateReferralCode();
+        await user.update({ referral_code: referralCode });
     });
 
     return User;
