@@ -67,8 +67,17 @@ module.exports.listAllBlogs = async (req, res) => {
             paranoid: !showDeleted
         });
 
+        // Process blogs to remove published_at for draft or archived status
+        const processedBlogs = blogs.map(blog => {
+            const blogData = blog.toJSON();
+            if (blogData.status === 'draft' || blogData.status === 'archived') {
+                blogData.published_at = null;
+            }
+            return blogData;
+        });
+
         successResponse(res, {
-            blogs,
+            blogs: processedBlogs,
             pagination: {
                 total: count,
                 page: parseInt(page),
@@ -107,7 +116,13 @@ module.exports.getBlogById = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        successResponse(res, blog);
+        // Process blog to remove published_at for draft or archived status
+        const blogData = blog.toJSON();
+        if (blogData.status === 'draft' || blogData.status === 'archived') {
+            blogData.published_at = null;
+        }
+
+        successResponse(res, blogData);
     } catch (error) {
         errorResponse(res, error);
     }
@@ -137,6 +152,7 @@ module.exports.createBlog = async (req, res) => {
         const tags = req.body.tags ? 
             req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
         const { id: author_id } = req.user;
+        const status = req.body.status || 'draft';
 
         let image_url = null;
         if (req.file) {
@@ -150,8 +166,9 @@ module.exports.createBlog = async (req, res) => {
             slug,
             image_url,
             author_id,
-            published_at,
-            status: req.body.status || 'draft',
+            // Only set published_at if status is not 'archived' or 'draft'
+            ...(status !== 'archived' && status !== 'draft' && { published_at }),
+            status,
             updated_by: author_id
         }, { transaction });
 
@@ -245,6 +262,7 @@ module.exports.updateBlog = async (req, res) => {
         const { id } = req.params;
         const { title, content, slug, categories, tags, published_at } = req.body;
         const { id: updated_by } = req.user;
+        const status = req.body.status;
 
         const blog = await Blog.findByPk(id, { transaction });
         if (!blog) {
@@ -258,16 +276,26 @@ module.exports.updateBlog = async (req, res) => {
             await slugManager.createOrUpdateSlug(slug, 'blog', id, transaction);
         }
 
-        // Update blog
-        await blog.update({
+        // Prepare update data
+        const updateData = {
             ...(title && { title }),
             ...(content && { content }),
             ...(slug && { slug }),
             ...(image_url && { image_url }),
-            ...(published_at && { published_at }),
-            ...(req.body.status && { status: req.body.status }),
+            ...(status && { status }),
             updated_by
-        }, { transaction });
+        };
+
+        // Only include published_at if status is not 'archived' or 'draft'
+        if (published_at && status !== 'archived' && status !== 'draft') {
+            updateData.published_at = published_at;
+        } else if (status === 'archived' || status === 'draft') {
+            // Clear published_at if status is 'archived' or 'draft'
+            updateData.published_at = null;
+        }
+
+        // Update blog
+        await blog.update(updateData, { transaction });
 
         // Parse categories and tags
         const parsedCategories = categories ? 
