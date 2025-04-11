@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder} = require("../helper/order.helper")
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize} = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -619,6 +619,39 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 await Cart.destroy({ 
                     where: { user_id: order.user_id }
                 });
+
+                // Create transaction record
+                await Transaction.create({
+                    userId: userId,
+                    orderId: order.id,
+                    paymentMethod: 'vivaWallet',
+                    transactionType: 'PURCHASE',
+                    amount: transactionData.amount,
+                    currency: transactionData.currencyCode,
+                    status: 'completed',
+                    referenceNumber: transactionData.cardUniqueReference,    // transactionId
+                    notes: transactionData.customerTrns,
+                    metadata: {
+                        bankId: transactionData.bankId,
+                        cardNumber: transactionData.cardNumber,
+                        cardType: transactionData.cardTypeId,
+                        cardExpirationDate: transactionData.cardExpirationDate,
+                        cardIssuingBank: transactionData.cardIssuingBank,
+                        cardCountryCode: transactionData.cardCountryCode,
+                        sourceCode: transactionData.sourceCode,
+                        transactionTypeId: transactionData.transactionTypeId,
+                        switching: transactionData.switching,
+                        recurringSupport: transactionData.recurringSupport,
+                        totalInstallments: transactionData.totalInstallments,
+                        currentInstallment: transactionData.currentInstallment,
+                        conversionRate: transactionData.conversionRate,
+                        originalAmount: transactionData.originalAmount,
+                        originalCurrencyCode: transactionData.originalCurrencyCode,
+                        cardUniqueReference: transactionData.cardUniqueReference,
+                        digitalWalletId: transactionData.digitalWalletId,
+                        loyaltyTransactions: transactionData.loyaltyTransactions
+                    }
+                });
             }
         }
 
@@ -631,6 +664,39 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
 
             if (order) {
                 await order.destroy();
+
+                // Create failed transaction record
+                await Transaction.create({
+                    userId: userId,
+                    orderId: order.id,
+                    paymentMethod: 'vivaWallet',
+                    transactionType: 'PURCHASE',
+                    amount: transactionData.amount,
+                    currency: transactionData.currencyCode,
+                    status: 'fail',
+                    referenceNumber: transactionId,
+                    notes: transactionData.customerTrns,
+                    metadata: {
+                        bankId: transactionData.bankId,
+                        cardNumber: transactionData.cardNumber,
+                        cardType: transactionData.cardTypeId,
+                        cardExpirationDate: transactionData.cardExpirationDate,
+                        cardIssuingBank: transactionData.cardIssuingBank,
+                        cardCountryCode: transactionData.cardCountryCode,
+                        sourceCode: transactionData.sourceCode,
+                        transactionTypeId: transactionData.transactionTypeId,
+                        switching: transactionData.switching,
+                        recurringSupport: transactionData.recurringSupport,
+                        totalInstallments: transactionData.totalInstallments,
+                        currentInstallment: transactionData.currentInstallment,
+                        conversionRate: transactionData.conversionRate,
+                        originalAmount: transactionData.originalAmount,
+                        originalCurrencyCode: transactionData.originalCurrencyCode,
+                        cardUniqueReference: transactionData.cardUniqueReference,
+                        digitalWalletId: transactionData.digitalWalletId,
+                        loyaltyTransactions: transactionData.loyaltyTransactions
+                    }
+                });
             }
         }
 
