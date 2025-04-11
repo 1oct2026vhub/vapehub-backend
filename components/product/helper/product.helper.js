@@ -249,7 +249,8 @@ const fetchProducts = async (query) => {
         if (Array.isArray(termIdsArray) && termIdsArray.length > 0) {
           const numericId = parseInt(variantIdOrAttributeId);
           const numericTermIds = termIdsArray.map(Number);
-
+          // console.log("numericId", numericId)
+          // console.log("numericTermIds", numericTermIds)
           if (variantIdOrAttributeId.length <= 2) { // Attribute ID
             productAttributeConditions.push({
               attribute_id: numericId,
@@ -266,7 +267,7 @@ const fetchProducts = async (query) => {
         }
       }
     }
-    
+    // console.log("productAttributeConditions", productAttributeConditions)
     // Combine product attribute conditions
     let productAttributeWhereClause = {};
     if (productAttributeConditions.length > 0) {
@@ -334,6 +335,7 @@ const fetchProducts = async (query) => {
       limit: parsedLimit,
       offset: parsedOffset
     };
+    
     // Fetch products
     const products = await Product.findAll({
       where: productWhereClause,
@@ -346,7 +348,7 @@ const fetchProducts = async (query) => {
       offset: parsedOffset,
       distinct: true,
     });
-
+    // console.log("productAttributeWhereClause", productAttributeWhereClause)
     const allAttributeTerms = await Product.findAll({
       where: productWhereClause,
       include: [{
@@ -498,23 +500,23 @@ const fetchProducts = async (query) => {
     }
 
     // Update product_count in allAttributeTermMap based on attributeTermMap
-    allAttributeTermMap.forEach((allAttributeData, attributeId) => {
-        // First set all terms' product_count to 0
-        allAttributeData.terms.forEach(term => {
-            term.product_count = 0;
-        });
+    // allAttributeTermMap.forEach((allAttributeData, attributeId) => {
+    //     // First set all terms' product_count to 0
+    //     allAttributeData.terms.forEach(term => {
+    //         term.product_count = 0;
+    //     });
 
-        // Then update counts for matching terms from attributeTermMap
-        if (attributeTermMap.has(attributeId)) {
-            const attributeData = attributeTermMap.get(attributeId);
-            attributeData.terms.forEach(term => {
-                const matchingTerm = allAttributeData.terms.find(allTerm => allTerm.id === term.id);
-                if (matchingTerm) {
-                    matchingTerm.product_count = term.product_count;
-                }
-            });
-        }
-    });
+    //     // Then update counts for matching terms from attributeTermMap
+    //     if (attributeTermMap.has(attributeId)) {
+    //         const attributeData = attributeTermMap.get(attributeId);
+    //         attributeData.terms.forEach(term => {
+    //             const matchingTerm = allAttributeData.terms.find(allTerm => allTerm.id === term.id);
+    //             if (matchingTerm) {
+    //                 matchingTerm.product_count = term.product_count;
+    //             }
+    //         });
+    //     }
+    // });
 
     // Convert maps to arrays for response
     // const attributes = Array.from(attributeTermMap.values());
@@ -536,13 +538,19 @@ const fetchProducts = async (query) => {
     // Calculate price range counts
     const priceRangeCounts = priceRanges.map(range => {
       const count = products.reduce((total, product) => {
-        if (product.variants) {
-          return total + product.variants.filter(variant => {
-            const price = variant.price || 0;
+        if (product.variants && product.variants.length > 0) {
+          // Check if any variant's price falls within the range
+          const hasVariantInRange = product.variants.some(variant => {
+            const price = parseFloat(variant.price) || 0;
             return price >= range.min && price < range.max;
-          }).length;
+          });
+          // If any variant matches the range, count the product
+          return total + (hasVariantInRange ? 1 : 0);
+        } else {
+          // If no variants, check product price
+          const price = parseFloat(product.price) || 0;
+          return total + (price >= range.min && price < range.max ? 1 : 0);
         }
-        return total;
       }, 0);
 
       return {
