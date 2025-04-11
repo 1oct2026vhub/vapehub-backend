@@ -233,7 +233,7 @@ const changeUserPassword = async (req, res, next) => {
 
         const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isPasswordValid) {
-            return errorResponse(res, {}, 'Current password is incorrect', 401);
+            return errorResponse(res, {}, 'Current password is incorrect', 400);
         }
 
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
