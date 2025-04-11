@@ -42,9 +42,8 @@ const blogCategoryValidation = [
         })
         .custom(value => {
             if (value !== null && value !== undefined) {
-                console.log(value);
-                if (!Number.isInteger(value)) {
-                    throw new Error("Parent ID must be an integer");
+                if (value !== null && isNaN(Number(value))) {
+                    throw new Error("Parent ID must be an integer or null");
                 }
             }
             return true;
@@ -87,8 +86,8 @@ const blogCategoryUpdatesValidation = [
         })
         .custom(value => {
             if (value !== null && value !== undefined) {
-                if (!Number.isInteger(value)) {
-                    throw new Error("Parent ID must be an integer");
+                if (value !== null && isNaN(Number(value))) {
+                    throw new Error("Parent ID must be an integer or null");
                 }
             }
             return true;
