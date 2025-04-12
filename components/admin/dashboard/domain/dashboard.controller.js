@@ -49,7 +49,12 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const userStats = await User.findAll({
             attributes: [
                 [sequelize.col('roles.role'), 'role'],
-                [sequelize.fn('COUNT', sequelize.col('User.id')), 'count']
+                [sequelize.fn('COUNT', sequelize.col('User.id')), 'count'],
+                [sequelize.literal('SUM(CASE WHEN User.blocked = true THEN 1 ELSE 0 END)'), 'blocked_count'],
+                [sequelize.literal('SUM(CASE WHEN User.blocked = false THEN 1 ELSE 0 END)'), 'active_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NOT NULL THEN 1 ELSE 0 END)'), 'verified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NULL THEN 1 ELSE 0 END)'), 'unverified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN User.deletedAt IS NOT NULL THEN 1 ELSE 0 END)'), 'deleted_count']
             ],
             include: [{
                 model: Role,
