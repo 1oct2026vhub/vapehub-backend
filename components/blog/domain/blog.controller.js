@@ -10,8 +10,13 @@ module.exports.listAllBlogs = async (req, res, next) => {
 
         const sortField = validSortFields.includes(sortBy) ? sortBy : 'published_at';
         const sortOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+        
+        // Get current date for published date check
+        const currentDate = new Date();
+        
         let whereCondition = {
-            status: 'published' 
+            status: 'published',
+            published_at: { [Op.lte]: currentDate } // Only include blogs with published_at date in the past
         };
         
         if (search) {
@@ -36,7 +41,8 @@ module.exports.listAllBlogs = async (req, res, next) => {
         const totalCount = await Blog.count({
             where: {
                 ...whereCondition,
-                status: 'published'  
+                status: 'published',
+                published_at: { [Op.lte]: currentDate } // Only include blogs with published_at date in the past
             },
             include: categoryId ? [{
                 model: BlogCategory,
@@ -71,7 +77,6 @@ module.exports.listAllBlogs = async (req, res, next) => {
                 }])
             ],
             
-            // order: [['published_at', 'DESC']],
             order: [[sortField, sortOrder]],
             limit: parsedLimit,
             offset: offset
@@ -100,6 +105,9 @@ module.exports.listAllBlogs = async (req, res, next) => {
 
 module.exports.getBlogById = async (req, res, next) => {
     try {
+        // Get current date for published date check
+        const currentDate = new Date();
+        
         const blog = await Blog.findByPk(req.params.id, {
             include: [
                 {
@@ -121,11 +129,14 @@ module.exports.getBlogById = async (req, res, next) => {
                 }
             ]
         });
-        if (!blog || blog.status != 'published') {
+        
+        // Check if blog exists, is published, and published_at date is in the past
+        if (!blog || blog.status != 'published' || !blog.published_at || blog.published_at > currentDate) {
             const error = new Error('Blog not found');
             error.statusCode = 404;
             throw error;
         }
+        
         successResponse(res, blog, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -223,12 +234,16 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
 module.exports.getBlogBySlug = async (req, res, next) => {
     try {
         const { slug } = req.params;
+        
+        // Get current date for published date check
+        const currentDate = new Date();
 
         // First find the blog by slug
         const blog = await Blog.findOne({
             where: { 
                 slug: slug,
-                status: 'published'
+                status: 'published',
+                published_at: { [Op.lte]: currentDate } // Only include blogs with published_at date in the past
             },
             include: [
                 {
@@ -261,7 +276,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
         const relatedBlogs = await Blog.findAll({
             where: {
                 id: { [Op.ne]: blog.id },
-                published_at: { [Op.ne]: null },
+                published_at: { [Op.lte]: currentDate }, // Only include blogs with published_at date in the past
                 status: 'published'
             },
             include: [{
