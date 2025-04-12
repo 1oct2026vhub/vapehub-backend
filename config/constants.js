@@ -26,7 +26,9 @@ module.exports = {
         DRAFT: 'draft',                // Initial cart state
         PENDING: 'pending',            // Order placed but payment not confirmed
         PROCESSING: 'processing',       // Payment confirmed, preparing for shipment
+        PACKED: 'packed',              // Order has been packed and ready for shipping
         SHIPPED: 'shipped',            // Order has been shipped
+        OUT_FOR_DELIVERY: 'out_for_delivery', // Order is out for delivery
         DELIVERED: 'delivered',        // Order has been delivered
         COMPLETED: 'completed',        // Order successfully fulfilled
         FAIL: 'fail',                 // Order/payment failed
@@ -40,7 +42,9 @@ module.exports = {
         'draft',
         'pending',
         'processing',
+        'packed',
         'shipped',
+        'out_for_delivery',
         'delivered',
         'completed',
         'fail',

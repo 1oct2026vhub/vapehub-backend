@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, UserAddress, sequelize } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, UserAddress, sequelize, OrderLog } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -180,6 +180,19 @@ module.exports.getOrderById = async (req, res, next) => {
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug']
                         }
                     ]
+                },
+                {
+                    model: OrderLog,
+                    as: 'orderLogs',
+                    attributes: ['id', 'status', 'label', 'additional_info', 'createdAt'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'user',
+                            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url']
+                        }
+                    ],
+                    order: [['createdAt', 'ASC']]
                 }
             ]
         });
@@ -190,7 +203,14 @@ module.exports.getOrderById = async (req, res, next) => {
             throw error;
         }
 
-        successResponse(res, order, 'Success');
+        // Get the status timeline
+        const statusTimeline = await order.getStatusTimeline();
+
+        // Add status timeline to the response
+        const orderResponse = order.toJSON();
+        orderResponse.statusTimeline = statusTimeline;
+
+        successResponse(res, orderResponse, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -209,21 +229,24 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Validate status
-        if (status && !Object.values(orderStatusEnums).includes(status)) {
+        // Validate status exists in enum
+        if (!status || !Object.values(orderStatusEnums).includes(status)) {
             const error = new Error('Invalid order status');
             error.statusCode = 400;
             throw error;
         }
 
-        // Update order
+        // Update order with admin flag and user ID
         await order.update({
-            status: status || order.status,
+            status: status,
             updated_by: user_id
+        }, {
+            isAdmin: true,  // Since this is in admin controller
+            userId: user_id // Pass the user ID for logging
         });
 
-        // If order is cancelled, restore product stock
-        if (status === orderStatus.CANCELLED) {
+        // Handle stock updates for cancelled orders
+        if (status === orderStatus.CANCEL) {
             const orderItems = await OrderItem.findAll({
                 where: { order_id: id },
                 include: [
@@ -235,13 +258,15 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             });
 
             for (const item of orderItems) {
-                await item.variant.increment('stock', { by: item.quantity });
+                if (item.variant) {
+                    await item.variant.increment('stock', { by: item.quantity });
+                }
             }
         }
 
         successResponse(res, order, 'Order status updated successfully');
     } catch (error) {
-        console.log(error);
+        console.error("updateOrderStatus error:", error);
         return errorResponse(res, error, error.message);
     }
 };
