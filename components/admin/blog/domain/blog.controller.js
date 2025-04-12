@@ -95,28 +95,28 @@ module.exports.listAllBlogs = async (req, res) => {
 
         // Filter blogs by category_id and tag_id if provided
         let filteredBlogs = processedBlogs;
-        if (categoryIds.length > 0 || tagIds.length > 0) {
-            filteredBlogs = processedBlogs.filter(blog => {
-                // Check if blog has any of the requested categories
-                const hasMatchingCategory = categoryIds.length === 0 || 
-                    blog.categories.some(category => categoryIds.includes(category.id));
+        // if (categoryIds.length > 0 || tagIds.length > 0) {
+        //     filteredBlogs = processedBlogs.filter(blog => {
+        //         // Check if blog has any of the requested categories
+        //         const hasMatchingCategory = categoryIds.length === 0 || 
+        //             blog.categories.some(category => categoryIds.includes(category.id));
                 
-                // Check if blog has any of the requested tags
-                const hasMatchingTag = tagIds.length === 0 || 
-                    blog.tags.some(tag => tagIds.includes(tag.id));
+        //         // Check if blog has any of the requested tags
+        //         const hasMatchingTag = tagIds.length === 0 || 
+        //             blog.tags.some(tag => tagIds.includes(tag.id));
                 
-                // Return true if blog matches both category and tag filters
-                return hasMatchingCategory && hasMatchingTag;
-            });
-        }
+        //         // Return true if blog matches both category and tag filters
+        //         return hasMatchingCategory && hasMatchingTag;
+        //     });
+        // }
 
         successResponse(res, {
             blogs: filteredBlogs,
             pagination: {
-                total: filteredBlogs.length,
+                total: totalCount,
                 page: parseInt(page),
                 limit: parseInt(limit),
-                total_pages: Math.ceil(filteredBlogs.length / parseInt(limit))
+                total_pages: Math.ceil(totalCount / parseInt(limit))
             } 
         });
     } catch (error) {
