@@ -151,6 +151,9 @@ module.exports.listAllCategories = async (req, res, next) => {
         const { order = 'DESC' } = req.query;
         const sortOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
         const categories = await BlogCategory.findAll({
+            where: {
+                status: 'active'
+            },
             attributes: ['id', 'name', 'slug', 'description', 'image_url'],
             include: [{
                 model: Blog,
@@ -177,7 +180,10 @@ module.exports.listAllCategories = async (req, res, next) => {
 module.exports.getCategoryBySlug = async (req, res, next) => {
     try {
         const category = await BlogCategory.findOne({
-            where: { slug: req.params.slug },
+            where: { 
+                slug: req.params.slug,
+                status: 'active'
+            },
             attributes: ['id', 'name', 'slug', 'description', 'image_url', 'status'],
             include: [{
                 model: Blog,
