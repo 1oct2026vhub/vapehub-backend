@@ -68,8 +68,11 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const productStats = await ProductVariant.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'totalProducts'],
-                [sequelize.literal('SUM(CASE WHEN stock <= 10 THEN 1 ELSE 0 END)'), 'lowStock'],
-                [sequelize.literal('SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END)'), 'outOfStock']
+                [sequelize.literal('SUM(CASE WHEN stock <= low_stock_threshold THEN 1 ELSE 0 END)'), 'lowStock'],
+                [sequelize.literal('SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END)'), 'outOfStock'],
+                [sequelize.literal('SUM(CASE WHEN stock_status = \'in_stock\' THEN 1 ELSE 0 END)'), 'inStock'],
+                [sequelize.literal('SUM(CASE WHEN stock_status = \'out_of_stock\' THEN 1 ELSE 0 END)'), 'outOfStockStatus'],
+                [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock']
             ]
         });
 
