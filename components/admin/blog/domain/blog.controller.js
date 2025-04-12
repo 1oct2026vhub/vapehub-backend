@@ -28,43 +28,55 @@ module.exports.listAllBlogs = async (req, res) => {
             whereCondition.status = status;
         }
 
-        // Parse category_id and tag_id
+        // Parse category_id and tag_id for filtering blogs
         const categoryIds = category_id ? 
             category_id.split(',').map(id => parseInt(id.trim())) : [];
         const tagIds = tag_id ? 
             tag_id.split(',').map(id => parseInt(id.trim())) : [];
 
-        // Add category and tag filtering
+        // Base include conditions - always include all relations
         let includeConditions = [
             {
                 model: User,
                 as: 'author',
-                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
+                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'],
+                required: false
             },
             {
                 model: BlogCategory,
                 as: 'categories',
                 through: { attributes: [] },
-                ...(categoryIds.length > 0 && { where: { id: { [Op.in]: categoryIds } } })
+                required: false
             },
             {
                 model: BlogTag,
                 as: 'tags',
                 through: { attributes: [] },
-                ...(tagIds.length > 0 && { where: { id: { [Op.in]: tagIds } } })
+                required: false
             }
         ];
 
         // Convert deleted string to boolean
         const showDeleted = deleted === 'true' || deleted === true;
 
-        const { count, rows: blogs } = await Blog.findAndCountAll({
+        // First, get the total count with the same filters
+        const totalCount = await Blog.count({
+            where: whereCondition,
+            include: includeConditions,
+            paranoid: !showDeleted,
+            distinct: true
+        });
+
+        // Then get the paginated results
+        const { rows: blogs } = await Blog.findAndCountAll({
             where: whereCondition,
             include: includeConditions,
             order: [[sort, order]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !showDeleted
+            paranoid: !showDeleted,
+            distinct: true,
+            group: ['Blog.id']
         });
 
         // Process blogs to remove published_at for draft or archived status
@@ -73,16 +85,38 @@ module.exports.listAllBlogs = async (req, res) => {
             if (blogData.status === 'draft' || blogData.status === 'archived') {
                 blogData.published_at = null;
             }
+            
+            // Add empty arrays for relations if they don't exist
+            blogData.categoryRelations = [];
+            blogData.tagRelations = [];
+            
             return blogData;
         });
 
+        // Filter blogs by category_id and tag_id if provided
+        let filteredBlogs = processedBlogs;
+        if (categoryIds.length > 0 || tagIds.length > 0) {
+            filteredBlogs = processedBlogs.filter(blog => {
+                // Check if blog has any of the requested categories
+                const hasMatchingCategory = categoryIds.length === 0 || 
+                    blog.categories.some(category => categoryIds.includes(category.id));
+                
+                // Check if blog has any of the requested tags
+                const hasMatchingTag = tagIds.length === 0 || 
+                    blog.tags.some(tag => tagIds.includes(tag.id));
+                
+                // Return true if blog matches both category and tag filters
+                return hasMatchingCategory && hasMatchingTag;
+            });
+        }
+
         successResponse(res, {
-            blogs: processedBlogs,
+            blogs: filteredBlogs,
             pagination: {
-                total: count,
+                total: filteredBlogs.length,
                 page: parseInt(page),
                 limit: parseInt(limit),
-                total_pages: Math.ceil(count / parseInt(limit))
+                total_pages: Math.ceil(filteredBlogs.length / parseInt(limit))
             } 
         });
     } catch (error) {
