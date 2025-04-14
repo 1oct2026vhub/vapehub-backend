@@ -47,6 +47,59 @@ const getDateFormat = (period) => {
     }
 };
 
+// Helper function to get date range string for a specific date
+const getDateRangeString = (date, period) => {
+    if (!date) return '';
+    
+    try {
+        if (period === 'weekly') {
+            // For weekly, the date is in format "YYYY-WW" (e.g., "2023-15")
+            const [year, week] = date.split('-');
+            
+            // Create a date for January 1st of the year
+            const jan1 = new Date(year, 0, 1);
+            
+            // Calculate the first day of the week
+            // ISO weeks start on Monday, and the first week of the year is the week containing January 4th
+            const dayOfWeek = jan1.getDay();
+            const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust for Monday as first day of week
+            
+            // Add days to get to the first day of the first week
+            const firstWeekStart = new Date(year, 0, 1 + diff);
+            
+            // Add weeks to get to the target week
+            const weekStart = new Date(firstWeekStart);
+            weekStart.setDate(firstWeekStart.getDate() + (parseInt(week) - 1) * 7);
+            
+            // End of week is 6 days after start
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            
+            return `${formatDate(weekStart)} - ${formatDate(weekEnd)}`;
+        } else if (period === 'monthly') {
+            // For monthly, the date is in format "YYYY-MM" (e.g., "2023-04")
+            const [year, month] = date.split('-');
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+            
+            return `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
+        }
+        
+        return date; // For daily, just return the date
+    } catch (error) {
+        console.error('Error in getDateRangeString:', error, 'date:', date, 'period:', period);
+        return date; // Return the original date if there's an error
+    }
+};
+
+// Helper function to format date as YYYY-MM-DD
+const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 module.exports.getSalesChart = async (req, res) => {
     try {
         const period = req.query.period || 'daily';
@@ -68,11 +121,15 @@ module.exports.getSalesChart = async (req, res) => {
             order: [[dateFormat, 'ASC']]
         });
 
-        const formattedData = salesData.map(item => ({
-            date: item.getDataValue('date'),
-            ordersCount: parseInt(item.getDataValue('ordersCount')),
-            totalSales: parseFloat(item.getDataValue('totalSales') || 0)
-        }));
+        const formattedData = salesData.map(item => {
+            const date = item.getDataValue('date');
+            return {
+                date: date,
+                dateRange: getDateRangeString(date, period),
+                ordersCount: parseInt(item.getDataValue('ordersCount')),
+                totalSales: parseFloat(item.getDataValue('totalSales') || 0)
+            };
+        });
 
         logger.info('Sales chart data retrieved successfully');
         return successResponse(res, formattedData, 'Sales chart data retrieved successfully');
@@ -111,15 +168,20 @@ module.exports.getUserGrowthChart = async (req, res) => {
             order: [[dateFormat, 'ASC']]
         });
 
-        const formattedData = userData.map(item => ({
-            date: item.getDataValue('date'),
-            admin: parseInt(item.getDataValue('adminUsersCount') || 0),
-            customer: parseInt(item.getDataValue('customerUsersCount') || 0)
-        }));
+        const formattedData = userData.map(item => {
+            const date = item.getDataValue('date');
+            return {
+                date: date,
+                dateRange: getDateRangeString(date, period),
+                admin: parseInt(item.getDataValue('adminUsersCount') || 0),
+                customer: parseInt(item.getDataValue('customerUsersCount') || 0)
+            };
+        });
 
         logger.info('User growth chart data retrieved successfully');
         return successResponse(res, formattedData, 'User growth chart data retrieved successfully');
     } catch (error) {
+        console.log(error);
         logger.error('Error fetching user growth chart data:', {
             error: error.message,
             stack: error.stack
@@ -150,11 +212,15 @@ module.exports.getTransactionChart = async (req, res) => {
             order: [[dateFormat, 'ASC']]
         });
 
-        const formattedData = transactionData.map(item => ({
-            date: item.getDataValue('date'),
-            transactionCount: parseInt(item.getDataValue('transactionCount')),
-            totalRevenue: parseFloat(item.getDataValue('totalRevenue') || 0)
-        }));
+        const formattedData = transactionData.map(item => {
+            const date = item.getDataValue('date');
+            return {
+                date: date,
+                dateRange: getDateRangeString(date, period),
+                transactionCount: parseInt(item.getDataValue('transactionCount')),
+                totalRevenue: parseFloat(item.getDataValue('totalRevenue') || 0)
+            };
+        });
 
         logger.info('Transaction chart data retrieved successfully');
         return successResponse(res, formattedData, 'Transaction chart data retrieved successfully');
