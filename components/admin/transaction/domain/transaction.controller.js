@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { Parser } = require('json2csv');
+const { transactionStatus, transactionTypes, transactionStatusEnums, transactionTypeEnums } = require('../../../../config/constants');
 
 // List all transactions with pagination and filtering
 exports.listTransactions = async (req, res) => {
@@ -97,6 +98,14 @@ exports.getTransactionDetails = async (req, res) => {
 exports.updateTransactionStatus = async (req, res) => {
   try {
     const { status } = req.body;
+    
+    // Validate status against constants
+    if (!transactionStatusEnums.includes(status)) {
+      const error = new Error(`Invalid status. Must be one of: ${transactionStatusEnums.join(', ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    
     const transaction = await Transaction.findByPk(req.params.id);
 
     if (!transaction) {
@@ -183,6 +192,12 @@ exports.exportTransactions = async (req, res) => {
 
     // Add status filter
     if (status) {
+      // Validate status against constants
+      if (!transactionStatusEnums.includes(status)) {
+        const error = new Error(`Invalid status. Must be one of: ${transactionStatusEnums.join(', ')}`);
+        error.statusCode = 400;
+        throw error;
+      }
       where.status = status;
     }
 

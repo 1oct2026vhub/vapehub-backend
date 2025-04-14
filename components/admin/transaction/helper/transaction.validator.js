@@ -1,4 +1,5 @@
 const { body, query, param } = require('express-validator');
+const { transactionStatusEnums, transactionTypeEnums } = require('../../../../config/constants');
 
 // Validation rules for listTransactions
 exports.listTransactionsValidator = [
@@ -20,12 +21,12 @@ exports.listTransactionsValidator = [
     .withMessage('Invalid order ID format'),
   query('status')
     .optional()
-    .isIn(['pending', 'completed', 'failed', 'refunded', 'cancelled'])
-    .withMessage('Invalid transaction status'),
+    .isIn(transactionStatusEnums)
+    .withMessage(`Invalid transaction status. Must be one of: ${transactionStatusEnums.join(', ')}`),
   query('transactionType')
     .optional()
-    .isIn(['payment', 'refund', 'partial_refund'])
-    .withMessage('Invalid transaction type'),
+    .isIn(transactionTypeEnums)
+    .withMessage(`Invalid transaction type. Must be one of: ${transactionTypeEnums.join(', ')}`),
   query('startDate')
     .optional()
     .isISO8601()
@@ -63,8 +64,8 @@ exports.updateTransactionStatusValidator = [
     .isInt()
     .withMessage('Invalid transaction ID format'),
   body('status')
-    .isIn(['pending', 'completed', 'failed', 'refunded', 'cancelled'])
-    .withMessage('Invalid transaction status')
+    .isIn(transactionStatusEnums)
+    .withMessage(`Invalid transaction status. Must be one of: ${transactionStatusEnums.join(', ')}`)
 ];
 
 // Validation rules for refundTransaction
@@ -124,6 +125,6 @@ exports.exportTransactionsValidator = [
     }),
   query('status')
     .optional()
-    .isIn(['pending', 'completed', 'failed', 'refunded', 'cancelled'])
-    .withMessage('Status must be one of: pending, completed, failed, refunded, cancelled')
+    .isIn(transactionStatusEnums)
+    .withMessage(`Status must be one of: ${transactionStatusEnums.join(', ')}`)
 ]; 
