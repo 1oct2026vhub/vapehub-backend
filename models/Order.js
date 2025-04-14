@@ -54,6 +54,14 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
         onUpdate: 'CASCADE'
       });
+      
+      // Add association for Transaction
+      this.hasMany(models.Transaction, {
+        foreignKey: 'orderId',
+        as: 'transactions',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE'
+      });
     }
 
     /**

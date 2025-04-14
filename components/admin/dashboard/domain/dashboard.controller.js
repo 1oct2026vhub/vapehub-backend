@@ -51,9 +51,9 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 [sequelize.col('roles.role'), 'role'],
                 [sequelize.fn('COUNT', sequelize.col('User.id')), 'count'],
                 [sequelize.literal('SUM(CASE WHEN User.blocked = true THEN 1 ELSE 0 END)'), 'blocked_count'],
-                [sequelize.literal('SUM(CASE WHEN User.blocked = false THEN 1 ELSE 0 END)'), 'active_count'],
-                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NOT NULL THEN 1 ELSE 0 END)'), 'verified_customer_count'],
-                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NULL THEN 1 ELSE 0 END)'), 'unverified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN User.blocked = false AND User.email_verified_at IS NOT NULL AND User.deletedAt IS NULL THEN 1 ELSE 0 END)'), 'active_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NOT NULL AND User.deletedAt IS NULL AND User.blocked = false THEN 1 ELSE 0 END)'), 'verified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NULL AND User.deletedAt IS NULL AND User.blocked = false THEN 1 ELSE 0 END)'), 'unverified_customer_count'],
                 [sequelize.literal('SUM(CASE WHEN User.deletedAt IS NOT NULL THEN 1 ELSE 0 END)'), 'deleted_count']
             ],
             include: [{
@@ -88,23 +88,35 @@ module.exports.getDashboardStats = async (req, res, next) => {
         // Recent Transactions
         const recentTransactions = await Transaction.findAll({
             order: [['createdAt', 'DESC']],
-            limit: 5,
+            limit: 10,
             include: [{
                 model: Order,
                 as: 'order',
-                attributes: ['id']
+                attributes: ['id', 'order_unique_id' , 'status', 'createdAt', 'updatedAt'],
+                include: [{
+                    model: User,
+                    as: 'user',
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url']
+                }]
             }]
         });
 
         // Recent Orders
         const recentOrders = await Order.findAll({
             order: [['createdAt', 'DESC']],
-            limit: 5,
-            include: [{
-                model: User,
-                as: 'user',
-                attributes: ['first_name', 'last_name', 'email']
-            }]
+            limit: 10,
+            include: [
+                {
+                    model: Transaction,
+                    as: 'transactions',
+                    attributes: ['id', 'amount', 'status', 'createdAt', 'updatedAt']
+                },
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url']
+                }
+            ]
         });
 
         const stats = {
