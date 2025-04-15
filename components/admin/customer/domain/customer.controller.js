@@ -134,10 +134,16 @@ module.exports.listUsers = async (req, res) => {
 module.exports.deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+        const requestingUser = req.user;
 
         const user = await User.findByPk(id);
         if (!user) {
             return errorResponse(res, { message: "User not found" }, 404);
+        }
+
+        // Check if requesting user has permission to delete the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to delete a super user" }, 403);
         }
 
         await user.destroy(); // Soft delete enabled because `paranoid: true`
@@ -174,6 +180,7 @@ module.exports.restoreUser = async (req, res) => {
 module.exports.blockUser = async (req, res) => {
     try {
         const { id } = req.params;
+        const requestingUser = req.user;
 
         const user = await User.findByPk(id);
         if (!user) {            
@@ -182,6 +189,12 @@ module.exports.blockUser = async (req, res) => {
         if (user.blocked) {            
             return res.status(400).json({ message: "User is already blocked" });
         }
+
+        // Check if requesting user has permission to block the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to block a super user" }, 403);
+        }
+
         user.blocked = true;
         await user.save();
         return successResponse(res, { }, "User blocked successfully", 200);

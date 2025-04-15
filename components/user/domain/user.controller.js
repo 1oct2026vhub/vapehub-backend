@@ -449,6 +449,11 @@ const deleteAccount = async (req, res) => {
             return errorResponse(res, {}, {message: 'User not found'}, 401);
         }
 
+        // Prevent super users from deleting their own account
+        if (user.super_user) {
+            return errorResponse(res, {}, {message: 'Super users cannot delete their own account'}, 403);
+        }
+
         // Create notification before account deletion
         await createNotification({
             userId: userId,
