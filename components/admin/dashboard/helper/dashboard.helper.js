@@ -1,3 +1,5 @@
+const { getTodayStart, getTodayEnd, getWeekStart, getMonthStart, getYearStart, formatDateTime } = require("../../../../utils/dateUtils");
+
 class DashboardHelper {
     formatDate(date) {
         return new Date(date).toISOString().split('T')[0];
@@ -9,39 +11,38 @@ class DashboardHelper {
     }
 
     formatCurrency(amount) {
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat('en-GB', {
             style: 'currency',
-            currency: 'USD'
+            currency: 'GBP'
         }).format(amount);
     }
 
     getDateRange(type) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
         switch (type) {
             case 'today':
                 return {
-                    start: today,
-                    end: new Date()
+                    start: getTodayStart(),
+                    end: getTodayEnd()
                 };
             case 'week':
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
                 return {
-                    start: startOfWeek,
-                    end: new Date()
+                    start: getWeekStart(),
+                    end: getTodayEnd()
                 };
             case 'month':
-                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                 return {
-                    start: startOfMonth,
-                    end: new Date()
+                    start: getMonthStart(),
+                    end: getTodayEnd()
+                };
+            case 'year':
+                return {
+                    start: getYearStart(),
+                    end: getTodayEnd()
                 };
             default:
                 return {
-                    start: today,
-                    end: new Date()
+                    start: getTodayStart(),
+                    end: getTodayEnd()
                 };
         }
     }
