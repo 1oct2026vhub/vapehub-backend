@@ -25,8 +25,13 @@ module.exports.listAllOrders = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
-            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            // Parse dates using moment to ensure consistent handling
+            const startMoment = moment(start_date);
+            const endMoment = moment(end_date);
+            
+            // Set start of day for start date and end of day for end date
+            const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
             
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
@@ -44,7 +49,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         { email: { [Op.like]: `%${search}%` } }
                     ]
                 },
-                attributes: ['id']
+                attributes: ['id'],
+                paranoid: false
             });
 
             const userIds = matchingUsers.map(user => user.id);
@@ -73,7 +79,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                     model: User,
                     as: 'user',
                     attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
-                    required: false
+                    required: false,
+                    paranoid: false
                 },
                 {
                     model: UserAddress,
@@ -144,7 +151,8 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url', 'gender', 'dob']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url', 'gender', 'dob'],
+                    paranoid: false
                 },
                 {
                     model: UserAddress,
@@ -189,7 +197,8 @@ module.exports.getOrderById = async (req, res, next) => {
                         {
                             model: User,
                             as: 'user',
-                            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url']
+                            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                            paranoid: false
                         }
                     ],
                     order: [['createdAt', 'ASC']]
@@ -277,20 +286,22 @@ module.exports.getOrderStats = async (req, res, next) => {
 
         let whereCondition = {};
         if (start_date && end_date) {
-            // Add start of time to start_date and end of time to end_date
-            const startDateTime = start_date;
-            const endDateTime = start_date === end_date 
-                ? `${end_date} 23:59:59`
-                : end_date;
-
+            // Parse dates using moment to ensure consistent handling
+            const startMoment = moment(start_date);
+            const endMoment = moment(end_date);
+            
+            // Set start of day for start date and end of day for end date
+            const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
+            
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
             };
         } else {
             // If no dates provided, fetch today's data
-            const today = new Date();
-            const startOfDay = today.toISOString().split('T')[0];
-            const endOfDay = `${startOfDay} 23:59:59`;
+            const today = moment();
+            const startOfDay = today.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endOfDay = today.endOf('day').format('YYYY-MM-DD HH:mm:ss');
             
             whereCondition.createdAt = {
                 [Op.between]: [startOfDay, endOfDay]
@@ -336,7 +347,8 @@ module.exports.generateOrderReport = async (req, res, next) => {
         // Date range filter
         if (start_date && end_date) {
             const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            const endMoment = moment(end_date);
+            const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
             
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
@@ -350,7 +362,8 @@ module.exports.generateOrderReport = async (req, res, next) => {
                     model: User,
                     as: 'user',
                     attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
-                    required: false
+                    required: false,
+                    paranoid: false
                 },
                 {
                     model: UserAddress,
