@@ -65,7 +65,7 @@ module.exports.listUsers = async (req, res) => {
 
         // Filter by blocked status
         if (blocked !== undefined) {
-            whereCondition.blocked = blocked === "true";
+            whereCondition.blocked = blocked === true || blocked === "true";
         }
 
         // Filter by email verification status

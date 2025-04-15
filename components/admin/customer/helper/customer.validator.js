@@ -41,8 +41,13 @@ const userListValidationRules = [
 
     query("blocked")
       .optional()
-      .isBoolean()
-      .withMessage("Blocked must be a boolean value"),
+      .custom((value) => {
+        if (value === "true" || value === "false" || value === true || value === false) {
+          return true;
+        }
+        throw new Error("Blocked must be a boolean value or 'true'/'false' string");
+      })
+      .withMessage("Blocked must be a boolean value or 'true'/'false' string"),
 
     query("verified")
       .optional()
