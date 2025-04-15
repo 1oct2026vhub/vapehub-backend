@@ -91,11 +91,21 @@ module.exports.register = async (req, res, next) => {
         const referral_code = req.query.referral_code;
         //  check email already exists
         const userExists = await User.findOne({ where: { email } });
+        const deletedUser = await User.findOne({where: { email }, paranoid: false});
         if (userExists) {
             throw {
                 message: "User email already exists",
                 statusCode: 400,
                 errors: { email: "User eamil already exists" },
+            }
+        }
+        if (deletedUser) {
+            throw {
+                message: "This email was previously used in a deleted account",
+                statusCode: 400,
+                errors: { 
+                    email: "This email was previously used in a deleted account. Please use a different email address or contact support to restore your account." 
+                },
             }
         }
 
