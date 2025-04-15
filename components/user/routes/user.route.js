@@ -145,6 +145,11 @@ router.get('/profile', authenticateJWT, userController.userProfile);
  *               last_name:
  *                 type: string
  *                 example: Doe
+ *               phone:
+ *                 type: string
+ *                 description: User's phone number (10-15 digits, + and hyphens allowed)
+ *                 example: "+1-234-567-8901"
+ *                 pattern: "^\\+?[\\d-]{10,15}$"
  *     responses:
  *       200:
  *         description: Profile updated successfully
