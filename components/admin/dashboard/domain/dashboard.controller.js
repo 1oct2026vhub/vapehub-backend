@@ -10,7 +10,6 @@ module.exports.getDashboardStats = async (req, res, next) => {
         // Get date ranges using the new utility functions
         const { todayStart, todayEnd, weekStart, monthStart, yearStart } = getDashboardDateRanges();
 
-        console.log(todayStart, todayEnd, weekStart, monthStart, yearStart);
         // Sales Statistics
         const todaySales = await Transaction.sum('amount', {
             where: {
@@ -167,10 +166,17 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const formattedStats = {
             ...stats,
             sales: {
+                // Currency format for precise financial reporting
                 today: dashboardHelper.formatCurrency(stats.sales.today),
                 weekly: dashboardHelper.formatCurrency(stats.sales.weekly),
                 monthly: dashboardHelper.formatCurrency(stats.sales.monthly),
-                yearly: dashboardHelper.formatCurrency(stats.sales.yearly)
+                yearly: dashboardHelper.formatCurrency(stats.sales.yearly),
+                
+                // Abbreviated format with currency symbol for quick visual scanning
+                todayAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.today),
+                weeklyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.weekly),
+                monthlyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.monthly),
+                yearlyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.yearly)
             }
         };
 
