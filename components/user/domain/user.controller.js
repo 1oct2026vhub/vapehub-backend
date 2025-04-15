@@ -42,7 +42,7 @@ const updateUserProfile = async (req, res, next) => {
         user.first_name = first_name || user.first_name;
         user.last_name = last_name || user.last_name;
         // user.email = email || user.email;
-        // user.phone = phone || user.phone;
+        user.phone = phone || user.phone;
 
         await user.save();
 
