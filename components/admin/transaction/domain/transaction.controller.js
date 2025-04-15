@@ -17,8 +17,15 @@ exports.listTransactions = async (req, res) => {
     if (status) where.status = status;
     if (transactionType) where.transactionType = transactionType;
     if (startDate && endDate) {
+      const startMoment = moment(startDate);
+      const endMoment = moment(endDate);
+      
+      // Set start of day for start date and end of day for end date
+      const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+      const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
+      
       where.createdAt = {
-        [Op.between]: [startDate, endDate]
+        [Op.between]: [startDateTime, endDateTime]
       };
     }
     if (search) {
@@ -65,7 +72,7 @@ exports.getTransactionDetails = async (req, res) => {
   try {
     const transaction = await Transaction.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'user' },
+        { model: User, as: 'user', paranoid: false },
         { model: Order, as: 'order',
           include: [
             { model: OrderItem, as: 'orderItems',
@@ -147,12 +154,12 @@ exports.generateRevenueReport = async (req, res) => {
 
     // Validate date inputs
     if (!start_date || !end_date) {
-      const now = new Date();
-      end_date = now.toISOString().split('T')[0]; // Today
-      start_date = new Date(now.setDate(now.getDate() - 30)).toISOString().split('T')[0];
+      const now = moment();
+      end_date = now.format('YYYY-MM-DD'); // Today
+      start_date = now.subtract(30, 'days').format('YYYY-MM-DD');
     }
 
-    if (isNaN(new Date(start_date)) || isNaN(new Date(end_date))) {
+    if (!moment(start_date, 'YYYY-MM-DD', true).isValid() || !moment(end_date, 'YYYY-MM-DD', true).isValid()) {
       return errorResponse(res, null, 'Invalid date format. Please use YYYY-MM-DD');
     }
 
@@ -180,13 +187,15 @@ exports.exportTransactions = async (req, res) => {
 
     // Add date range filter
     if (start_date && end_date) {
-      const startDate = new Date(start_date);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(end_date);
-      endDate.setHours(23, 59, 59, 999);
-
+      const startMoment = moment(start_date);
+      const endMoment = moment(end_date);
+      
+      // Set start of day for start date and end of day for end date
+      const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+      const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
+      
       where.createdAt = {
-        [Op.between]: [startDate, endDate]
+        [Op.between]: [startDateTime, endDateTime]
       };
     }
 
@@ -201,34 +210,50 @@ exports.exportTransactions = async (req, res) => {
       where.status = status;
     }
 
+    console.log('Export query where clause:', JSON.stringify(where));
+
     const transactions = await Transaction.findAll({
       where,
       include: [
-        { model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'] },
-        { model: Order, as: 'order', attributes: ['id', 'order_unique_id'] }
+        { 
+          model: User, 
+          as: 'user', 
+          attributes: ['id', 'first_name', 'last_name', 'email'], 
+          paranoid: false,
+          required: false
+        },
+        { 
+          model: Order, 
+          as: 'order', 
+          attributes: ['id', 'order_unique_id'], 
+          paranoid: false,
+          required: false
+        }
       ],
       order: [['createdAt', 'DESC']]
     });
+
+    console.log(`Found ${transactions.length} transactions for export`);
 
     if (format === 'csv') {
       // Prepare data for CSV
       const csvFields = ['ID','Reference', 'Order ID', 'Status', 'Customer', 'Email', 'Type', 'Payment Method', 'Amount', 'Date'];
       const csvData = transactions.map(transaction => {
-        const customerName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
+        const customerName = transaction.user ? `${transaction.user.first_name || ''} ${transaction.user.last_name || ''}`.trim() : 'N/A';
         const customerEmail = transaction.user ? transaction.user.email : 'N/A';
         const orderId = transaction.order ? transaction.order.order_unique_id : 'N/A';
 
         return {
-          ID: transaction.id,
-          reference: transaction.referenceNumber || 'N/A',
-          orderId,
-          status: transaction.status,
-          customerName,
-          customerEmail,
-          type: transaction.transactionType || 'N/A',
-          paymentMethod: transaction.paymentMethod || 'N/A',
-          amount: transaction.amount,
-          date: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
+          ID: transaction.id || 'N/A',
+          Reference: transaction.referenceNumber || 'N/A',
+          'Order ID': orderId,
+          Status: transaction.status || 'N/A',
+          Customer: customerName,
+          Email: customerEmail,
+          Type: transaction.transactionType || 'N/A',
+          'Payment Method': transaction.paymentMethod || 'N/A',
+          Amount: transaction.amount || '0',
+          Date: transaction.createdAt ? moment(transaction.createdAt).format('DD-MM-YYYY HH:mm:ss') : 'N/A'
         };
       });
 
@@ -237,7 +262,7 @@ exports.exportTransactions = async (req, res) => {
 
       // Set response headers for CSV
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=transactions-report-${moment().format('YYYY-MM-DD')}.csv`);
+      res.setHeader('Content-Disposition', `attachment; filename=transactions-report-${moment().format('DD-MM-YYYY')}.csv`);
 
       // Send CSV
       res.status(200).end(csv);
@@ -262,21 +287,21 @@ exports.exportTransactions = async (req, res) => {
 
       // Add data rows
       transactions.forEach(transaction => {
-        const customerName = transaction.user ? `${transaction.user.first_name} ${transaction.user.last_name}` : 'N/A';
+        const customerName = transaction.user ? `${transaction.user.first_name || ''} ${transaction.user.last_name || ''}`.trim() : 'N/A';
         const customerEmail = transaction.user ? transaction.user.email : 'N/A';
         const orderId = transaction.order ? transaction.order.order_unique_id : 'N/A';
 
         worksheet.addRow({
-          id: transaction.id,
+          id: transaction.id || 'N/A',
           reference: transaction.referenceNumber || 'N/A',
           orderId,
-          status: transaction.status,
+          status: transaction.status || 'N/A',
           customerName,
           customerEmail,
           type: transaction.transactionType || 'N/A',
           paymentMethod: transaction.paymentMethod || 'N/A',
-          amount: transaction.amount,
-          date: moment(transaction.createdAt).format('YYYY-MM-DD HH:mm:ss')
+          amount: transaction.amount || '0',
+          date: transaction.createdAt ? moment(transaction.createdAt).format('DD-MM-YYYY HH:mm:ss') : 'N/A'
         });
       });
 
@@ -295,7 +320,7 @@ exports.exportTransactions = async (req, res) => {
       );
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename=transactions-report-${moment().format('YYYY-MM-DD')}.xlsx`
+        `attachment; filename=transactions-report-${moment().format('DD-MM-YYYY')}.xlsx`
       );
 
       // Send the workbook
