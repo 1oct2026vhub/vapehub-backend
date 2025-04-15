@@ -752,15 +752,33 @@ module.exports.uploadImage = async (req, res) => {
             updated_by: req.user.id
         }));
 
-        await ProductImage.bulkCreate(imageRecords, { transaction });
+        const createdImages = await ProductImage.bulkCreate(imageRecords, { transaction });
 
         await transaction.commit();
+
+        // Fetch the created images to get their IDs
+        const savedImages = await ProductImage.findAll({
+            where: {
+                product_id,
+                image_url: {
+                    [Op.in]: uploadedImages.map(img => img.Location)
+                }
+            },
+            attributes: ['id', 'image_url', 'is_primary']
+        });
+
+        // Create a map of image URLs to their IDs
+        const imageUrlToIdMap = {};
+        savedImages.forEach(img => {
+            imageUrlToIdMap[img.image_url] = img.id;
+        });
 
         return successResponse(res, {
             message: "Images uploaded and associated successfully",
             images: uploadedImages.map(({ Location, Key }) => ({
+                id: imageUrlToIdMap[Location],
                 url: Location,
-                key: Key
+                key: Key,
             }))
         });
 

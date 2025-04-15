@@ -96,7 +96,8 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 include: [{
                     model: User,
                     as: 'user',
-                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url']
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url'],
+                    paranoid: false
                 }]
             }]
         });
@@ -109,12 +110,14 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 {
                     model: Transaction,
                     as: 'transactions',
-                    attributes: ['id', 'amount', 'status', 'createdAt', 'updatedAt']
+                    attributes: ['id', 'amount', 'status', 'createdAt', 'updatedAt'],
+                    paranoid: false
                 },
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url']
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url'],
+                    paranoid: false
                 }
             ]
         });
