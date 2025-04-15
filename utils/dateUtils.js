@@ -57,6 +57,46 @@ const formatDateTime = (date) => {
 };
 
 /**
+ * Format large numbers into abbreviated readable strings
+ * @param {number} num - The number to format
+ * @param {number} [decimals=2] - Number of decimal places to show
+ * @returns {string} Formatted number string
+ * 
+ * Examples:
+ * - 999 → "999.00"
+ * - 1,200 → "1.20K"
+ * - 1,500,000 → "1.50M"
+ * - 1,200,000,000 → "1.20B"
+ * - 1,500,000,000,000 → "1.50T"
+ */
+const formatNumber = (num, decimals = 2) => {
+  if (num === null || num === undefined) return '0.00';
+  
+  // Handle numbers less than 1000
+  if (num < 1000) return num.toFixed(decimals);
+  
+  // Define abbreviations for different scales
+  const abbreviations = [
+    { value: 1e12, symbol: 'T' }, // Trillion
+    { value: 1e9, symbol: 'B' },  // Billion
+    { value: 1e6, symbol: 'M' },  // Million
+    { value: 1e3, symbol: 'K' }   // Thousand
+  ];
+  
+  // Find the appropriate abbreviation
+  for (const { value, symbol } of abbreviations) {
+    if (num >= value) {
+      // Calculate the abbreviated value
+      const abbreviatedValue = (num / value).toFixed(decimals);
+      return abbreviatedValue + symbol;
+    }
+  }
+  
+  // Fallback (should never reach here)
+  return num.toFixed(decimals);
+};
+
+/**
  * Get all date ranges for dashboard statistics
  * @returns {Object} Object containing all date ranges
  */
@@ -77,5 +117,6 @@ module.exports = {
   getMonthStart,
   getYearStart,
   formatDateTime,
+  formatNumber,
   getDashboardDateRanges
 }; 
