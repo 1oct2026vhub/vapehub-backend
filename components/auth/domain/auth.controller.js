@@ -13,13 +13,18 @@ module.exports.login = async (req, res, next) => {
     try {
         const { email, password, resendVerificationEmail = false } = req.body;
 
-        // Find user by email, fetching only required fields
+        // Find user by email, including soft-deleted records
         const user = await User.findOne({
             where: { email },
+            paranoid: false // Include soft-deleted records
         });
-
         if (!user) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, {}, "Invalid email or password", 400);
+        }
+
+        // Check if user is soft-deleted
+        if (user.deletedAt) {
+            return errorResponse(res, {}, "Account is deleted", 400);
         }
 
         if (user.blocked) {
@@ -29,7 +34,7 @@ module.exports.login = async (req, res, next) => {
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, {},"Invalid email or password", 400);
         }
 
         if (!user?.email_verified_at) {
@@ -90,22 +95,15 @@ module.exports.register = async (req, res, next) => {
         const { email, password } = req.body;
         const referral_code = req.query.referral_code;
         //  check email already exists
-        const userExists = await User.findOne({ where: { email } });
-        const deletedUser = await User.findOne({where: { email }, paranoid: false});
+        const userExists = await User.findOne({ where: { email }, paranoid: false });
+        if (userExists && userExists.deletedAt) {
+            return errorResponse(res, {}, "This user email already deleted", 400);
+        }
         if (userExists) {
             throw {
                 message: "User email already exists",
                 statusCode: 400,
                 errors: { email: "User eamil already exists" },
-            }
-        }
-        if (deletedUser) {
-            throw {
-                message: "This email was previously used in a deleted account",
-                statusCode: 400,
-                errors: { 
-                    email: "This email was previously used in a deleted account. Please use a different email address or contact support to restore your account." 
-                },
             }
         }
 
