@@ -780,3 +780,100 @@ module.exports.cancelOrder = async (req, res) => {
         return errorResponse(res, error, 'Failed to cancel order');
     }
 };
+
+module.exports.checkOrderStock = async (req, res) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { orderId } = req.params;
+        const userId = req.user.id;
+
+        // Find the order by order ID and user ID
+        const order = await Order.findOne({
+            where: { 
+                id: orderId,
+                user_id: userId
+            },
+            include: [{
+                model: OrderItem,
+                as: 'orderItems',
+                include: [
+                    {
+                        model: Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'slug']
+                    },
+                    {
+                        model: ProductVariant,
+                        as: 'variant',
+                        attributes: ['id', 'stock', 'slug']
+                    }
+                ]
+            }],
+            transaction
+        });
+
+        if (!order) {
+            await transaction.rollback();
+            return errorResponse(res, {}, 'Order not found', 404);
+        }
+
+        let hasInsufficientStock = false;
+        const stockIssues = [];
+
+        // Check each order item's quantity against variant stock
+        for (const item of order.orderItems) {
+            if (item.variant) {
+                if (item.quantity > item.variant.stock) {
+                    hasInsufficientStock = true;
+                    stockIssues.push({
+                        product_id: item.product.id,
+                        product_name: item.product.name,
+                        product_slug: item.product.slug,
+                        variant_id: item.variant.id,
+                        variant_slug: item.variant.slug,
+                        requested_quantity: item.quantity,
+                        available_stock: item.variant.stock
+                    });
+                }
+            }
+        }
+
+        if (hasInsufficientStock) {
+            // Update order status to cancelled
+            await order.update({ 
+                status: 'cancel'
+            }, { transaction });
+
+            // Create order log for cancellation
+            await sequelize.models.OrderLog.create({
+                order_id: order.id,
+                user_id: userId,
+                status: 'cancel',
+                label: 'Order Cancelled - Insufficient Stock'
+            }, { transaction });
+
+            await transaction.commit();
+
+            return errorResponse(res, {
+                order_id: order.id,
+                // order_code: order.order_code,
+                status: order.status,
+                stock_issues: stockIssues
+            }, 'Order cancelled due to insufficient stock', 400);
+        }
+
+        await transaction.commit();
+
+        return successResponse(res, {
+            order_id: order.id,
+            order_code: order.order_code,
+            status: order.status,
+            message: 'All items are in stock'
+        }, 'Stock check successful');
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error checking order stock:', error);
+        return errorResponse(res, error, 'Failed to check order stock');
+    }
+};
