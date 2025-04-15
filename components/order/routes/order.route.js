@@ -839,6 +839,101 @@ router.get("/viva-wallet/payment-details/:transactionId", authenticateJWT, order
  */
 router.post("/cancel/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.cancelOrder);
 
+/**
+ * @swagger
+ * /api/order/check-stock/{orderId}:
+ *   get:
+ *     summary: Check order items stock availability
+ *     description: Checks if all items in the order have sufficient stock in their variants. If any item has insufficient stock, the order will be cancelled.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: The order ID to check
+ *     responses:
+ *       200:
+ *         description: All items are in stock
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Stock check successful"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "pending"
+ *                     message:
+ *                       type: string
+ *                       example: "All items are in stock"
+ *       400:
+ *         description: Order cancelled due to insufficient stock
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Order cancelled due to insufficient stock"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "cancel"
+ *                     stock_issues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           variant_id:
+ *                             type: integer
+ *                             example: 1
+ *                           requested_quantity:
+ *                             type: integer
+ *                             example: 5
+ *                           available_stock:
+ *                             type: integer
+ *                             example: 2
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/check-stock/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.checkOrderStock);
+
 // router.post("/webhook/viva", orderController.handleVivaWebhook)
 
 // router.post("/webhook/worldpay", orderController.handleWorldpayWebhook)
