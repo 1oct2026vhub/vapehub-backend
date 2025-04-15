@@ -1,5 +1,4 @@
-
-const { body, checkSchema } = require("express-validator");
+const { body, checkSchema, param } = require("express-validator");
 
 exports.validatePlaceOrder = [
   body("email")
@@ -110,4 +109,11 @@ exports.validatePlaceOrder = [
     .withMessage("Total amount must be a positive number")
     .notEmpty()
     .withMessage("Total amount is required"),
+];
+
+exports.validateOrderId = [
+    param('orderId')
+        .isInt({ min: 1 })
+        .withMessage('Order ID must be a positive integer')
+        .toInt()
 ];

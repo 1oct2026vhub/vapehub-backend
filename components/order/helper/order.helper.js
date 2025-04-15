@@ -3,7 +3,6 @@ const { UserAddress } = require("../../../models");
 // const redis = require("../../../config/redis");
 
 const saveShippingAddress = async (user_id, addressData, transaction)=>{
-    
     let shipping_address_id = addressData.shipping_address_id;
     if(shipping_address_id == undefined){
         shipping_address_id = 0;

@@ -3,7 +3,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const orderController = require("../domain/order.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
-const {validatePlaceOrder} = require("../helper/order.validator")
+const {validatePlaceOrder, validateOrderId} = require("../helper/order.validator")
 
 /**
  * @swagger
@@ -783,6 +783,61 @@ router.post("/viva-wallet-order-code", authenticateJWT, orderController.generate
  *         description: Internal server error
  */
 router.get("/viva-wallet/payment-details/:transactionId", authenticateJWT, orderController.getVivaWalletPaymentDetails);
+
+/**
+ * @swagger
+ * /api/order/cancel/{orderId}:
+ *   post:
+ *     summary: Cancel an order by order ID
+ *     description: Cancels an order using the order ID. Only pending or processing orders can be cancelled.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: The order ID to cancel
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Order cancelled successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "cancel"
+ *       400:
+ *         description: Bad Request - Order cannot be cancelled or invalid order ID
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/cancel/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.cancelOrder);
 
 // router.post("/webhook/viva", orderController.handleVivaWebhook)
 

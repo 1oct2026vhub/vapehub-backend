@@ -501,7 +501,7 @@ module.exports.getOrderById = async (req, res) => {
                 user_id: userId // Ensure the order belongs to the authenticated user
             },
             attributes: [
-                'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
+                'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
             ],
             include: [
                 {
@@ -542,12 +542,12 @@ module.exports.getOrderById = async (req, res) => {
                 {
                     model: UserAddress,
                     as: 'shippingAddress',
-                    attributes: ['name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
                     model: UserAddress,
                     as: 'billingAddress',
-                    attributes: ['name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
                     model: ShippingMethod,
@@ -561,7 +561,6 @@ module.exports.getOrderById = async (req, res) => {
                 }
             ]
         });
-
         if (!order) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
@@ -610,7 +609,6 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
             }
         );
         const transactionData = response.data;
-        
         // Check if transactionData is empty
         if (!transactionData || Object.keys(transactionData).length === 0) {
             return errorResponse(res, {}, 'No transaction data found', 404);
@@ -726,5 +724,59 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
         }
         
         return errorResponse(res, error, 'Failed to fetch payment details');
+    }
+};
+
+module.exports.cancelOrder = async (req, res) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { orderId } = req.params;
+        const userId = req.user.id;
+
+        // Find the order by order ID and user ID
+        const order = await Order.findOne({
+            where: { 
+                id: orderId,
+                user_id: userId
+            },
+            transaction
+        });
+
+        if (!order) {
+            await transaction.rollback();
+            return errorResponse(res, {}, 'Order not found', 404);
+        }
+
+        // Check if order can be cancelled
+        if (!order.canBeCancelled()) {
+            await transaction.rollback();
+            return errorResponse(res, {}, 'Order cannot be cancelled at this stage', 400);
+        }
+
+        // Update order status to cancelled
+        await order.update({ 
+            status: 'cancel'
+        }, { transaction });
+
+        // Create order log for cancellation
+        await sequelize.models.OrderLog.create({
+            order_id: order.id,
+            user_id: userId,
+            status: 'cancel',
+            label: 'Order Cancelled'
+        }, { transaction });
+
+        await transaction.commit();
+
+        return successResponse(res, {
+            order_id: order.id,
+            order_code: order.order_code,
+            status: order.status
+        }, 'Order cancelled successfully');
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error cancelling order:', error);
+        return errorResponse(res, error, 'Failed to cancel order');
     }
 };
