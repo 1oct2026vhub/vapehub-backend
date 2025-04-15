@@ -23,14 +23,24 @@ module.exports.getOrders = async (req, res) => {
             return errorResponse(res, {}, 'User not found', 404);
         }
 
-        // First get the total count of user's orders
+        // First get the total count of user's orders excluding failed orders
         const totalCount = await Order.count({
-            where: { user_id: userId }
+            where: { 
+                user_id: userId,
+                // status: {
+                //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
+                // }
+            }
         });
 
-        // Then get the paginated orders
+        // Then get the paginated orders excluding failed orders
         const orders = await Order.findAll({
-            where: { user_id: userId }, // Fetch only current user's orders
+            where: { 
+                user_id: userId,
+                // status: {
+                //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
+                // }
+            },
             attributes: [
                 'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
             ],
@@ -257,7 +267,6 @@ module.exports.placeOrder = async (req, res, next) => {
             }
             wallet_check.end = true;
         }
-
         const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}`;
         // Create Order
         const order = await Order.create({
@@ -590,7 +599,6 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
     try {
         const { transactionId } = req.params;
         const accessToken = await getVivaAccessToken();
-
         // Make request to Viva Wallet API to get transaction details
         const response = await axios.get(
             `${process.env.VIVA_API_BASE_2}/checkout/v2/transactions/${transactionId}`,
@@ -602,15 +610,20 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
             }
         );
         const transactionData = response.data;
-
+        
+        // Check if transactionData is empty
+        if (!transactionData || Object.keys(transactionData).length === 0) {
+            return errorResponse(res, {}, 'No transaction data found', 404);
+        }
+        
         // Handle successful payment (statusId: F)
+        let referenceNumber = parseInt(transactionData.orderCode).toString();   // `REF${parseInt(transactionData.orderCode).toString()}`;
         if (transactionData.statusId === "F" && transactionData.orderCode) {
             // Find the order by orderCode
             const order = await Order.findOne({
                 where: { user_id: userId, order_code: transactionData.orderCode },
                 include: [{ model: User, as: 'user' }]
             });
-
             if (order) {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
@@ -619,17 +632,16 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 await Cart.destroy({ 
                     where: { user_id: order.user_id }
                 });
-
                 // Create transaction record
                 await Transaction.create({
                     userId: userId,
                     orderId: order.id,
-                    paymentMethod: 'vivaWallet',
+                    paymentMethod: 'vivaWallet',    
                     transactionType: 'PURCHASE',
                     amount: transactionData.amount,
                     currency: transactionData.currencyCode,
-                    status: 'completed',
-                    referenceNumber: transactionData.cardUniqueReference,    // transactionId
+                    status: 'COMPLETED',
+                    referenceNumber: referenceNumber,    //  transactionData.orderCode
                     notes: transactionData.customerTrns,
                     metadata: {
                         bankId: transactionData.bankId,
@@ -661,10 +673,10 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
             const order = await Order.findOne({
                 where: {user_id: userId, order_code: transactionData.orderCode }
             });
-
             if (order) {
-                await order.destroy();
-
+                await order.update({ status: 'fail' });
+                // await order.destroy();
+                // await order.destroy();
                 // Create failed transaction record
                 await Transaction.create({
                     userId: userId,
@@ -673,8 +685,8 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     transactionType: 'PURCHASE',
                     amount: transactionData.amount,
                     currency: transactionData.currencyCode,
-                    status: 'fail',
-                    referenceNumber: transactionId,
+                    status: 'FAILED',
+                    // referenceNumber: referenceNumber,
                     notes: transactionData.customerTrns,
                     metadata: {
                         bankId: transactionData.bankId,
@@ -698,6 +710,8 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     }
                 });
             }
+           
+            
         }
 
         // Format the response data
