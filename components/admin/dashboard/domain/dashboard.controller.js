@@ -3,20 +3,22 @@ const { Transaction, Order, User, Product, ProductVariant, StockMovement, StockR
 const { Op } = require('sequelize');
 const dashboardHelper = require('../helper/dashboard.helper');
 const logger = require("../../../../library/logger");
+const { getDashboardDateRanges } = require("../../../../utils/dateUtils");
 
 module.exports.getDashboardStats = async (req, res, next) => {
     try {
-        // Get date ranges
-        const { start: todayStart, end: todayEnd } = dashboardHelper.getDateRange('today');
-        const { start: weekStart } = dashboardHelper.getDateRange('week');
-        const { start: monthStart } = dashboardHelper.getDateRange('month');
+        // Get date ranges using the new utility functions
+        const { todayStart, todayEnd, weekStart, monthStart, yearStart } = getDashboardDateRanges();
 
+        console.log(todayStart, todayEnd, weekStart, monthStart, yearStart);
         // Sales Statistics
         const todaySales = await Transaction.sum('amount', {
             where: {
                 createdAt: {
                     [Op.between]: [todayStart, todayEnd]
-                }
+                },
+                status: 'completed',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -24,7 +26,9 @@ module.exports.getDashboardStats = async (req, res, next) => {
             where: {
                 createdAt: {
                     [Op.gte]: weekStart
-                }
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -32,7 +36,19 @@ module.exports.getDashboardStats = async (req, res, next) => {
             where: {
                 createdAt: {
                     [Op.gte]: monthStart
-                }
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
+            }
+        });
+
+        const yearlySales = await Transaction.sum('amount', {
+            where: {
+                createdAt: {
+                    [Op.gte]: yearStart
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -126,7 +142,8 @@ module.exports.getDashboardStats = async (req, res, next) => {
             sales: {
                 today: todaySales || 0,
                 weekly: weeklySales || 0,
-                monthly: monthlySales || 0
+                monthly: monthlySales || 0,
+                yearly: yearlySales || 0
             },
             orders: orderStats,
             users: userStats,
@@ -152,7 +169,8 @@ module.exports.getDashboardStats = async (req, res, next) => {
             sales: {
                 today: dashboardHelper.formatCurrency(stats.sales.today),
                 weekly: dashboardHelper.formatCurrency(stats.sales.weekly),
-                monthly: dashboardHelper.formatCurrency(stats.sales.monthly)
+                monthly: dashboardHelper.formatCurrency(stats.sales.monthly),
+                yearly: dashboardHelper.formatCurrency(stats.sales.yearly)
             }
         };
 
