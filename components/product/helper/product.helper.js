@@ -354,12 +354,29 @@ const fetchProducts = async (query) => {
       distinct: true
     });
 
+    // Filter out products with no available variants and set prices
+    const availableProducts = products.filter(product => {
+      if (product.variants && product.variants.length > 0) {
+        const availableVariants = product.variants.filter(variant => 
+          variant.status === 'active' && 
+          variant.stock > 0
+        );
+        
+        if (availableVariants.length > 0) {
+          const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
+          product.price = minPrice;
+          return true;
+        }
+      }
+      return false;
+    });
+
     // Process filters data
     const categoriesMap = new Map();
     const brandMap = new Map();
     const attributeTermMap = new Map();
 
-    products.forEach(product => {
+    availableProducts.forEach(product => {
       // Process categories
       if (product.Category) {
         const categoryData = categoriesMap.get(product.category_id) || {
@@ -427,9 +444,9 @@ const fetchProducts = async (query) => {
       { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
     ];
 
-    // Calculate price range counts
+    // Calculate price range counts using available products
     const priceRangeCounts = priceRanges.map(range => {
-      const count = products.reduce((total, product) => {
+      const count = availableProducts.reduce((total, product) => {
         const hasVariantInRange = product.variants?.some(variant => {
           const price = parseFloat(variant.price) || 0;
           return price >= range.min && price < range.max;
@@ -446,23 +463,23 @@ const fetchProducts = async (query) => {
 
     // Prepare additional data based on source
     const additionalData = {};
-    if (source === "category" && products[0]?.Category) {
+    if (source === "category" && availableProducts[0]?.Category) {
       Object.assign(additionalData, {
-        id: products[0].Category.id,
-        name: products[0].Category.name,
-        slug: products[0].Category.slug
+        id: availableProducts[0].Category.id,
+        name: availableProducts[0].Category.name,
+        slug: availableProducts[0].Category.slug
       });
-    } else if (source === "brand" && products[0]?.Brand) {
+    } else if (source === "brand" && availableProducts[0]?.Brand) {
       Object.assign(additionalData, {
-        id: products[0].Brand.id,
-        name: products[0].Brand.name,
-        slug: products[0].Brand.slug
+        id: availableProducts[0].Brand.id,
+        name: availableProducts[0].Brand.name,
+        slug: availableProducts[0].Brand.slug
       });
     }
 
     return {
       additionalData,
-      products,
+      products: availableProducts,
       category_items: Array.from(categoriesMap.values()),
       brand_items: Array.from(brandMap.values()),
       attributes: Array.from(attributeTermMap.values()),
