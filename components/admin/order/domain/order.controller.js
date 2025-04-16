@@ -4,6 +4,8 @@ const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
+const { formatNumber } = require('../../../../utils/dateUtils');
+
 module.exports.listAllOrders = async (req, res, next) => {
     try {
         const { 
@@ -319,8 +321,22 @@ module.exports.getOrderStats = async (req, res, next) => {
             group: ['status']
         });
 
+        // Format the stats with abbreviated numbers
+        const formattedOrderStatusStats = orderStatusStats.map(stat => {
+            const totalAmount = parseFloat(stat.getDataValue('total_amount')) || 0;
+            const count = parseInt(stat.getDataValue('count')) || 0;
+            
+            return {
+                status: stat.getDataValue('status'),
+                count: count,
+                count_abbreviated: formatNumber(count, 0),
+                total_amount: totalAmount,
+                total_amount_abbreviated: formatNumber(totalAmount)
+            };
+        });
+
         const stats = {
-            order_status: orderStatusStats
+            order_status: formattedOrderStatusStats
         };
 
         successResponse(res, stats, 'Success');
