@@ -461,7 +461,7 @@ const deleteAccount = async (req, res) => {
             where: {
                 user_id: user.id,
                 status: {
-                    [Op.notIn]: ['cancel', 'fail', 'refunded', 'delivered', 'pending', 'completed']
+                    [Op.notIn]: ['cancel', 'fail', 'refunded', 'delivered', 'pending', 'completed', 'draft', 'return_received' ]
                 }
             }
         });
@@ -486,7 +486,7 @@ const deleteAccount = async (req, res) => {
 
         if (pendingRefunds.length > 0) {
             const orderIds = pendingRefunds.map(refund => refund.order.order_unique_id).join(', ');
-            return errorResponse(res, {}, `Account with pending refunds cannot be deleted. Please wait for refunds to be processed for orders: ${orderIds}`, 400);
+            return errorResponse(res, {}, "Your account has pending refunds. Please wait for all refunds to be processed before deleting your account.", 400);
         }
 
         // Store user email and name before deletion

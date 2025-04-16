@@ -48,20 +48,17 @@
             border-bottom: 1px solid #eee;
         }
 
-        .total {
-            font-weight: bold;
-            margin-top: 20px;
-            text-align: right;
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #2e8b57;
+            color: white;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-left: 10px;
         }
 
-        .address {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 5px;
-        }
-
-        .payment-info {
+        .tracking-info {
             margin: 20px 0;
             padding: 15px;
             background: #f9f9f9;
@@ -86,57 +83,34 @@
         
         <div class="content">
             <h2>Order Confirmation</h2>
-            <p>Thank you for your order, {{userName}}!</p>
+            <p>Hello {{userName}},</p>
+            <p>Thank you for shopping with VapeHub! We're excited to confirm that we've received your order and it's being processed.</p>
             
             <div class="order-details">
-                <h3>Order Details</h3>
+                <h3>Order Summary</h3>
                 <p><strong>Order Number:</strong> #{{orderCode}}</p>
                 <p><strong>Order Date:</strong> {{orderDate}}</p>
+                <p><strong>Order Status:</strong> <span class="status-badge">{{status}}</span></p>
                 
-                <h3>Items Ordered</h3>
+                {{!-- <h3>Your Items</h3>
                 {{#items}}
                     <div class="item">
                         <p><strong>{{name}}</strong></p>
                         <p>Quantity: {{quantity}}</p>
-                        <p>Price: {{price}}</p>
-                        <p>Total: {{total}}</p>
                     </div>
-                {{/items}}
-                
-                <div class="total">
-                    <p>Total Amount: {{totalAmount}}</p>
-                </div>
+                {{/items}} --}}
             </div>
-            
-            <div class="address">
-                <h3>Shipping Address</h3>
-                <p>
-                    {{shippingAddress.name}} {{shippingAddress.last_name}}<br>
-                    {{shippingAddress.street}}<br>
-                    {{shippingAddress.town}}, {{shippingAddress.region}} {{shippingAddress.post_code}}<br>
-                    {{shippingAddress.country}}<br>
-                    Phone: {{shippingAddress.phone}}
-                </p>
-                
-                <h3>Billing Address</h3>
-                <p>
-                    {{billingAddress.name}} {{billingAddress.last_name}}<br>
-                    {{billingAddress.street}}<br>
-                    {{billingAddress.town}}, {{billingAddress.region}} {{billingAddress.post_code}}<br>
-                    {{billingAddress.country}}<br>
-                    Phone: {{billingAddress.phone}}
-                </p>
-            </div>
-            
-            <div class="payment-info">
-                <h3>Payment Information</h3>
-                <p><strong>Payment Method:</strong> {{paymentMethod}}</p>
-                <p><strong>Transaction ID:</strong> {{transactionId}}</p>
+
+            <div class="tracking-info">
+                <h3>Next Steps</h3>
+                <p>We'll send you another email when your order is shipped with tracking information.</p>
+                <p>You can also check your order status anytime by visiting your account dashboard.</p>
             </div>
         </div>
         
         <div class="footer">
-            <p>If you have any questions about your order, please contact our customer service.</p>
+            <p>Need help with your order? Our customer service team is here to assist you.</p>
+            <p>Email: support@vapehub.com | Phone: +44 123 456 7890</p>
             <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
         </div>
     </div>
