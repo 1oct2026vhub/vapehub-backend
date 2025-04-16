@@ -193,107 +193,109 @@ const fetchProducts = async (query) => {
       is_new,
       source
     } = query;
+
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
-    // Handle variant parameter
-    let variantObject = variant;
-    if (typeof variant === 'string') {
-      try {
-        variantObject = JSON.parse(variant);
-      } catch (error) {
-        throw new Error('Invalid variant format: must be valid JSON');
-      }
-    }
-    if (variantObject && typeof variantObject !== 'object') {
-      throw new Error('Variant parameter must be an object');
-    }
 
-    // Build Product where clause
-    let productWhereClause = {};
-    if (keyword) {
-      productWhereClause.name = { [Op.like]: `%${keyword}%` };
-    }
-    if (is_new) {
-      const lastMonthDate = new Date();
-      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
-      productWhereClause.createdAt = { [Op.gte]: lastMonthDate };
-    }
-    if (brand) {
-      productWhereClause.brand_id = { [Op.in]: brand.split(',').map(Number) };
-    }
-    if (categories) {
-      productWhereClause.category_id = { [Op.in]: categories.split(',').map(Number) };
-    }
-
-    // Build ProductVariant where clause
-    let variantWhereClause = {};
+    // Validate price range format
+    let priceRange = null;
     if (price_range) {
       const [minPrice, maxPrice] = price_range.split('-').map(Number);
-      variantWhereClause.price = { [Op.between]: [minPrice || 0, maxPrice || Infinity] };
+      if (isNaN(minPrice) || isNaN(maxPrice)) {
+        throw new Error('Invalid price range format. Use format: min-max');
+      }
+      priceRange = { min: minPrice, max: maxPrice };
     }
-    // Build ProductAttributeTerm where clause for variant filtering
-    let productAttributeConditions = [];
-    if (variantObject && Object.keys(variantObject).length > 0) {
-      for (const [variantIdOrAttributeId, termIds] of Object.entries(variantObject)) {
-        // Convert termIds to an array if it's a string
-        let termIdsArray = termIds;
-        if (typeof termIds === 'string') {
-          try {
-            termIdsArray = JSON.parse(termIds); // Parse string like "[905,66]" into array
-          } catch (error) {
-            throw new Error(`Invalid termIds format for ${variantIdOrAttributeId}: must be a valid JSON array`);
-          }
+
+    // Parse variant filter
+    let variantFilters = {};
+    if (variant) {
+      try {
+        variantFilters = typeof variant === 'string' ? JSON.parse(variant) : variant;
+        if (typeof variantFilters !== 'object') {
+          throw new Error('Variant filter must be an object');
         }
-        // Ensure termIdsArray is an array and has elements
-        if (Array.isArray(termIdsArray) && termIdsArray.length > 0) {
-          const numericId = parseInt(variantIdOrAttributeId);
-          const numericTermIds = termIdsArray.map(Number);
-          // console.log("numericId", numericId)
-          // console.log("numericTermIds", numericTermIds)
-          if (variantIdOrAttributeId.length <= 2) { // Attribute ID
-            productAttributeConditions.push({
-              attribute_id: numericId,
-              term_id: { [Op.in]: numericTermIds }
-            });
-          } else { // Variant ID
-            variantWhereClause.id = numericId;
-            productAttributeConditions.push({
-              term_id: { [Op.in]: numericTermIds }
-            });
-          }
-        } else {
-          console.log(`🚀 ~ fetchProducts ~ Skipping ${variantIdOrAttributeId}: termIds is not a valid array`);
+      } catch (error) {
+        throw new Error('Invalid variant filter format: must be valid JSON');
+      }
+    }
+
+    // Build base where clause for Product
+    const productWhereClause = {
+      ...(keyword && { name: { [Op.like]: `%${keyword}%` } }),
+      ...(is_new && {
+        createdAt: {
+          [Op.gte]: new Date(new Date().setDate(new Date().getDate() - 30))
+        }
+      }),
+      ...(categories && {
+        category_id: {
+          [Op.in]: categories.split(',').map(Number)
+        }
+      }),
+      ...(brand && {
+        brand_id: {
+          [Op.in]: brand.split(',').map(Number)
+        }
+      })
+    };
+
+    // Build variant where clause
+    const variantWhereClause = {
+      ...(priceRange && {
+        price: {
+          [Op.between]: [priceRange.min, priceRange.max]
+        }
+      }),
+      ...(variantFilters.id && { id: variantFilters.id })
+    };
+
+    // Build attribute term conditions
+    const attributeTermConditions = [];
+    if (variantFilters.attributes) {
+      for (const [attributeId, termIds] of Object.entries(variantFilters.attributes)) {
+        if (Array.isArray(termIds) && termIds.length > 0) {
+          attributeTermConditions.push({
+            attribute_id: parseInt(attributeId),
+            term_id: { [Op.in]: termIds.map(Number) }
+          });
         }
       }
     }
-    // console.log("productAttributeConditions", productAttributeConditions)
-    // Combine product attribute conditions
-    let productAttributeWhereClause = {};
-    if (productAttributeConditions.length > 0) {
-      productAttributeWhereClause[Op.or] = productAttributeConditions; // Use OR to allow multiple attribute filters
-    }
-    
-    // Build include clause
-    const includeClause = [
 
-      { model: Category, as: 'Category'},   // , attributes: ['id', 'name'] 
-      { model: Brand, as: 'Brand' },//, attributes: ['id', 'name'] 
+    // Build include clause with optimized associations
+    const includeClause = [
+      {
+        model: Category,
+        as: 'Category',
+        attributes: ['id', 'name', 'slug']
+      },
+      {
+        model: Brand,
+        as: 'Brand',
+        attributes: ['id', 'name', 'slug']
+      },
       {
         model: ProductVariant,
         as: 'variants',
         where: variantWhereClause,
-        required: Object.keys(variantWhereClause). length > 0, // Only require if variant ID is specified
-        // attributes: ['id', 'slug'],
+        required: Object.keys(variantWhereClause).length > 0,
         include: [
           {
             model: ProductVariantAttribute,
             as: 'variantAttributes',
-            // where: productAttributeWhereClause,
-            //attributes: ['id', 'variant_id', 'attribute_id'],
             include: [
-              { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
-              { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+              {
+                model: Attribute,
+                as: 'attribute',
+                attributes: ['id', 'name', 'type']
+              },
+              {
+                model: AttributeTerm,
+                as: 'term',
+                attributes: ['id', 'name', 'slug']
+              }
             ]
           },
           {
@@ -306,18 +308,29 @@ const fetchProducts = async (query) => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: productAttributeWhereClause,
-        //attributes: ['id', 'product_id', 'attribute_id' ],
-        required: productAttributeConditions.length > 0, // Require if filtering by attributes
+        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
+        required: attributeTermConditions.length > 0,
         include: [
-          { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
-          { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+          {
+            model: Attribute,
+            as: 'attribute',
+            attributes: ['id', 'name', 'type']
+          },
+          {
+            model: AttributeTerm,
+            as: 'term',
+            attributes: ['id', 'name', 'slug']
+          }
         ]
       },
-      { model: ProductImage, as: 'ProductImages' }
+      {
+        model: ProductImage,
+        as: 'ProductImages',
+        attributes: ['id', 'product_id', 'image_url', 'is_primary']
+      }
     ];
 
-    // Get total count
+    // Get total count with filters
     const totalCount = await Product.count({
       where: productWhereClause,
       include: includeClause,
@@ -325,18 +338,10 @@ const fetchProducts = async (query) => {
     });
 
     // Calculate pagination
-    const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
+    const totalPages = Math.ceil(totalCount / parsedLimit);
     const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
 
-    const pagination = {
-      total_count: totalCount,
-      total_pages: totalPages,
-      current_page: currentPage,
-      limit: parsedLimit,
-      offset: parsedOffset
-    };
-    
-    // Fetch products
+    // Fetch products with filters
     const products = await Product.findAll({
       where: productWhereClause,
       include: includeClause,
@@ -346,183 +351,70 @@ const fetchProducts = async (query) => {
       ],
       limit: parsedLimit,
       offset: parsedOffset,
-      distinct: true,
-    });
-    // console.log("productAttributeWhereClause", productAttributeWhereClause)
-    const allAttributeTerms = await Product.findAll({
-      where: productWhereClause,
-      include: [{
-        model: ProductAttributeTerm,
-        as: 'productAttributeTerms',
-        // where: productAttributeWhereClause,
-        required: productAttributeConditions.length > 0,
-        include: [
-          { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
-          { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
-        ]
-      }],
-      limit: parsedLimit,
-      offset: parsedOffset,
       distinct: true
     });
 
-    
-    const attributeTermMap = new Map();
-    const allAttributeTermMap = new Map();
+    // Process filters data
     const categoriesMap = new Map();
     const brandMap = new Map();
+    const attributeTermMap = new Map();
 
-    // Process products data
-    products.forEach((product, index) => {
-      if(source == "brand"){
-        if(product.category_id && product.Category){
-          if(!categoriesMap.get(product.category_id)){
-            categoriesMap.set(product.category_id, {
-              id: product.Category.id,
-              name: product.Category.name,
-              slug: product.Category.slug,
-              product_count: 1
-            })
-          }
-          else{
-            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
-          }
-        }
-      }
-      else if(source == "category"){
-        if(product.brand_id && product.Brand){
-          if(!brandMap.get(product.brand_id)){
-            brandMap.set(product.brand_id, {
-              id: product.Brand.id,
-              name: product.Brand.name,
-              slug: product.Brand.slug,
-              product_count: 1
-            })
-          }
-          else{
-            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
-          }
-        }
-      }
-      else{
-        if(product.category_id && product.Category){
-          if(!categoriesMap.get(product.category_id)){
-            categoriesMap.set(product.category_id, {
-              id: product.Category.id,
-              name: product.Category.name,
-              slug: product.Category.slug,
-              product_count: 1
-            })
-          }
-          else{
-            categoriesMap.get(product.category_id).product_count = categoriesMap.get(product.category_id).product_count + 1
-          }
-        }
-
-        if(product.brand_id && product.Brand){
-          if(!brandMap.get(product.brand_id)){
-            brandMap.set(product.brand_id, {
-              id: product.Brand.id,
-              name: product.Brand.name,
-              slug: product.Brand.slug,
-              product_count: 1
-            })
-          }
-          else{
-            brandMap.get(product.brand_id).product_count = brandMap.get(product.brand_id).product_count + 1
-          }
-        }
+    products.forEach(product => {
+      // Process categories
+      if (product.Category) {
+        const categoryData = categoriesMap.get(product.category_id) || {
+          id: product.Category.id,
+          name: product.Category.name,
+          slug: product.Category.slug,
+          product_count: 0
+        };
+        categoryData.product_count++;
+        categoriesMap.set(product.category_id, categoryData);
       }
 
-      // Process ProductAttributeTerm data
+      // Process brands
+      if (product.Brand) {
+        const brandData = brandMap.get(product.brand_id) || {
+          id: product.Brand.id,
+          name: product.Brand.name,
+          slug: product.Brand.slug,
+          product_count: 0
+        };
+        brandData.product_count++;
+        brandMap.set(product.brand_id, brandData);
+      }
+
+      // Process attributes and terms
       if (product.productAttributeTerms) {
-        product.productAttributeTerms.forEach((pat) => {
+        product.productAttributeTerms.forEach(pat => {
           if (!attributeTermMap.has(pat.attribute_id)) {
             attributeTermMap.set(pat.attribute_id, {
               attribute: {
                 id: pat.attribute.id,
                 name: pat.attribute.name,
                 type: pat.attribute.type,
-                is_visible: pat.is_visible_page,
+                is_visible: pat.is_visible_page
               },
               terms: []
             });
           }
-          const existingAttribute = attributeTermMap.get(pat.attribute_id);
-          const termExists = existingAttribute.terms.findIndex(term => term.id === pat.term.id);
-          if (termExists === -1) {
-            existingAttribute.terms.push({
+
+          const attributeData = attributeTermMap.get(pat.attribute_id);
+          const termIndex = attributeData.terms.findIndex(t => t.id === pat.term.id);
+
+          if (termIndex === -1) {
+            attributeData.terms.push({
               id: pat.term.id,
               name: pat.term.name,
               slug: pat.term.slug,
               product_count: 1
             });
           } else {
-            existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1;
+            attributeData.terms[termIndex].product_count++;
           }
         });
       }
     });
-
-    // Process allAttributeTerms data
-    if (allAttributeTerms) {
-      allAttributeTerms.forEach((product) => {
-        if (product.productAttributeTerms) {
-          product.productAttributeTerms.forEach((pat) => {
-            if (!allAttributeTermMap.has(pat.attribute_id)) {
-              allAttributeTermMap.set(pat.attribute_id, {
-                attribute: {
-                  id: pat.attribute.id,
-                  name: pat.attribute.name,
-                  type: pat.attribute.type,
-                  is_visible: pat.is_visible_page,
-                  is_visible_page: pat.is_visible_page
-                },
-                terms: []
-              });
-            }
-            const existingAttribute = allAttributeTermMap.get(pat.attribute_id);
-            const termExists = existingAttribute.terms.findIndex(term => term.id === pat.term.id);
-            
-            if (termExists === -1) {
-              existingAttribute.terms.push({
-                id: pat.term.id,
-                name: pat.term.name,
-                slug: pat.term.slug,
-                product_count: 1
-              });
-            } else {
-              existingAttribute.terms[termExists].product_count = existingAttribute.terms[termExists].product_count + 1;
-            }
-          });
-        }
-      });
-    }
-
-    // Update product_count in allAttributeTermMap based on attributeTermMap
-    // allAttributeTermMap.forEach((allAttributeData, attributeId) => {
-    //     // First set all terms' product_count to 0
-    //     allAttributeData.terms.forEach(term => {
-    //         term.product_count = 0;
-    //     });
-
-    //     // Then update counts for matching terms from attributeTermMap
-    //     if (attributeTermMap.has(attributeId)) {
-    //         const attributeData = attributeTermMap.get(attributeId);
-    //         attributeData.terms.forEach(term => {
-    //             const matchingTerm = allAttributeData.terms.find(allTerm => allTerm.id === term.id);
-    //             if (matchingTerm) {
-    //                 matchingTerm.product_count = term.product_count;
-    //             }
-    //         });
-    //     }
-    // });
-
-    // Convert maps to arrays for response
-    // const attributes = Array.from(attributeTermMap.values());
-    const attributes = Array.from(allAttributeTermMap.values());
-    const category_items = Array.from(categoriesMap.values());
-    const brand_items = Array.from(brandMap.values());
 
     // Define price ranges
     const priceRanges = [
@@ -538,19 +430,11 @@ const fetchProducts = async (query) => {
     // Calculate price range counts
     const priceRangeCounts = priceRanges.map(range => {
       const count = products.reduce((total, product) => {
-        if (product.variants && product.variants.length > 0) {
-          // Check if any variant's price falls within the range
-          const hasVariantInRange = product.variants.some(variant => {
-            const price = parseFloat(variant.price) || 0;
-            return price >= range.min && price < range.max;
-          });
-          // If any variant matches the range, count the product
-          return total + (hasVariantInRange ? 1 : 0);
-        } else {
-          // If no variants, check product price
-          const price = parseFloat(product.price) || 0;
-          return total + (price >= range.min && price < range.max ? 1 : 0);
-        }
+        const hasVariantInRange = product.variants?.some(variant => {
+          const price = parseFloat(variant.price) || 0;
+          return price >= range.min && price < range.max;
+        });
+        return total + (hasVariantInRange ? 1 : 0);
       }, 0);
 
       return {
@@ -559,31 +443,40 @@ const fetchProducts = async (query) => {
         value: range.value
       };
     });
-    let additionalData = {}
-    if(source == "category"){
-      additionalData.id = products[0].Category.id
-      additionalData.name = products[0].Category.name
-      additionalData.slug = products[0].Category.slug
-    }
-    if(source == "brand"){
-      additionalData.id = products[0].Brand.id
-      additionalData.name = products[0].Brand.name
-      additionalData.slug = products[0].Brand.slug
+
+    // Prepare additional data based on source
+    const additionalData = {};
+    if (source === "category" && products[0]?.Category) {
+      Object.assign(additionalData, {
+        id: products[0].Category.id,
+        name: products[0].Category.name,
+        slug: products[0].Category.slug
+      });
+    } else if (source === "brand" && products[0]?.Brand) {
+      Object.assign(additionalData, {
+        id: products[0].Brand.id,
+        name: products[0].Brand.name,
+        slug: products[0].Brand.slug
+      });
     }
 
-    return { 
+    return {
       additionalData,
       products,
-      category_items,
-      brand_items,
-      attributes,
-      // allAttributes,
+      category_items: Array.from(categoriesMap.values()),
+      brand_items: Array.from(brandMap.values()),
+      attributes: Array.from(attributeTermMap.values()),
       price_ranges: priceRangeCounts,
-      pagination,
+      pagination: {
+        total_count: totalCount,
+        total_pages: totalPages,
+        current_page: currentPage,
+        limit: parsedLimit,
+        offset: parsedOffset
+      }
     };
   } catch (error) {
-    console.log((error))
-    console.error('Error fetching products:', error);
+    console.error('Error in fetchProducts:', error);
     throw error;
   }
 };
