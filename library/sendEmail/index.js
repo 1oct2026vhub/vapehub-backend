@@ -31,7 +31,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 emailType, to, emailContext: context
             }
         }
-
         // get data from config
         const emailConfig = constants.emailTypeData[emailType];
         const data = {
@@ -47,7 +46,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // Ensure email templates directory exists
         const templatesDir = path.join(__dirname, '../../emailTemplates');
         const templateDir = path.join(templatesDir, emailConfig.folderName);
-        
         try {
             // Check if template directory exists
             await fs.access(templateDir);
@@ -64,11 +62,9 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
-
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
-            
             data.text = Handlebars.compile(text)({ 
                 ...context, 
                 host: process.env.HOST_URL, 

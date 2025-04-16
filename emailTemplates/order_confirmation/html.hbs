@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+        }
+
+        .header {
+            background-color: #2e8b57;
+            padding: 15px;
+            text-align: center;
+            color: white;
+        }
+
+        .logo {
+            max-width: 200px;
+            height: auto;
+            margin: 10px 0;
+        }
+
+        .content {
+            padding: 30px 20px;
+        }
+
+        .order-details {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .item {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .total {
+            font-weight: bold;
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .address {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .payment-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+        
+        <div class="content">
+            <h2>Order Confirmation</h2>
+            <p>Thank you for your order, {{userName}}!</p>
+            
+            <div class="order-details">
+                <h3>Order Details</h3>
+                <p><strong>Order Number:</strong> #{{orderCode}}</p>
+                <p><strong>Order Date:</strong> {{orderDate}}</p>
+                
+                <h3>Items Ordered</h3>
+                {{#items}}
+                    <div class="item">
+                        <p><strong>{{name}}</strong></p>
+                        <p>Quantity: {{quantity}}</p>
+                        <p>Price: {{price}}</p>
+                        <p>Total: {{total}}</p>
+                    </div>
+                {{/items}}
+                
+                <div class="total">
+                    <p>Total Amount: {{totalAmount}}</p>
+                </div>
+            </div>
+            
+            <div class="address">
+                <h3>Shipping Address</h3>
+                <p>
+                    {{shippingAddress.name}} {{shippingAddress.last_name}}<br>
+                    {{shippingAddress.street}}<br>
+                    {{shippingAddress.town}}, {{shippingAddress.region}} {{shippingAddress.post_code}}<br>
+                    {{shippingAddress.country}}<br>
+                    Phone: {{shippingAddress.phone}}
+                </p>
+                
+                <h3>Billing Address</h3>
+                <p>
+                    {{billingAddress.name}} {{billingAddress.last_name}}<br>
+                    {{billingAddress.street}}<br>
+                    {{billingAddress.town}}, {{billingAddress.region}} {{billingAddress.post_code}}<br>
+                    {{billingAddress.country}}<br>
+                    Phone: {{billingAddress.phone}}
+                </p>
+            </div>
+            
+            <div class="payment-info">
+                <h3>Payment Information</h3>
+                <p><strong>Payment Method:</strong> {{paymentMethod}}</p>
+                <p><strong>Transaction ID:</strong> {{transactionId}}</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>If you have any questions about your order, please contact our customer service.</p>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html> 
