@@ -331,9 +331,9 @@ const fetchProducts = async (query) => {
     const pagination = {
       total_count: totalCount,
       total_pages: totalPages,
-      current_page: currentPage,
-      limit: parsedLimit,
-      offset: parsedOffset
+      // current_page: currentPage,
+      // limit: parsedLimit,
+      // offset: parsedOffset
     };
     
     // Fetch products

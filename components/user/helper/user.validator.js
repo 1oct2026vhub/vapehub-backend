@@ -16,14 +16,14 @@ exports.validateProfileUpdate = [
     //     .isEmail()
     //     .withMessage('Invalid email format'),
 
-    // check('phone')
-    //     .optional()
-    //     .matches(/^[\d-]{10,15}$/)
-    //     .custom((value) => {
-    //         const digitCount = value.replace(/-/g, '').length;
-    //         return digitCount >= 10 && digitCount <= 15;
-    //     })
-    //     .withMessage('Phone number must be between 10 to 15 digits (excluding hyphens)'),
+    check('phone')
+        .optional()
+        .matches(/^\+?[\d-]{10,15}$/)
+        .custom((value) => {
+            const digitCount = value.replace(/[-\+]/g, '').length;
+            return digitCount >= 10 && digitCount <= 15;
+        })
+        .withMessage('Phone number must be between 10 to 15 digits (excluding + and hyphens)'),
 ];
 
 exports.validateCreateUserAddress = [
