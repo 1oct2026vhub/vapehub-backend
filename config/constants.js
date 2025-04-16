@@ -3,6 +3,8 @@ module.exports = {
         REGISTER: 'REGISTER',
         FORGOT_PASSWORD: 'FORGOT_PASSWORD',
         REFER_A_FRIEND: 'REFER_A_FRIEND',
+        ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
+        ACCOUNT_DELETION: 'ACCOUNT_DELETION',
     },
     emailTypeData: {
         REGISTER: {
@@ -19,6 +21,16 @@ module.exports = {
             folderName: 'refer_a_friend',
             subject: 'Invite Your Friends to Join | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ORDER_CONFIRMATION:{
+            folderName: 'order_confirmation',
+            subject: "Order Confirmation - Your Order #{orderCode}",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ACCOUNT_DELETION: {
+            from: process.env.EMAIL_FROM,
+            subject: 'Account Deletion Confirmation',
+            folderName: 'account_deletion'
         },
     },
     orderStatus: {

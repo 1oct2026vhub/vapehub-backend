@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
+const { Op } = require('sequelize');
+const { Order, Transaction } = require('../../../models');
 
 const userProfile = async (req, res, next) => {
     try {
@@ -454,6 +456,43 @@ const deleteAccount = async (req, res) => {
             return errorResponse(res, {}, {message: 'Super users cannot delete their own account'}, 403);
         }
 
+        // Check for active orders
+        const activeOrders = await Order.findAll({
+            where: {
+                user_id: user.id,
+                status: {
+                    [Op.notIn]: ['cancel', 'fail', 'refunded', 'delivered', 'pending', 'completed']
+                }
+            }
+        });
+
+        if (activeOrders.length > 0) {
+            return errorResponse(res, {}, 'Account with active orders cannot be deleted. Please cancel or complete all orders first.', 400);
+        }
+
+        // Check for pending refunds
+        const pendingRefunds = await Transaction.findAll({
+            where: {
+                userId: user.id,
+                transactionType: 'refund',
+                status: 'pending'
+            },
+            include: [{
+                model: Order,
+                as: 'order',
+                attributes: ['order_unique_id']
+            }]
+        });
+
+        if (pendingRefunds.length > 0) {
+            const orderIds = pendingRefunds.map(refund => refund.order.order_unique_id).join(', ');
+            return errorResponse(res, {}, `Account with pending refunds cannot be deleted. Please wait for refunds to be processed for orders: ${orderIds}`, 400);
+        }
+
+        // Store user email and name before deletion
+        const userEmail = user.email;
+        const userName = user.first_name || user.email.split('@')[0];
+
         // Create notification before account deletion
         await createNotification({
             userId: userId,
@@ -467,6 +506,16 @@ const deleteAccount = async (req, res) => {
 
         // Delete the user account
         await user.destroy();
+
+        // Send account deletion confirmation email
+        try {
+            await sendEmail(userEmail, constants.emailTypes.ACCOUNT_DELETION, {
+                userName: userName
+            });
+        } catch (emailError) {
+            console.error('Error sending account deletion email:', emailError);
+            // Log the error but don't fail the account deletion
+        }
 
         successResponse(res, user, 'Account deleted successfully', 200);
     } catch (error) {
