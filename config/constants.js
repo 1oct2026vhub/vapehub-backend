@@ -24,7 +24,7 @@ module.exports = {
         },
         ORDER_CONFIRMATION:{
             folderName: 'order_confirmation',
-            subject: "Order Confirmation - Your Order #{orderCode}",
+            subject: "Order Confirmation",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ACCOUNT_DELETION: {

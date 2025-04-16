@@ -659,7 +659,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     },
                 ]
             });
-
+            console.log("order", order);
             if (order) {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
@@ -668,6 +668,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 await Cart.destroy({ 
                     where: { user_id: order.user_id }
                 });
+                
                 // Send order confirmation email
                 const emailData = {
                     emailTypes: 'ORDER_CONFIRMATION',
@@ -675,11 +676,13 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     context: {
                         userName: order.user.first_name || order.user.email.split('@')[0],
                         orderId: order.id,
+                        orderUniqueId: order.order_unique_id,
                         orderCode: order.order_code,
                         orderDate: order.createdAt.toLocaleDateString(),
+                        status: order.status,
                         totalAmount: order.total,
                         items: order.orderItems.map(item => ({
-                            name: item.variant ? `${item.product.name} - ${item.variant.name}` : item.product.name,
+                            name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
                             quantity: item.quantity,
                             price: item.unit_price,
                             total: item.total
@@ -690,6 +693,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                         transactionId: transactionId
                     }
                 };
+                console.log("emailData", emailData);
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
                 // Create transaction record

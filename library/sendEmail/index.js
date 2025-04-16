@@ -36,7 +36,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         const data = {
             from: emailConfig.from,
             to,
-            subject: emailConfig.subject,
+            subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
         };
 
         if (attachments.length > 0) {
@@ -77,6 +77,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 FRONTEND_URL: process.env.FRONTEND_URL, 
                 currentYear: new Date().getFullYear()
             });
+            console.log("data", data);
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);
