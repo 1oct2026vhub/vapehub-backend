@@ -16,6 +16,7 @@ module.exports.listAllBrands = async (req, res, next) => {
             page = 1, 
             limit = 10, 
             search, 
+            search_only_name = "false",
             deleted = "false",
             sortBy = "createdAt",
             order = "DESC"
@@ -39,12 +40,18 @@ module.exports.listAllBrands = async (req, res, next) => {
 
         const whereCondition = {};
         if (search) {
-            whereCondition[Op.or] = [
-                { id: { [Op.like]: `%${search}%` } },
-                { name: { [Op.like]: `%${search}%` } },
-                { slug: { [Op.like]: `%${search}%` } },
-                { description: { [Op.like]: `%${search}%` } }
-            ];
+            if (search_only_name === "true") {
+                // Only search in the name field
+                whereCondition.name = { [Op.like]: `%${search}%` };
+            } else {
+                // Search in multiple fields
+                whereCondition[Op.or] = [
+                    { id: { [Op.like]: `%${search}%` } },
+                    { name: { [Op.like]: `%${search}%` } },
+                    { slug: { [Op.like]: `%${search}%` } },
+                    { description: { [Op.like]: `%${search}%` } }
+                ];
+            }
         }
 
         whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
