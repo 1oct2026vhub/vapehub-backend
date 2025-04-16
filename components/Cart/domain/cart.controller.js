@@ -185,7 +185,6 @@ module.exports.updateCart = async (req, res, next) => {
 exports.bulkUpdateCart = async (req, res) => {
     const user_id = req.user.id;
     const { cartItems } = req.body;
-    console.log("bulk>>>>", cartItems)
     if (!user_id || !Array.isArray(cartItems) || cartItems.length === 0) {
         return errorResponse(res, {}, 'Invalid request data', 400);
     }
@@ -203,7 +202,6 @@ exports.bulkUpdateCart = async (req, res) => {
                 where: { user_id, product_id, variant_id },
                 transaction
             });
-
             if (!existingCartItem) {
                 cartUpdates.push({
                     user_id,
@@ -211,21 +209,13 @@ exports.bulkUpdateCart = async (req, res) => {
                     variant_id,
                     quantity
                 });
+            } else {
+                // Increment quantity using Sequelize's increment method
+                await existingCartItem.increment('quantity', { 
+                    by: parseInt(quantity), 
+                    transaction 
+                });
             }
-
-            // if (existingCartItem) {
-            //     // If exists, update the quantity instead of adding a new entry
-            //     existingCartItem.quantity += quantity;
-            //     await existingCartItem.save({ transaction });
-            // } else {
-            //     // If not exists, create a new cart entry
-            //     cartUpdates.push({
-            //         user_id,
-            //         product_id,
-            //         variant_id,
-            //         quantity
-            //     });
-            // }
         }
 
         // Bulk insert new items
