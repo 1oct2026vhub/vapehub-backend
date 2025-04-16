@@ -352,16 +352,16 @@ module.exports.placeOrder = async (req, res, next) => {
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
-                order_code: orderCode,
+                order_code: order.order_code,
                 order_details: {
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
-                    // order_code: order.order_code,
+                    order_code: order.order_code,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
-                    order_code: orderCode,
+                    // order_code: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
