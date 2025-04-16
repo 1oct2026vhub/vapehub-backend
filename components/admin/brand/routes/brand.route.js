@@ -37,6 +37,12 @@ const {
  *           type: string
  *         description: Search brands by ID, name, slug, or description
  *       - in: query
+ *         name: search_only_name
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: When true, search will only look at the name field
+ *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean
