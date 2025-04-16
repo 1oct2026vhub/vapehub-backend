@@ -5,6 +5,7 @@ const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { Parser } = require('json2csv');
 const { transactionStatus, transactionTypes, transactionStatusEnums, transactionTypeEnums } = require('../../../../config/constants');
+const { formatNumber } = require('../../../../utils/dateUtils');
 
 // List all transactions with pagination and filtering
 exports.listTransactions = async (req, res) => {
@@ -167,7 +168,8 @@ exports.generateRevenueReport = async (req, res) => {
     const totalRevenue = await Transaction.getTotalRevenue(start_date, end_date);
 
     return successResponse(res, { 
-      totalRevenue, 
+      totalRevenue: totalRevenue,
+      totalRevenue_abbreviated: formatNumber(totalRevenue),
       start_date, 
       end_date 
     }, 'Revenue report generated successfully');
