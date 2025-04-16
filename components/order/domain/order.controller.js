@@ -659,7 +659,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     },
                 ]
             });
-            console.log("order", order);
+
             if (order) {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
@@ -693,7 +693,6 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                         transactionId: transactionId
                     }
                 };
-                console.log("emailData", emailData);
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
                 // Create transaction record
