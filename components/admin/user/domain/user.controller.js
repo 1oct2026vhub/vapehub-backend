@@ -167,8 +167,8 @@ module.exports.listUsers = async (req, res) => {
             limit = 10, 
             roleId, 
             search, 
-            deleted = "false",
-            blocked = "false",
+            deleted = "all",
+            blocked = "all",
             verified = "all" 
         } = req.query;
 
@@ -213,7 +213,7 @@ module.exports.listUsers = async (req, res) => {
         }
 
         // Filter by deleted flag
-        if (deleted !== undefined) {
+        if (deleted !== undefined && deleted !== "all") {
             if (deleted === "true") {
                 whereCondition.deletedAt = { [Op.ne]: null };
             } else {
@@ -222,7 +222,7 @@ module.exports.listUsers = async (req, res) => {
         }
 
         // Filter by blocked status
-        if (blocked !== undefined) {
+        if (blocked !== undefined && blocked !== "all") {
             whereCondition.blocked = blocked === true || blocked === "true";
         }
 
