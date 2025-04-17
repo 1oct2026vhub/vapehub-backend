@@ -36,7 +36,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         const data = {
             from: emailConfig.from,
             to,
-            subject: emailConfig.subject,
+            subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
         };
 
         if (attachments.length > 0) {

@@ -352,16 +352,16 @@ module.exports.placeOrder = async (req, res, next) => {
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
-                order_code: orderCode,
+                order_code: order.order_code,
                 order_details: {
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
-                    // order_code: order.order_code,
+                    order_code: order.order_code,
                     status: order.status,
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
-                    order_code: orderCode,
+                    // order_code: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
@@ -668,6 +668,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 await Cart.destroy({ 
                     where: { user_id: order.user_id }
                 });
+                
                 // Send order confirmation email
                 const emailData = {
                     emailTypes: 'ORDER_CONFIRMATION',
@@ -675,11 +676,13 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                     context: {
                         userName: order.user.first_name || order.user.email.split('@')[0],
                         orderId: order.id,
+                        orderUniqueId: order.order_unique_id,
                         orderCode: order.order_code,
                         orderDate: order.createdAt.toLocaleDateString(),
+                        status: order.status,
                         totalAmount: order.total,
                         items: order.orderItems.map(item => ({
-                            name: item.variant ? `${item.product.name} - ${item.variant.name}` : item.product.name,
+                            name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
                             quantity: item.quantity,
                             price: item.unit_price,
                             total: item.total

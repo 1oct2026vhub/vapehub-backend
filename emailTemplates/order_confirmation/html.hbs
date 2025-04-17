@@ -71,6 +71,56 @@
             color: #666;
             font-size: 12px;
         }
+
+        /* Table Styles */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .items-table th {
+            background-color: #f2f2f2;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .items-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .items-table .item-name {
+            font-weight: bold;
+        }
+
+        .items-table .item-quantity {
+            text-align: center;
+        }
+
+        .items-table .item-price {
+            text-align: right;
+        }
+
+        .items-table .total-row {
+            background-color: #f9f9f9;
+            font-weight: bold;
+        }
+
+        .items-table .total-label {
+            text-align: right;
+            padding-right: 20px;
+        }
+
+        .items-table .total-price {
+            text-align: right;
+            color: #2e8b57;
+        }
     </style>
 </head>
 <body>
@@ -89,16 +139,33 @@
             <div class="order-details">
                 <h3>Order Summary</h3>
                 <p><strong>Order Number:</strong> #{{orderCode}}</p>
+                <p><strong>Order ID:</strong> {{orderUniqueId}}</p>
                 <p><strong>Order Date:</strong> {{orderDate}}</p>
                 <p><strong>Order Status:</strong> <span class="status-badge">{{status}}</span></p>
                 
-                {{!-- <h3>Your Items</h3>
-                {{#items}}
-                    <div class="item">
-                        <p><strong>{{name}}</strong></p>
-                        <p>Quantity: {{quantity}}</p>
-                    </div>
-                {{/items}} --}}
+                <h3>Your Items</h3>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="item-quantity">Quantity</th>
+                            <th class="item-price">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#items}}
+                        <tr>
+                            <td class="item-name">{{name}}</td>
+                            <td class="item-quantity">{{quantity}}</td>
+                            <td class="item-price">£{{price}}</td>
+                        </tr>
+                        {{/items}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Total Amount</td>
+                            <td class="total-price">£{{totalAmount}}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             <div class="tracking-info">
