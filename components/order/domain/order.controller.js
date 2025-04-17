@@ -147,6 +147,7 @@ module.exports.placeOrder = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
             await User.update(
@@ -162,8 +163,6 @@ module.exports.placeOrder = async (req, res, next) => {
         const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
         const payMethod = payment_method.method;
 
-        
-        
         let wallet_check = {};
 
         // Fetch Cart Items
@@ -181,7 +180,7 @@ module.exports.placeOrder = async (req, res, next) => {
         let subTotal = 0;
         const orderItems = [];
         const orderDetails = [];
-        const stockUpdates = [];
+        // const stockUpdates = [];
 
         for (const item of cartItems) {
             const { product, variant_id, quantity } = item;
@@ -220,14 +219,14 @@ module.exports.placeOrder = async (req, res, next) => {
                 } : null
             });
             
-            stockUpdates.push({ model: variant ? ProductVariant : Product, updateData: variant ? { stock: sequelize.literal(`stock - ${quantity}`) } : { stock_quantity: sequelize.literal(`stock_quantity - ${quantity}`) }, whereClause: variant ? { id: variant.id, stock: { [Op.gte]: quantity } } : { id: product.id, stock_quantity: { [Op.gte]: quantity } } });
+            // stockUpdates.push({ model: variant ? ProductVariant : Product, updateData: variant ? { stock: sequelize.literal(`stock - ${quantity}`) } : { stock_quantity: sequelize.literal(`stock_quantity - ${quantity}`) }, whereClause: variant ? { id: variant.id, stock: { [Op.gte]: quantity } } : { id: product.id, stock_quantity: { [Op.gte]: quantity } } });
         }
 
         // Update Stock in Batch
-        for (const { model, updateData, whereClause } of stockUpdates) {
-            const [updatedStock] = await model.update(updateData, { where: whereClause, transaction });
-            if (updatedStock === 0) throw new Error("Stock update failed.");
-        }
+        // for (const { model, updateData, whereClause } of stockUpdates) {
+        //     const [updatedStock] = await model.update(updateData, { where: whereClause, transaction });
+        //     if (updatedStock === 0) throw new Error("Stock update failed.");
+        // }
         
         // Apply Coupon
         let calculatedTotal = subTotal;
@@ -361,7 +360,6 @@ module.exports.placeOrder = async (req, res, next) => {
                     total: calculatedTotal,
                     created_at: order.created_at,
                     order_items: orderDetails,
-                    // order_code: orderCode,
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
@@ -638,12 +636,12 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                             {
                                 model: Product,
                                 as: 'product',
-                                attributes: ['name', 'price']
+                                attributes: ['id', 'name', 'price']
                             },
                             {
                                 model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['slug', 'price']
+                                attributes: ['id','slug', 'price', 'stock']
                             }
                         ]
                     },
@@ -663,6 +661,33 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
             if (order) {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
+                
+                // Reduce stock for each order item
+                for (const item of order.orderItems) {
+                    if (item.variant) {
+                        // Update variant stock
+                        await ProductVariant.update(
+                            { stock: sequelize.literal(`stock - ${item.quantity}`) },
+                            { 
+                                where: { 
+                                    id: item.variant.id,
+                                    stock: { [Op.gte]: item.quantity }
+                                }
+                            }
+                        );
+                    } else {
+                        // Update product stock
+                        await Product.update(
+                            { stock_quantity: sequelize.literal(`stock_quantity - ${item.quantity}`) },
+                            { 
+                                where: { 
+                                    id: item.product_id,
+                                    stock_quantity: { [Op.gte]: item.quantity }
+                                }
+                            }
+                        );
+                    }
+                }
                 
                 // Clear the user's cart
                 await Cart.destroy({ 
