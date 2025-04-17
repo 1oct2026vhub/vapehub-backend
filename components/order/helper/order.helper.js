@@ -1,5 +1,6 @@
 const axios = require("axios");
-const { UserAddress } = require("../../../models");
+const { UserAddress, OrderAddress } = require("../../../models");
+// const OrderAddress = require("../../../models/OrderAddress");
 // const redis = require("../../../config/redis");
 
 const saveShippingAddress = async (user_id, addressData, transaction)=>{
@@ -9,9 +10,48 @@ const saveShippingAddress = async (user_id, addressData, transaction)=>{
     }
     const existingAddress = await UserAddress.findOne({
         where: {id:shipping_address_id}
-      });
-    //   const address = await UserAddress.findAll()
-      return existingAddress || await UserAddress.create({ user_id, ...addressData, updated_by: user_id },{ transaction } ); //{ transaction }
+    });
+
+    let orderAddress;
+    if (existingAddress) {
+        // If existing address exists, use its data to create OrderAddress
+        orderAddress = await OrderAddress.create({
+            user_id,
+            order_id: null,
+            name: existingAddress.name,
+            last_name: existingAddress.last_name,
+            company_name: existingAddress.company_name,
+            street: existingAddress.street,
+            apartment: existingAddress.apartment,
+            city: existingAddress.city,
+            post_code: existingAddress.post_code,
+            country: existingAddress.country,
+            town: existingAddress.town,
+            region: existingAddress.region,
+            county: existingAddress.county,
+            phone: existingAddress.phone
+        }, { transaction });
+    } else {
+        // If no existing address, use the provided addressData
+        orderAddress = await OrderAddress.create({
+            user_id,
+            order_id: null,
+            ...addressData
+        }, { transaction });
+        await UserAddress.create({ 
+            user_id, 
+            ...addressData, 
+            updated_by: user_id,
+            order_address_id: orderAddress.id 
+        }, { transaction });
+    }
+    return orderAddress;
+    // return existingAddress || await UserAddress.create({ 
+    //     user_id, 
+    //     ...addressData, 
+    //     updated_by: user_id,
+    //     order_address_id: orderAddress.id 
+    // }, { transaction });
 }
 
 const getVivaAccessToken = async (payMethod) => {
