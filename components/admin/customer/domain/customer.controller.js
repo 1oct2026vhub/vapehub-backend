@@ -16,7 +16,7 @@ module.exports.listUsers = async (req, res) => {
             page = 1, 
             limit = 10, 
             search, 
-            deleted = "all", 
+            deleted = "false", 
             blocked = "all",
             verified = "all" 
         } = req.query;
