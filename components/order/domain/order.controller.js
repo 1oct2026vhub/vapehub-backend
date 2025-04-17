@@ -641,7 +641,7 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                             {
                                 model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['id','slug', 'price', 'stock']
+                                attributes: ['id', 'slug', 'price', 'stock']
                             }
                         ]
                     },
@@ -655,6 +655,11 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                         as: 'billingAddress',
                         attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                     },
+                    {
+                        model: ShippingMethod,
+                        as: 'shippingMethod',
+                        attributes: ['id', 'shipping_method', 'shipping_cost']
+                    }
                 ]
             });
 
@@ -705,6 +710,8 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                         orderCode: order.order_code,
                         orderDate: order.createdAt.toLocaleDateString(),
                         status: order.status,
+                        shippingMethod: order.shippingMethod.shipping_method,
+                        shippingCost: order.shipping_cost,
                         totalAmount: order.total,
                         items: order.orderItems.map(item => ({
                             name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
