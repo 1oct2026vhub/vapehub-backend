@@ -105,9 +105,8 @@ module.exports.createCart = async (req, res, next) => {
         }
         
         let availableStock = product.stock_quantity || 0; // Fallback to product stock if no variant
-        let variant = null;
         if (variant_id) {
-            variant = await ProductVariant.findByPk(variant_id);
+            const variant = await ProductVariant.findByPk(variant_id);
             if (!variant || variant.product_id !== product_id) {
                 throw { message: `Variant not found or does not belong to the specified product`, statusCode: 404 };
             }
