@@ -85,6 +85,16 @@ module.exports.getOrders = async (req, res) => {
                     attributes: ['name', 'street', 'town', 'post_code', 'phone']
                 },
                 {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
                     model: ShippingMethod,
                     as: 'shippingMethod',
                     attributes: ['id', 'shipping_method', 'shipping_cost']
