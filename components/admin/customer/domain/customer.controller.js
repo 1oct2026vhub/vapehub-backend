@@ -146,6 +146,32 @@ module.exports.deleteUser = async (req, res) => {
             return errorResponse(res, { message: "You don't have permission to delete a super user" }, 403);
         }
 
+        // Check for existing orders with specific statuses
+        const restrictedStatuses = [
+            constants.orderStatus.PENDING,
+            constants.orderStatus.PROCESSING,
+            constants.orderStatus.PACKED,
+            constants.orderStatus.SHIPPED,
+            constants.orderStatus.OUT_FOR_DELIVERY,
+            constants.orderStatus.RETURN_REQUESTED,
+            constants.orderStatus.RETURN_RECEIVED
+        ];
+
+        const existingOrders = await Order.findAll({
+            where: {
+                user_id: id,
+                status: {
+                    [Op.in]: restrictedStatuses
+                }
+            }
+        });
+
+        if (existingOrders.length > 0) {
+            return errorResponse(res, { 
+                message: "Cannot delete user. User has active orders that are pending, processing, packed, shipped, out for delivery, or in return process." 
+            }, 400);
+        }
+
         await user.destroy(); // Soft delete enabled because `paranoid: true`
         return successResponse(res, { }, "Customer deleted successfully", 200);
     } catch (error) {
