@@ -42,7 +42,6 @@ module.exports.listAllBlogs = async (req, res, next) => {
         if (categoryId) {
             // First, add the specified category ID
             categoryIds.push(categoryId);
-            
             // Find all subcategories of the specified category
             const subcategories = await BlogCategory.findAll({
                 where: {
@@ -59,7 +58,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
                 });
             }
         }
-
+        
         // Get total count for pagination
         const totalCount = await Blog.count({
             where: {
@@ -73,11 +72,11 @@ module.exports.listAllBlogs = async (req, res, next) => {
                 where: {
                     id: {
                         [Op.in]: categoryIds
-                    }
+                    },
+                    status: 'active'
                 }
             }] : []
         });
-
         const blogs = await Blog.findAll({
             where: whereCondition,
             include: [
@@ -102,7 +101,8 @@ module.exports.listAllBlogs = async (req, res, next) => {
                     where: {
                         id: {
                             [Op.in]: categoryIds
-                        }
+                        },
+                        status: 'active'
                     }
                 }] : [{
                     model: BlogCategory,
@@ -116,7 +116,10 @@ module.exports.listAllBlogs = async (req, res, next) => {
                             required: false
                         }
                     ],
-                    through: { attributes: [] }
+                    through: { attributes: [] },
+                    where: {
+                        status: 'active'
+                    }
                 }])
             ],
             
