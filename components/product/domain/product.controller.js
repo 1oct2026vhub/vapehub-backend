@@ -39,6 +39,9 @@ module.exports.getProductByid = async (req, res, next) => {
             {
                 model: ProductVariant,
                 as: 'variants',
+                where: {
+                    status: 'active'
+                },
                 include: [
                     {
                         model: ProductVariantAttribute,
@@ -564,6 +567,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 {
                     model: ProductVariant,
                     as: 'variants',
+                    where: {
+                        status: 'active'
+                    },
                     include: [
                         {
                             model: ProductVariantAttribute,
