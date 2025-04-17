@@ -200,4 +200,53 @@ router.delete('/:id', authenticateJWT,
     ]),
     cartController.deleteCart);
 
+/**
+ * @swagger
+ * /api/cart/check-stock:
+ *   get:
+ *     tags:
+ *       - Cart
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Check stock status of all items in cart
+ *     description: Returns the stock status of each item in the user's cart, including whether items are out of stock or if the requested quantity exceeds available stock.
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "success"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       itemId:
+ *                         type: integer
+ *                         description: The ID of the cart item
+ *                         example: 1
+ *                       message:
+ *                         type: string
+ *                         description: Status message for the item
+ *                         example: "Product A is in stock"
+ *                       isOutOfStock:
+ *                         type: boolean
+ *                         description: Whether the item is out of stock or quantity exceeds available stock
+ *                         example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Stock status checked successfully"
+ *       401:
+ *         description: Unauthorized - User is not authenticated
+ *       500:
+ *         description: Internal Server Error
+ */
+
+router.get('/check-stock', authenticateJWT, cartController.checkCartItemsStock);
+
 module.exports = router;
