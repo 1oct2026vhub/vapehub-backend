@@ -248,7 +248,10 @@ const fetchProducts = async (query) => {
           [Op.between]: [priceRange.min, priceRange.max]
         }
       }),
-      ...(variantFilters.id && { id: variantFilters.id })
+      ...(variantFilters.id && { id: variantFilters.id }),
+      // stock: { [Op.gt]: 0 },
+      // stock_status: 'in_stock',
+      status: 'active'
     };
 
     // Build attribute term conditions
@@ -358,8 +361,7 @@ const fetchProducts = async (query) => {
     const availableProducts = products.filter(product => {
       if (product.variants && product.variants.length > 0) {
         const availableVariants = product.variants.filter(variant => 
-          variant.status === 'active' && 
-          variant.stock > 0
+          variant.status === 'active'
         );
         
         if (availableVariants.length > 0) {
@@ -371,69 +373,208 @@ const fetchProducts = async (query) => {
       return false;
     });
 
-    // Process filters data
-    const categoriesMap = new Map();
-    const brandMap = new Map();
-    const attributeTermMap = new Map();
-
-    availableProducts.forEach(product => {
-      // Process categories
-      if (product.Category) {
-        const categoryData = categoriesMap.get(product.category_id) || {
-          id: product.Category.id,
-          name: product.Category.name,
-          slug: product.Category.slug,
-          product_count: 0
-        };
-        categoryData.product_count++;
-        categoriesMap.set(product.category_id, categoryData);
+    // Build base product filter conditions for SQL queries
+    let productFilterConditions = [];
+    let productFilterParams = {};
+    
+    if (keyword) {
+      productFilterConditions.push("p.name LIKE :keyword");
+      productFilterParams.keyword = `%${keyword}%`;
+    }
+    
+    if (is_new) {
+      const lastMonthDate = new Date();
+      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
+      productFilterConditions.push("p.createdAt >= :lastMonthDate");
+      productFilterParams.lastMonthDate = lastMonthDate;
+    }
+    
+    if (categories) {
+      const categoryIds = categories.split(',').map(Number);
+      productFilterConditions.push("p.category_id IN (:categoryIds)");
+      productFilterParams.categoryIds = categoryIds;
+    }
+    
+    if (brand) {
+      const brandIds = brand.split(',').map(Number);
+      productFilterConditions.push("p.brand_id IN (:brandIds)");
+      productFilterParams.brandIds = brandIds;
+    }
+    
+    // Price range filter for variants
+    let variantFilterConditions = [];
+    if (priceRange) {
+      variantFilterConditions.push("pv.price BETWEEN :minPrice AND :maxPrice");
+      productFilterParams.minPrice = priceRange.min;
+      productFilterParams.maxPrice = priceRange.max;
+    }
+    
+    // Variant filter
+    if (variantFilters.id) {
+      variantFilterConditions.push("pv.id = :variantId");
+      productFilterParams.variantId = variantFilters.id;
+    }
+    
+    // Attribute term conditions
+    let attributeFilterConditions = [];
+    if (variantFilters.attributes) {
+      for (const [attributeId, termIds] of Object.entries(variantFilters.attributes)) {
+        if (Array.isArray(termIds) && termIds.length > 0) {
+          attributeFilterConditions.push(`(pat.attribute_id = ${parseInt(attributeId)} AND pat.term_id IN (${termIds.join(',')}))`);
+        }
       }
-
-      // Process brands
-      if (product.Brand) {
-        const brandData = brandMap.get(product.brand_id) || {
-          id: product.Brand.id,
-          name: product.Brand.name,
-          slug: product.Brand.slug,
-          product_count: 0
-        };
-        brandData.product_count++;
-        brandMap.set(product.brand_id, brandData);
-      }
-
-      // Process attributes and terms
-      if (product.productAttributeTerms) {
-        product.productAttributeTerms.forEach(pat => {
-          if (!attributeTermMap.has(pat.attribute_id)) {
-            attributeTermMap.set(pat.attribute_id, {
-              attribute: {
-                id: pat.attribute.id,
-                name: pat.attribute.name,
-                type: pat.attribute.type,
-                is_visible: pat.is_visible_page
-              },
-              terms: []
-            });
-          }
-
-          const attributeData = attributeTermMap.get(pat.attribute_id);
-          const termIndex = attributeData.terms.findIndex(t => t.id === pat.term.id);
-
-          if (termIndex === -1) {
-            attributeData.terms.push({
-              id: pat.term.id,
-              name: pat.term.name,
-              slug: pat.term.slug,
-              product_count: 1
-            });
-          } else {
-            attributeData.terms[termIndex].product_count++;
-          }
-        });
-      }
+    }
+    
+    // Combine all filter conditions
+    const sqlProductWhereClause = productFilterConditions.length > 0 
+      ? "WHERE " + productFilterConditions.join(" AND ") 
+      : "";
+    
+    const sqlVariantWhereClause = variantFilterConditions.length > 0 
+      ? "AND " + variantFilterConditions.join(" AND ") 
+      : "";
+    
+    const sqlAttributeWhereClause = attributeFilterConditions.length > 0 
+      ? "AND (" + attributeFilterConditions.join(" OR ") + ")" 
+      : "";
+    
+    // 1. Fetch categories with product counts
+    const categoryResults = await sequelize.query(`
+      SELECT 
+        c.id, c.name, c.slug, COUNT(DISTINCT p.id) as product_count
+      FROM 
+        categories c
+      JOIN 
+        products p ON p.category_id = c.id
+      LEFT JOIN
+        product_variants pv ON pv.product_id = p.id
+      ${sqlProductWhereClause}
+      ${sqlVariantWhereClause}
+      GROUP BY 
+        c.id, c.name, c.slug
+    `, {
+      replacements: productFilterParams,
+      type: sequelize.QueryTypes.SELECT
     });
 
-    // Define price ranges
+    // 2. Fetch brands with product counts
+    const brandResults = await sequelize.query(`
+      SELECT 
+        b.id, b.name, b.slug, COUNT(DISTINCT p.id) as product_count
+      FROM 
+        brands b
+      JOIN 
+        products p ON p.brand_id = b.id
+      LEFT JOIN
+        product_variants pv ON pv.product_id = p.id
+      ${sqlProductWhereClause}
+      ${sqlVariantWhereClause}
+      GROUP BY 
+        b.id, b.name, b.slug
+    `, {
+      replacements: productFilterParams,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // 3. Fetch attributes and terms with product counts
+    const attributeResults = await sequelize.query(`
+      SELECT 
+        a.id as attribute_id, 
+        a.name as attribute_name, 
+        a.type as attribute_type,
+        t.id as term_id, 
+        t.name as term_name, 
+        t.slug as term_slug,
+        COUNT(DISTINCT p.id) as product_count
+      FROM 
+        attributes a
+      JOIN 
+        product_attribute_terms pat ON pat.attribute_id = a.id
+      JOIN 
+        attribute_terms t ON t.id = pat.term_id
+      JOIN 
+        products p ON p.id = pat.product_id
+      LEFT JOIN
+        product_variants pv ON pv.product_id = p.id
+      ${sqlProductWhereClause}
+      ${sqlVariantWhereClause}
+      ${sqlAttributeWhereClause}
+      GROUP BY 
+        a.id, a.name, a.type, t.id, t.name, t.slug
+    `, {
+      replacements: productFilterParams,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // 4. Calculate price ranges using SQL - completely revised approach
+    const priceRangeResults = await sequelize.query(`
+      WITH product_price_ranges AS (
+        SELECT 
+          p.id as product_id,
+          MIN(pv.price) as min_price
+        FROM 
+          products p
+        JOIN 
+          product_variants pv ON pv.product_id = p.id
+        WHERE
+          pv.status = 'active'
+          ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
+          ${sqlVariantWhereClause}
+        GROUP BY 
+          p.id
+      )
+      SELECT 
+        CASE 
+          WHEN min_price < 10 THEN '0-10'
+          WHEN min_price < 25 THEN '10-25'
+          WHEN min_price < 50 THEN '25-50'
+          WHEN min_price < 75 THEN '50-75'
+          WHEN min_price < 100 THEN '75-100'
+          WHEN min_price < 200 THEN '100-200'
+          ELSE '200+'
+        END as price_range,
+        COUNT(*) as count
+      FROM 
+        product_price_ranges
+      GROUP BY 
+        CASE 
+          WHEN min_price < 10 THEN '0-10'
+          WHEN min_price < 25 THEN '10-25'
+          WHEN min_price < 50 THEN '25-50'
+          WHEN min_price < 75 THEN '50-75'
+          WHEN min_price < 100 THEN '75-100'
+          WHEN min_price < 200 THEN '100-200'
+          ELSE '200+'
+        END
+    `, {
+      replacements: productFilterParams,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Process attribute results into the required format
+    const attributeMap = new Map();
+    attributeResults.forEach(result => {
+      if (!attributeMap.has(result.attribute_id)) {
+        attributeMap.set(result.attribute_id, {
+          attribute: {
+            id: result.attribute_id,
+            name: result.attribute_name,
+            type: result.attribute_type
+          },
+          terms: []
+        });
+      }
+      
+      const attributeData = attributeMap.get(result.attribute_id);
+      attributeData.terms.push({
+        id: result.term_id,
+        name: result.term_name,
+        slug: result.term_slug,
+        product_count: result.product_count
+      });
+    });
+
+    // Format price ranges
     const priceRanges = [
       { label: "£0 - £10", min: 0, max: 10, value: "0-10" },
       { label: "£10 - £25", min: 10, max: 25, value: "10-25" },
@@ -444,19 +585,11 @@ const fetchProducts = async (query) => {
       { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
     ];
 
-    // Calculate price range counts using available products
     const priceRangeCounts = priceRanges.map(range => {
-      const count = availableProducts.reduce((total, product) => {
-        const hasVariantInRange = product.variants?.some(variant => {
-          const price = parseFloat(variant.price) || 0;
-          return price >= range.min && price < range.max;
-        });
-        return total + (hasVariantInRange ? 1 : 0);
-      }, 0);
-
+      const result = priceRangeResults.find(r => r.price_range === range.value);
       return {
         label: range.label,
-        count,
+        count: result ? result.count : 0,
         value: range.value
       };
     });
@@ -480,9 +613,9 @@ const fetchProducts = async (query) => {
     return {
       additionalData,
       products: availableProducts,
-      category_items: Array.from(categoriesMap.values()),
-      brand_items: Array.from(brandMap.values()),
-      attributes: Array.from(attributeTermMap.values()),
+      category_items: categoryResults,
+      brand_items: brandResults,
+      attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {
         total_count: totalCount,
