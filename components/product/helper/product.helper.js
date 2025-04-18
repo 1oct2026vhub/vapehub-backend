@@ -254,8 +254,8 @@ const fetchProducts = async (query) => {
       status: 'active'
     };
 
-    // Build attribute term conditions
-    const attributeTermConditions = [];
+    // Attribute term conditions
+    let attributeTermConditions = [];
     if (variantFilters.attributes) {
       for (const [attributeId, termIds] of Object.entries(variantFilters.attributes)) {
         if (Array.isArray(termIds) && termIds.length > 0) {
@@ -403,12 +403,12 @@ const fetchProducts = async (query) => {
       productFilterParams.variantId = variantFilters.id;
     }
     
-    // Attribute term conditions
-    let attributeFilterConditions = [];
+    // Attribute term conditions for SQL
+    let sqlAttributeFilterConditions = [];
     if (variantFilters.attributes) {
       for (const [attributeId, termIds] of Object.entries(variantFilters.attributes)) {
         if (Array.isArray(termIds) && termIds.length > 0) {
-          attributeFilterConditions.push(`(pat.attribute_id = ${parseInt(attributeId)} AND pat.term_id IN (${termIds.join(',')}))`);
+          sqlAttributeFilterConditions.push(`(pat.attribute_id = ${parseInt(attributeId)} AND pat.term_id IN (${termIds.join(',')}))`);
         }
       }
     }
@@ -422,11 +422,26 @@ const fetchProducts = async (query) => {
       ? "AND " + variantFilterConditions.join(" AND ") 
       : "";
     
-    const sqlAttributeWhereClause = attributeFilterConditions.length > 0 
-      ? "AND (" + attributeFilterConditions.join(" OR ") + ")" 
+    const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
+      ? "AND (" + sqlAttributeFilterConditions.join(" OR ") + ")" 
+      : "";
+
+    // 1. Fetch categories with product counts - WITH category filter
+    // For category_items: Filters by keyword, price_range, brand, variant, and is_new
+    const categoryFilterConditions = [...productFilterConditions];
+    const categoryFilterParams = {...productFilterParams};
+    
+    // Add brand filter for category_items
+    if (brand) {
+      const brandIds = brand.split(',').map(Number);
+      categoryFilterConditions.push("p.brand_id IN (:brandIds)");
+      categoryFilterParams.brandIds = brandIds;
+    }
+    
+    const categoryWhereClause = categoryFilterConditions.length > 0 
+      ? "WHERE " + categoryFilterConditions.join(" AND ") 
       : "";
     
-    // 1. Fetch categories with product counts - WITHOUT category filter
     const categoryResults = await sequelize.query(`
       SELECT 
         c.id, c.name, c.slug, COUNT(DISTINCT p.id) as product_count
@@ -436,18 +451,31 @@ const fetchProducts = async (query) => {
         products p ON p.category_id = c.id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      WHERE
-        pv.status = 'active'
-        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
-        ${sqlVariantWhereClause}
+      ${categoryWhereClause}
+      ${sqlVariantWhereClause}
       GROUP BY 
         c.id, c.name, c.slug
     `, {
-      replacements: productFilterParams,
+      replacements: categoryFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 2. Fetch brands with product counts - WITHOUT brand filter
+    // 2. Fetch brands with product counts - WITH brand filter
+    // For brand_items: Filters by keyword, price_range, categories, variant, and is_new
+    const brandFilterConditions = [...productFilterConditions];
+    const brandFilterParams = {...productFilterParams};
+    
+    // Add categories filter for brand_items
+    if (categories) {
+      const categoryIds = categories.split(',').map(Number);
+      brandFilterConditions.push("p.category_id IN (:categoryIds)");
+      brandFilterParams.categoryIds = categoryIds;
+    }
+    
+    const brandWhereClause = brandFilterConditions.length > 0 
+      ? "WHERE " + brandFilterConditions.join(" AND ") 
+      : "";
+    
     const brandResults = await sequelize.query(`
       SELECT 
         b.id, b.name, b.slug, COUNT(DISTINCT p.id) as product_count
@@ -457,18 +485,39 @@ const fetchProducts = async (query) => {
         products p ON p.brand_id = b.id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      WHERE
-        pv.status = 'active'
-        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
-        ${sqlVariantWhereClause}
+      ${brandWhereClause}
+      ${sqlVariantWhereClause}
       GROUP BY 
         b.id, b.name, b.slug
     `, {
-      replacements: productFilterParams,
+      replacements: brandFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 3. Fetch attributes and terms with product counts - WITHOUT attribute filter
+    // 3. Fetch attributes and terms with product counts - WITH attribute filter
+    // For attributes: Filters by keyword, price_range, brand, categories, variant (excluding variantFilters.attributes), and is_new
+    const attributeFilterConditions = [...productFilterConditions];
+    const attributeFilterParams = {...productFilterParams};
+    
+    // Add brand filter for attributes
+    if (brand) {
+      const brandIds = brand.split(',').map(Number);
+      attributeFilterConditions.push("p.brand_id IN (:brandIds)");
+      attributeFilterParams.brandIds = brandIds;
+    }
+    
+    // Add categories filter for attributes
+    if (categories) {
+      const categoryIds = categories.split(',').map(Number);
+      attributeFilterConditions.push("p.category_id IN (:categoryIds)");
+      attributeFilterParams.categoryIds = categoryIds;
+    }
+    
+    // Exclude variantFilters.attributes from the filter
+    const attributeWhereClause = attributeFilterConditions.length > 0 
+      ? "WHERE " + attributeFilterConditions.join(" AND ") 
+      : "";
+    
     const attributeResults = await sequelize.query(`
       SELECT 
         a.id as attribute_id, 
@@ -476,7 +525,7 @@ const fetchProducts = async (query) => {
         a.type as attribute_type,
         a.slug as attribute_slug,
         pat.used_in_variation,
-        pat.is_visible,
+        pat.is_visible_page,
         t.id as term_id, 
         t.name as term_name, 
         t.slug as term_slug,
@@ -491,18 +540,38 @@ const fetchProducts = async (query) => {
         products p ON p.id = pat.product_id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      WHERE
-        pv.status = 'active'
-        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
-        ${sqlVariantWhereClause}
+      ${attributeWhereClause}
+      ${sqlVariantWhereClause}
       GROUP BY 
-        a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible, t.id, t.name, t.slug
+        a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible_page, t.id, t.name, t.slug
     `, {
-      replacements: productFilterParams,
+      replacements: attributeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 4. Calculate price ranges using SQL - WITHOUT price range filter
+    // 4. Calculate price ranges using SQL - WITH price range filter
+    // For price_ranges: Filters by keyword, brand, categories, variant, and is_new
+    const priceRangeFilterConditions = [...productFilterConditions];
+    const priceRangeFilterParams = {...productFilterParams};
+    
+    // Add brand filter for price_ranges
+    if (brand) {
+      const brandIds = brand.split(',').map(Number);
+      priceRangeFilterConditions.push("p.brand_id IN (:brandIds)");
+      priceRangeFilterParams.brandIds = brandIds;
+    }
+    
+    // Add categories filter for price_ranges
+    if (categories) {
+      const categoryIds = categories.split(',').map(Number);
+      priceRangeFilterConditions.push("p.category_id IN (:categoryIds)");
+      priceRangeFilterParams.categoryIds = categoryIds;
+    }
+    
+    const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
+      ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
+      : "";
+    
     const priceRangeResults = await sequelize.query(`
       WITH product_price_ranges AS (
         SELECT 
@@ -512,10 +581,8 @@ const fetchProducts = async (query) => {
           products p
         JOIN 
           product_variants pv ON pv.product_id = p.id
-        WHERE
-          pv.status = 'active'
-          ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
-          ${sqlVariantWhereClause}
+        ${priceRangeWhereClause}
+        ${sqlVariantWhereClause}
         GROUP BY 
           p.id
       )
@@ -543,7 +610,7 @@ const fetchProducts = async (query) => {
           ELSE '200+'
         END
     `, {
-      replacements: productFilterParams,
+      replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
@@ -557,7 +624,7 @@ const fetchProducts = async (query) => {
             name: result.attribute_name,
             type: result.attribute_type,
             used_in_variation: result.used_in_variation,
-            is_visible: result.is_visible,
+            is_visible: result.is_visible_page,
             slug: result.attribute_slug
           },
           terms: []
