@@ -40,6 +40,21 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });
+
+      this.belongsTo(models.OrderAddress, { 
+        foreignKey: 'order_shipping_address_id', 
+        as: 'orderShippingAddress',
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
+
+      this.belongsTo(models.OrderAddress, { 
+        foreignKey: 'order_billing_address_id', 
+        as: 'orderBillingAddress',
+        onDelete: 'CASCADE', 
+        onUpdate: 'CASCADE' 
+      });
+
       this.hasMany(models.OrderItem, { 
         foreignKey: 'order_id', 
         as: 'orderItems',
@@ -212,7 +227,7 @@ module.exports = (sequelize, DataTypes) => {
     
     shipping_address_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'user_addresses',
         key: 'id'
@@ -223,6 +238,22 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       references: {
         model: 'user_addresses',
+        key: 'id'
+      }
+    },
+    order_shipping_address_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'order_addresses',
+        key: 'id'
+      }
+    },
+    order_billing_address_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'order_addresses',
         key: 'id'
       }
     },

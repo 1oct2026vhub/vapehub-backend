@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder} = require("../helper/order.helper")
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -83,6 +83,16 @@ module.exports.getOrders = async (req, res) => {
                     model: UserAddress,
                     as: 'billingAddress',
                     attributes: ['name', 'street', 'town', 'post_code', 'phone']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
                     model: ShippingMethod,
@@ -282,8 +292,10 @@ module.exports.placeOrder = async (req, res, next) => {
             coupon_id: coupon ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
-            shipping_address_id: shippingAddrs.id,
-            billing_address_id: billingAddrs.id,
+            // shipping_address_id: 0,
+            // billing_address_id: 0,
+            order_shipping_address_id: shippingAddrs.id,
+            order_billing_address_id: billingAddrs.id,
             shipping_method_id,
             order_unique_id: orderUniqueId,
             order_code: parseInt(orderCode).toString(),
@@ -366,7 +378,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         discount: coupon ? coupon.discount_value : 0,
                         total: calculatedTotal
                     },
-                    shipping: { address: shippingAddrs }
+                    shipping: { address: shippingAddrs },
+                    billing: { address: billingAddrs }
                 },
                 wallet_log: wallet_check
             }
@@ -557,6 +570,16 @@ module.exports.getOrderById = async (req, res) => {
                     attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
                     model: ShippingMethod,
                     as: 'shippingMethod',
                     attributes: ['id', 'shipping_method', 'shipping_cost']
@@ -656,6 +679,16 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                         attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                     },
                     {
+                        model: OrderAddress,
+                        as: 'orderShippingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderBillingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
                         model: ShippingMethod,
                         as: 'shippingMethod',
                         attributes: ['id', 'shipping_method', 'shipping_cost']
@@ -719,12 +752,13 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                             price: item.unit_price,
                             total: item.total
                         })),
-                        shippingAddress: order.shippingAddress.dataValues,
-                        billingAddress: order.billingAddress.dataValues,
+                        shippingAddress: order.orderShippingAddress,
+                        billingAddress: order.orderBillingAddress,
                         paymentMethod: 'VivaWallet',
                         transactionId: transactionId
                     }
                 };
+
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
                 // Create transaction record
