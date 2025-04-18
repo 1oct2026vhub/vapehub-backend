@@ -389,18 +389,6 @@ const fetchProducts = async (query) => {
       productFilterParams.lastMonthDate = lastMonthDate;
     }
     
-    if (categories) {
-      const categoryIds = categories.split(',').map(Number);
-      productFilterConditions.push("p.category_id IN (:categoryIds)");
-      productFilterParams.categoryIds = categoryIds;
-    }
-    
-    if (brand) {
-      const brandIds = brand.split(',').map(Number);
-      productFilterConditions.push("p.brand_id IN (:brandIds)");
-      productFilterParams.brandIds = brandIds;
-    }
-    
     // Price range filter for variants
     let variantFilterConditions = [];
     if (priceRange) {
@@ -438,7 +426,7 @@ const fetchProducts = async (query) => {
       ? "AND (" + attributeFilterConditions.join(" OR ") + ")" 
       : "";
     
-    // 1. Fetch categories with product counts
+    // 1. Fetch categories with product counts - WITHOUT category filter
     const categoryResults = await sequelize.query(`
       SELECT 
         c.id, c.name, c.slug, COUNT(DISTINCT p.id) as product_count
@@ -448,8 +436,10 @@ const fetchProducts = async (query) => {
         products p ON p.category_id = c.id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      ${sqlProductWhereClause}
-      ${sqlVariantWhereClause}
+      WHERE
+        pv.status = 'active'
+        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
+        ${sqlVariantWhereClause}
       GROUP BY 
         c.id, c.name, c.slug
     `, {
@@ -457,7 +447,7 @@ const fetchProducts = async (query) => {
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 2. Fetch brands with product counts
+    // 2. Fetch brands with product counts - WITHOUT brand filter
     const brandResults = await sequelize.query(`
       SELECT 
         b.id, b.name, b.slug, COUNT(DISTINCT p.id) as product_count
@@ -467,8 +457,10 @@ const fetchProducts = async (query) => {
         products p ON p.brand_id = b.id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      ${sqlProductWhereClause}
-      ${sqlVariantWhereClause}
+      WHERE
+        pv.status = 'active'
+        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
+        ${sqlVariantWhereClause}
       GROUP BY 
         b.id, b.name, b.slug
     `, {
@@ -476,12 +468,15 @@ const fetchProducts = async (query) => {
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 3. Fetch attributes and terms with product counts
+    // 3. Fetch attributes and terms with product counts - WITHOUT attribute filter
     const attributeResults = await sequelize.query(`
       SELECT 
         a.id as attribute_id, 
         a.name as attribute_name, 
         a.type as attribute_type,
+        a.slug as attribute_slug,
+        pat.used_in_variation,
+        pat.is_visible,
         t.id as term_id, 
         t.name as term_name, 
         t.slug as term_slug,
@@ -496,17 +491,18 @@ const fetchProducts = async (query) => {
         products p ON p.id = pat.product_id
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
-      ${sqlProductWhereClause}
-      ${sqlVariantWhereClause}
-      ${sqlAttributeWhereClause}
+      WHERE
+        pv.status = 'active'
+        ${sqlProductWhereClause ? sqlProductWhereClause.replace('WHERE', 'AND') : ''}
+        ${sqlVariantWhereClause}
       GROUP BY 
-        a.id, a.name, a.type, t.id, t.name, t.slug
+        a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible, t.id, t.name, t.slug
     `, {
       replacements: productFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 4. Calculate price ranges using SQL - completely revised approach
+    // 4. Calculate price ranges using SQL - WITHOUT price range filter
     const priceRangeResults = await sequelize.query(`
       WITH product_price_ranges AS (
         SELECT 
@@ -559,7 +555,10 @@ const fetchProducts = async (query) => {
           attribute: {
             id: result.attribute_id,
             name: result.attribute_name,
-            type: result.attribute_type
+            type: result.attribute_type,
+            used_in_variation: result.used_in_variation,
+            is_visible: result.is_visible,
+            slug: result.attribute_slug
           },
           terms: []
         });
