@@ -568,9 +568,23 @@ const fetchProducts = async (query) => {
       priceRangeFilterParams.categoryIds = categoryIds;
     }
     
+    // IMPORTANT: Remove price range filter from the price range calculation
+    // This ensures we get accurate counts for all price ranges regardless of selection
     const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
       ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
       : "";
+    
+    // Create a separate variant where clause without the price range filter
+    let priceRangeVariantWhereClause = "";
+    if (variantFilters.id) {
+      priceRangeVariantWhereClause = "AND pv.id = :variantId";
+      priceRangeFilterParams.variantId = variantFilters.id;
+    }
+    
+    // Add attribute filter conditions if needed
+    if (sqlAttributeWhereClause) {
+      priceRangeFilterConditions.push(sqlAttributeWhereClause);
+    }
     
     const priceRangeResults = await sequelize.query(`
       WITH product_price_ranges AS (
@@ -582,7 +596,7 @@ const fetchProducts = async (query) => {
         JOIN 
           product_variants pv ON pv.product_id = p.id
         ${priceRangeWhereClause}
-        ${sqlVariantWhereClause}
+        ${priceRangeVariantWhereClause}
         GROUP BY 
           p.id
       )
