@@ -623,8 +623,7 @@ const fetchProducts = async (query) => {
             id: result.attribute_id,
             name: result.attribute_name,
             type: result.attribute_type,
-            used_in_variation: result.used_in_variation,
-            is_visible: result.is_visible_page,
+            is_visible: !!result.is_visible_page,
             slug: result.attribute_slug
           },
           terms: []
