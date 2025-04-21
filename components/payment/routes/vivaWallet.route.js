@@ -68,7 +68,7 @@ const { check } = require("express-validator");
  *       500:
  *         description: Internal server error
  */
-router.post("/webhook", vivaWalletController.handleVivaWalletWebhook);
+router.use("/webhook", vivaWalletController.handleVivaWalletWebhook);
 
 
 module.exports = router; 

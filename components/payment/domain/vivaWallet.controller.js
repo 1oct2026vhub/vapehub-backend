@@ -9,21 +9,9 @@ const axios = require("axios");
 
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
-        var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = ']kD;D=';
-
-        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
-        const resp = await axios({
-                    method: "GET",
-                    url: "https://demo.vivapayments.com/api/messages/config/token",
-                    headers: {
-                      "Authorization": "Basic " + credentials,
-                    }
-        });
-                
-        var code = resp.data.Key;
-
-        const webhookData = req.body;
+        
+        if (req.method === 'POST') {
+            const webhookData = req.body;
         
         // Verify webhook signature if needed
         // const signature = req.headers['x-viva-signature'];
@@ -112,7 +100,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
             }
 
-            // Return success response
+            // // Return success response
             // return successResponse(res, {
             //     message: 'Webhook processed successfully',
             //     orderId: order.id,
@@ -121,6 +109,26 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
             // });
 
         }
+        // Return success response
+            return successResponse(res,{status: 200,
+                body: { message: 'ok' }
+            });
+        }
+        
+
+        var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
+        var apiKey = ']kD;D=';
+
+        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        const resp = await axios({
+                    method: "GET",
+                    url: "https://demo.vivapayments.com/api/messages/config/token",
+                    headers: {
+                      "Authorization": "Basic " + credentials,
+                    }
+        });
+                
+        var code = resp.data.Key;
         return res.json({
             status: 200,
             headers: { "test-header": "value" },
