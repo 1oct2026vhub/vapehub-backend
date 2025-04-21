@@ -458,6 +458,7 @@ const fetchProducts = async (query) => {
         SELECT 
           p.id as product_id,
           p.category_id,
+          p.brand_id,
           (
             SELECT MIN(pv2.price)
             FROM product_variants pv2
@@ -482,6 +483,7 @@ const fetchProducts = async (query) => {
             ) AS min_price_table
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )` : ''}
+          ${brand ? `AND p.brand_id IN (${brand})` : ''}
       )
       SELECT 
         c.id, 
@@ -523,6 +525,7 @@ const fetchProducts = async (query) => {
         SELECT 
           p.id as product_id,
           p.brand_id,
+          p.category_id,
           (
             SELECT MIN(pv2.price)
             FROM product_variants pv2
@@ -547,6 +550,7 @@ const fetchProducts = async (query) => {
             ) AS min_price_table
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )` : ''}
+          ${categories ? `AND p.category_id IN (${categories})` : ''}
       )
       SELECT 
         b.id, 
