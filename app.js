@@ -8,6 +8,7 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const cors = require("cors");
 const swaggerUi = require('swagger-ui-express');
+const fs = require('fs');
 
 // Response Helper middleware
 const responseHelper = require("./library/responseHelper");
@@ -20,9 +21,22 @@ const app = express();
     await dotenv.loadEnvFile();
 })();
 
+// Create logs directory if it doesn't exist
+const logDirectory = path.join(__dirname, 'logs');
+if (!fs.existsSync(logDirectory)) {
+    fs.mkdirSync(logDirectory);
+}
+
+// Create a write stream for request logs
+const accessLogStream = fs.createWriteStream(
+    path.join(logDirectory, 'access.log'),
+    { flags: 'a' }
+);
+
 // Configure middleware in the correct order
 // 1. Basic security and logging middleware
-app.use(morgan("dev"));
+app.use(morgan('combined', { stream: accessLogStream }));
+app.use(morgan("dev")); // Also log to console
 app.use(helmet({
     crossOriginEmbedderPolicy: false,
 }));
