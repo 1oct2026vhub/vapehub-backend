@@ -454,16 +454,47 @@ const fetchProducts = async (query) => {
       : "";
     
     const categoryResults = await sequelize.query(`
+      WITH product_price_ranges AS (
+        SELECT 
+          p.id as product_id,
+          p.category_id,
+          (
+            SELECT MIN(pv2.price)
+            FROM product_variants pv2
+            WHERE 
+              pv2.product_id = p.id
+              AND pv2.status = 'active'
+              AND pv2.deleted_at IS NULL
+          ) as min_price
+        FROM 
+          products p
+        WHERE
+          p.deletedAt IS NULL
+          ${priceRange ? `AND EXISTS (
+            SELECT 1
+            FROM (
+              SELECT MIN(pv2.price) AS min_price
+              FROM product_variants pv2
+              WHERE 
+                pv2.product_id = p.id
+                AND pv2.status = 'active'
+                AND pv2.deleted_at IS NULL
+            ) AS min_price_table
+            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
+          )` : ''}
+      )
       SELECT 
-        c.id, c.name, c.slug, COUNT(DISTINCT p.id) as product_count
+        c.id, 
+        c.name, 
+        c.slug, 
+        COUNT(DISTINCT p.product_id) as product_count
       FROM 
         categories c
       JOIN 
-        products p ON p.category_id = c.id
-      LEFT JOIN
-        product_variants pv ON pv.product_id = p.id
-      ${categoryWhereClause}
-      ${sqlVariantWhereClause}
+        product_price_ranges p ON p.category_id = c.id
+      WHERE
+        p.min_price IS NOT NULL
+        ${sqlAttributeWhereClause ? `AND ${sqlAttributeWhereClause}` : ''}
       GROUP BY 
         c.id, c.name, c.slug
     `, {
@@ -488,16 +519,47 @@ const fetchProducts = async (query) => {
       : "";
     
     const brandResults = await sequelize.query(`
+      WITH product_price_ranges AS (
+        SELECT 
+          p.id as product_id,
+          p.brand_id,
+          (
+            SELECT MIN(pv2.price)
+            FROM product_variants pv2
+            WHERE 
+              pv2.product_id = p.id
+              AND pv2.status = 'active'
+              AND pv2.deleted_at IS NULL
+          ) as min_price
+        FROM 
+          products p
+        WHERE
+          p.deletedAt IS NULL
+          ${priceRange ? `AND EXISTS (
+            SELECT 1
+            FROM (
+              SELECT MIN(pv2.price) AS min_price
+              FROM product_variants pv2
+              WHERE 
+                pv2.product_id = p.id
+                AND pv2.status = 'active'
+                AND pv2.deleted_at IS NULL
+            ) AS min_price_table
+            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
+          )` : ''}
+      )
       SELECT 
-        b.id, b.name, b.slug, COUNT(DISTINCT p.id) as product_count
+        b.id, 
+        b.name, 
+        b.slug, 
+        COUNT(DISTINCT p.product_id) as product_count
       FROM 
         brands b
       JOIN 
-        products p ON p.brand_id = b.id
-      LEFT JOIN
-        product_variants pv ON pv.product_id = p.id
-      ${brandWhereClause}
-      ${sqlVariantWhereClause}
+        product_price_ranges p ON p.brand_id = b.id
+      WHERE
+        p.min_price IS NOT NULL
+        ${sqlAttributeWhereClause ? `AND ${sqlAttributeWhereClause}` : ''}
       GROUP BY 
         b.id, b.name, b.slug
     `, {
