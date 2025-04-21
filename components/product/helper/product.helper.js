@@ -613,8 +613,8 @@ const fetchProducts = async (query) => {
           products p
         WHERE
           p.deletedAt IS NULL
-        ${priceRangeWhereClause}
-        ${priceRangeVariantWhereClause}
+          ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
+          ${priceRangeVariantWhereClause ? `AND ${priceRangeVariantWhereClause.replace('AND ', '')}` : ''}
       )
       SELECT 
         CASE 
