@@ -220,7 +220,20 @@ const fetchProducts = async (query) => {
         throw new Error('Invalid variant filter format: must be valid JSON');
       }
     }
-
+    
+    // Check if variantFilters is directly an attributes object (format: {"12": [477], "15": [479]})
+    // If so, wrap it in an attributes property
+    if (variantFilters && !variantFilters.attributes && !variantFilters.id) {
+      // Check if all keys are numeric (attribute IDs) and all values are arrays (term IDs)
+      const isAttributeFormat = Object.entries(variantFilters).every(([key, value]) => {
+        return !isNaN(key) && Array.isArray(value);
+      });
+      
+      if (isAttributeFormat) {
+        variantFilters = { attributes: variantFilters };
+      }
+    }
+    
     // Build base where clause for Product
     const productWhereClause = {
       ...(keyword && { name: { [Op.like]: `%${keyword}%` } }),
@@ -241,6 +254,13 @@ const fetchProducts = async (query) => {
       })
     };
 
+    // Create a separate variant where clause without the price range filter
+    let priceRangeVariantWhereClause = "";
+    if (variantFilters.id) {
+      priceRangeVariantWhereClause = "AND pv.id = :variantId";
+      priceRangeFilterParams.variantId = variantFilters.id;
+    }
+    
     // Build variant where clause
     const variantWhereClause = {
       ...(priceRange && {
@@ -433,8 +453,9 @@ const fetchProducts = async (query) => {
       ? "AND " + variantFilterConditions.join(" AND ") 
       : "";
     
+    // Fix the attribute where clause to avoid double AND
     const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
-      ? "AND (" + sqlAttributeFilterConditions.join(" OR ") + ")" 
+      ? sqlAttributeFilterConditions.join(" OR ") 
       : "";
 
     // 1. Fetch categories with product counts - WITH category filter
@@ -494,9 +515,12 @@ const fetchProducts = async (query) => {
         categories c
       JOIN 
         product_price_ranges p ON p.category_id = c.id
+      ${sqlAttributeWhereClause ? `
+      JOIN product_attribute_terms pat ON pat.product_id = p.product_id
+      ` : ''}
       WHERE
         p.min_price IS NOT NULL
-        ${sqlAttributeWhereClause ? `AND ${sqlAttributeWhereClause}` : ''}
+        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
       GROUP BY 
         c.id, c.name, c.slug
     `, {
@@ -561,9 +585,12 @@ const fetchProducts = async (query) => {
         brands b
       JOIN 
         product_price_ranges p ON p.brand_id = b.id
+      ${sqlAttributeWhereClause ? `
+      JOIN product_attribute_terms pat ON pat.product_id = p.product_id
+      ` : ''}
       WHERE
         p.min_price IS NOT NULL
-        ${sqlAttributeWhereClause ? `AND ${sqlAttributeWhereClause}` : ''}
+        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
       GROUP BY 
         b.id, b.name, b.slug
     `, {
@@ -610,23 +637,76 @@ const fetchProducts = async (query) => {
       FROM 
         attributes a
       JOIN 
-        product_attribute_terms pat ON pat.attribute_id = a.id
+        (
+          SELECT DISTINCT pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page
+          FROM product_attribute_terms pat
+        ) pat ON pat.attribute_id = a.id
       JOIN 
         attribute_terms t ON t.id = pat.term_id
       JOIN 
-        products p ON p.id = pat.product_id
+        products p ON p.id IN (
+          SELECT product_id 
+          FROM product_attribute_terms 
+          WHERE attribute_id = a.id AND term_id = t.id
+        )
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
       ${attributeWhereClause}
       ${sqlVariantWhereClause}
       GROUP BY 
         a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible_page, t.id, t.name, t.slug
+      ORDER BY
+        a.id, t.name
     `, {
       replacements: attributeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // 4. Calculate price ranges using SQL - WITH price range filter
+    // Process attribute results into the required format
+    const attributeMap = new Map();
+    const processedTerms = new Set(); // Track processed terms to avoid duplicates
+    
+    attributeResults.forEach(result => {
+      if (!attributeMap.has(result.attribute_id)) {
+        attributeMap.set(result.attribute_id, {
+          attribute: {
+            id: result.attribute_id,
+            name: result.attribute_name,
+            type: result.attribute_type,
+            is_visible: !!result.is_visible_page,
+            slug: result.attribute_slug
+          },
+          terms: []
+        });
+      }
+      
+      const attributeData = attributeMap.get(result.attribute_id);
+      const termKey = `${result.attribute_id}-${result.term_id}`;
+      
+      // Only add the term if it hasn't been processed yet
+      if (!processedTerms.has(termKey)) {
+        processedTerms.add(termKey);
+        attributeData.terms.push({
+          id: result.term_id,
+          name: result.term_name,
+          slug: result.term_slug,
+          product_count: result.product_count
+        });
+      }
+    });
+
+    // Format price ranges
+    const priceRanges = [
+      { label: "£0 - £9.99", min: 0, max: 9.99, value: "0-9.99" },
+      { label: "£10 - £19.99", min: 10, max: 19.99, value: "10-19.99" },
+      { label: "£20 - £29.99", min: 20, max: 29.99, value: "20-29.99" },
+      { label: "£30 - £49.99", min: 30, max: 49.99, value: "30-49.99" },
+      { label: "£50 - £99.99", min: 50, max: 99.99, value: "50-99.99" },
+      { label: "£100 - £199.99", min: 100, max: 199.99, value: "100-199.99" },
+      { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
+    ];
+
+    // 3. Fetch price ranges with product counts - WITH price range filter
     // For price_ranges: Filters by keyword, brand, categories, variant, and is_new
     const priceRangeFilterConditions = [...productFilterConditions];
     const priceRangeFilterParams = {...productFilterParams};
@@ -645,23 +725,16 @@ const fetchProducts = async (query) => {
       priceRangeFilterParams.categoryIds = categoryIds;
     }
     
-    // IMPORTANT: Remove price range filter from the price range calculation
-    // This ensures we get accurate counts for all price ranges regardless of selection
-    const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
-      ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
-      : "";
-    
-    // Create a separate variant where clause without the price range filter
-    let priceRangeVariantWhereClause = "";
+    // Add variant filter for price_ranges
+    let priceRangeVariantWhereClauseForPriceRange = "";
     if (variantFilters.id) {
-      priceRangeVariantWhereClause = "AND pv.id = :variantId";
+      priceRangeVariantWhereClauseForPriceRange = "AND pv.id = :variantId";
       priceRangeFilterParams.variantId = variantFilters.id;
     }
     
-    // Add attribute filter conditions if needed
-    if (sqlAttributeWhereClause) {
-      priceRangeFilterConditions.push(sqlAttributeWhereClause);
-    }
+    const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
+      ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
+      : "";
     
     const priceRangeResults = await sequelize.query(`
       WITH product_price_ranges AS (
@@ -680,7 +753,7 @@ const fetchProducts = async (query) => {
         WHERE
           p.deletedAt IS NULL
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${priceRangeVariantWhereClause ? `AND ${priceRangeVariantWhereClause.replace('AND ', '')}` : ''}
+          ${priceRangeVariantWhereClauseForPriceRange ? priceRangeVariantWhereClauseForPriceRange : ''}
       )
       SELECT 
         CASE 
@@ -694,9 +767,13 @@ const fetchProducts = async (query) => {
         END as price_range,
         COUNT(*) as count
       FROM 
-        product_price_ranges
+        product_price_ranges ppr
+      ${sqlAttributeWhereClause ? `
+      JOIN product_attribute_terms pat ON pat.product_id = ppr.product_id
+      ` : ''}
       WHERE
         min_price IS NOT NULL
+        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
       GROUP BY 
         CASE 
           WHEN min_price < 10 THEN '0-9.99'
@@ -711,42 +788,6 @@ const fetchProducts = async (query) => {
       replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
-
-    // Process attribute results into the required format
-    const attributeMap = new Map();
-    attributeResults.forEach(result => {
-      if (!attributeMap.has(result.attribute_id)) {
-        attributeMap.set(result.attribute_id, {
-          attribute: {
-            id: result.attribute_id,
-            name: result.attribute_name,
-            type: result.attribute_type,
-            is_visible: !!result.is_visible_page,
-            slug: result.attribute_slug
-          },
-          terms: []
-        });
-      }
-      
-      const attributeData = attributeMap.get(result.attribute_id);
-      attributeData.terms.push({
-        id: result.term_id,
-        name: result.term_name,
-        slug: result.term_slug,
-        product_count: result.product_count
-      });
-    });
-
-    // Format price ranges
-    const priceRanges = [
-      { label: "£0 - £9.99", min: 0, max: 9.99, value: "0-9.99" },
-      { label: "£10 - £19.99", min: 10, max: 19.99, value: "10-19.99" },
-      { label: "£20 - £29.99", min: 20, max: 29.99, value: "20-29.99" },
-      { label: "£30 - £49.99", min: 30, max: 49.99, value: "30-49.99" },
-      { label: "£50 - £99.99", min: 50, max: 99.99, value: "50-99.99" },
-      { label: "£100 - £199.99", min: 100, max: 199.99, value: "100-199.99" },
-      { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
-    ];
 
     const priceRangeCounts = priceRanges.map(range => {
       const result = priceRangeResults.find(r => r.price_range === range.value);
