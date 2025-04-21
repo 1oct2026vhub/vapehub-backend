@@ -5,9 +5,24 @@ const logger = require("../../../library/logger");
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
+const axios = require("axios");
 
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
+        var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
+        var apiKey = ']kD;D=';
+
+        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        const resp = await axios({
+                    method: "GET",
+                    url: "https://demo.vivapayments.com/api/messages/config/token",
+                    headers: {
+                      "Authorization": "Basic " + credentials,
+                    }
+        });
+                
+        var code = resp.data.Key;
+
         const webhookData = req.body;
         
         // Verify webhook signature if needed
@@ -98,14 +113,19 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
             }
 
             // Return success response
-            return successResponse(res, {
-                message: 'Webhook processed successfully',
-                orderId: order.id,
-                orderCode: order.order_code,
-                status: order.status
-            });
+            // return successResponse(res, {
+            //     message: 'Webhook processed successfully',
+            //     orderId: order.id,
+            //     orderCode: order.order_code,
+            //     status: order.status
+            // });
 
         }
+        return res.json({
+            status: 200,
+            headers: { "test-header": "value" },
+            body: { key: code }
+          });
 
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
