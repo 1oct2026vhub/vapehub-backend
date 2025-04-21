@@ -45,9 +45,7 @@ const multer = require("multer");
  *         name: variant
  *         schema:
  *           type: string
- *           example:
- *               "12": [475, 477, 851, 5]
- *               "29": [33, 669, 55]
+ *           example: "{\"attributes\": {\"12\": [475, 477, 851, 5], \"29\": [33, 669, 55]}}"
  *         description: JSON string of variant/attribute filters where key is variant ID or attribute ID and value is array of term IDs
  *       - in: query
  *         name: sort_by
@@ -87,106 +85,176 @@ const multer = require("multer");
  *                   type: boolean
  *                   example: true
  *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       name:
- *                         type: string
- *                       slug:
- *                         type: string
- *                       description:
- *                         type: string
- *                         nullable: true
- *                       category_id:
- *                         type: integer
- *                       brand_id:
- *                         type: integer
- *                       created_at:
- *                         type: string
- *                         format: date-time
- *                       updated_at:
- *                         type: string
- *                         format: date-time
- *                       Category:
- *                         type: object
- *                       Brand:
- *                         type: object
- *                       variant:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             id:
- *                               type: integer
- *                             product_id:
- *                               type: integer
- *                             slug:
- *                               type: string
- *                             price:
- *                               type: number
- *                             discount_price:
- *                               type: number
- *                               nullable: true
- *                             stock:
- *                               type: integer
- *                             stock_status:
- *                               type: string
- *                             variantAttributes:
- *                               type: array
- *                               items:
- *                                 type: object
- *                                 properties:
- *                                   attribute_id:
- *                                     type: integer
- *                                   term_id:
- *                                     type: integer
- *                                   attribute:
- *                                     type: object
- *                                     properties:
- *                                       id:
- *                                         type: integer
- *                                       name:
- *                                         type: string
- *                                       type:
- *                                         type: string
- *                                   term:
- *                                     type: object
- *                                     properties:
- *                                       id:
- *                                         type: integer
- *                                       name:
- *                                         type: string
- *                                       slug:
- *                                         type: string
- *                       productAttributeTerms:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             attribute_id:
- *                               type: integer
- *                             term_id:
- *                               type: integer
- *                             attribute:
- *                               type: object
- *                             term:
- *                               type: object
- *                 pagination:
  *                   type: object
  *                   properties:
- *                     total_count:
- *                       type: integer
- *                     total_pages:
- *                       type: integer
- *                     current_page:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     offset:
- *                       type: integer
+ *                     products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                             nullable: true
+ *                           category_id:
+ *                             type: integer
+ *                           brand_id:
+ *                             type: integer
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                           Category:
+ *                             type: object
+ *                           Brand:
+ *                             type: object
+ *                           variants:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 product_id:
+ *                                   type: integer
+ *                                 slug:
+ *                                   type: string
+ *                                 price:
+ *                                   type: number
+ *                                 discount_price:
+ *                                   type: number
+ *                                   nullable: true
+ *                                 stock:
+ *                                   type: integer
+ *                                 stock_status:
+ *                                   type: string
+ *                                 variantAttributes:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       attribute_id:
+ *                                         type: integer
+ *                                       term_id:
+ *                                         type: integer
+ *                                       attribute:
+ *                                         type: object
+ *                                       term:
+ *                                         type: object
+ *                                 variantImages:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       id:
+ *                                         type: integer
+ *                                       variant_id:
+ *                                         type: integer
+ *                                       image_url:
+ *                                         type: string
+ *                                       is_primary:
+ *                                         type: boolean
+ *                           ProductImages:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 product_id:
+ *                                   type: integer
+ *                                 image_url:
+ *                                   type: string
+ *                                 is_primary:
+ *                                   type: boolean
+ *                     category_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           product_count:
+ *                             type: integer
+ *                     brand_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           product_count:
+ *                             type: integer
+ *                     attributes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           attribute:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               type:
+ *                                 type: string
+ *                               is_visible:
+ *                                 type: boolean
+ *                               slug:
+ *                                 type: string
+ *                           terms:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 name:
+ *                                   type: string
+ *                                 slug:
+ *                                   type: string
+ *                                 product_count:
+ *                                   type: integer
+ *                     price_ranges:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           label:
+ *                             type: string
+ *                           count:
+ *                             type: integer
+ *                           value:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                         total_pages:
+ *                           type: integer
+ *                         current_page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         offset:
+ *                           type: integer
  *       400:
  *         description: Invalid request parameters
  *         content:
