@@ -244,9 +244,20 @@ const fetchProducts = async (query) => {
     // Build variant where clause
     const variantWhereClause = {
       ...(priceRange && {
-        price: {
-          [Op.between]: [priceRange.min, priceRange.max]
-        }
+        [Op.or]: [
+          Sequelize.literal(`EXISTS (
+            SELECT 1
+            FROM (
+              SELECT MIN(pv2.price) AS min_price
+              FROM product_variants pv2
+              WHERE 
+                pv2.product_id = Product.id
+                AND pv2.status = 'active'
+                AND pv2.deleted_at IS NULL
+            ) AS min_price_table
+            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
+          )`)
+        ]
       }),
       ...(variantFilters.id && { id: variantFilters.id }),
       // stock: { [Op.gt]: 0 },
@@ -590,37 +601,44 @@ const fetchProducts = async (query) => {
       WITH product_price_ranges AS (
         SELECT 
           p.id as product_id,
-          MIN(pv.price) as min_price
+          (
+            SELECT MIN(pv2.price)
+            FROM product_variants pv2
+            WHERE 
+              pv2.product_id = p.id
+              AND pv2.status = 'active'
+              AND pv2.deleted_at IS NULL
+          ) as min_price
         FROM 
           products p
-        JOIN 
-          product_variants pv ON pv.product_id = p.id
+        WHERE
+          p.deletedAt IS NULL
         ${priceRangeWhereClause}
         ${priceRangeVariantWhereClause}
-        GROUP BY 
-          p.id
       )
       SELECT 
         CASE 
-          WHEN min_price < 10 THEN '0-10'
-          WHEN min_price < 25 THEN '10-25'
-          WHEN min_price < 50 THEN '25-50'
-          WHEN min_price < 75 THEN '50-75'
-          WHEN min_price < 100 THEN '75-100'
-          WHEN min_price < 200 THEN '100-200'
+          WHEN min_price < 10 THEN '0-9.99'
+          WHEN min_price < 20 THEN '10-19.99'
+          WHEN min_price < 30 THEN '20-29.99'
+          WHEN min_price < 50 THEN '30-49.99'
+          WHEN min_price < 100 THEN '50-99.99'
+          WHEN min_price < 200 THEN '100-199.99'
           ELSE '200+'
         END as price_range,
         COUNT(*) as count
       FROM 
         product_price_ranges
+      WHERE
+        min_price IS NOT NULL
       GROUP BY 
         CASE 
-          WHEN min_price < 10 THEN '0-10'
-          WHEN min_price < 25 THEN '10-25'
-          WHEN min_price < 50 THEN '25-50'
-          WHEN min_price < 75 THEN '50-75'
-          WHEN min_price < 100 THEN '75-100'
-          WHEN min_price < 200 THEN '100-200'
+          WHEN min_price < 10 THEN '0-9.99'
+          WHEN min_price < 20 THEN '10-19.99'
+          WHEN min_price < 30 THEN '20-29.99'
+          WHEN min_price < 50 THEN '30-49.99'
+          WHEN min_price < 100 THEN '50-99.99'
+          WHEN min_price < 200 THEN '100-199.99'
           ELSE '200+'
         END
     `, {
@@ -655,12 +673,12 @@ const fetchProducts = async (query) => {
 
     // Format price ranges
     const priceRanges = [
-      { label: "£0 - £10", min: 0, max: 10, value: "0-10" },
-      { label: "£10 - £25", min: 10, max: 25, value: "10-25" },
-      { label: "£25 - £50", min: 25, max: 50, value: "25-50" },
-      { label: "£50 - £75", min: 50, max: 75, value: "50-75" },
-      { label: "£75 - £100", min: 75, max: 100, value: "75-100" },
-      { label: "£100 - £200", min: 100, max: 200, value: "100-200" },
+      { label: "£0 - £9.99", min: 0, max: 9.99, value: "0-9.99" },
+      { label: "£10 - £19.99", min: 10, max: 19.99, value: "10-19.99" },
+      { label: "£20 - £29.99", min: 20, max: 29.99, value: "20-29.99" },
+      { label: "£30 - £49.99", min: 30, max: 49.99, value: "30-49.99" },
+      { label: "£50 - £99.99", min: 50, max: 99.99, value: "50-99.99" },
+      { label: "£100 - £199.99", min: 100, max: 199.99, value: "100-199.99" },
       { label: "£200 & Above", min: 200, max: Infinity, value: "200+" }
     ];
 
