@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -549,6 +549,22 @@ module.exports.getOrderById = async (req, res) => {
                             as: 'variant',
                             attributes: ['id', 'slug', 'price'],
                             include: [
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    include: [
+                                      {
+                                        model: Attribute,
+                                        as: 'attribute',
+                                        attributes: ['id', 'name', 'type']
+                                      },
+                                      {
+                                        model: AttributeTerm,
+                                        as: 'term',
+                                        attributes: ['id', 'name', 'slug']
+                                      }
+                                    ]
+                                  },
                                 {
                                     model: ProductVariantImage,
                                     as: 'variantImages',
@@ -1196,15 +1212,17 @@ module.exports.checkOrderStock = async (req, res) => {
         
         var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = ']kD;D=';
-
+        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
                     url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
+                    
                     headers: {
                       "Authorization": "Basic " + credentials,
                     }
         });
+        // console.log("orderDetails>>>>>", orderDetails)
         // Check if order state indicates cancellation (StateId 1 or 2)
         if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
             // Update order status to cancelled
