@@ -116,8 +116,8 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
         }
         
 
-        var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = ']kD;D=';
+        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
 
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const resp = await axios({
@@ -129,11 +129,13 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
         });
                 
         var code = resp.data.Key;
-        return res.json({
-            status: 200,
-            headers: { "test-header": "value" },
-            body: { key: code }
-          });
+        // return res.json({
+        //     status: 200,
+        //     headers: { "test-header": "value" },
+        //     body: { key: code }
+        //   });
+
+          return res.json( { key: code });
 
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
