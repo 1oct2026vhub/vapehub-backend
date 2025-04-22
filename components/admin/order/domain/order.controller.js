@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, UserAddress, sequelize, OrderLog } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -165,6 +165,16 @@ module.exports.getOrderById = async (req, res, next) => {
                     model: UserAddress,
                     as: 'billingAddress',
                     attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
                     model: OrderItem,
