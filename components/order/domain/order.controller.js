@@ -1216,7 +1216,7 @@ module.exports.checkOrderStock = async (req, res) => {
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
-                    url: `https://demo.vivapayments.com/api/orders/${7190934726318898}`,
+                    url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
                     
                     headers: {
                       "Authorization": "Basic " + credentials,
