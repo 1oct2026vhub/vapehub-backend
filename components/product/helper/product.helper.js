@@ -645,6 +645,20 @@ const fetchProducts = async (query) => {
         FROM products p
         LEFT JOIN product_attribute_terms pat ON p.id = pat.product_id
         WHERE p.deletedAt IS NULL
+        ${priceRange ? `
+          AND EXISTS (
+            SELECT 1
+            FROM (
+              SELECT MIN(pv2.price) AS min_price
+              FROM product_variants pv2
+              WHERE 
+                pv2.product_id = p.id
+                AND pv2.status = 'active'
+                AND pv2.deleted_at IS NULL
+            ) AS min_price_table
+            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
+          )
+        ` : ''}
         ${attributeFilterConditions.length > 0 ? `AND ${attributeFilterConditions.join(" AND ")}` : ''}
         ${Object.keys(selectedAttributes).length > 0 ? `
           AND EXISTS (
@@ -689,7 +703,7 @@ const fetchProducts = async (query) => {
         )
       GROUP BY 
         a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible_page, t.id, t.name, t.slug
-      ORDER BY
+      ORDER BY 
         a.id, t.name
     `, {
       replacements: attributeFilterParams,
@@ -742,7 +756,9 @@ const fetchProducts = async (query) => {
 
     // 3. Fetch price ranges with product counts - WITH price range filter
     // For price_ranges: Filters by keyword, brand, categories, variant, and is_new
-    const priceRangeFilterConditions = [...productFilterConditions];
+    const priceRangeFilterConditions = productFilterConditions.filter(condition => 
+      !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
+    );
     const priceRangeFilterParams = {...productFilterParams};
     
     // Add brand filter for price_ranges
@@ -850,9 +866,9 @@ const fetchProducts = async (query) => {
 
     return {
       additionalData,
-      products: availableProducts,
-      category_items: categoryResults,
-      brand_items: brandResults,
+      // products: availableProducts,
+      // category_items: categoryResults,
+      // brand_items: brandResults,
       attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {
