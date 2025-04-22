@@ -214,6 +214,7 @@ const fetchProducts = async (query) => {
 
     // Parse variant filter
     let variantFilters = {};
+    let selectedAttributes = {};
     if (variant) {
       try {
         variantFilters = typeof variant === 'string' ? JSON.parse(variant) : variant;
@@ -235,9 +236,22 @@ const fetchProducts = async (query) => {
       
       if (isAttributeFormat) {
         variantFilters = { attributes: variantFilters };
+        selectedAttributes = variantFilters;
       }
     }
-    
+    else if (variantFilters && variantFilters.attributes && !variantFilters.id) {
+      selectedAttributes = variantFilters.attributes;
+    }
+
+    // Ensure all term IDs are arrays and convert to numbers
+    selectedAttributes = Object.entries(selectedAttributes).reduce((acc, [key, value]) => {
+      const attributeId = parseInt(key);
+      if (!isNaN(attributeId)) {
+        acc[attributeId] = Array.isArray(value) ? value.map(v => parseInt(v)).filter(v => !isNaN(v)) : [parseInt(value)].filter(v => !isNaN(v));
+      }
+      return acc;
+    }, {});
+
     // Build base where clause for Product
     const productWhereClause = {
       ...(keyword && { name: { [Op.like]: `%${keyword}%` } }),
@@ -608,7 +622,6 @@ const fetchProducts = async (query) => {
     });
 
     // 3. Fetch attributes and terms with product counts - WITH attribute filter
-    // For attributes: Filters by keyword, price_range, brand, categories, variant (excluding variantFilters.attributes), and is_new
     const attributeFilterConditions = [...productFilterConditions];
     const attributeFilterParams = {...productFilterParams};
     
@@ -625,13 +638,29 @@ const fetchProducts = async (query) => {
       attributeFilterConditions.push("p.category_id IN (:categoryIds)");
       attributeFilterParams.categoryIds = categoryIds;
     }
-    
-    // Exclude variantFilters.attributes from the filter
-    const attributeWhereClause = attributeFilterConditions.length > 0 
-      ? "WHERE " + attributeFilterConditions.join(" AND ") 
-      : "";
-    
+
     const attributeResults = await sequelize.query(`
+      WITH filtered_products AS (
+        SELECT DISTINCT p.id
+        FROM products p
+        LEFT JOIN product_attribute_terms pat ON p.id = pat.product_id
+        WHERE p.deletedAt IS NULL
+        ${attributeFilterConditions.length > 0 ? `AND ${attributeFilterConditions.join(" AND ")}` : ''}
+        ${Object.keys(selectedAttributes).length > 0 ? `
+          AND EXISTS (
+            SELECT 1
+            FROM product_attribute_terms pat2
+            WHERE pat2.product_id = p.id
+            AND (
+              ${Object.entries(selectedAttributes)
+                .map(([attrId, termIds]) => 
+                  `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
+                )
+                .join(' OR ')}
+            )
+          )
+        ` : ''}
+      )
       SELECT 
         a.id as attribute_id, 
         a.name as attribute_name, 
@@ -653,15 +682,11 @@ const fetchProducts = async (query) => {
       JOIN 
         attribute_terms t ON t.id = pat.term_id
       JOIN 
-        products p ON p.id IN (
+        filtered_products p ON p.id IN (
           SELECT product_id 
           FROM product_attribute_terms 
           WHERE attribute_id = a.id AND term_id = t.id
         )
-      LEFT JOIN
-        product_variants pv ON pv.product_id = p.id
-      ${attributeWhereClause}
-      ${variantFilters.id ? `AND pv.id = :variantId` : ''}
       GROUP BY 
         a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible_page, t.id, t.name, t.slug
       ORDER BY
