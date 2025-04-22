@@ -1152,7 +1152,6 @@ module.exports.checkOrderStock = async (req, res) => {
             }],
             transaction
         });
-console.log("order>>>>>", order)
         if (!order) {
             await transaction.rollback();
             return errorResponse(res, {}, 'Order not found', 404);
