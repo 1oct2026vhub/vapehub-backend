@@ -18,7 +18,6 @@ module.exports.listAllBlogs = async (req, res, next) => {
             status: 'published',
             published_at: { [Op.lte]: currentDate } // Only include blogs with published_at date in the past
         };
-        
         if (search) {
             whereCondition = {
                 ...whereCondition,
@@ -55,7 +54,6 @@ module.exports.listAllBlogs = async (req, res, next) => {
                 });
             }
         }
-        
         // Get total count for pagination
         const totalCount = await Blog.count({
             where: whereCondition,
@@ -101,13 +99,13 @@ module.exports.listAllBlogs = async (req, res, next) => {
                         status: 'active'
                     }
                 }])
-            ]
+            ],
+            distinct: true
         });
 
         // Calculate pagination metadata
         const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / parsedLimit);
         const currentPage = totalCount === 0 ? 1 : Math.min(parsedPage, totalPages);
-
         // Fetch blogs with pagination
         const blogs = await Blog.findAll({
             where: whereCondition,
@@ -158,10 +156,9 @@ module.exports.listAllBlogs = async (req, res, next) => {
             limit: parsedLimit,
             offset: (currentPage - 1) * parsedLimit
         });
-
         successResponse(res, {
             blogs,
-            pagination: {
+            pagination: {   
                 total: totalCount,
                 totalPages,
                 currentPage,
