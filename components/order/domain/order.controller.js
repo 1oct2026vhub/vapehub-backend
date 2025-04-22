@@ -1314,24 +1314,25 @@ module.exports.checkOrderStock = async (req, res) => {
                     });
 
                     // Send cancellation email
-                    const emailData = {
-                        emailTypes: 'ORDER_CANCELLATION',
-                        to: order.email,
-                        context: {
-                            userName: order.user?.first_name || order.email.split('@')[0],
-                            orderId: order.id,
-                            orderUniqueId: order.order_unique_id,
-                            orderCode: order.order_code,
-                            orderDate: order.createdAt.toLocaleDateString(),
-                            status: 'cancelled',
-                            reason: 'Viva Wallet Order Not Found'
-                        }
-                    };
+                    // const emailData = {
+                    //     emailTypes: 'ORDER_CANCELLATION',
+                    //     to: order.email,
+                    //     context: {
+                    //         userName: order.user?.first_name || order.email.split('@')[0],
+                    //         orderId: order.id,
+                    //         orderUniqueId: order.order_unique_id,
+                    //         orderCode: order.order_code,
+                    //         orderDate: order.createdAt.toLocaleDateString(),
+                    //         status: 'cancelled',
+                    //         reason: 'Viva Wallet Order Not Found'
+                    //     }
+                    // };
 
-                    await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                    // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                    return errorResponse(res, {message:'Cannot process this order due to invalid or expired Viva Wallet order code'}, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
                 }
             } catch (updateError) {
-                console.error('Error updating order status:', updateError);
+                return errorResponse(res, {message:'Cannot process this order due to invalid or expired Viva Wallet order code'}, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
             }
         }
         
