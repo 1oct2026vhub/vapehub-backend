@@ -866,9 +866,9 @@ const fetchProducts = async (query) => {
 
     return {
       additionalData,
-      // products: availableProducts,
-      // category_items: categoryResults,
-      // brand_items: brandResults,
+      products: availableProducts,
+      category_items: categoryResults,
+      brand_items: brandResults,
       attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {
