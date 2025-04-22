@@ -201,11 +201,15 @@ const fetchProducts = async (query) => {
     // Validate price range format
     let priceRange = null;
     if (price_range) {
-      const [minPrice, maxPrice] = price_range.split('-').map(Number);
-      if (isNaN(minPrice) || isNaN(maxPrice)) {
-        throw new Error('Invalid price range format. Use format: min-max');
+      if (price_range === "200+") {
+        priceRange = { min: 200, max: 999999 };
+      } else {
+        const [minPrice, maxPrice] = price_range.split('-').map(Number);
+        if (isNaN(minPrice) || isNaN(maxPrice)) {
+          throw new Error('Invalid price range format. Use format: min-max or "200+"');
+        }
+        priceRange = { min: minPrice, max: maxPrice };
       }
-      priceRange = { min: minPrice, max: maxPrice };
     }
 
     // Parse variant filter
@@ -420,17 +424,27 @@ const fetchProducts = async (query) => {
       productFilterParams.lastMonthDate = lastMonthDate;
     }
     
-    // Price range filter for variants
-    let variantFilterConditions = [];
+    // Price range filter for products
     if (priceRange) {
-      variantFilterConditions.push("pv.price BETWEEN :minPrice AND :maxPrice");
+      productFilterConditions.push(`EXISTS (
+        SELECT 1
+        FROM (
+          SELECT MIN(pv2.price) AS min_price
+          FROM product_variants pv2
+          WHERE 
+            pv2.product_id = p.id
+            AND pv2.status = 'active'
+            AND pv2.deleted_at IS NULL
+        ) AS min_price_table
+        WHERE min_price BETWEEN :minPrice AND :maxPrice
+      )`);
       productFilterParams.minPrice = priceRange.min;
       productFilterParams.maxPrice = priceRange.max;
     }
     
     // Variant filter
     if (variantFilters.id) {
-      variantFilterConditions.push("pv.id = :variantId");
+      productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)");
       productFilterParams.variantId = variantFilters.id;
     }
     
@@ -449,11 +463,6 @@ const fetchProducts = async (query) => {
       ? "WHERE " + productFilterConditions.join(" AND ") 
       : "";
     
-    const sqlVariantWhereClause = variantFilterConditions.length > 0 
-      ? "AND " + variantFilterConditions.join(" AND ") 
-      : "";
-    
-    // Fix the attribute where clause to avoid double AND
     const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
       ? sqlAttributeFilterConditions.join(" OR ") 
       : "";
@@ -652,7 +661,7 @@ const fetchProducts = async (query) => {
       LEFT JOIN
         product_variants pv ON pv.product_id = p.id
       ${attributeWhereClause}
-      ${sqlVariantWhereClause}
+      ${variantFilters.id ? `AND pv.id = :variantId` : ''}
       GROUP BY 
         a.id, a.name, a.type, a.slug, pat.used_in_variation, pat.is_visible_page, t.id, t.name, t.slug
       ORDER BY
@@ -753,7 +762,7 @@ const fetchProducts = async (query) => {
         WHERE
           p.deletedAt IS NULL
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${priceRangeVariantWhereClauseForPriceRange ? priceRangeVariantWhereClauseForPriceRange : ''}
+          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
       )
       SELECT 
         CASE 
