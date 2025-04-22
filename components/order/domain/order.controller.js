@@ -1128,7 +1128,6 @@ module.exports.checkOrderStock = async (req, res) => {
     try {
         const { orderId } = req.params;
         const userId = req.user.id;
-
         // Find the order by order ID and user ID
         const order = await Order.findOne({
             where: { 
@@ -1153,7 +1152,7 @@ module.exports.checkOrderStock = async (req, res) => {
             }],
             transaction
         });
-
+console.log("order>>>>>", order)
         if (!order) {
             await transaction.rollback();
             return errorResponse(res, {}, 'Order not found', 404);
@@ -1217,8 +1216,8 @@ module.exports.checkOrderStock = async (req, res) => {
         // console.log("response>>>>",response);
         // const transactionData = response.data;
         
-        var merchantId = '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = ']kD;D=';
+        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
         // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
@@ -1281,6 +1280,62 @@ module.exports.checkOrderStock = async (req, res) => {
     } catch (error) {
         await transaction.rollback();
         console.error('Error checking order stock:', error);
+        
+        // If error is 404, update order status to cancel
+        if (error.response?.status === 404) {
+            try {
+                const order = await Order.findOne({
+                    where: { 
+                        id: req.params.orderId,
+                        user_id: req.user.id
+                    }
+                });
+
+                if (order) {
+                    await order.update({ status: 'cancel' });
+                    
+                    // Create order log for cancellation
+                    await sequelize.models.OrderLog.create({
+                        order_id: order.id,
+                        user_id: req.user.id,
+                        status: 'cancel',
+                        label: 'Order Cancelled - Viva Wallet Order Not Found'
+                    });
+
+                    // Create notification for cancellation
+                    await createNotification({
+                        userId: req.user.id,
+                        type: 'order',
+                        action: 'cancelled',
+                        data: {
+                            orderId: order.id,
+                            orderCode: order.order_code,
+                            reason: 'Viva Wallet Order Not Found'
+                        }
+                    });
+
+                    // Send cancellation email
+                    const emailData = {
+                        emailTypes: 'ORDER_CANCELLATION',
+                        to: order.email,
+                        context: {
+                            userName: order.user?.first_name || order.email.split('@')[0],
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            orderCode: order.order_code,
+                            orderDate: order.createdAt.toLocaleDateString(),
+                            status: 'cancelled',
+                            reason: 'Viva Wallet Order Not Found'
+                        }
+                    };
+
+                    await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                }
+            } catch (updateError) {
+                console.error('Error updating order status:', updateError);
+            }
+        }
+        
         return errorResponse(res, error, 'Failed to check order stock');
     }
 };
@@ -1385,6 +1440,28 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
             status: order.status
         });
 
+    } catch (error) {
+        console.error('Error processing Viva Wallet webhook:', error);
+        return errorResponse(res, error, 'Failed to process webhook');
+    }
+};
+
+module.exports.orderCode = async (req, res) => {
+    try {
+        const orderCode = req.params.orderCode;
+        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
+        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
+        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        const orderDetails = await axios({
+                    method: "GET",
+                    url: `https://demo.vivapayments.com/api/orders/${orderCode}`,
+                    
+                    headers: {
+                      "Authorization": "Basic " + credentials,
+                    }
+        });
+        res.json(orderDetails.data)
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
