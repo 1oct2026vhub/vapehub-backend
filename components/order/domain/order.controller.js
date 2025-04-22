@@ -612,6 +612,13 @@ module.exports.getOrderById = async (req, res) => {
             return errorResponse(res, {}, 'Order not found', 404);
         }
 
+        // Update order status if needed
+        if (order.status === 'cancel') {
+            order.status = 'cancelled';
+        } else if (order.status === 'fail') {
+            order.status = 'failed';
+        }
+
         // Add primary image URL to each order item
         order.orderItems.forEach(item => {
             if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
