@@ -236,13 +236,12 @@ const fetchProducts = async (query) => {
       
       if (isAttributeFormat) {
         variantFilters = { attributes: variantFilters };
-        selectedAttributes = variantFilters;
+        selectedAttributes = variantFilters.attributes;
       }
     }
     else if (variantFilters && variantFilters.attributes && !variantFilters.id) {
       selectedAttributes = variantFilters.attributes;
     }
-
     // Ensure all term IDs are arrays and convert to numbers
     selectedAttributes = Object.entries(selectedAttributes).reduce((acc, [key, value]) => {
       const attributeId = parseInt(key);
