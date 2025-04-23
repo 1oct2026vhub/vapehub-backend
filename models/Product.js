@@ -93,6 +93,11 @@ module.exports = (sequelize, DataTypes) => {
         model: 'brands',
         key: 'id'
       }
+    },
+    status: {
+      type: DataTypes.ENUM('draft', 'published', 'archived'),
+      allowNull: false,
+      defaultValue: 'draft'
     }
   }, {
     sequelize,
