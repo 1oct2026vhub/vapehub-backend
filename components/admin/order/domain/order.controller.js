@@ -157,16 +157,6 @@ module.exports.getOrderById = async (req, res, next) => {
                     paranoid: false
                 },
                 {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
-                },
-                {
-                    model: UserAddress,
-                    as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
-                },
-                {
                     model: OrderAddress,
                     as: 'orderShippingAddress',
                     attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
@@ -380,7 +370,6 @@ module.exports.generateOrderReport = async (req, res, next) => {
                 [Op.between]: [startDateTime, endDateTime]
             };
         }
-        console.log(whereCondition);
         const orders = await Order.findAll({
             where: whereCondition,
             include: [
@@ -392,9 +381,15 @@ module.exports.generateOrderReport = async (req, res, next) => {
                     paranoid: false
                 },
                 {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'],
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
+                    required: false
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
                     required: false
                 },
                 {
@@ -433,6 +428,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
             { header: 'Customer Email', key: 'customerEmail', width: 30 },
             { header: 'Customer Phone', key: 'customerPhone', width: 20 },
             { header: 'Shipping Address', key: 'shippingAddress', width: 50 },
+            { header: 'Billing Address', key: 'billingAddress', width: 50 },
             { header: 'Product Details', key: 'productDetails', width: 50 },
             { header: 'Total Amount', key: 'totalAmount', width: 15 }
         ];
@@ -445,8 +441,13 @@ module.exports.generateOrderReport = async (req, res, next) => {
             const customerPhone = order.user?.phone || 'N/A';
             
             // Safely handle shipping address
-            const shippingAddress = order.shippingAddress ? 
-                `${order.shippingAddress.name || ''} ${order.shippingAddress.last_name || ''}, ${order.shippingAddress.street || ''}, ${order.shippingAddress.town || ''}, ${order.shippingAddress.county || ''} ${order.shippingAddress.post_code || ''}, ${order.shippingAddress.country || ''}`.trim() : 
+            const shippingAddress = order.orderShippingAddress ? 
+                `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim() : 
+                'N/A';
+
+            // Safely handle billing address
+            const billingAddress = order.orderBillingAddress ? 
+                `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim() : 
                 'N/A';
 
             // Safely handle product details
@@ -466,6 +467,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
                 customerEmail,
                 customerPhone,
                 shippingAddress,
+                billingAddress,
                 productDetails,
                 totalAmount: order.total
             });
