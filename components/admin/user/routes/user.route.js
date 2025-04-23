@@ -206,7 +206,7 @@ router.put(
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt]
+ *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked]
  *         description: Sort users by field (default - createdAt)
  *       - in: query
  *         name: order
@@ -220,6 +220,12 @@ router.put(
  *           type: boolean
  *         description: Filter users based on soft delete flag (true = only deleted users, false = only active users)
  *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter users by blocked status (true = only blocked users, false = only active users)
+ *       - in: query
  *         name: verified
  *         schema:
  *           type: string
@@ -228,6 +234,60 @@ router.put(
  *     responses:
  *       200:
  *         description: Users retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of users
+ *                 page:
+ *                   type: integer
+ *                   description: Current page number
+ *                 limit:
+ *                   type: integer
+ *                   description: Number of records per page
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       first_name:
+ *                         type: string
+ *                       last_name:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       gender:
+ *                         type: string
+ *                       blocked:
+ *                         type: boolean
+ *                       email_verified_at:
+ *                         type: string
+ *                         format: date-time
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       deletedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       roles:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             role:
+ *                               type: string
  *       400:
  *         description: Validation error
  */
@@ -283,6 +343,62 @@ router.delete("/:id", [authMiddleware(true), validateRequest(validationRules.res
  *         description: Validation error
  */
 router.put("/:id/restore", [authMiddleware(true), validateRequest(validationRules.restoreUserValidation)], userController.restoreUser);
+
+/**
+ * @swagger
+ * /api/admin/user/{id}/block:
+ *   put:
+ *     summary: Block a user
+ *     tags: 
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to block
+ *     responses:
+ *       200:
+ *         description: User blocked successfully
+ *       400:
+ *         description: User is already blocked or user is trying to block themselves
+ *       403:
+ *         description: Permission denied to block a super user
+ *       404:
+ *         description: User not found
+ *     security:
+ *       - bearerAuth: []
+ */
+router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], userController.blockUser);
+
+/**
+ * @swagger
+ * /api/admin/user/{id}/unblock:
+ *   put:
+ *     summary: Unblock a user
+ *     tags: 
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to unblock
+ *     responses:
+ *       200:
+ *         description: User unblocked successfully
+ *       400:
+ *         description: User is already active
+ *       403:
+ *         description: Permission denied to unblock a super user
+ *       404:
+ *         description: User not found
+ *     security:
+ *       - bearerAuth: []
+ */
+router.put("/:id/unblock", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], userController.unblockUser);
 
 module.exports = router;
 

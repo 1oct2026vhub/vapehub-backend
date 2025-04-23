@@ -3,7 +3,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const orderController = require("../domain/order.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
-const {validatePlaceOrder} = require("../helper/order.validator")
+const {validatePlaceOrder, validateOrderId} = require("../helper/order.validator")
 
 /**
  * @swagger
@@ -414,11 +414,18 @@ router.get('/:id', authenticateJWT, orderController.getOrderById);
  *               phone:
  *                 type: string
  *                 example: "+1234567890"
+ *               receive_promotions:
+ *                 type: boolean
+ *                 example: true
+ *                 description: Whether the user wants to receive promotional emails
  *               couponCode:
  *                 type: string
  *                 nullable: true
  *                 example: "DISCOUNT10"
  *               shipping_method_id:
+ *                 type: integer
+ *                 example: 1
+ *               shipping_address_id:
  *                 type: integer
  *                 example: 1
  *               shipping_address:
@@ -700,9 +707,368 @@ router.post("/", authenticateJWT, validateRequest(validatePlaceOrder), orderCont
  */
 router.post("/viva-wallet-order-code", authenticateJWT, orderController.generateVivaOrdercode)
 
-// router.post("/webhook/viva", orderController.handleVivaWebhook)
+/**
+ * @swagger
+ * /api/order/viva-wallet/payment-details/{transactionId}:
+ *   get:
+ *     summary: Get Viva Wallet payment details by transaction ID
+ *     description: Retrieve payment details for a specific Viva Wallet transaction
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: transactionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The Viva Wallet transaction ID
+ *         example: "123456789"
+ *     responses:
+ *       200:
+ *         description: Payment details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Payment details retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     transactionId:
+ *                       type: string
+ *                       example: "123456789"
+ *                     status:
+ *                       type: string
+ *                       enum: [pending, completed, failed, refunded]
+ *                       example: "completed"
+ *                     amount:
+ *                       type: number
+ *                       example: 100.50
+ *                     currency:
+ *                       type: string
+ *                       example: "EUR"
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-20T14:30:00Z"
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-20T14:35:00Z"
+ *                     paymentMethod:
+ *                       type: string
+ *                       example: "credit_card"
+ *                     cardDetails:
+ *                       type: object
+ *                       properties:
+ *                         lastFourDigits:
+ *                           type: string
+ *                           example: "1234"
+ *                         cardType:
+ *                           type: string
+ *                           example: "VISA"
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Transaction not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/viva-wallet/payment-details/:transactionId", authenticateJWT, orderController.getVivaWalletPaymentDetails);
 
-// router.post("/webhook/worldpay", orderController.handleWorldpayWebhook)
+/**
+ * @swagger
+ * /api/order/cancel/{orderId}:
+ *   post:
+ *     summary: Cancel an order by order ID
+ *     description: Cancels an order using the order ID. Only pending or processing orders can be cancelled.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: The order ID to cancel
+ *     responses:
+ *       200:
+ *         description: Order cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Order cancelled successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "cancel"
+ *       400:
+ *         description: Bad Request - Order cannot be cancelled or invalid order ID
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/cancel/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.cancelOrder);
 
+/**
+ * @swagger
+ * /api/order/check-stock/{orderId}:
+ *   get:
+ *     summary: Check order items stock availability
+ *     description: Checks if all items in the order have sufficient stock in their variants. If any item has insufficient stock, the order will be cancelled.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: The order ID to check
+ *     responses:
+ *       200:
+ *         description: All items are in stock
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Stock check successful"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "pending"
+ *                     message:
+ *                       type: string
+ *                       example: "All items are in stock"
+ *       400:
+ *         description: Order cancelled due to insufficient stock
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Order cancelled due to insufficient stock"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_id:
+ *                       type: integer
+ *                       example: 1
+ *                     order_code:
+ *                       type: string
+ *                       example: "ORD-123456"
+ *                     status:
+ *                       type: string
+ *                       example: "cancel"
+ *                     stock_issues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           variant_id:
+ *                             type: integer
+ *                             example: 1
+ *                           requested_quantity:
+ *                             type: integer
+ *                             example: 5
+ *                           available_stock:
+ *                             type: integer
+ *                             example: 2
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/check-stock/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.checkOrderStock);
+
+/**
+ * @swagger
+ * /api/order/webhook/viva:
+ *   post:
+ *     summary: Handle Viva Wallet webhook notifications
+ *     description: Receives and processes webhook notifications from Viva Wallet for order status updates
+ *     tags:
+ *       - Orders
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               Url:
+ *                 type: string
+ *                 description: The webhook URL
+ *               EventData:
+ *                 type: object
+ *                 properties:
+ *                   Email:
+ *                     type: string
+ *                     format: email
+ *                   Amount:
+ *                     type: number
+ *                   OrderCode:
+ *                     type: integer
+ *                   MerchantId:
+ *                     type: string
+ *                   FullName:
+ *                     type: string
+ *                   IsCancelled:
+ *                     type: boolean
+ *                   CurrencyCode:
+ *                     type: string
+ *                   MerchantTrns:
+ *                     type: string
+ *                   CustomerTrns:
+ *                     type: string
+ *               Created:
+ *                 type: string
+ *                 format: date-time
+ *               CorrelationId:
+ *                 type: string
+ *               EventTypeId:
+ *                 type: integer
+ *               MessageId:
+ *                 type: string
+ *               RecipientId:
+ *                 type: string
+ *               MessageTypeId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Webhook processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Webhook processed successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orderId:
+ *                       type: integer
+ *                       example: 1
+ *                     orderCode:
+ *                       type: string
+ *                       example: "123456789"
+ *                     status:
+ *                       type: string
+ *                       example: "cancel"
+ *       400:
+ *         description: Invalid event type or missing data
+ *       401:
+ *         description: Invalid webhook signature
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/webhook/viva", orderController.handleVivaWalletWebhook);
+
+/**
+ * @swagger
+ * /api/order/webhook/viva/{orderCode}:
+ *   post:
+ *     summary: Handle Viva Wallet webhook notifications
+ *     description: Receives and processes webhook notifications from Viva Wallet for order status updates
+ *     tags:
+ *       - Orders
+ *     parameters:
+ *       - in: path
+ *         name: orderCode
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The Viva Wallet order code
+ *     responses:
+ *       200:
+ *         description: Webhook processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Webhook processed successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orderCode:
+ *                       type: string
+ *                       example: "123456789"
+ *                     status:
+ *                       type: string
+ *                       example: "completed"
+ *       400:
+ *         description: Bad Request - Invalid order code or missing data
+ *       401:
+ *         description: Unauthorized - Invalid credentials
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/webhook/viva/:orderCode", orderController.orderCode);
 
 module.exports = router

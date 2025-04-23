@@ -3,6 +3,8 @@ module.exports = {
         REGISTER: 'REGISTER',
         FORGOT_PASSWORD: 'FORGOT_PASSWORD',
         REFER_A_FRIEND: 'REFER_A_FRIEND',
+        ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
+        ACCOUNT_DELETION: 'ACCOUNT_DELETION',
     },
     emailTypeData: {
         REGISTER: {
@@ -16,9 +18,19 @@ module.exports = {
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         REFER_A_FRIEND: {
-            folderName: 'referFriend',
+            folderName: 'refer_a_friend',
             subject: 'Invite Your Friends to Join | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ORDER_CONFIRMATION:{
+            folderName: 'order_confirmation',
+            subject: "Order Confirmation",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ACCOUNT_DELETION: {
+            from: process.env.EMAIL_FROM,
+            subject: 'Account Deletion Confirmation',
+            folderName: 'account_deletion'
         },
     },
     orderStatus: {
@@ -26,7 +38,9 @@ module.exports = {
         DRAFT: 'draft',                // Initial cart state
         PENDING: 'pending',            // Order placed but payment not confirmed
         PROCESSING: 'processing',       // Payment confirmed, preparing for shipment
+        PACKED: 'packed',              // Order has been packed and ready for shipping
         SHIPPED: 'shipped',            // Order has been shipped
+        OUT_FOR_DELIVERY: 'out_for_delivery', // Order is out for delivery
         DELIVERED: 'delivered',        // Order has been delivered
         COMPLETED: 'completed',        // Order successfully fulfilled
         FAIL: 'fail',                 // Order/payment failed
@@ -40,7 +54,9 @@ module.exports = {
         'draft',
         'pending',
         'processing',
+        'packed',
         'shipped',
+        'out_for_delivery',
         'delivered',
         'completed',
         'fail',

@@ -108,7 +108,7 @@ module.exports.createCart = async (req, res, next) => {
         if (variant_id) {
             const variant = await ProductVariant.findByPk(variant_id);
             if (!variant || variant.product_id !== product_id) {
-                throw { message: "Variant not found or does not belong to the specified product", statusCode: 404 };
+                throw { message: `Variant not found or does not belong to the specified product`, statusCode: 404 };
             }
             availableStock = variant.stock || 0; // Use variant stock if specified
             
@@ -116,7 +116,7 @@ module.exports.createCart = async (req, res, next) => {
 
         // Check stock availability
         if (availableStock === 0) {
-            return errorResponse(res, {}, "Out of stock", 400);
+            return errorResponse(res, {}, `${variant.slug} Out of stock`, 400);
         }
         if (quantity > availableStock) {
             return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
@@ -144,6 +144,7 @@ module.exports.createCart = async (req, res, next) => {
             return successResponse(res, cartItem, 'Cart created successfully');
         }
     } catch (error) {
+        console.log("error", error);
         return errorResponse(res, error, error.message || 'Failed to create/update cart');
     }
 };
@@ -185,7 +186,6 @@ module.exports.updateCart = async (req, res, next) => {
 exports.bulkUpdateCart = async (req, res) => {
     const user_id = req.user.id;
     const { cartItems } = req.body;
-    console.log("bulk>>>>", cartItems)
     if (!user_id || !Array.isArray(cartItems) || cartItems.length === 0) {
         return errorResponse(res, {}, 'Invalid request data', 400);
     }
@@ -203,7 +203,6 @@ exports.bulkUpdateCart = async (req, res) => {
                 where: { user_id, product_id, variant_id },
                 transaction
             });
-
             if (!existingCartItem) {
                 cartUpdates.push({
                     user_id,
@@ -211,21 +210,13 @@ exports.bulkUpdateCart = async (req, res) => {
                     variant_id,
                     quantity
                 });
+            } else {
+                // Increment quantity using Sequelize's increment method
+                await existingCartItem.increment('quantity', { 
+                    by: parseInt(quantity), 
+                    transaction 
+                });
             }
-
-            // if (existingCartItem) {
-            //     // If exists, update the quantity instead of adding a new entry
-            //     existingCartItem.quantity += quantity;
-            //     await existingCartItem.save({ transaction });
-            // } else {
-            //     // If not exists, create a new cart entry
-            //     cartUpdates.push({
-            //         user_id,
-            //         product_id,
-            //         variant_id,
-            //         quantity
-            //     });
-            // }
         }
 
         // Bulk insert new items
@@ -257,5 +248,52 @@ module.exports.deleteCart = async (req, res, next) => {
         successResponse(res, { message: 'Cart item deleted successfully' });
     } catch (error) {
         return errorResponse(res, error, error.message || 'Failed to delete cart');
+    }
+};
+
+module.exports.checkCartItemsStock = async (req, res, next) => {
+    try {
+        const user_id = req.user.id;
+        const carts = await Cart.findAll({
+            where: { user_id },
+            include: includeClause
+        });
+
+        if (carts.length === 0) {
+            return successResponse(res, [], 'Cart is empty');
+        }
+
+        const stockStatus = await Promise.all(carts.map(async (cart) => {
+            const variant = cart.variant;
+            const product = cart.product;
+            
+            // Get available stock (variant stock if exists, otherwise product stock)
+            const availableStock = variant ? variant.stock : (product.stock_quantity || 0);
+            
+            // Check if item is out of stock
+            const isOutOfStock = availableStock === 0;
+            
+            // Check if requested quantity exceeds available stock
+            const isQuantityExceeded = cart.quantity > availableStock;
+            
+            let message = '';
+            if (isOutOfStock) {
+                message = `${variant ? variant.slug : product.name} is out of stock`;
+            } else if (isQuantityExceeded) {
+                message = `Only ${availableStock} item(s) available in stock for ${variant ? variant.slug : product.name}`;
+            } else {
+                message = `${variant ? variant.slug : product.name} is in stock`;
+            }
+
+            return {
+                itemId: cart.id,
+                message,
+                isOutOfStock: isOutOfStock || isQuantityExceeded
+            };
+        }));
+
+        return successResponse(res, stockStatus, 'Stock status checked successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
     }
 };

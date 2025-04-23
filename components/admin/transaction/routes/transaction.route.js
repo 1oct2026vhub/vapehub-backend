@@ -51,13 +51,13 @@ const {
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, completed, failed, refunded, cancelled]
+ *           enum: [PENDING, COMPLETED, FAILED, REFUNDED]
  *         description: Filter by transaction status
  *       - in: query
  *         name: transactionType
  *         schema:
  *           type: string
- *           enum: [payment, refund, partial_refund]
+ *           enum: [PURCHASE, REFUND]
  *         description: Filter by transaction type
  *       - in: query
  *         name: startDate
@@ -137,7 +137,7 @@ router.get('/:id', [authMiddleware(true), validateRequest(getTransactionDetailsV
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [pending, completed, failed, refunded, cancelled]
+ *                 enum: [PENDING, COMPLETED, FAILED, REFUNDED]
  *     responses:
  *       200:
  *         description: Transaction status updated successfully
@@ -261,7 +261,7 @@ router.get('/reports/revenue', [authMiddleware(true), validateRequest(generateRe
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, completed, failed, refunded, cancelled]
+ *           enum: [PENDING, COMPLETED, FAILED, REFUNDED]
  *         description: Filter transactions by status
  *     responses:
  *       200:

@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
+const { Op } = require('sequelize');
+const { Order, Transaction } = require('../../../models');
 
 const userProfile = async (req, res, next) => {
     try {
@@ -42,7 +44,7 @@ const updateUserProfile = async (req, res, next) => {
         user.first_name = first_name || user.first_name;
         user.last_name = last_name || user.last_name;
         // user.email = email || user.email;
-        // user.phone = phone || user.phone;
+        user.phone = phone || user.phone;
 
         await user.save();
 
@@ -77,13 +79,13 @@ const fetchUserAddress = async (req, res, next) => {
                 as: 'UserAddresses', // Must match the alias defined in the model association
                 attributes: [
                     'id', 'name', 'last_name', 'company_name', 'country', 
-                    'street', 'apartment', 'town', 'county', 'post_code', 'phone'
+                    'street', 'apartment', 'town', 'county', 'post_code', 'phone', 'region'
                 ]
             }]
         });
 
         if (!user) {
-            return errorResponse(res, error, {message: 'User not found'}, 404);
+            return errorResponse(res, error, 'User not found', 404);
         }
 
         successResponse(res, user,  'Success');
@@ -148,7 +150,7 @@ const updateUserAddress = async (req, res, next) => {
         });
 
         if (!userAddress) {
-            return errorResponse(res, {}, {message: 'Address not found'}, 404);
+            return errorResponse(res, {},  'Address not found', 404);
         }
 
         await userAddress.update({
@@ -223,17 +225,17 @@ const changeUserPassword = async (req, res, next) => {
     try {
         const user = await User.findOne({where:{id:user_id, email}});
         if (!user) {
-            return errorResponse(res, {}, {message: 'User not found'}, 404);
+            return errorResponse(res, {}, 'User not found', 404);
         }
 
         // Check if current and new passwords are the same
         if (currentPassword === newPassword) {
-            return errorResponse(res, {}, {message: 'New password cannot be the same as current password'}, 400);
+            return errorResponse(res, {}, 'New password cannot be the same as current password', 400);
         }
 
         const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isPasswordValid) {
-            return errorResponse(res, {}, {message: 'Current password is incorrect'}, 401);
+            return errorResponse(res, {}, 'Current password is incorrect', 400);
         }
 
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
@@ -266,41 +268,58 @@ const referFriend = async (req, res, next) => {
         // Check if the email is already registered
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
-            return errorResponse(res, {}, { message: 'User with this email already exists' }, 400);
+            return errorResponse(res, {}, 'User with this email already exists' , 400);
         }
 
         // Check if the referral code is valid
         const referrer = await User.findOne({ where: { referral_code } });
         if (!referrer) {
-            return errorResponse(res, {}, { message: 'Invalid referral code' }, 400);
+            return errorResponse(res, {}, 'Invalid referral code' , 400);
         }
 
-        // Send referral email
-        const username = email.split('@')[0];
-        const data = {
-            emailTypes: constants.emailTypes.REFER_A_FRIEND,
-            to: email,
-            context: {
-                userName: username,
-                referralLink: `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`,
-                token: referral_code
-            },
-            attachments: ""
-        };
-        await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+        try {
+            // Send referral email
+            const username = email.split('@')[0];
+            const referralLink = `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`;
+            const data = {
+                emailTypes: constants.emailTypes.REFER_A_FRIEND,
+                to: email,
+                context: {
+                    userName: username,
+                    referralLink: referralLink,
+                    token: referral_code,
+                    // currentYear: new Date().getFullYear()
+                },
+                attachments: ""
+            };
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
-        // Create notification for referrer
-        await createNotification({
-            userId: referrer_id,
-            type: 'system',
-            action: 'alert',
-            data: {
-                message: `Referral invitation sent to ${email}`
-            },
-            title: 'Friend Referral'
-        });
+            // Create notification for referrer
+            await createNotification({
+                userId: referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Referral invitation sent to ${email}`
+                },
+                title: 'Friend Referral'
+            });
 
-        successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+            successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+        } catch (emailError) {
+            console.error('Error sending referral email:', emailError);
+            // Still create notification but indicate email failed
+            await createNotification({
+                userId: referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Failed to send referral invitation to ${email}. Please try again later.`
+                },
+                title: 'Referral Email Failed'
+            });
+            return errorResponse(res, emailError, { message: 'Failed to send referral email' }, 500);
+        }
     } catch (error) {
         console.error('Error in referFriend:', error);
         return errorResponse(res, error, { message: 'Internal Server Error' }, 500);
@@ -432,6 +451,48 @@ const deleteAccount = async (req, res) => {
             return errorResponse(res, {}, {message: 'User not found'}, 401);
         }
 
+        // Prevent super users from deleting their own account
+        if (user.super_user) {
+            return errorResponse(res, {}, {message: 'Super users cannot delete their own account'}, 403);
+        }
+
+        // Check for active orders
+        const activeOrders = await Order.findAll({
+            where: {
+                user_id: user.id,
+                status: {
+                    [Op.notIn]: ['cancel', 'fail', 'refunded', 'delivered', 'pending', 'completed', 'draft', 'return_received' ]
+                }
+            }
+        });
+
+        if (activeOrders.length > 0) {
+            return errorResponse(res, {}, 'Account with active orders cannot be deleted. Please cancel or complete all orders first.', 400);
+        }
+
+        // Check for pending refunds
+        const pendingRefunds = await Transaction.findAll({
+            where: {
+                userId: user.id,
+                transactionType: 'refund',
+                status: 'pending'
+            },
+            include: [{
+                model: Order,
+                as: 'order',
+                attributes: ['order_unique_id']
+            }]
+        });
+
+        if (pendingRefunds.length > 0) {
+            const orderIds = pendingRefunds.map(refund => refund.order.order_unique_id).join(', ');
+            return errorResponse(res, {}, "Your account has pending refunds. Please wait for all refunds to be processed before deleting your account.", 400);
+        }
+
+        // Store user email and name before deletion
+        const userEmail = user.email;
+        const userName = user.first_name || user.email.split('@')[0];
+
         // Create notification before account deletion
         await createNotification({
             userId: userId,
@@ -445,6 +506,16 @@ const deleteAccount = async (req, res) => {
 
         // Delete the user account
         await user.destroy();
+
+        // Send account deletion confirmation email
+        try {
+            await sendEmail(userEmail, constants.emailTypes.ACCOUNT_DELETION, {
+                userName: userName
+            });
+        } catch (emailError) {
+            console.error('Error sending account deletion email:', emailError);
+            // Log the error but don't fail the account deletion
+        }
 
         successResponse(res, user, 'Account deleted successfully', 200);
     } catch (error) {

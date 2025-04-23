@@ -39,6 +39,9 @@ module.exports.getProductByid = async (req, res, next) => {
             {
                 model: ProductVariant,
                 as: 'variants',
+                where: {
+                    status: 'active'
+                },
                 include: [
                     {
                         model: ProductVariantAttribute,
@@ -91,13 +94,36 @@ module.exports.getProductByid = async (req, res, next) => {
                     terms: []
                 });
             }
-            attributeTermsMap.get(attribute.id).terms.push({
-                id: pat.term.id,
-                name: pat.term.name,
-                slug: pat.term.slug,
-                used_in_variation: pat.used_in_variation,
-                is_visible_page: pat.is_visible_page
-            });
+            
+            // Check if the term is used in variation
+            if (pat.used_in_variation) {
+                // Check if this term has any corresponding variants
+                const hasVariants = product.variants.some(variant => 
+                    variant.variantAttributes.some(va => 
+                        va.attribute.id === attribute.id && va.term.id === pat.term.id
+                    )
+                );
+                
+                // Only add the term if it has variants
+                if (hasVariants) {
+                    attributeTermsMap.get(attribute.id).terms.push({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug,
+                        used_in_variation: pat.used_in_variation,
+                        is_visible_page: pat.is_visible_page
+                    });
+                }
+            } else {
+                // If not used in variation, add it regardless
+                attributeTermsMap.get(attribute.id).terms.push({
+                    id: pat.term.id,
+                    name: pat.term.name,
+                    slug: pat.term.slug,
+                    used_in_variation: pat.used_in_variation,
+                    is_visible_page: pat.is_visible_page
+                });
+            }
         });
 
         // Generate all possible combinations of attributes and terms
@@ -541,6 +567,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 {
                     model: ProductVariant,
                     as: 'variants',
+                    where: {
+                        status: 'active'
+                    },
                     include: [
                         {
                             model: ProductVariantAttribute,
@@ -593,13 +622,36 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     terms: []
                 });
             }
-            attributeTermsMap.get(attribute.id).terms.push({
-                id: pat.term.id,
-                name: pat.term.name,
-                slug: pat.term.slug,
-                used_in_variation: pat.used_in_variation,
-                is_visible_page: pat.is_visible_page
-            });
+            
+            // Check if the term is used in variation
+            if (pat.used_in_variation) {
+                // Check if this term has any corresponding variants
+                const hasVariants = product.variants.some(variant => 
+                    variant.variantAttributes.some(va => 
+                        va.attribute.id === attribute.id && va.term.id === pat.term.id
+                    )
+                );
+                
+                // Only add the term if it has variants
+                if (hasVariants) {
+                    attributeTermsMap.get(attribute.id).terms.push({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug,
+                        used_in_variation: pat.used_in_variation,
+                        is_visible_page: pat.is_visible_page
+                    });
+                }
+            } else {
+                // If not used in variation, add it regardless
+                attributeTermsMap.get(attribute.id).terms.push({
+                    id: pat.term.id,
+                    name: pat.term.name,
+                    slug: pat.term.slug,
+                    used_in_variation: pat.used_in_variation,
+                    is_visible_page: pat.is_visible_page
+                });
+            }
         });
 
         // Filter variants based on provided attribute terms

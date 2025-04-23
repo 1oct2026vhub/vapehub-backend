@@ -11,6 +11,20 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
             this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
             this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
+            
+            // Referral relations
+            this.hasMany(models.Referral, { 
+                foreignKey: 'referrer_id', 
+                as: 'referralsMade' 
+            });
+            this.hasOne(models.Referral, { 
+                foreignKey: 'referred_user_id', 
+                as: 'referralReceived' 
+            });
+            this.belongsTo(models.User, { 
+                foreignKey: 'referred_by', 
+                as: 'referrer' 
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -125,7 +139,17 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: 0
         },
+        receive_promotions: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
         blocked: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
+        super_user: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
@@ -177,17 +201,12 @@ module.exports = (sequelize, DataTypes) => {
         if (user.password) {
             user.password = await bcrypt.hash(user.password, 10);
         }
-        if (!user.referral_code) {
-            user.referral_code = await user.generateReferralCode();
-        }
     });
 
-    // Add afterCreate hook to ensure referral code is set
+    // Add afterCreate hook to generate referral code
     User.afterCreate(async (user, options) => {
-        if (!user.referral_code) {
-            user.referral_code = await user.generateReferralCode();
-            await user.save();
-        }
+        const referralCode = await user.generateReferralCode();
+        await user.update({ referral_code: referralCode });
     });
 
     return User;

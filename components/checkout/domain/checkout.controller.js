@@ -117,7 +117,10 @@ module.exports.checkout = async (req, res, next) => {
         }
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
-        const address = await UserAddress.findOne({ where: {user_id: userId,} });
+        const address = await UserAddress.findOne({ 
+            where: { user_id: userId },
+            order: [['createdAt', 'DESC']] // Get the most recently created address
+        });
         const resObj = {
             cart,
             shippingMethod,
@@ -200,7 +203,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                 end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
             }
         }); 
-
         if (!coupon) {
             throw {
                 statusCode: 404,
@@ -264,7 +266,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             totalItems,
             shippingCost,
             subTotal,
-            total
+            total,
+            coupon
         }
         successResponse(res, resObj, 'Success');
     } catch (error) {

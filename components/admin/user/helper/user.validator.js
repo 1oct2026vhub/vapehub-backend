@@ -166,9 +166,9 @@ const userListValidationRules = [
       .isIn([
         'id', 'first_name', 'last_name', 'email', 'phone', 
         'gender', 'createdAt', 'updatedAt', 'deletedAt',
-        'email_verified_at'
+        'email_verified_at', 'blocked'
       ])
-      .withMessage("sort_by must be one of: id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at"),
+      .withMessage("sort_by must be one of: id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked"),
   
     query("order")
       .optional()
@@ -180,19 +180,27 @@ const userListValidationRules = [
       .isBoolean()
       .withMessage("Deleted must be a boolean value"),
 
+    query("blocked")
+      .optional()
+      .isIn(["true", "false"])
+      .withMessage("Blocked must be either true or false"),
+
     query("verified")
       .optional()
       .isIn(["all", "true", "false"])
       .withMessage("Verified must be one of: all, true, false"),
 ];
 
-module.exports = {  };
-
+// Validation for user ID parameter
+const userIDValidation = [
+    param("id").isInt().withMessage("User ID must be an integer")
+];
 
 module.exports = {
     roleValidation,
     userValidationRules,
     restoreUserValidation,
     userListValidationRules,
-    userUpdateValidationRules
+    userUpdateValidationRules,
+    userIDValidation
 };

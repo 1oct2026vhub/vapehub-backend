@@ -79,6 +79,9 @@ const filterValidations = [
     check("search")
       .optional()
       .isString().withMessage("Search must be a string"),
+    check("search_only_name")
+      .optional()
+      .isBoolean().withMessage("Search only name must be a boolean value"),
     check("deleted")
       .optional()
       .isBoolean().withMessage("Deleted must be a boolean value"),

@@ -145,6 +145,11 @@ router.get('/profile', authenticateJWT, userController.userProfile);
  *               last_name:
  *                 type: string
  *                 example: Doe
+ *               phone:
+ *                 type: string
+ *                 description: User's phone number (10-15 digits, + and hyphens allowed)
+ *                 example: "+1-234-567-8901"
+ *                 pattern: "^\\+?[\\d-]{10,15}$"
  *     responses:
  *       200:
  *         description: Profile updated successfully
@@ -222,24 +227,55 @@ router.put('/profile', authenticateJWT, validateRequest(validateProfileUpdate), 
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - email
+ *               - referral_code
  *             properties:
  *               email:
  *                 type: string
- *                 description: The email of the user.
- *                 example: user31@example.com
+ *                 format: email
+ *                 description: Email address of the friend to refer
+ *                 example: friend@example.com
+ *               referral_code:
+ *                 type: string
+ *                 description: Unique referral code of the referrer
+ *                 example: ABC123XYZ
  *     responses:
  *       200:
- *         description: refer a friend successfully
+ *         description: Referral invitation sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Referral invitation sent successfully
  *       400:
- *         description: Bad request (validation errors)
+ *         description: Invalid input or user already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: User with this email already exists
  *       401:
- *         description: Unauthorized (missing or invalid token)
+ *         description: Unauthorized - Invalid or missing token
  *       500:
- *         description: Internal server error
+ *         description: Server error
  */
 router.post("/refer-a-friend",
     validateRequest([
         check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required"),
+        check("referral_code").notEmpty().withMessage("Referral code is required"),
     ]),
     authenticateJWT, userController.referFriend)
 

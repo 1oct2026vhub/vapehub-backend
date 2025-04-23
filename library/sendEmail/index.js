@@ -21,37 +21,79 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
     });
 }
 
-
 module.exports = async (to, emailType, context = {}, attachments = []) => {
-    // if unknown type, throw error
-    if (!constants.emailTypes[emailType]) {
-        throw {
-            message: "Unknown email type",
-            status: 400,
-            emailType, to, emailContext: context
+    try {
+        // if unknown type, throw error
+        if (!constants.emailTypes[emailType]) {
+            throw {
+                message: "Unknown email type",
+                status: 400,
+                emailType, to, emailContext: context
+            }
         }
-}
-// get data from config
-const emailConfig = constants.emailTypeData[emailType];
-const data = {
-    from: emailConfig.from,
-    to,
-    subject: emailConfig.subject,
-};
+        // get data from config
+        const emailConfig = constants.emailTypeData[emailType];
+        const data = {
+            from: emailConfig.from,
+            to,
+            subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
+        };
 
-if (attachments.length > 0) {
-    data.attachments = attachments
-}
+        if (attachments.length > 0) {
+            data.attachments = attachments
+        }
 
-// get template and replace content
-const text = await fs.readFile(path.join(__dirname, '../../emailTemplates', emailConfig.folderName, 'text.hbs'), 'utf8')
-const html = await fs.readFile(path.join(__dirname, '../../emailTemplates', emailConfig.folderName, 'html.hbs'), 'utf8')
-data.text = Handlebars.compile(text)({ ...context, host: process.env.HOST_URL, FRONTEND_URL:process.env.FRONTEND_URL })
-data.html = Handlebars.compile(html)({ ...context, host: process.env.HOST_URL, FRONTEND_URL:process.env.FRONTEND_URL, currentYear: new Date().getFullYear()})
+        // Ensure email templates directory exists
+        const templatesDir = path.join(__dirname, '../../emailTemplates');
+        const templateDir = path.join(templatesDir, emailConfig.folderName);
+        try {
+            // Check if template directory exists
+            await fs.access(templateDir);
+        } catch (error) {
+            logger.error(`Email template directory not found: ${templateDir}`);
+            throw {
+                message: "Email template directory not found",
+                status: 500,
+                emailType,
+                templateDir
+            }
+        }
 
-// send email
-if (process.env.EMAIL_TEST_MODE === 'true')
-    return await newEmail(data)
-else
-    return await transporter.sendMail(data)
+        // get template and replace content
+        const textPath = path.join(templateDir, 'text.hbs');
+        const htmlPath = path.join(templateDir, 'html.hbs');
+        try {
+            const text = await fs.readFile(textPath, 'utf8');
+            const html = await fs.readFile(htmlPath, 'utf8');
+            data.text = Handlebars.compile(text)({ 
+                ...context, 
+                host: process.env.HOST_URL, 
+                FRONTEND_URL: process.env.FRONTEND_URL 
+            });
+            
+            data.html = Handlebars.compile(html)({ 
+                ...context, 
+                host: process.env.HOST_URL, 
+                FRONTEND_URL: process.env.FRONTEND_URL, 
+                currentYear: new Date().getFullYear()
+            });
+            // send email
+            if (process.env.EMAIL_TEST_MODE === 'true') {
+                return await newEmail(data);
+            } else {
+                return await transporter.sendMail(data);
+            }
+        } catch (error) {
+            logger.error(`Error reading email templates: ${error.message}`);
+            throw {
+                message: "Error reading email templates",
+                status: 500,
+                emailType,
+                error: error.message
+            }
+        }
+    } catch (error) {
+        logger.error(`Error in sendEmail: ${error.message}`);
+        throw error;
+    }
 }
