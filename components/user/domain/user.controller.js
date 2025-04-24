@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress } = require("../../../models");
+const { User, UserAddress, Referral } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
@@ -524,4 +524,70 @@ const deleteAccount = async (req, res) => {
     }
 };
 
-module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, processReferral, awardFirstPurchasePoints, awardProfileCompletionPoints, deleteAccount}
+const getReferralStats = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Get total referrals count
+        const totalReferrals = await Referral.count({
+            where: {
+                referrer_id: userId,
+                status: 'completed'
+            }
+        });
+
+        // Get pending referrals count
+        const pendingReferrals = await Referral.count({
+            where: {
+                referrer_id: userId,
+                status: 'pending'
+            }
+        });
+
+        // Get total points earned
+        const totalPoints = await Referral.sum('points_awarded', {
+            where: {
+                referrer_id: userId,
+                status: 'completed'
+            }
+        });
+
+        // Get recent referrals with user details
+        const recentReferrals = await Referral.findAll({
+            where: {
+                referrer_id: userId
+            },
+            include: [{
+                model: User,
+                as: 'referredUser',
+                attributes: ['id', 'first_name', 'last_name', 'email']
+            }],
+            order: [['created_at', 'DESC']],
+            limit: 5
+        });
+
+        const response = {
+            total_referrals: totalReferrals || 0,
+            pending_referrals: pendingReferrals || 0,
+            total_points: totalPoints || 0,
+            recent_referrals: recentReferrals.map(referral => ({
+                id: referral.id,
+                status: referral.status,
+                points_awarded: referral.points_awarded,
+                created_at: referral.created_at,
+                user: referral.referredUser ? {
+                    id: referral.referredUser.id,
+                    name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
+                    email: referral.referredUser.email
+                } : null
+            }))
+        };
+
+        successResponse(res, response, 'Referral statistics retrieved successfully');
+    } catch (error) {
+        console.error('Error fetching referral stats:', error);
+        errorResponse(res, error, 'Failed to fetch referral statistics');
+    }
+};
+
+module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, processReferral, awardFirstPurchasePoints, awardProfileCompletionPoints, deleteAccount, getReferralStats}
