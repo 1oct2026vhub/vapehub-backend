@@ -14,7 +14,7 @@ const userProfile = async (req, res, next) => {
 
         const user = await User.findOne({
             where: { id: user_id },
-            attributes: ['first_name', 'last_name', 'email', 'phone']
+            attributes: ['first_name', 'last_name', 'email', 'phone', 'referral_code', 'referred_by', 'referral_points', ]
         });
 
         if (!user) {
