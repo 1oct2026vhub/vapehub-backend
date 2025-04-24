@@ -148,7 +148,7 @@ module.exports.register = async (req, res, next) => {
                 referred_user_id: user.id,
                 referral_code: referral_code,
                 points_awarded: 10,
-                status: 'pending'
+                status: 'completed'
             });
         }
 
