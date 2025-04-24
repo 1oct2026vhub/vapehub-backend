@@ -718,4 +718,72 @@ router.put('/change-password', authenticateJWT, validateRequest(validateChangePa
 
 router.delete('/delete-account', authenticateJWT, userController.deleteAccount);
 
+/**
+ * @swagger
+ * /api/users/referral-stats:
+ *   get:
+ *     summary: Get user's referral statistics
+ *     description: Retrieve statistics about users who registered through this user's referral
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Referral statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total_referrals:
+ *                       type: integer
+ *                       example: 5
+ *                     pending_referrals:
+ *                       type: integer
+ *                       example: 2
+ *                     total_points:
+ *                       type: integer
+ *                       example: 1500
+ *                     recent_referrals:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           status:
+ *                             type: string
+ *                             example: "completed"
+ *                           points_awarded:
+ *                             type: integer
+ *                             example: 100
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                               joined_at:
+ *                                 type: string
+ *                                 format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/referral-stats", authenticateJWT, userController.getReferralStats);
+
 module.exports = router;
