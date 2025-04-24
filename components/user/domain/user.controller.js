@@ -280,7 +280,7 @@ const referFriend = async (req, res, next) => {
         try {
             // Send referral email
             const username = email.split('@')[0];
-            const referralLink = `${process.env.FRONTEND_URL}/my-account/register?token=${referral_code}`;
+            const referralLink = `${process.env.FRONTEND_URL}/?referral_code=${referral_code}`;
             const data = {
                 emailTypes: constants.emailTypes.REFER_A_FRIEND,
                 to: email,
