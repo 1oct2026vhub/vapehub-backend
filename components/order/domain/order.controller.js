@@ -733,23 +733,23 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
                 // Create order log for successful payment
-                await sequelize.models.OrderLog.create({
-                    order_id: order.id,
-                    user_id: order.user_id,
-                    status: 'processing',
-                    label: 'Payment Successful via Viva Wallet',
-                    additional_info: JSON.stringify({
-                        transactionId: transactionId,
-                        OrderCode: OrderCode,
-                        amount: Amount,
-                        currency: CurrencyCode,
-                        bankId: BankId,
-                        // referenceNumber: referenceNumber,
-                        cardType: CardTypeId,
-                        cardIssuingBank: CardIssuingBank,
-                        cardCountryCode: CardCountryCode
-                    })
-                });
+                // await sequelize.models.OrderLog.create({
+                //     order_id: order.id,
+                //     user_id: order.user_id,
+                //     status: 'processing',
+                //     label: 'Payment Successful via Viva Wallet',
+                //     // additional_info: JSON.stringify({
+                //     //     transactionId: transactionId,
+                //     //     OrderCode: OrderCode,
+                //     //     amount: Amount,
+                //     //     currency: CurrencyCode,
+                //     //     bankId: BankId,
+                //     //     // referenceNumber: referenceNumber,
+                //     //     cardType: CardTypeId,
+                //     //     cardIssuingBank: CardIssuingBank,
+                //     //     cardCountryCode: CardCountryCode
+                //     // })
+                // });
                 
                 // Reduce stock for each order item
                 for (const item of order.orderItems) {
