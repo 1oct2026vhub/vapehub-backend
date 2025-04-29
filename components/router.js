@@ -28,5 +28,7 @@ router.use("/shipping-method", require("./shippingMethod/routes/shippingMethod.r
 router.use("/email", require("../library/mailsInDev/index").emailRouter)
 router.use("/notifications", require("./notification/routes/notification.route"))
 router.use("/payment", require("./payment/routes/payment.route"))
+router.use("/menu", require("./menu/routes/menu.route"))
+router.use("/footer", require("./footer/routes/footer.route"))
 
 module.exports = router;
