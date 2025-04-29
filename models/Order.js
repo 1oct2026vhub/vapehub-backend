@@ -1,6 +1,8 @@
 'use strict';
 const { Model } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
+const trustpilotHelper = require('../components/order/helper/trustpilot.helper');
+const logger = require('../library/logger');
 
 module.exports = (sequelize, DataTypes) => {
   class Order extends Model {
@@ -414,6 +416,9 @@ module.exports = (sequelize, DataTypes) => {
 
           await sequelize.models.OrderLog.create(logData, { transaction: options.transaction });
         }
+      },
+      afterUpdate: async (instance) => {
+        await Order.handleStatusChange(instance);
       }
     }
   });
