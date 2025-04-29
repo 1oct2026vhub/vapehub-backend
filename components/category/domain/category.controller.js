@@ -100,11 +100,20 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                 statusCode: 400,
             };
         }
-        req.query.categories = `${category.id}`
-        // fetch related product
-        const product = await fetchProducts(req.query)
+        req.query.categories = `${category.id}`;
+        req.query.source = 'category';
+        // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, brand_items, attributes, price_ranges, pagination } = await fetchProducts(req.query);
 
-        return successResponse(res, { ...category.get({ plain: true }), ...product }, "Success");
+        return successResponse(res, { 
+            ...additionalData,
+            products,
+            brand: brand_items, 
+            attributes,
+            price_ranges,
+            pagination,
+             // Since we're querying by slug, there will be only one category
+        }, "Success");
     } catch (error) {
         console.log("🚀 ~ module.exports.getCategoryBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);

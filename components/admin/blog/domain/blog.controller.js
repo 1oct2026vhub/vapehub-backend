@@ -9,51 +9,115 @@ const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelation
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false } = req.query;
+        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false, category_id, tag_id, status } = req.query;
         const offset = (page - 1) * limit;
 
         let whereCondition = {};
         if (search) {
             whereCondition = {
                 [Op.or]: [
-                    { title: { [Op.iLike]: `%${search}%` } },
-                    { content: { [Op.iLike]: `%${search}%` } }
+                    { id: { [Op.like]: `%${search}%` } },
+                    { title: { [Op.like]: `%${search}%` } },
+                    { content: { [Op.like]: `%${search}%` } }
                 ]
             };
         }
 
-        const { count, rows: blogs } = await Blog.findAndCountAll({
+        // Add status filter if provided
+        if (status) {
+            whereCondition.status = status;
+        }
+
+        // Parse category_id and tag_id for filtering blogs
+        const categoryIds = category_id ? 
+            category_id.split(',').map(id => parseInt(id.trim())) : [];
+        const tagIds = tag_id ? 
+            tag_id.split(',').map(id => parseInt(id.trim())) : [];
+
+        // Base include conditions - always include all relations
+        let includeConditions = [
+            {
+                model: User,
+                as: 'author',
+                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'],
+                required: false
+            },
+            {
+                model: BlogCategory,
+                as: 'categories',
+                through: { attributes: [] },
+                required: false
+            },
+            {
+                model: BlogTag,
+                as: 'tags',
+                through: { attributes: [] },
+                required: false
+            }
+        ];
+
+        // Convert deleted string to boolean
+        const showDeleted = deleted === 'true' || deleted === true;
+
+        // First, get the total count with the same filters
+        const totalCount = await Blog.count({
             where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
-                },
-                {
-                    model: BlogCategory,
-                    as: 'categories',
-                    through: { attributes: [] }
-                },
-                {
-                    model: BlogTag,
-                    as: 'tags',
-                    through: { attributes: [] }
-                }
-            ],
+            include: includeConditions,
+            paranoid: !showDeleted,
+            distinct: true
+        });
+
+        // Then get the paginated results
+        const { rows: blogs } = await Blog.findAndCountAll({
+            where: whereCondition,
+            include: includeConditions,
             order: [[sort, order]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !deleted
+            paranoid: !showDeleted,
+            distinct: true,
+            group: ['Blog.id']
         });
 
-        successResponse(res, {
-            blogs,
-            pagination: {
-                total: count,
-                page: parseInt(page),
-                limit: parseInt(limit)
+        // Process blogs to remove published_at for draft or archived status
+        const processedBlogs = blogs.map(blog => {
+            const blogData = blog.toJSON();
+            if (blogData.status === 'draft' || blogData.status === 'archived') {
+                blogData.published_at = null;
             }
+            
+            // Add empty arrays for relations if they don't exist
+            blogData.categoryRelations = [];
+            blogData.tagRelations = [];
+            
+            return blogData;
+        });
+
+        // Filter blogs by category_id and tag_id if provided
+        let filteredBlogs = processedBlogs;
+        // if (categoryIds.length > 0 || tagIds.length > 0) {
+        //     filteredBlogs = processedBlogs.filter(blog => {
+        //         // Check if blog has any of the requested categories
+        //         const hasMatchingCategory = categoryIds.length === 0 || 
+        //             blog.categories.some(category => categoryIds.includes(category.id));
+                
+        //         // Check if blog has any of the requested tags
+        //         const hasMatchingTag = tagIds.length === 0 || 
+        //             blog.tags.some(tag => tagIds.includes(tag.id));
+                
+        //         // Return true if blog matches both category and tag filters
+        //         return hasMatchingCategory && hasMatchingTag;
+        //     });
+        // }
+
+        successResponse(res, {
+            blogs: filteredBlogs,
+            pagination: {
+                total: totalCount,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total_pages: Math.ceil(totalCount / parseInt(limit))
+            } 
         });
     } catch (error) {
         errorResponse(res, error);
@@ -67,7 +131,7 @@ module.exports.getBlogById = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
@@ -86,7 +150,13 @@ module.exports.getBlogById = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        successResponse(res, blog);
+        // Process blog to remove published_at for draft or archived status
+        const blogData = blog.toJSON();
+        if (blogData.status === 'draft' || blogData.status === 'archived') {
+            blogData.published_at = null;
+        }
+
+        successResponse(res, blogData);
     } catch (error) {
         errorResponse(res, error);
     }
@@ -116,6 +186,7 @@ module.exports.createBlog = async (req, res) => {
         const tags = req.body.tags ? 
             req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
         const { id: author_id } = req.user;
+        const status = req.body.status || 'draft';
 
         let image_url = null;
         if (req.file) {
@@ -129,7 +200,9 @@ module.exports.createBlog = async (req, res) => {
             slug,
             image_url,
             author_id,
-            published_at,
+            // Only set published_at if status is not 'archived' or 'draft'
+            ...(status !== 'archived' && status !== 'draft' && { published_at }),
+            status,
             updated_by: author_id
         }, { transaction });
 
@@ -153,7 +226,7 @@ module.exports.createBlog = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
                 },
                 {
                     model: BlogCategory,
@@ -223,6 +296,7 @@ module.exports.updateBlog = async (req, res) => {
         const { id } = req.params;
         const { title, content, slug, categories, tags, published_at } = req.body;
         const { id: updated_by } = req.user;
+        const status = req.body.status;
 
         const blog = await Blog.findByPk(id, { transaction });
         if (!blog) {
@@ -236,15 +310,26 @@ module.exports.updateBlog = async (req, res) => {
             await slugManager.createOrUpdateSlug(slug, 'blog', id, transaction);
         }
 
-        // Update blog
-        await blog.update({
+        // Prepare update data
+        const updateData = {
             ...(title && { title }),
             ...(content && { content }),
             ...(slug && { slug }),
             ...(image_url && { image_url }),
-            ...(published_at && { published_at }),
+            ...(status && { status }),
             updated_by
-        }, { transaction });
+        };
+
+        // Only include published_at if status is not 'archived' or 'draft'
+        if (published_at && status !== 'archived' && status !== 'draft') {
+            updateData.published_at = published_at;
+        } else if (status === 'archived' || status === 'draft') {
+            // Clear published_at if status is 'archived' or 'draft'
+            updateData.published_at = null;
+        }
+
+        // Update blog
+        await blog.update(updateData, { transaction });
 
         // Parse categories and tags
         const parsedCategories = categories ? 
@@ -258,7 +343,7 @@ module.exports.updateBlog = async (req, res) => {
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {
             include: [
-                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name'] },
+                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
                 { model: BlogTag, as: 'tags', through: { attributes: [] } }
             ],

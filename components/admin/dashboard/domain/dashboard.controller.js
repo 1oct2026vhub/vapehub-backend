@@ -3,20 +3,21 @@ const { Transaction, Order, User, Product, ProductVariant, StockMovement, StockR
 const { Op } = require('sequelize');
 const dashboardHelper = require('../helper/dashboard.helper');
 const logger = require("../../../../library/logger");
+const { getDashboardDateRanges } = require("../../../../utils/dateUtils");
 
 module.exports.getDashboardStats = async (req, res, next) => {
     try {
-        // Get date ranges
-        const { start: todayStart, end: todayEnd } = dashboardHelper.getDateRange('today');
-        const { start: weekStart } = dashboardHelper.getDateRange('week');
-        const { start: monthStart } = dashboardHelper.getDateRange('month');
+        // Get date ranges using the new utility functions
+        const { todayStart, todayEnd, weekStart, monthStart, yearStart } = getDashboardDateRanges();
 
         // Sales Statistics
         const todaySales = await Transaction.sum('amount', {
             where: {
                 createdAt: {
                     [Op.between]: [todayStart, todayEnd]
-                }
+                },
+                status: 'completed',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -24,7 +25,9 @@ module.exports.getDashboardStats = async (req, res, next) => {
             where: {
                 createdAt: {
                     [Op.gte]: weekStart
-                }
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -32,7 +35,19 @@ module.exports.getDashboardStats = async (req, res, next) => {
             where: {
                 createdAt: {
                     [Op.gte]: monthStart
-                }
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
+            }
+        });
+
+        const yearlySales = await Transaction.sum('amount', {
+            where: {
+                createdAt: {
+                    [Op.gte]: yearStart
+                },
+                status: 'COMPLETED',
+                transactionType: 'PURCHASE'
             }
         });
 
@@ -49,7 +64,12 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const userStats = await User.findAll({
             attributes: [
                 [sequelize.col('roles.role'), 'role'],
-                [sequelize.fn('COUNT', sequelize.col('User.id')), 'count']
+                [sequelize.fn('COUNT', sequelize.col('User.id')), 'count'],
+                [sequelize.literal('SUM(CASE WHEN User.blocked = true THEN 1 ELSE 0 END)'), 'blocked_count'],
+                [sequelize.literal('SUM(CASE WHEN (roles.role != \'customer\' OR User.email_verified_at IS NOT NULL) AND User.blocked = false AND User.deletedAt IS NULL THEN 1 ELSE 0 END)'), 'active_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NOT NULL AND User.deletedAt IS NULL AND User.blocked = false THEN 1 ELSE 0 END)'), 'verified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN roles.role = \'customer\' AND User.email_verified_at IS NULL AND User.deletedAt IS NULL AND User.blocked = false THEN 1 ELSE 0 END)'), 'unverified_customer_count'],
+                [sequelize.literal('SUM(CASE WHEN User.deletedAt IS NOT NULL THEN 1 ELSE 0 END)'), 'deleted_count']
             ],
             include: [{
                 model: Role,
@@ -63,8 +83,11 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const productStats = await ProductVariant.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'totalProducts'],
-                [sequelize.literal('SUM(CASE WHEN stock <= 10 THEN 1 ELSE 0 END)'), 'lowStock'],
-                [sequelize.literal('SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END)'), 'outOfStock']
+                [sequelize.literal('SUM(CASE WHEN stock <= low_stock_threshold THEN 1 ELSE 0 END)'), 'lowStock'],
+                [sequelize.literal('SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END)'), 'outOfStock'],
+                [sequelize.literal('SUM(CASE WHEN stock_status = \'in_stock\' THEN 1 ELSE 0 END)'), 'inStock'],
+                [sequelize.literal('SUM(CASE WHEN stock_status = \'out_of_stock\' THEN 1 ELSE 0 END)'), 'outOfStockStatus'],
+                [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock']
             ]
         });
 
@@ -80,30 +103,46 @@ module.exports.getDashboardStats = async (req, res, next) => {
         // Recent Transactions
         const recentTransactions = await Transaction.findAll({
             order: [['createdAt', 'DESC']],
-            limit: 5,
+            limit: 10,
             include: [{
                 model: Order,
                 as: 'order',
-                attributes: ['id']
+                attributes: ['id', 'order_unique_id' , 'status', 'createdAt', 'updatedAt'],
+                include: [{
+                    model: User,
+                    as: 'user',
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url'],
+                    paranoid: false
+                }]
             }]
         });
 
         // Recent Orders
         const recentOrders = await Order.findAll({
             order: [['createdAt', 'DESC']],
-            limit: 5,
-            include: [{
-                model: User,
-                as: 'user',
-                attributes: ['first_name', 'last_name', 'email']
-            }]
+            limit: 10,
+            include: [
+                {
+                    model: Transaction,
+                    as: 'transactions',
+                    attributes: ['id', 'amount', 'status', 'createdAt', 'updatedAt'],
+                    paranoid: false
+                },
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['first_name', 'last_name', 'email', 'profile_pic_url'],
+                    paranoid: false
+                }
+            ]
         });
 
         const stats = {
             sales: {
                 today: todaySales || 0,
                 weekly: weeklySales || 0,
-                monthly: monthlySales || 0
+                monthly: monthlySales || 0,
+                yearly: yearlySales || 0
             },
             orders: orderStats,
             users: userStats,
@@ -127,9 +166,17 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const formattedStats = {
             ...stats,
             sales: {
+                // Currency format for precise financial reporting
                 today: dashboardHelper.formatCurrency(stats.sales.today),
                 weekly: dashboardHelper.formatCurrency(stats.sales.weekly),
-                monthly: dashboardHelper.formatCurrency(stats.sales.monthly)
+                monthly: dashboardHelper.formatCurrency(stats.sales.monthly),
+                yearly: dashboardHelper.formatCurrency(stats.sales.yearly),
+                
+                // Abbreviated format with currency symbol for quick visual scanning
+                todayAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.today),
+                weeklyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.weekly),
+                monthlyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.monthly),
+                yearlyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.yearly)
             }
         };
 

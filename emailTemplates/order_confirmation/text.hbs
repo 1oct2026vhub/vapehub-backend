@@ -1,0 +1,45 @@
+{{#*inline "orderConfirmationText"}}
+Hello {{userName}},
+
+Thank you for your order at VapeHub! Here are your order details:
+
+Order Number: #{{orderCode}}
+Order Date: {{orderDate}}
+
+Items Ordered:
+{{#items}}
+- {{name}}
+  Quantity: {{quantity}}
+  Price: {{price}}
+  Total: {{total}}
+{{/items}}
+
+Total Amount: {{totalAmount}}
+
+Shipping Address:
+{{shippingAddress.name}} {{shippingAddress.last_name}}
+{{shippingAddress.street}}
+{{shippingAddress.town}}, {{shippingAddress.region}} {{shippingAddress.post_code}}
+{{shippingAddress.country}}
+Phone: {{shippingAddress.phone}}
+
+Billing Address:
+{{billingAddress.name}} {{billingAddress.last_name}}
+{{billingAddress.street}}
+{{billingAddress.town}}, {{billingAddress.region}} {{billingAddress.post_code}}
+{{billingAddress.country}}
+Phone: {{billingAddress.phone}}
+
+Payment Information:
+Payment Method: {{paymentMethod}}
+Transaction ID: {{transactionId}}
+
+If you have any questions about your order, please contact our customer service.
+
+Best regards,
+The VapeHub Team
+
+© {{currentYear}} VapeHub. All rights reserved.
+{{/inline}}
+
+{{> orderConfirmationText}} 

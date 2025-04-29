@@ -49,8 +49,9 @@ const customerController = require('../domain/customer.controller');
  *       - in: query
  *         name: blocked
  *         schema:
- *           type: boolean
- *         description: Filter users by blocked status (true only blocked users, false only active users)
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter users by blocked status (true only blocked users, false only active users). Accepts both boolean and string values.
  *       - in: query    
  *         name: verified
  *         schema:

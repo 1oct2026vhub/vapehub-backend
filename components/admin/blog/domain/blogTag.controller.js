@@ -41,15 +41,14 @@ module.exports.listAllBlogTags = async (req, res, next) => {
                 { slug: { [Op.like]: `%${search}%` } }
             ];
         }
-
-        whereCondition.deleted_at = deleted === "true" ? { [Op.ne]: null } : null;
+        whereCondition.deleted_at = deleted === true ? { [Op.ne]: null } : null;
 
         const { count, rows: tags } = await BlogTag.findAndCountAll({
             where: whereCondition,
             limit,
             offset,
             order: [[sort, order]],
-            paranoid: false,
+            paranoid: deleted !== "true",   
             include: [{
                 model: User,
                 as: 'updatedBy',
@@ -66,6 +65,7 @@ module.exports.listAllBlogTags = async (req, res, next) => {
             tags,
         }, "Blog tags retrieved successfully");
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };
@@ -188,7 +188,7 @@ module.exports.restoreBlogTag = async (req, res, next) => {
             return errorResponse(res, { message: "Blog tag not found" }, "Blog tag not found", 404);
         }
 
-        if (!tag.deleted_at) {
+        if (!tag.deletedAt) {
             return errorResponse(res, { message: "Blog tag is not deleted" }, "Blog tag is not deleted", 400);
         }
 

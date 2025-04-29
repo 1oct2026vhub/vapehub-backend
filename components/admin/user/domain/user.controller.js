@@ -1,6 +1,6 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role } = require("../../../../models");
+const { User, Role, Order } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const bcrypt = require('bcrypt');
@@ -168,6 +168,7 @@ module.exports.listUsers = async (req, res) => {
             roleId, 
             search, 
             deleted = "false",
+            blocked = "all",
             verified = "all" 
         } = req.query;
 
@@ -175,7 +176,7 @@ module.exports.listUsers = async (req, res) => {
         const allowedSortFields = [
             'id', 'first_name', 'last_name', 'email', 'phone', 
             'gender', 'createdAt', 'updatedAt', 'deletedAt',
-            'email_verified_at'
+            'email_verified_at', 'blocked'
         ];
         
         const validatedSortBy = allowedSortFields.includes(sort_by) ? sort_by : 'createdAt';
@@ -186,6 +187,13 @@ module.exports.listUsers = async (req, res) => {
 
         const offset = (page - 1) * limit;
         const whereCondition = {};
+
+        // Check if the requesting user is a super user
+        const requestingUser = req.user;
+        if (!requestingUser.super_user) {
+            // If not a super user, exclude super users from the results
+            whereCondition.super_user = false;
+        }
 
         // Filter by roleId if provided
         if (roleId) {
@@ -205,12 +213,17 @@ module.exports.listUsers = async (req, res) => {
         }
 
         // Filter by deleted flag
-        if (deleted !== undefined) {
+        if (deleted !== undefined && deleted !== "all") {
             if (deleted === "true") {
                 whereCondition.deletedAt = { [Op.ne]: null };
             } else {
                 whereCondition.deletedAt = null;
             }
+        }
+
+        // Filter by blocked status
+        if (blocked !== undefined && blocked !== "all") {
+            whereCondition.blocked = blocked === true || blocked === "true";
         }
 
         // Add email verification filter
@@ -246,10 +259,42 @@ module.exports.listUsers = async (req, res) => {
 module.exports.deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+        const requestingUser = req.user;
 
         const user = await User.findByPk(id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return errorResponse(res, { message: "User not found" }, 404);
+        }
+
+        // Check if requesting user has permission to delete the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to delete a super user" }, 403);
+        }
+
+        // Check for existing orders with specific statuses
+        const restrictedStatuses = [
+            constants.orderStatus.PENDING,
+            constants.orderStatus.PROCESSING,
+            constants.orderStatus.PACKED,
+            constants.orderStatus.SHIPPED,
+            constants.orderStatus.OUT_FOR_DELIVERY,
+            constants.orderStatus.RETURN_REQUESTED,
+            constants.orderStatus.RETURN_RECEIVED
+        ];
+
+        const existingOrders = await Order.findAll({
+            where: {
+                user_id: id,
+                status: {
+                    [Op.in]: restrictedStatuses
+                }
+            }
+        });
+
+        if (existingOrders.length > 0) {
+            return errorResponse(res, { 
+                message: "Cannot delete user. User has active orders that are pending, processing, packed, shipped, out for delivery, or in return process." 
+            }, 400);
         }
 
         await user.destroy(); // Soft delete enabled because `paranoid: true`
@@ -278,6 +323,70 @@ module.exports.restoreUser = async (req, res) => {
         return successResponse(res, { }, "User restored successfully", 200);
     } catch (error) {
         console.error("Error restoring user:", error);
+        return errorResponse(res, error);
+    }
+};
+
+//Block a User
+module.exports.blockUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requestingUser = req.user;
+
+        const user = await User.findByPk(id);
+        if (!user) {            
+            return errorResponse(res, { message: "User not found" }, 404);
+        }
+        if (user.blocked) {            
+            return errorResponse(res, { message: "User is already blocked" }, 400);
+        }
+
+        // Check if requesting user has permission to block the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to block a super user" }, 403);
+        }
+
+        // Check if requesting user is trying to block themselves
+        if (requestingUser.id === user.id) {
+            return errorResponse(res, { message: "You cannot block yourself" }, 400);
+        }
+
+        user.blocked = true;
+        await user.save();
+        return successResponse(res, { }, "User blocked successfully", 200);
+    } catch (error) {
+        console.error("Error blocking user:", error);
+        return errorResponse(res, error);
+    }
+};
+
+//Unblock a User
+module.exports.unblockUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requestingUser = req.user;
+        
+        const user = await User.findByPk(id);
+
+        if (!user) {            
+            return errorResponse(res, { message: "User not found" }, 404);
+        }
+        
+        if (!user.blocked) {            
+            return errorResponse(res, { message: "User is active" }, 400);
+        }
+
+        // Check if requesting user has permission to unblock the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to unblock a super user" }, 403);
+        }
+        
+        user.blocked = false;
+        await user.save();
+
+        return successResponse(res, { }, "User unblocked successfully", 200);
+    } catch (error) {
+        console.error("Error unblocking user:", error);
         return errorResponse(res, error);
     }
 };

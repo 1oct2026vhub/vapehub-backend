@@ -199,7 +199,7 @@ router.delete('/:id', authenticateJWT,
  *       - in: query
  *         name: brand
  *         schema:
- *           type: integer
+ *           type: string
  *         description: Brand ID
  *       - in: query
  *         name: flavours
@@ -259,6 +259,16 @@ router.delete('/:id', authenticateJWT,
  *           type: integer
  *           default: 0
  *         description: Number of items to skip
+ *       - in: query
+ *         name: variant
+ *         schema:
+ *           type: object
+ *           description: Filter products by variant attributes
+ *           example:
+ *             "variant": 
+ *               "12": [475, 477, 851, 5]
+ *               "29": [33, 669, 55]
+ *         description: Object where keys are attribute IDs and values are arrays of term IDs
  *     responses:
  *       200:
  *         description: A single category

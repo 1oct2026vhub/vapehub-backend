@@ -1,3 +1,5 @@
+const { getTodayStart, getTodayEnd, getWeekStart, getMonthStart, getYearStart, formatDateTime, formatNumber } = require("../../../../utils/dateUtils");
+
 class DashboardHelper {
     formatDate(date) {
         return new Date(date).toISOString().split('T')[0];
@@ -9,39 +11,48 @@ class DashboardHelper {
     }
 
     formatCurrency(amount) {
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat('en-GB', {
             style: 'currency',
-            currency: 'USD'
+            currency: 'GBP'
         }).format(amount);
     }
 
-    getDateRange(type) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    /**
+     * Format a number into an abbreviated readable string
+     * @param {number} num - The number to format
+     * @param {number} [decimals=2] - Number of decimal places to show
+     * @returns {string} Formatted number string (e.g., 1.20K, 1.50M)
+     */
+    formatAbbreviatedNumber(num, decimals = 2) {
+        return formatNumber(num, decimals);
+    }
 
+    getDateRange(type) {
         switch (type) {
             case 'today':
                 return {
-                    start: today,
-                    end: new Date()
+                    start: getTodayStart(),
+                    end: getTodayEnd()
                 };
             case 'week':
-                const startOfWeek = new Date(today);
-                startOfWeek.setDate(today.getDate() - today.getDay());
                 return {
-                    start: startOfWeek,
-                    end: new Date()
+                    start: getWeekStart(),
+                    end: getTodayEnd()
                 };
             case 'month':
-                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                 return {
-                    start: startOfMonth,
-                    end: new Date()
+                    start: getMonthStart(),
+                    end: getTodayEnd()
+                };
+            case 'year':
+                return {
+                    start: getYearStart(),
+                    end: getTodayEnd()
                 };
             default:
                 return {
-                    start: today,
-                    end: new Date()
+                    start: getTodayStart(),
+                    end: getTodayEnd()
                 };
         }
     }

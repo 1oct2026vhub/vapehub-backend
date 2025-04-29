@@ -1,7 +1,8 @@
 const { body, query, param } = require('express-validator');
+const { orderStatusEnums } = require('../../../../config/constants');
 
 // Define the valid status values based on the Order model
-const ORDER_STATUS = ['draft', 'pending', 'fail', 'cancel', 'return'];
+const ORDER_STATUS = orderStatusEnums;
 
 const listAllOrdersValidation = [
     query('status')

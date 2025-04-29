@@ -17,7 +17,7 @@ module.exports.listUsers = async (req, res) => {
             limit = 10, 
             search, 
             deleted = "false", 
-            blocked = "false",
+            blocked = "all",
             verified = "all" 
         } = req.query;
 
@@ -59,13 +59,13 @@ module.exports.listUsers = async (req, res) => {
         }
 
         // Filter by deleted flag if provided
-        if (deleted !== undefined) {
+        if (deleted !== undefined && deleted !== "all") {
             whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
         }
 
         // Filter by blocked status
-        if (blocked !== undefined) {
-            whereCondition.blocked = blocked === "true";
+        if (blocked !== undefined && blocked !== "all") {
+            whereCondition.blocked = blocked === true || blocked === "true";
         }
 
         // Filter by email verification status
@@ -134,10 +134,42 @@ module.exports.listUsers = async (req, res) => {
 module.exports.deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+        const requestingUser = req.user;
 
         const user = await User.findByPk(id);
         if (!user) {
             return errorResponse(res, { message: "User not found" }, 404);
+        }
+
+        // Check if requesting user has permission to delete the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to delete a super user" }, 403);
+        }
+
+        // Check for existing orders with specific statuses
+        const restrictedStatuses = [
+            constants.orderStatus.PENDING,
+            constants.orderStatus.PROCESSING,
+            constants.orderStatus.PACKED,
+            constants.orderStatus.SHIPPED,
+            constants.orderStatus.OUT_FOR_DELIVERY,
+            constants.orderStatus.RETURN_REQUESTED,
+            constants.orderStatus.RETURN_RECEIVED
+        ];
+
+        const existingOrders = await Order.findAll({
+            where: {
+                user_id: id,
+                status: {
+                    [Op.in]: restrictedStatuses
+                }
+            }
+        });
+
+        if (existingOrders.length > 0) {
+            return errorResponse(res, { 
+                message: "Cannot delete user. User has active orders that are pending, processing, packed, shipped, out for delivery, or in return process." 
+            }, 400);
         }
 
         await user.destroy(); // Soft delete enabled because `paranoid: true`
@@ -174,6 +206,7 @@ module.exports.restoreUser = async (req, res) => {
 module.exports.blockUser = async (req, res) => {
     try {
         const { id } = req.params;
+        const requestingUser = req.user;
 
         const user = await User.findByPk(id);
         if (!user) {            
@@ -182,6 +215,12 @@ module.exports.blockUser = async (req, res) => {
         if (user.blocked) {            
             return res.status(400).json({ message: "User is already blocked" });
         }
+
+        // Check if requesting user has permission to block the target user
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to block a super user" }, 403);
+        }
+
         user.blocked = true;
         await user.save();
         return successResponse(res, { }, "User blocked successfully", 200);

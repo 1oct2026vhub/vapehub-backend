@@ -13,7 +13,7 @@ module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
-            categories, brands, deleted, is_new, variant_attributes
+            categories, brands, deleted, is_new, variant_attributes, status
         } = req.query;
 
         const parsedLimit = parseInt(limit, 10);
@@ -42,6 +42,11 @@ module.exports.listAllProducts = async (req, res, next) => {
                 { name: { [Op.like]: `%${keyword}%` } },
                 { slug: { [Op.like]: `%${keyword}%` } }
             );
+        }
+
+        // Status filter
+        if (status) {
+            whereClause[Op.and].push({ status });
         }
 
         // Price range filter based on product variants or product price
@@ -752,15 +757,33 @@ module.exports.uploadImage = async (req, res) => {
             updated_by: req.user.id
         }));
 
-        await ProductImage.bulkCreate(imageRecords, { transaction });
+        const createdImages = await ProductImage.bulkCreate(imageRecords, { transaction });
 
         await transaction.commit();
+
+        // Fetch the created images to get their IDs
+        const savedImages = await ProductImage.findAll({
+            where: {
+                product_id,
+                image_url: {
+                    [Op.in]: uploadedImages.map(img => img.Location)
+                }
+            },
+            attributes: ['id', 'image_url', 'is_primary']
+        });
+
+        // Create a map of image URLs to their IDs
+        const imageUrlToIdMap = {};
+        savedImages.forEach(img => {
+            imageUrlToIdMap[img.image_url] = img.id;
+        });
 
         return successResponse(res, {
             message: "Images uploaded and associated successfully",
             images: uploadedImages.map(({ Location, Key }) => ({
+                id: imageUrlToIdMap[Location],
                 url: Location,
-                key: Key
+                key: Key,
             }))
         });
 
@@ -939,9 +962,8 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
             products: [],
             attributes: []
         };
-        const promises = [];
-
-        // Process Products Sheet
+        
+        // First, process all products
         if (productSheet) {
             const headerRow = productSheet.getRow(1).values;
             const isFirstHeaderEmpty = !headerRow[0] || headerRow[0] !== 'ID';
@@ -972,15 +994,15 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     continue;
                 }
 
-                promises.push(processProductRow({
+                await processProductRow({
                     id, name, slug, description, 
                     brand_slug, category_slug, updated_by, 
                     results
-                }));
+                });
             }
         }
 
-        // Process Attributes Sheet
+        // Then, process all attributes after products are created/updated
         if (attributeSheet) {
             const attrHeaderRow = attributeSheet.getRow(1).values;
             const isFirstAttrHeaderEmpty = !attrHeaderRow[0] || attrHeaderRow[0] !== 'Product Slug';
@@ -1010,7 +1032,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     continue;
                 }
 
-                promises.push(processAttributeRow({
+                await processAttributeRow({
                     product_slug,
                     attribute_slug,
                     term_slugs,
@@ -1018,12 +1040,9 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     used_in_variation,
                     updated_by,
                     results
-                }));
+                });
             }
         }
-
-        // Wait for all promises to resolve
-        await Promise.all(promises);
 
         // Sort results
         results.products.sort(sortByStatus);
@@ -1154,25 +1173,31 @@ const processAttributeRow = async ({ product_slug, attribute_slug, term_slugs, i
             throw new Error(`Some terms not found: ${missingSlugs.join(', ')}`);
         }
 
-        // Remove existing attribute terms for this product-attribute combination
-        await ProductAttributeTerm.destroy({
-            where: {
-                product_id: product.id,
-                attribute_id: attribute.id
-            }
-        });
+        // Process each term
+        for (const term of terms) {
+            // Use findOrCreate to handle existing records
+            const [attributeTerm, created] = await ProductAttributeTerm.findOrCreate({
+                where: {
+                    product_id: product.id,
+                    attribute_id: attribute.id,
+                    term_id: term.id
+                },
+                defaults: {
+                    is_visible_page: is_visible_page === 'true' || is_visible_page === true,
+                    used_in_variation: used_in_variation === 'true' || used_in_variation === true,
+                    updated_by
+                }
+            });
 
-        // Create new attribute terms
-        await Promise.all(terms.map(term => 
-            ProductAttributeTerm.create({
-                product_id: product.id,
-                attribute_id: attribute.id,
-                term_id: term.id,
-                is_visible_page: is_visible_page === 'true' || is_visible_page === true,
-                used_in_variation: used_in_variation === 'true' || used_in_variation === true,
-                updated_by
-            })
-        ));
+            // If the record already existed, update its properties
+            if (!created) {
+                await attributeTerm.update({
+                    is_visible_page: is_visible_page === 'true' || is_visible_page === true,
+                    used_in_variation: used_in_variation === 'true' || used_in_variation === true,
+                    updated_by
+                });
+            }
+        }
 
         results.attributes.push({
             product_slug,
@@ -1293,6 +1318,40 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
     } catch (error) {
         logger.error('Error generating sample Excel:', error);
         return errorResponse(res, error, "Error generating sample Excel file");
+    }
+};
+
+/**
+ * Updates the status of a product
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+module.exports.updateProductStatus = async (req, res, next) => {
+    const transaction = await Product.sequelize.transaction();
+    try {
+        const { productId, status } = req.body;
+        const { id: updated_by } = req.user;
+
+        // Find the product
+        const product = await Product.findByPk(productId, { transaction });
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Update the product status
+        await product.update({ 
+            status,
+            updated_by
+        }, { transaction });
+
+        await transaction.commit();
+        return successResponse(res, { message: "Product status updated successfully" });
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Error updating product status:', error);
+        return errorResponse(res, error, error.message);
     }
 };
 

@@ -1,9 +1,11 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, UserAddress, sequelize } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
+const { formatNumber } = require('../../../../utils/dateUtils');
+
 module.exports.listAllOrders = async (req, res, next) => {
     try {
         const { 
@@ -25,14 +27,19 @@ module.exports.listAllOrders = async (req, res, next) => {
 
         // Date range filter
         if (start_date && end_date) {
-            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            // Parse dates using moment to ensure consistent handling
+            const startMoment = moment(start_date);
+            const endMoment = moment(end_date);
+            
+            // Set start of day for start date and end of day for end date
+            const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
             
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
             };
         }
-
+       
         // Search filter
         if (search) {
             // First find matching user IDs
@@ -44,7 +51,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         { email: { [Op.like]: `%${search}%` } }
                     ]
                 },
-                attributes: ['id']
+                attributes: ['id'],
+                paranoid: false
             });
 
             const userIds = matchingUsers.map(user => user.id);
@@ -59,24 +67,34 @@ module.exports.listAllOrders = async (req, res, next) => {
                 whereCondition[Op.or].push({ user_id: { [Op.in]: userIds } });
             }
         }
-
-        const orders = await Order.findAndCountAll({
+        
+        // Get total count separately to ensure accuracy
+        const totalCount = await Order.count({
+            where: whereCondition
+        });
+        
+        // Get orders with pagination
+        const orders = await Order.findAll({
             where: whereCondition,
             include: [
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                    required: false,
+                    paranoid: false
                 },
                 {
                     model: UserAddress,
                     as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                    required: false
                 },
                 {
                     model: UserAddress,
                     as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                    required: false
                 },
                 {
                     model: OrderItem,
@@ -86,6 +104,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                             model: Product,
                             as: 'product',
                             attributes: ['id', 'name', 'slug'],
+                            required: false,
                             include: [
                                 {
                                     model: ProductImage,
@@ -99,7 +118,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'slug']
+                            attributes: ['id', 'barcode', 'price', 'slug'],
+                            required: false
                         }
                     ]
                 }
@@ -110,12 +130,12 @@ module.exports.listAllOrders = async (req, res, next) => {
         });
 
         const response = {
-            orders: orders.rows,
+            orders: orders,
             pagination: {
-                total: orders.count,
+                total: totalCount,
                 page: parseInt(page),
                 limit: parseInt(limit),
-                total_pages: Math.ceil(orders.count / limit)
+                total_pages: Math.ceil(totalCount / limit)
             }
         };
 
@@ -133,17 +153,18 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url', 'gender', 'dob']
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url', 'gender', 'dob'],
+                    paranoid: false
                 },
                 {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
-                    model: UserAddress,
-                    as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone']
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
                 },
                 {
                     model: OrderItem,
@@ -169,6 +190,20 @@ module.exports.getOrderById = async (req, res, next) => {
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug']
                         }
                     ]
+                },
+                {
+                    model: OrderLog,
+                    as: 'orderLogs',
+                    attributes: ['id', 'status', 'label', 'additional_info', 'createdAt'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'user',
+                            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                            paranoid: false
+                        }
+                    ],
+                    order: [['createdAt', 'ASC']]
                 }
             ]
         });
@@ -179,7 +214,14 @@ module.exports.getOrderById = async (req, res, next) => {
             throw error;
         }
 
-        successResponse(res, order, 'Success');
+        // Get the status timeline
+        const statusTimeline = await order.getStatusTimeline();
+
+        // Add status timeline to the response
+        const orderResponse = order.toJSON();
+        orderResponse.statusTimeline = statusTimeline;
+
+        successResponse(res, orderResponse, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -198,21 +240,24 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Validate status
-        if (status && !Object.values(orderStatusEnums).includes(status)) {
+        // Validate status exists in enum
+        if (!status || !Object.values(orderStatusEnums).includes(status)) {
             const error = new Error('Invalid order status');
             error.statusCode = 400;
             throw error;
         }
 
-        // Update order
+        // Update order with admin flag and user ID
         await order.update({
-            status: status || order.status,
+            status: status,
             updated_by: user_id
+        }, {
+            isAdmin: true,  // Since this is in admin controller
+            userId: user_id // Pass the user ID for logging
         });
 
-        // If order is cancelled, restore product stock
-        if (status === orderStatus.CANCELLED) {
+        // Handle stock updates for cancelled orders
+        if (status === orderStatus.CANCEL) {
             const orderItems = await OrderItem.findAll({
                 where: { order_id: id },
                 include: [
@@ -224,13 +269,15 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             });
 
             for (const item of orderItems) {
-                await item.variant.increment('stock', { by: item.quantity });
+                if (item.variant) {
+                    await item.variant.increment('stock', { by: item.quantity });
+                }
             }
         }
 
         successResponse(res, order, 'Order status updated successfully');
     } catch (error) {
-        console.log(error);
+        console.error("updateOrderStatus error:", error);
         return errorResponse(res, error, error.message);
     }
 };
@@ -241,20 +288,22 @@ module.exports.getOrderStats = async (req, res, next) => {
 
         let whereCondition = {};
         if (start_date && end_date) {
-            // Add start of time to start_date and end of time to end_date
-            const startDateTime = start_date;
-            const endDateTime = start_date === end_date 
-                ? `${end_date} 23:59:59`
-                : end_date;
-
+            // Parse dates using moment to ensure consistent handling
+            const startMoment = moment(start_date);
+            const endMoment = moment(end_date);
+            
+            // Set start of day for start date and end of day for end date
+            const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
+            
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
             };
         } else {
             // If no dates provided, fetch today's data
-            const today = new Date();
-            const startOfDay = today.toISOString().split('T')[0];
-            const endOfDay = `${startOfDay} 23:59:59`;
+            const today = moment();
+            const startOfDay = today.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+            const endOfDay = today.endOf('day').format('YYYY-MM-DD HH:mm:ss');
             
             whereCondition.createdAt = {
                 [Op.between]: [startOfDay, endOfDay]
@@ -272,8 +321,22 @@ module.exports.getOrderStats = async (req, res, next) => {
             group: ['status']
         });
 
+        // Format the stats with abbreviated numbers
+        const formattedOrderStatusStats = orderStatusStats.map(stat => {
+            const totalAmount = parseFloat(stat.getDataValue('total_amount')) || 0;
+            const count = parseInt(stat.getDataValue('count')) || 0;
+            
+            return {
+                status: stat.getDataValue('status'),
+                count: count,
+                count_abbreviated: formatNumber(count, 0),
+                total_amount: totalAmount,
+                total_amount_abbreviated: formatNumber(totalAmount)
+            };
+        });
+
         const stats = {
-            order_status: orderStatusStats
+            order_status: formattedOrderStatusStats
         };
 
         successResponse(res, stats, 'Success');
@@ -300,13 +363,13 @@ module.exports.generateOrderReport = async (req, res, next) => {
         // Date range filter
         if (start_date && end_date) {
             const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endDateTime = end_date.includes(' ') ? end_date : `${end_date} 23:59:59`;
+            const endMoment = moment(end_date);
+            const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
             
             whereCondition.createdAt = {
                 [Op.between]: [startDateTime, endDateTime]
             };
         }
-        console.log(whereCondition);
         const orders = await Order.findAll({
             where: whereCondition,
             include: [
@@ -314,12 +377,19 @@ module.exports.generateOrderReport = async (req, res, next) => {
                     model: User,
                     as: 'user',
                     attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
+                    required: false,
+                    paranoid: false
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
                     required: false
                 },
                 {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'],
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
                     required: false
                 },
                 {
@@ -358,6 +428,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
             { header: 'Customer Email', key: 'customerEmail', width: 30 },
             { header: 'Customer Phone', key: 'customerPhone', width: 20 },
             { header: 'Shipping Address', key: 'shippingAddress', width: 50 },
+            { header: 'Billing Address', key: 'billingAddress', width: 50 },
             { header: 'Product Details', key: 'productDetails', width: 50 },
             { header: 'Total Amount', key: 'totalAmount', width: 15 }
         ];
@@ -370,8 +441,13 @@ module.exports.generateOrderReport = async (req, res, next) => {
             const customerPhone = order.user?.phone || 'N/A';
             
             // Safely handle shipping address
-            const shippingAddress = order.shippingAddress ? 
-                `${order.shippingAddress.name || ''} ${order.shippingAddress.last_name || ''}, ${order.shippingAddress.street || ''}, ${order.shippingAddress.town || ''}, ${order.shippingAddress.county || ''} ${order.shippingAddress.post_code || ''}, ${order.shippingAddress.country || ''}`.trim() : 
+            const shippingAddress = order.orderShippingAddress ? 
+                `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim() : 
+                'N/A';
+
+            // Safely handle billing address
+            const billingAddress = order.orderBillingAddress ? 
+                `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim() : 
                 'N/A';
 
             // Safely handle product details
@@ -391,6 +467,7 @@ module.exports.generateOrderReport = async (req, res, next) => {
                 customerEmail,
                 customerPhone,
                 shippingAddress,
+                billingAddress,
                 productDetails,
                 totalAmount: order.total
             });

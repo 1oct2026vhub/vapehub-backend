@@ -1,5 +1,4 @@
-
-const { body, checkSchema } = require("express-validator");
+const { body, checkSchema, param } = require("express-validator");
 
 exports.validatePlaceOrder = [
   body("email")
@@ -103,11 +102,18 @@ exports.validatePlaceOrder = [
   body("payment_method").isObject().withMessage("Payment method is required"),
   body("payment_method.method")
     .isIn(["Worldpay", "VivaWallet"])
-    .withMessage("Payment method must be 'Worldpay' or 'vivaWallet'"),
+    .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
     .isFloat({ min: 0 })
     .withMessage("Total amount must be a positive number")
     .notEmpty()
     .withMessage("Total amount is required"),
+];
+
+exports.validateOrderId = [
+    param('orderId')
+        .isInt({ min: 1 })
+        .withMessage('Order ID must be a positive integer')
+        .toInt()
 ];

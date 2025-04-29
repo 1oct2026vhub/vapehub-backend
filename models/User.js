@@ -11,6 +11,20 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
             this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
             this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
+            
+            // Referral relations
+            this.hasMany(models.Referral, { 
+                foreignKey: 'referrer_id', 
+                as: 'referralsMade' 
+            });
+            this.hasOne(models.Referral, { 
+                foreignKey: 'referred_user_id', 
+                as: 'referralReceived' 
+            });
+            this.belongsTo(models.User, { 
+                foreignKey: 'referred_by', 
+                as: 'referrer' 
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -110,8 +124,32 @@ module.exports = (sequelize, DataTypes) => {
         referral_code: {
             type: DataTypes.STRING(15),
             allowNull: true,
+            unique: true
+        },
+        referred_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'users',
+                key: 'id'
+            }
+        },
+        referral_points: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
+        receive_promotions: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         },
         blocked: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
+        super_user: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
@@ -129,16 +167,46 @@ module.exports = (sequelize, DataTypes) => {
         return bcrypt.compareSync(providedPassword, this.password);
     };
 
+    // Add method to generate referral code
+    User.prototype.generateReferralCode = async function() {
+        let isUnique = false;
+        let referralCode;
+        
+        while (!isUnique) {
+            // Generate a random string of 6 characters
+            const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
+            // Combine user ID with random string
+            referralCode = `${this.id}${randomString}`;
+            
+            // Check if the code already exists
+            const existingUser = await User.findOne({
+                where: { referral_code: referralCode }
+            });
+            
+            if (!existingUser) {
+                isUnique = true;
+            }
+        }
+        
+        return referralCode;
+    };
+
+    // Add method to add referral points
+    User.prototype.addReferralPoints = async function(points) {
+        this.referral_points += points;
+        await this.save();
+    };
+
     User.beforeCreate(async (user, options) => {
         if (user.password) {
-            user.password = await bcrypt.hash(user.password, 10); // Hash password before saving
+            user.password = await bcrypt.hash(user.password, 10);
         }
     });
+
+    // Add afterCreate hook to generate referral code
     User.afterCreate(async (user, options) => {
-        if (!user.referral_code) {
-            user.referral_code = User.generateReferralCode(user.id);
-        }
-        await user.save();
+        const referralCode = await user.generateReferralCode();
+        await user.update({ referral_code: referralCode });
     });
 
     return User;

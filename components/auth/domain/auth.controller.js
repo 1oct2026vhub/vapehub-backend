@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role } = require("../../../models");
+const { User, Role, Referral } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -13,13 +13,18 @@ module.exports.login = async (req, res, next) => {
     try {
         const { email, password, resendVerificationEmail = false } = req.body;
 
-        // Find user by email, fetching only required fields
+        // Find user by email, including soft-deleted records
         const user = await User.findOne({
             where: { email },
+            paranoid: false // Include soft-deleted records
         });
-
         if (!user) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, {}, "Invalid email or password", 400);
+        }
+
+        // Check if user is soft-deleted
+        if (user.deletedAt) {
+            return errorResponse(res, {}, "Account is deleted", 400);
         }
 
         if (user.blocked) {
@@ -29,7 +34,7 @@ module.exports.login = async (req, res, next) => {
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
-            return errorResponse(res, { message: "Invalid email or password" }, 400);
+            return errorResponse(res, {},"Invalid email or password", 400);
         }
 
         if (!user?.email_verified_at) {
@@ -88,8 +93,12 @@ module.exports.login = async (req, res, next) => {
 module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
+        const referral_code = req.query.referral_code;
         //  check email already exists
-        const userExists = await User.findOne({ where: { email } });
+        const userExists = await User.findOne({ where: { email }, paranoid: false });
+        if (userExists && userExists.deletedAt) {
+            return errorResponse(res, {}, "This user email already deleted", 400);
+        }
         if (userExists) {
             throw {
                 message: "User email already exists",
@@ -97,21 +106,51 @@ module.exports.register = async (req, res, next) => {
                 errors: { email: "User eamil already exists" },
             }
         }
+
+        // If referral code is provided, find the referrer
+        let referrer = null;
+        if (referral_code) {
+            referrer = await User.findOne({
+                where: { referral_code }
+            });
+            if (!referrer) {
+                throw {
+                    message: "Invalid referral code",
+                    statusCode: 400,
+                    errors: { referral_code: "The provided referral code is invalid" }
+                };
+            }
+        }
+
         const role = await Role.findOne({
-            attributes: ['id'], // Only fetch the required column
+            attributes: ['id'],
             where: { permission: 'user' },
         });
         const roleId = role?.id || null;
 
         const token = uuid()
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        
+        // Create user with initial data
         const user = await User.create({
             email,
             password: password,
             token,
             token_expiry,
-            roleId
+            roleId,
+            referred_by: referrer ? referrer.id : null
         });
+
+        // Create referral record if referrer exists
+        if (referrer) {
+            await Referral.create({
+                referrer_id: referrer.id,
+                referred_user_id: user.id,
+                referral_code: referral_code,
+                points_awarded: 10,
+                status: 'completed'
+            });
+        }
 
         const username = user?.first_name ?? user.email.split('@')[0];
 
@@ -125,7 +164,12 @@ module.exports.register = async (req, res, next) => {
             },
             attachments: ""
         }
+        // If user was referred, add referral points to referrer
+        if (referrer) {
+            await referrer.addReferralPoints(10); // Add 10 points for successful referral
+        }
         await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
         return errorResponse(res, error);

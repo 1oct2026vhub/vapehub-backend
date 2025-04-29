@@ -3,7 +3,7 @@ const cartController = require("../domain/cart.controller");
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
-
+const { validateBulkCartUpdate } = require("../helper/cart.validator");
 
 /**
  * @swagger
@@ -98,6 +98,85 @@ router.put('/:id', authenticateJWT,
 
 /**
  * @swagger
+ * /api/cart/bulk-update:
+ *   post:
+ *     summary: Bulk Update Cart
+ *     description: Adds or updates multiple cart items for a user. If a product is already in the cart, its quantity is updated instead of creating a new entry.
+ *     tags:
+ *       - Cart
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               cartItems:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       example: 101
+ *                     variant_id:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1001
+ *                     quantity:
+ *                       type: integer
+ *                       minimum: 1
+ *                       maximum: 10
+ *                       example: 2
+ *                 required: ["product_id", "quantity"]
+ *     responses:
+ *       200:
+ *         description: Cart updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Cart updated successfully"
+ *       400:
+ *         description: Invalid request data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid request data"
+ *       401:
+ *         description: Unauthorized - Token missing or invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Unauthorized"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Internal server error"
+ */
+router.post('/bulk-update', authenticateJWT, validateRequest(validateBulkCartUpdate),  cartController.bulkUpdateCart);
+
+/**
+ * @swagger
  * /api/cart/{id}:
  *   delete:
  *     tags:
@@ -120,5 +199,54 @@ router.delete('/:id', authenticateJWT,
         param('id').isNumeric().withMessage('ID must be a number'),
     ]),
     cartController.deleteCart);
+
+/**
+ * @swagger
+ * /api/cart/check-stock:
+ *   get:
+ *     tags:
+ *       - Cart
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Check stock status of all items in cart
+ *     description: Returns the stock status of each item in the user's cart, including whether items are out of stock or if the requested quantity exceeds available stock.
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "success"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       itemId:
+ *                         type: integer
+ *                         description: The ID of the cart item
+ *                         example: 1
+ *                       message:
+ *                         type: string
+ *                         description: Status message for the item
+ *                         example: "Product A is in stock"
+ *                       isOutOfStock:
+ *                         type: boolean
+ *                         description: Whether the item is out of stock or quantity exceeds available stock
+ *                         example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Stock status checked successfully"
+ *       401:
+ *         description: Unauthorized - User is not authenticated
+ *       500:
+ *         description: Internal Server Error
+ */
+
+router.get('/check-stock', authenticateJWT, cartController.checkCartItemsStock);
 
 module.exports = router;

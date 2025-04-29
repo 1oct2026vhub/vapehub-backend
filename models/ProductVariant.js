@@ -55,11 +55,8 @@ module.exports = (sequelize, DataTypes) => {
     },
     slug: {
       type: DataTypes.STRING(100),
-      allowNull: false,
-      unique: true,
-      validate: {
-        notEmpty: true
-      }
+      allowNull: true,
+      unique: true
     },
     price: {
       type: DataTypes.DECIMAL(10, 2),
