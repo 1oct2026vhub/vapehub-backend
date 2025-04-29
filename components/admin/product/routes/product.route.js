@@ -2,7 +2,156 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware } = require("../helper/product.validator");
+const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation } = require("../helper/product.validator");
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Product:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *           description: The product ID
+ *         name:
+ *           type: string
+ *           description: The product name
+ *         slug:
+ *           type: string
+ *           description: The product slug
+ *         description:
+ *           type: string
+ *           description: The product description
+ *         price:
+ *           type: number
+ *           format: float
+ *           description: The product price
+ *         discount_price:
+ *           type: number
+ *           format: float
+ *           description: The product discount price
+ *         stock_quantity:
+ *           type: integer
+ *           description: The product stock quantity
+ *         status:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *           description: The product status
+ *         category_id:
+ *           type: integer
+ *           description: The category ID
+ *         brand_id:
+ *           type: integer
+ *           description: The brand ID
+ *         updated_by:
+ *           type: integer
+ *           description: The ID of the user who last updated the product
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           description: The creation timestamp
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *           description: The last update timestamp
+ *         deletedAt:
+ *           type: string
+ *           format: date-time
+ *           description: The deletion timestamp (if soft-deleted)
+ *         Category:
+ *           $ref: '#/components/schemas/Category'
+ *         Brand:
+ *           $ref: '#/components/schemas/Brand'
+ *         ProductImages:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductImage'
+ *         variants:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductVariant'
+ *         productAttributeTerms:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductAttributeTerm'
+ * 
+ *     Category:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ * 
+ *     Brand:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ * 
+ *     ProductImage:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         image_url:
+ *           type: string
+ *         is_primary:
+ *           type: boolean
+ * 
+ *     ProductVariant:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         price:
+ *           type: number
+ *         stock:
+ *           type: integer
+ *         status:
+ *           type: string
+ * 
+ *     ProductAttributeTerm:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         is_visible_page:
+ *           type: boolean
+ *         used_in_variation:
+ *           type: boolean
+ *         attribute:
+ *           $ref: '#/components/schemas/Attribute'
+ *         term:
+ *           $ref: '#/components/schemas/AttributeTerm'
+ * 
+ *     Attribute:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ * 
+ *     AttributeTerm:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ */
 
 /**
  * @swagger
@@ -69,9 +218,37 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *         schema:
  *           type: boolean
  *         description: Fetch products added in the last 30 days (`true` or `false`)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *         description: Filter products by status
  *     responses:
  *       200:
  *         description: Successfully retrieved products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 products:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Product'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total_count:
+ *                       type: integer
+ *                     total_pages:
+ *                       type: integer
+ *                     current_page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
  *       400:
  *         description: Invalid request parameters
  *       500:
@@ -488,5 +665,71 @@ router.get('/download-sample',
     productController.downloadSampleExcel
 );
 
+/**
+ * @swagger
+ * /api/admin/products/status:
+ *   post:
+ *     summary: Update the status of a product
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - productId
+ *               - status
+ *             properties:
+ *               productId:
+ *                 type: integer
+ *                 description: ID of the product to update
+ *                 example: 123
+ *               status:
+ *                 type: string
+ *                 enum: [draft, published, archived]
+ *                 description: New status for the product
+ *                 example: published
+ *     responses:
+ *       200:
+ *         description: Product status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Product status updated successfully
+ *       400:
+ *         description: Invalid request parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Invalid status provided
+ *       404:
+ *         description: Product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Product not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/status',
+    [authMiddleware(true), validateRequest(updateProductStatusValidation)],
+    productController.updateProductStatus
+);
 
 module.exports = router;
