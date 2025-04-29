@@ -1,7 +1,6 @@
-
 const router = require('express').Router();
 const { validateRequest } = require('../../../../utils/validationMiddleware');
-const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadFileMiddleware } = require('../helper/attribute.validatior');
+const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadImageMiddleware, uploadExcelMiddleware, removeAttributeImageValidator } = require('../helper/attribute.validatior');
 const attributeController = require('../domain/attribute.controller');
 const { authMiddleware } = require('../../../../library/middleware');
 
@@ -17,7 +16,7 @@ const { authMiddleware } = require('../../../../library/middleware');
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
@@ -46,6 +45,10 @@ const { authMiddleware } = require('../../../../library/middleware');
  *                 enum: [custom, name, name_num, id]
  *                 default: custom
  *                 description: Sort order for attribute terms
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file for the attribute (JPEG, PNG, GIF)
  *     responses:
  *       201:
  *         description: Attribute created successfully
@@ -78,6 +81,9 @@ const { authMiddleware } = require('../../../../library/middleware');
  *                     sort_order:
  *                       type: string
  *                       example: "custom"
+ *                     image_url:
+ *                       type: string
+ *                       example: "https://example.com/images/color.jpg"
  *                     created_at:
  *                       type: string
  *                       format: date-time
@@ -119,6 +125,7 @@ const { authMiddleware } = require('../../../../library/middleware');
 router.post('/', 
     [ 
         authMiddleware(true), 
+        uploadImageMiddleware,
         validateRequest(createAttributeValidator)
     ],
     attributeController.createAttribute
@@ -144,7 +151,7 @@ router.post('/',
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
@@ -170,6 +177,14 @@ router.post('/',
  *                 enum: [custom, name, name_num, id]
  *                 description: Sort order for attribute terms
  *                 example: "name"
+ *               new_image:
+ *                 type: boolean
+ *                 description: Set to true to replace existing image
+ *                 example: true
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: New image file for the attribute (JPEG, PNG, GIF)
  *     responses:
  *       200:
  *         description: Attribute updated successfully
@@ -202,6 +217,9 @@ router.post('/',
  *                     sort_order:
  *                       type: string
  *                       example: "name"
+ *                     image_url:
+ *                       type: string
+ *                       example: "https://example.com/images/updated-color.jpg"
  *                     created_at:
  *                       type: string
  *                       format: date-time
@@ -262,6 +280,7 @@ router.post('/',
 router.put('/:id', 
     [ 
         authMiddleware(true), 
+        uploadImageMiddleware,
         validateRequest(updateAttributeValidator)
     ],
     attributeController.updateAttribute
@@ -857,7 +876,7 @@ router.get('/',
 router.post('/bulk-update', 
     [ 
         authMiddleware(true), 
-        uploadFileMiddleware,
+        uploadExcelMiddleware,
         validateRequest(bulkUpdateAttributesValidator)
     ],
     attributeController.bulkCreateOrUpdateAttributes
@@ -892,6 +911,66 @@ router.get('/bulk-update/sample-pdf',
         authMiddleware(true)
     ],
     attributeController.downloadSampleAttributes
+);
+
+/**
+ * @swagger
+ * /api/admin/attributes/{id}/remove-image:
+ *   delete:
+ *     summary: Remove an attribute's image
+ *     tags:
+ *       - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Attribute ID
+ *     responses:
+ *       200:
+ *         description: Image removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: null
+ *                 message:
+ *                   type: string
+ *                   example: "Image removed successfully"
+ *       404:
+ *         description: Attribute not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Attribute not found"
+ *                 message:
+ *                   type: string
+ *                   example: "Not found"
+ */
+router.delete('/:id/remove-image', 
+    [ 
+        authMiddleware(true), 
+        validateRequest(removeAttributeImageValidator)
+    ],
+    attributeController.removeAttributeImage
 );
 
 module.exports = router;

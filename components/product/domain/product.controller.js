@@ -47,7 +47,11 @@ module.exports.getProductByid = async (req, res, next) => {
                         model: ProductVariantAttribute,
                         as: 'variantAttributes',
                         include: [
-                            { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+                            { 
+                                model: Attribute, 
+                                as: 'attribute', 
+                                attributes: ['id', 'name', 'type', 'image_url'] 
+                            },
                             { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
                         ]
                     },
@@ -62,7 +66,11 @@ module.exports.getProductByid = async (req, res, next) => {
                 model: ProductAttributeTerm,
                 as: 'productAttributeTerms',
                 include: [
-                    { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
+                    { 
+                        model: Attribute, 
+                        as: 'attribute', 
+                        attributes: ['id', 'name', 'type', 'image_url'] 
+                    },
                     { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
                 ]
             },
@@ -88,6 +96,7 @@ module.exports.getProductByid = async (req, res, next) => {
                         id: attribute.id,
                         name: attribute.name,
                         type: attribute.type,
+                        image_url: attribute.image_url,
                         is_visible_page: pat.is_visible_page,
                         used_in_variation: pat.used_in_variation
                     },
@@ -575,7 +584,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                             model: ProductVariantAttribute,
                             as: 'variantAttributes',
                             include: [
-                                { model: Attribute, as: 'attribute' },
+                                { 
+                                    model: Attribute, 
+                                    as: 'attribute',
+                                    attributes: ['id', 'name', 'type', 'image_url'] 
+                                },
                                 { model: AttributeTerm, as: 'term' }
                             ]
                         },
@@ -590,7 +603,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     model: ProductAttributeTerm,
                     as: 'productAttributeTerms',
                     include: [
-                        { model: Attribute, as: 'attribute' },
+                        { 
+                            model: Attribute, 
+                            as: 'attribute',
+                            attributes: ['id', 'name', 'type', 'image_url'] 
+                        },
                         { model: AttributeTerm, as: 'term' }
                     ]
                 },
@@ -616,6 +633,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         id: attribute.id,
                         name: attribute.name,
                         type: attribute.type,
+                        image_url: attribute.image_url,
                         is_visible_page: pat.is_visible_page,
                         used_in_variation: pat.used_in_variation
                     },
@@ -675,7 +693,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                             attribute: {
                                 id: va.attribute.id,
                                 name: va.attribute.name,
-                                type: va.attribute.type
+                                type: va.attribute.type,
+                                image_url: va.attribute.image_url
                             },
                             terms: new Set()
                         });
@@ -737,6 +756,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 attributes: variant.variantAttributes.map(va => ({
                     attribute_id: va.attribute.id,
                     attribute_name: va.attribute.name,
+                    attribute_image_url: va.attribute.image_url,
                     term_id: va.term.id,
                     term_name: va.term.name,
                     term_slug: va.term.slug
@@ -802,6 +822,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         id: attribute.id,
                         name: attribute.name,
                         type: attribute.type,
+                        image_url: attribute.image_url,
                         slug: attribute.slug,
                         description: attribute.description
                     },
