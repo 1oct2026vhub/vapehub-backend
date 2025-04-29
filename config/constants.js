@@ -4,6 +4,7 @@ module.exports = {
         FORGOT_PASSWORD: 'FORGOT_PASSWORD',
         REFER_A_FRIEND: 'REFER_A_FRIEND',
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
+        ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
     },
     emailTypeData: {
@@ -25,6 +26,11 @@ module.exports = {
         ORDER_CONFIRMATION:{
             folderName: 'order_confirmation',
             subject: "Order Confirmation",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_CANCELLATION: {
+            folderName: 'order_cancellation',
+            subject: "Order Cancellation",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ACCOUNT_DELETION: {

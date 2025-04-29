@@ -250,10 +250,11 @@ module.exports.placeOrder = async (req, res, next) => {
         // Apply Coupon
         let calculatedTotal = subTotal;
         let coupon = null;
+        let userUsedCoupon = {};
         if (couponCode) {
             coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
             if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
-                const userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
+                userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
                 if (!userUsedCoupon) {
                     let discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                     discount = Math.min(discount, coupon.maximum_discount || subTotal);
@@ -271,6 +272,7 @@ module.exports.placeOrder = async (req, res, next) => {
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
 
         let orderCode = 0;
+        let worldpayResponse = {};
         wallet_check.payMethod = payMethod;
         if(payMethod === "VivaWallet"){
             wallet_check.start = true;
@@ -295,11 +297,42 @@ module.exports.placeOrder = async (req, res, next) => {
             }
             wallet_check.end = true;
         }
-        const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}`;
+        else if(payMethod === "Worldpay"){
+            const generateTransactionReference = () => {
+                const timestamp = Date.now();
+                const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                return `WP${timestamp}${random}`;
+            };
+            orderCode = generateTransactionReference();
+
+            worldpayResponse = await axios.post(`${process.env.WORLDPAY_URL}/payment_pages`, {
+                    headers: {
+                        'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
+                        'User-Agent': 'string',
+                        Authorization: 'Basic ' + Buffer.from('<username>:<password>').toString('base64')
+                    },
+                    body: JSON.stringify({
+                        transactionReference: orderCode,
+                        merchant: {entity: 'default'},
+                        narrative: {
+                        line1: 'VapeHub'
+                    },
+                    value: {
+                        currency: 'GBP',
+                        amount: calculatedTotal * 100
+                    }
+                })
+            });
+        }
+        // Generate random digit (0-9) and random alphabet (A-Z)
+        const randomDigit = Math.floor(Math.random() * 10);
+        const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // 65 is ASCII for 'A'
+        
+        const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
         // Create Order
         const order = await Order.create({
             user_id,
-            coupon_id: coupon ? coupon.id : null,
+            coupon_id: coupon && !userUsedCoupon ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
             // shipping_address_id: 0,
@@ -308,7 +341,7 @@ module.exports.placeOrder = async (req, res, next) => {
             order_billing_address_id: billingAddrs.id,
             shipping_method_id,
             order_unique_id: orderUniqueId,
-            order_code: parseInt(orderCode).toString(),
+            order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
             shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
             email: email,
             phone: phone
@@ -374,6 +407,7 @@ module.exports.placeOrder = async (req, res, next) => {
             message: "Order placed successfully",
             data: {
                 order_code: order.order_code,
+                worldpay_response: payMethod === "Worldpay" ? worldpayResponse : null,
                 order_details: {
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
@@ -411,105 +445,6 @@ module.exports.generateVivaOrdercode = async (req,res)=>{
         res.status(500).json({ success: false, message: error.response?.data || error.message });
     }
 }
-
-
-module.exports.handleVivaWebhook = async (req, res)=>{
-    const VIVA_WALLET_SECRET = "your_viva_wallet_secret";
-    // Function to verify webhook signature
-    function verifySignature(req) {
-        const signature = req.headers["x-viva-signature"]; // Correct header name
-        const payload = req.rawBody;
-        const hmac = crypto.createHmac("sha256", VIVA_WALLET_SECRET).update(payload).digest("hex");
-        return signature === hmac;
-    }
-    if (!verifySignature(req)) {
-        return res.status(401).send("Invalid signature");
-    }   
-    const eventData = req.body;
-    console.log("Received Viva Wallet Webhook:", eventData);
-
-    // Extract payment status
-    if (eventData.eventType === "TransactionStatusChanged") {
-        const transactionId = eventData.eventData.TransactionId;
-        const status = eventData.eventData.StatusId;
-
-        console.log(`Transaction ID: ${transactionId}, Status: ${status}`);
-        
-        // Process the payment status here (e.g., update database, send notification, etc.)
-        if (status === "F") {
-            console.log(`Payment successful for Transaction ID: ${transactionId}`);
-            // TODO: Update order/payment status in the database
-            // TODO: Send email/notification to the user
-        } else if (status === "X") {
-            console.log(`Payment failed for Transaction ID: ${transactionId}`);
-            // TODO: Mark payment as failed in the database
-            // TODO: Notify the user and ask for a retry
-        } else if (status === "A") {
-            console.log(`Payment pending for Transaction ID: ${transactionId}`);
-            // TODO: Keep monitoring until final status is received
-        } else {
-            console.log(`⚠️ Unhandled payment status (${status}) for Transaction ID: ${transactionId}`);
-            // TODO: Log or handle unknown statuses
-        }
-    }
-
-    res.status(200).send("Webhook received");
-}
-
-// module.exports.handleWorldpayWebhook = async (req, res) => {
-//     function verifySignature(req) {
-//         const signatureHeader = req.headers["x-wp-signature"]; // Correct header
-//         if (!signatureHeader) {
-//             console.warn("❌ Signature missing");
-//             return false;
-//         }
-    
-//         // Compute HMAC SHA-256 signature using Worldpay secret key
-//         const computedSignature = crypto.createHmac("sha256", WORLDPAY_SECRET)
-//             .update(req.rawBody)
-//             .digest("hex");
-    
-//         return signatureHeader === computedSignature;
-//     }
-//     if (!verifySignature(req)) {
-//         console.error("❌ Invalid signature: Potential tampering detected!");
-//         return res.status(401).send("Invalid signature");
-//     }
-
-//     const eventData = req.body;
-//     console.log("📩 Received Worldpay Webhook:", eventData);
-
-//     // Extract Payment Status
-//     if (eventData.paymentStatus) {
-//         const transactionId = eventData.orderCode; // Unique transaction ID
-//         const status = eventData.paymentStatus; // Payment status
-
-//         console.log(`Transaction ID: ${transactionId}, Status: ${status}`);
-
-//         // ✅ Handle Payment Success
-//         if (status === "SUCCESS") {
-//             console.log(`Payment successful for Transaction ID: ${transactionId}`);
-//             // TODO: Update order/payment status in the database
-//             // TODO: Send email/notification to the user
-//         } 
-//         // ❌ Handle Payment Failure
-//         else if (status === "FAILED") {
-//             console.log(`Payment failed for Transaction ID: ${transactionId}`);
-//             // TODO: Mark payment as failed in the database
-//             // TODO: Notify the user and ask for a retry
-//         } 
-//         // 🔄 Handle Payment Pending
-//         else if (status === "PENDING") {
-//             console.log(`Payment pending for Transaction ID: ${transactionId}`);
-//             // TODO: Keep monitoring until final status is received
-//         } 
-//         // ⚠️ Handle Other Payment Statuses
-//         else {
-//             console.log(`Unhandled payment status (${status}) for Transaction ID: ${transactionId}`);
-//             // TODO: Log or handle unknown statuses
-//         }
-//     }
-// };
 
 module.exports.getOrderById = async (req, res) => {
     try {
@@ -733,23 +668,12 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
                 // Update order status to processing
                 await order.update({ status: 'processing' });
                 // Create order log for successful payment
-                // await sequelize.models.OrderLog.create({
-                //     order_id: order.id,
-                //     user_id: order.user_id,
-                //     status: 'processing',
-                //     label: 'Payment Successful via Viva Wallet',
-                //     // additional_info: JSON.stringify({
-                //     //     transactionId: transactionId,
-                //     //     OrderCode: OrderCode,
-                //     //     amount: Amount,
-                //     //     currency: CurrencyCode,
-                //     //     bankId: BankId,
-                //     //     // referenceNumber: referenceNumber,
-                //     //     cardType: CardTypeId,
-                //     //     cardIssuingBank: CardIssuingBank,
-                //     //     cardCountryCode: CardCountryCode
-                //     // })
-                // });
+                await sequelize.models.OrderLog.create({
+                    order_id: order.id,
+                    user_id: order.user_id,
+                    status: 'processing',
+                    label: 'Payment Successful via Viva Wallet'
+                });
                 
                 // Reduce stock for each order item
                 for (const item of order.orderItems) {
@@ -1364,112 +1288,6 @@ module.exports.checkOrderStock = async (req, res) => {
         }
         
         return errorResponse(res, error, 'Failed to check order stock');
-    }
-};
-
-module.exports.handleVivaWalletWebhook = async (req, res) => {
-    try {
-        const webhookData = req.body;
-        
-        // Verify webhook signature if needed
-        // const signature = req.headers['x-viva-signature'];
-        // if (!verifySignature(signature, webhookData)) {
-        //     return errorResponse(res, {}, 'Invalid webhook signature', 401);
-        // }
-
-        // Check if this is an order update event
-        if (webhookData.EventTypeId !== 4865) {
-            return errorResponse(res, {}, 'Invalid event type', 400);
-        }
-
-        const { EventData } = webhookData;
-        const { OrderCode, IsCancelled } = EventData;
-
-        // Find the order in our database
-        const order = await Order.findOne({
-            where: { 
-                order_code: OrderCode.toString()
-            },
-            include: [
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price', 'stock']
-                        }
-                    ]
-                }
-            ]
-        });
-
-        if (!order) {
-            return errorResponse(res, {}, 'Order not found in database', 404);
-        }
-
-        // Handle cancelled order
-        if (IsCancelled) {
-            // Update order status to cancelled
-            await order.update({ 
-                status: 'cancel'
-            });
-
-            // Create order log for cancellation
-            await sequelize.models.OrderLog.create({
-                order_id: order.id,
-                user_id: order.user_id,
-                status: 'cancel',
-                label: 'Order Cancelled via Viva Wallet'
-            });
-
-            // Create notification for cancellation
-            await createNotification({
-                userId: order.user_id,
-                type: 'order',
-                action: 'cancelled',
-                data: {
-                    orderId: order.id,
-                    orderCode: order.order_code,
-                    reason: 'Cancelled via Viva Wallet'
-                }
-            });
-
-            // Send cancellation email
-            const emailData = {
-                emailTypes: 'ORDER_CANCELLATION',
-                to: order.email,
-                context: {
-                    userName: order.user?.first_name || order.email.split('@')[0],
-                    orderId: order.id,
-                    orderUniqueId: order.order_unique_id,
-                    orderCode: order.order_code,
-                    orderDate: order.createdAt.toLocaleDateString(),
-                    status: 'cancelled',
-                    reason: 'Cancelled via Viva Wallet'
-                }
-            };
-
-            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-        }
-
-        // Return success response
-        return successResponse(res, {
-            message: 'Webhook processed successfully',
-            orderId: order.id,
-            orderCode: order.order_code,
-            status: order.status
-        });
-
-    } catch (error) {
-        console.error('Error processing Viva Wallet webhook:', error);
-        return errorResponse(res, error, 'Failed to process webhook');
     }
 };
 
