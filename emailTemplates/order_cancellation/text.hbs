@@ -1,0 +1,32 @@
+Order Cancellation Confirmation
+
+Hello {{userName}},
+
+We regret to inform you that your order has been cancelled.
+
+Order Summary:
+-------------
+Order Number: #{{orderCode}}
+Order ID: {{orderUniqueId}}
+Order Date: {{orderDate}}
+Order Status: Cancelled
+Cancellation Reason: {{cancellationReason}}
+
+Order Items:
+-----------
+{{#items}}
+- {{name}} (Quantity: {{quantity}}) - £{{price}}
+{{/items}}
+
+Total Amount: £{{totalAmount}}
+
+Refund Information:
+------------------
+If you have already paid for this order, the refund process will be initiated automatically.
+Please allow 5-7 business days for the refund to reflect in your account.
+
+If you have any questions about this cancellation, please contact our customer service team:
+Email: support@vapehub.com
+Phone: +44 123 456 7890
+
+© {{currentYear}} VapeHub. All rights reserved. 

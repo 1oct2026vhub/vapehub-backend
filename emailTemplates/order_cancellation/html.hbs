@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+        }
+
+        .header {
+            background-color: #dc3545;
+            padding: 15px;
+            text-align: center;
+            color: white;
+        }
+
+        .logo {
+            max-width: 200px;
+            height: auto;
+            margin: 10px 0;
+        }
+
+        .content {
+            padding: 30px 20px;
+        }
+
+        .order-details {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #dc3545;
+            color: white;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        /* Table Styles */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .items-table th {
+            background-color: #f2f2f2;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .items-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .items-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .items-table .item-name {
+            font-weight: bold;
+        }
+
+        .items-table .item-quantity {
+            text-align: center;
+        }
+
+        .items-table .item-price {
+            text-align: right;
+        }
+
+        .items-table .total-row {
+            background-color: #f9f9f9;
+            font-weight: bold;
+        }
+
+        .items-table .total-label {
+            text-align: right;
+            padding-right: 20px;
+        }
+
+        .items-table .total-price {
+            text-align: right;
+            color: #dc3545;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+        
+        <div class="content">
+            <h2>Order Cancellation</h2>
+            <p>Dear Customer,</p>
+            <p>We regret to inform you that your order has been cancelled.</p>
+            
+            {{!-- <div class="order-details">
+                <h3>Order Summary</h3>
+                <p><strong>Order Number:</strong> #{{orderCode}}</p>
+                <p><strong>Order ID:</strong> {{orderUniqueId}}</p>
+                <p><strong>Order Date:</strong> {{orderDate}}</p>
+                <p><strong>Order Status:</strong> <span class="status-badge">Cancelled</span></p>
+                <p><strong>Cancellation Reason:</strong> {{reason}}</p>
+                
+                <h3>Order Items</h3>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="item-quantity">Quantity</th>
+                            <th class="item-price">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#items}}
+                        <tr>
+                            <td class="item-name">{{name}}</td>
+                            <td class="item-quantity">{{quantity}}</td>
+                            <td class="item-price">£{{price}}</td>
+                        </tr>
+                        {{/items}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Total Amount</td>
+                            <td class="total-price">£{{totalAmount}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div> --}}
+
+            <div class="order-details">
+                <h3>Refund Information</h3>
+                <p>If you have already paid for this order, the refund process will be initiated automatically.</p>
+                <p>Please allow 5-7 business days for the refund to reflect in your account.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>If you have any questions about this cancellation, please contact our customer service team.</p>
+            <p>Email: support@vapehub.com | Phone: +44 123 456 7890</p>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html> 

@@ -934,99 +934,10 @@ router.post("/cancel/:orderId", authenticateJWT, validateRequest(validateOrderId
  */
 router.get("/check-stock/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.checkOrderStock);
 
-/**
- * @swagger
- * /api/order/webhook/viva:
- *   post:
- *     summary: Handle Viva Wallet webhook notifications
- *     description: Receives and processes webhook notifications from Viva Wallet for order status updates
- *     tags:
- *       - Orders
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               Url:
- *                 type: string
- *                 description: The webhook URL
- *               EventData:
- *                 type: object
- *                 properties:
- *                   Email:
- *                     type: string
- *                     format: email
- *                   Amount:
- *                     type: number
- *                   OrderCode:
- *                     type: integer
- *                   MerchantId:
- *                     type: string
- *                   FullName:
- *                     type: string
- *                   IsCancelled:
- *                     type: boolean
- *                   CurrencyCode:
- *                     type: string
- *                   MerchantTrns:
- *                     type: string
- *                   CustomerTrns:
- *                     type: string
- *               Created:
- *                 type: string
- *                 format: date-time
- *               CorrelationId:
- *                 type: string
- *               EventTypeId:
- *                 type: integer
- *               MessageId:
- *                 type: string
- *               RecipientId:
- *                 type: string
- *               MessageTypeId:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Webhook processed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Webhook processed successfully"
- *                 data:
- *                   type: object
- *                   properties:
- *                     orderId:
- *                       type: integer
- *                       example: 1
- *                     orderCode:
- *                       type: string
- *                       example: "123456789"
- *                     status:
- *                       type: string
- *                       example: "cancel"
- *       400:
- *         description: Invalid event type or missing data
- *       401:
- *         description: Invalid webhook signature
- *       404:
- *         description: Order not found
- *       500:
- *         description: Internal server error
- */
-router.post("/webhook/viva", orderController.handleVivaWalletWebhook);
 
 /**
  * @swagger
- * /api/order/webhook/viva/{orderCode}:
+ * /api/order/viva/{orderCode}:
  *   post:
  *     summary: Handle Viva Wallet webhook notifications
  *     description: Receives and processes webhook notifications from Viva Wallet for order status updates
@@ -1069,6 +980,6 @@ router.post("/webhook/viva", orderController.handleVivaWalletWebhook);
  *       500:
  *         description: Internal server error
  */
-router.post("/webhook/viva/:orderCode", orderController.orderCode);
+router.post("/viva/:orderCode", orderController.orderCode);
 
 module.exports = router
