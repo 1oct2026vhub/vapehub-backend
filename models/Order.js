@@ -166,9 +166,9 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       unique: true,
       defaultValue: () => Order.generateOrderId(),
-      validate: {
-        is: /^ORD-[A-Z0-9]{8}$/i
-      }
+      // validate: {
+      //   is: /^ORD-[A-Z0-9]{8}$/i
+      // }
     },
     order_code: {
       type: DataTypes.STRING,
