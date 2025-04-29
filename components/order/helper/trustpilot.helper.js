@@ -35,7 +35,6 @@ async function sendInvitation(order, user) {
                 })
             }
         };
-
         const response = await axios.post(
             `${baseUrl}/${businessUnitId}/invitations`,
             invitationData,

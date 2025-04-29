@@ -105,6 +105,57 @@ module.exports = (sequelize, DataTypes) => {
       return ['delivered', 'completed'].includes(this.status);
     }
 
+    static async handleStatusChange(instance) {
+      try {
+        // Only proceed if status has changed
+        if (instance.changed('status')) {
+          const newStatus = instance.status;
+          
+          // Send Trustpilot invitation for both delivered and completed statuses
+          if (newStatus === 'delivered' || newStatus === 'completed') {
+            // Get user details
+            const user = await instance.getUser({
+              attributes: ['id', 'first_name', 'last_name', 'email']
+            });
+
+            if (user) {
+              // Get order items with product and variant details
+              const orderItems = await instance.getOrderItems({
+                include: [
+                  {
+                    model: sequelize.models.Product,
+                    as: 'product',
+                    attributes: ['name']
+                  },
+                  {
+                    model: sequelize.models.ProductVariant,
+                    as: 'variant',
+                    attributes: ['slug', 'price']
+                  }
+                ]
+              });
+
+              // Format product details for Trustpilot
+              const productDetails = orderItems.map(item => ({
+                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                price: item.variant ? item.variant.price : item.unit_price,
+                quantity: item.quantity
+              }));
+
+              // Add product details to the order instance
+              instance.productDetails = productDetails;
+
+              await trustpilotHelper.sendInvitation(instance, user);
+              logger.info(`Trustpilot invitation sent for order ${instance.order_unique_id} with status ${newStatus}`);
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('Error handling order status update:', error);
+        // Don't throw the error as we don't want to block the order status update
+      }
+    }
+
     /**
      * Get the complete order status timeline with achievement status
      * @returns {Array} Array of status objects with achievement information
