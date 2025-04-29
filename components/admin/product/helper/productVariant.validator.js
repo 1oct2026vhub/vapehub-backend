@@ -456,6 +456,99 @@ const removeProductAttributeTermValidator = [
     commonValidations.productId
 ];
 
+const generateVariantsValidator = [
+    param('product_id')
+        .isInt({ min: 1 })
+        .withMessage('Product ID must be a positive integer')
+];
+
+const bulkUpdateVariantsDirectValidator = [
+    commonValidations.productId,
+    body('updates')
+        .isObject()
+        .withMessage('Updates must be an object'),
+    body('updates.price')
+        .optional()
+        .isObject()
+        .withMessage('Price update must be an object')
+        .custom((value) => {
+            if (!['set', 'increase', 'decrease'].includes(value.type)) {
+                throw new Error('Price update type must be set, increase, or decrease');
+            }
+            if (typeof value.value !== 'number' || value.value < 0) {
+                throw new Error('Price value must be a positive number');
+            }
+            if (typeof value.is_percentage !== 'boolean') {
+                throw new Error('is_percentage must be a boolean');
+            }
+            return true;
+        }),
+    body('updates.discount_price')
+        .optional()
+        .isObject()
+        .withMessage('Discount price update must be an object')
+        .custom((value) => {
+            if (!['set', 'increase', 'decrease'].includes(value.type)) {
+                throw new Error('Discount price update type must be set, increase, or decrease');
+            }
+            if (typeof value.value !== 'number' || value.value < 0) {
+                throw new Error('Discount price value must be a positive number');
+            }
+            if (typeof value.is_percentage !== 'boolean') {
+                throw new Error('is_percentage must be a boolean');
+            }
+            return true;
+        }),
+    body('updates.purchase_price')
+        .optional()
+        .isObject()
+        .withMessage('Purchase price update must be an object')
+        .custom((value) => {
+            if (!['set', 'increase', 'decrease'].includes(value.type)) {
+                throw new Error('Purchase price update type must be set, increase, or decrease');
+            }
+            if (typeof value.value !== 'number' || value.value < 0) {
+                throw new Error('Purchase price value must be a positive number');
+            }
+            if (typeof value.is_percentage !== 'boolean') {
+                throw new Error('is_percentage must be a boolean');
+            }
+            return true;
+        }),
+    body('updates.weight')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Weight must be a positive number'),
+    body('updates.length')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Length must be a positive number'),
+    body('updates.width')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Width must be a positive number'),
+    body('updates.height')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Height must be a positive number'),
+    body('updates.stock')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a non-negative integer'),
+    body('updates.low_stock_threshold')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Low stock threshold must be a non-negative integer'),
+    body('updates.stock_status')
+        .optional()
+        .isIn(['in_stock', 'out_of_stock', 'low_stock'])
+        .withMessage('Invalid stock status'),
+    body('updates.status')
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage('Invalid status')
+];
+
 module.exports = {
     addProductAttributesValidator,
     createProductVariantsValidator,
@@ -469,5 +562,7 @@ module.exports = {
     updateProductAttributesValidator,
     removeProductAttributeTermValidator,
     bulkUpdateVariantsValidator,
-    uploadExcelMiddleware
+    uploadExcelMiddleware,
+    generateVariantsValidator,
+    bulkUpdateVariantsDirectValidator
 };

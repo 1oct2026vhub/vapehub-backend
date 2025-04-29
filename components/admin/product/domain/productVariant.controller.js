@@ -535,11 +535,11 @@ const validateVariantData = async (variant, product_id, transaction) => {
     
     await validateVariantBarcode(variant.barcode, transaction);
     await validateVariantAttributes(variant.attributes, product_id, transaction);
-    await checkExistingCombinations(variant.attributes, product_id, transaction);
+    await checkExistingCombinations(variant.attributes, product_id, transaction, true);
 };
 
 // Helper function to check existing combinations
-const checkExistingCombinations = async (attributes, product_id, transaction) => {
+const checkExistingCombinations = async (attributes, product_id, transaction, returnError = false) => {
     // Get all variants of the same product
     const productVariants = await ProductVariant.findAll({
         where: { product_id },
@@ -552,32 +552,46 @@ const checkExistingCombinations = async (attributes, product_id, transaction) =>
 
     // Check each variant's attributes
     for (const variant of productVariants) {
-        const variantAttributeCount = variant.variantAttributes.length;
-        const newAttributeCount = attributes.length;
+        const variantAttributes = variant.variantAttributes;
+        const newAttributes = attributes[0]; // Since we're passing an array with one combination
 
         // Skip if attribute counts don't match
-        if (variantAttributeCount !== newAttributeCount) continue;
+        if (variantAttributes.length !== newAttributes.length) continue;
 
-        // Check if all attributes match exactly
-        const isExactMatch = attributes.every(newAttr => 
-            variant.variantAttributes.some(existingAttr => 
-                existingAttr.attribute_id === newAttr.attribute_id && 
-                existingAttr.term_id === newAttr.term_id
-            )
+        // Sort both arrays to ensure consistent comparison
+        const sortedVariantAttrs = [...variantAttributes].sort((a, b) => 
+            a.attribute_id - b.attribute_id || a.term_id - b.term_id
+        );
+        const sortedNewAttrs = [...newAttributes].sort((a, b) => 
+            a.attribute_id - b.attribute_id || a.term_id - b.term_id
         );
 
+        // Check if all attributes match exactly
+        const isExactMatch = sortedNewAttrs.every((newAttr, index) => {
+            const existingAttr = sortedVariantAttrs[index];
+            return existingAttr.attribute_id === newAttr.attribute_id && 
+                   existingAttr.term_id === newAttr.term_id;
+        });
+
         if (isExactMatch) {
-            throw new Error("This exact attribute combination already exists for another variant of this product");
+            if (returnError) {
+                throw new Error("This exact attribute combination already exists for another variant of this product");
+            }
+            return true; // Combination exists
         }
     }
+
+    return false; // Combination doesn't exist
 };
 
 // Helper function to create variant and its attributes
 const createVariantAndAttributes = async (variant, product_id, updated_by, transaction) => {
     const productVariant = await createVariantRecord(variant, product_id, updated_by, transaction);
     
-    // Create slug relation
-    await slugManager.createOrUpdateSlug(variant.slug, 'product_variant', productVariant.id, transaction);
+    if(variant.slug){
+        // Create slug relation
+        await slugManager.createOrUpdateSlug(variant.slug, 'product_variant', productVariant.id, transaction);
+    }
     
     const variantAttributeTerms = variant.attributes.map(attr => ({
         variant_id: productVariant.id,
@@ -1911,6 +1925,369 @@ module.exports.downloadVariantSampleExcel = async (req, res, next) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.generateVariants = async (req, res) => {
+    const { product_id } = req.params;
+    const transaction = await ProductVariant.sequelize.transaction();
+
+    try {
+        // Check if product exists
+        const product = await Product.findByPk(product_id, { transaction });
+        if (!product) {
+            await transaction.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        // Get all product attributes with used_in_variation = true
+        const productAttributes = await ProductAttributeTerm.findAll({
+            where: {
+                product_id,
+                used_in_variation: true
+            },
+            include: [
+                {
+                    model: Attribute,
+                    as: 'attribute',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
+                    model: AttributeTerm,
+                    as: 'term',
+                    attributes: ['id', 'name', 'slug']
+                }
+            ],
+            transaction
+        });
+
+        if (!productAttributes || productAttributes.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No attributes found with used_in_variation set to true'
+            });
+        }
+
+        // Group attributes by attribute_id
+        const groupedAttributes = {};
+        productAttributes.forEach(attr => {
+            if (!groupedAttributes[attr.attribute_id]) {
+                groupedAttributes[attr.attribute_id] = {
+                    attribute: attr.attribute,
+                    terms: []
+                };
+            }
+            groupedAttributes[attr.attribute_id].terms.push(attr.term);
+        });
+
+        // Generate all possible combinations
+        const combinations = generateCombinations(Object.values(groupedAttributes));
+
+        // Format combinations for existing helper functions
+        const formattedCombinations = combinations.map(combination => 
+            combination.map(attr => ({
+                attribute_id: attr.attribute_id,
+                term_id: attr.term_id
+            }))
+        );
+
+        // Check each combination one by one
+        const existingCombinations = [];
+        const newCombinations = [];
+
+        for (const combination of formattedCombinations) {
+            const exists = await checkExistingCombinations([combination], product_id, transaction);
+            if (exists) {
+                existingCombinations.push(combination);
+            } else {
+                // Find the original combination with full attribute data
+                const originalCombination = combinations.find(orig => {
+                    const origAttrs = orig.map(attr => ({
+                        attribute_id: attr.attribute_id,
+                        term_id: attr.term_id
+                    }));
+                    return combination.every(combAttr => 
+                        origAttrs.some(origAttr => 
+                            origAttr.attribute_id === combAttr.attribute_id && 
+                            origAttr.term_id === combAttr.term_id
+                        )
+                    );
+                });
+                if (originalCombination) {
+                    newCombinations.push(originalCombination);
+                }
+            }
+        }
+        if (newCombinations.length === 0) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: 'All combinations already exist',
+                data: existingCombinations
+            });
+        }
+
+        // Create variants for new combinations
+        const variants = newCombinations.map(combination => {
+            // Generate a slug based on the combination of attributes
+            
+            return {
+                product_id,
+                price: 0,
+                stock: 0,
+                status: 'active',
+                updated_by: req.user.id,
+                attributes: combination.map(attr => ({
+                    attribute_id: attr.attribute_id,
+                    term_id: attr.term_id
+                }))
+            };
+        });
+
+        // Create variants and their attributes
+        const createdVariants = await Promise.all(
+            variants.map(variant => 
+                createVariantAndAttributes(variant, product_id, req.user.id, transaction)
+            )
+        );
+
+        // Fetch complete variant data
+        const completeVariants = await fetchCreatedVariants(createdVariants);
+
+        await transaction.commit();
+
+        return res.status(201).json({
+            success: true,
+            message: 'Product variants generated successfully',
+            data: {
+                created: completeVariants,
+                existing: existingCombinations
+            }
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error generating variants:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error generating product variants',
+            error: error.message
+        });
+    }
+};
+
+// Helper function to generate all possible combinations
+const generateCombinations = (attributes) => {
+    if (!attributes || !Array.isArray(attributes) || attributes.length === 0) return [];
+    
+    const combinations = [];
+    const generate = (current, index) => {
+        if (index === attributes.length) {
+            combinations.push([...current]);
+            return;
+        }
+
+        const attribute = attributes[index];
+        if (!attribute || !attribute.terms || !Array.isArray(attribute.terms)) {
+            return;
+        }
+
+        for (const term of attribute.terms) {
+            if (!term || !term.id) continue;
+            
+            current.push({
+                attribute_id: attribute.attribute.id,
+                term_id: term.id,
+                attribute: attribute.attribute,
+                term: term
+            });
+            generate(current, index + 1);
+            current.pop();
+        }
+    };
+
+    generate([], 0);
+    return combinations;
+};
+
+module.exports.bulkUpdateVariantsDirect = async (req, res) => {
+    const { product_id } = req.params;
+    const { updates, variant_ids } = req.body;
+    const transaction = await ProductVariant.sequelize.transaction();
+
+    try {
+        // Check if product exists
+        const product = await Product.findByPk(product_id, { transaction });
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'Product not found' }, 'Product not found', 404);
+        }
+
+        // Build where clause for variants
+        const whereClause = { product_id };
+        if (variant_ids && variant_ids.length > 0) {
+            whereClause.id = variant_ids;
+        }
+
+        // Get variants to update
+        const variants = await ProductVariant.findAll({
+            where: whereClause,
+            transaction
+        });
+
+        if (variants.length === 0) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'No variants found to update' }, 'No variants found to update', 404);
+        }
+
+        // Prepare update data
+        const updateData = {};
+
+        // Handle price updates
+        if (updates.price) {
+            const { type, value, is_percentage } = updates.price;
+            if (typeof value !== 'number' || isNaN(value)) {
+                await transaction.rollback();
+                return errorResponse(res, { message: 'Price value must be a valid number' }, 'Price value must be a valid number', 400);
+            }
+            variants.forEach(variant => {
+                let newPrice = variant.price;
+                if (type === 'set') {
+                    newPrice = parseFloat(value);
+                } else if (type === 'increase') {
+                    newPrice = is_percentage ? 
+                        variant.price * (1 + parseFloat(value)/100) : 
+                        parseFloat(variant.price) + parseFloat(value);
+                } else if (type === 'decrease') {
+                    newPrice = is_percentage ? 
+                        variant.price * (1 - parseFloat(value)/100) : 
+                        parseFloat(variant.price) - parseFloat(value);
+                }
+                updateData.price = Math.max(0, newPrice);
+            });
+        }
+
+        // Handle discount price updates
+        if (updates.discount_price) {
+            const { type, value, is_percentage } = updates.discount_price;
+            if (typeof value !== 'number' || isNaN(value)) {
+                await transaction.rollback();
+                return errorResponse(res, 'Discount price value must be a valid number', 400);
+            }
+            variants.forEach(variant => {
+                let newDiscountPrice = variant.discount_price;
+                if (type === 'set') {
+                    newDiscountPrice = parseFloat(value);
+                } else if (type === 'increase') {
+                    newDiscountPrice = is_percentage ? 
+                        variant.discount_price * (1 + parseFloat(value)/100) : 
+                        parseFloat(variant.discount_price) + parseFloat(value);
+                } else if (type === 'decrease') {
+                    newDiscountPrice = is_percentage ? 
+                        variant.discount_price * (1 - parseFloat(value)/100) : 
+                        parseFloat(variant.discount_price) - parseFloat(value);
+                }
+                updateData.discount_price = Math.max(0, newDiscountPrice);
+            });
+        }
+
+        // Handle purchase price updates
+        if (updates.purchase_price) {
+            const { type, value, is_percentage } = updates.purchase_price;
+            if (typeof value !== 'number' || isNaN(value)) {
+                await transaction.rollback();
+                return errorResponse(res, 'Purchase price value must be a valid number', 400);
+            }
+            variants.forEach(variant => {
+                let newPurchasePrice = variant.purchase_price;
+                if (type === 'set') {
+                    newPurchasePrice = parseFloat(value);
+                } else if (type === 'increase') {
+                    newPurchasePrice = is_percentage ? 
+                        variant.purchase_price * (1 + parseFloat(value)/100) : 
+                        parseFloat(variant.purchase_price) + parseFloat(value);
+                } else if (type === 'decrease') {
+                    newPurchasePrice = is_percentage ? 
+                        variant.purchase_price * (1 - parseFloat(value)/100) : 
+                        parseFloat(variant.purchase_price) - parseFloat(value);
+                }
+                updateData.purchase_price = Math.max(0, newPurchasePrice);
+            });
+        }
+
+        // Handle direct value updates
+        const directFields = [
+            'weight', 'length', 'width', 'height', 
+            'stock', 'low_stock_threshold'
+        ];
+
+        directFields.forEach(field => {
+            if (updates[field] !== undefined) {
+                if (typeof updates[field] !== 'number' || isNaN(updates[field])) {
+                    throw new Error(`${field} must be a valid number`);
+                }
+                updateData[field] = parseFloat(updates[field]);
+            }
+        });
+
+        // Handle stock_status and status updates
+        if (updates.stock_status) {
+            if (!['in_stock', 'out_of_stock', 'low_stock'].includes(updates.stock_status)) {
+                await transaction.rollback();
+                return errorResponse(res, { message: 'Invalid stock status value' }, 'Invalid stock status value', 400);
+            }
+            updateData.stock_status = updates.stock_status;
+        }
+
+        if (updates.status) {
+            if (!['active', 'inactive'].includes(updates.status)) {
+                await transaction.rollback();
+                return errorResponse(res, { message: 'Invalid status value' }, 'Invalid status value', 400);
+            }
+            updateData.status = updates.status;
+        }
+
+        // Update variants
+        await ProductVariant.update(updateData, {
+            where: whereClause,
+            transaction
+        });
+
+        // Fetch updated variants
+        const updatedVariants = await ProductVariant.findAll({
+            where: whereClause,
+            include: [
+                {
+                    model: ProductVariantAttribute,
+                    as: 'variantAttributes',
+                    include: [
+                        {
+                            model: Attribute,
+                            as: 'attribute',
+                            attributes: ['id', 'name', 'slug']
+                        },
+                        {
+                            model: AttributeTerm,
+                            as: 'term',
+                            attributes: ['id', 'name', 'slug']
+                        }
+                    ]
+                }
+            ],
+            transaction
+        });
+
+        await transaction.commit();
+
+        return successResponse(res, updatedVariants, 'Variants updated successfully');
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error updating variants:', error);
         return errorResponse(res, error, error.message);
     }
 };

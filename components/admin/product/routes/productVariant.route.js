@@ -141,7 +141,9 @@ const {
     uploadVariantImageMiddleware,
     updateProductAttributesValidator,
     removeProductAttributeTermValidator,
-    bulkUpdateVariantsValidator
+    bulkUpdateVariantsValidator,
+    generateVariantsValidator,
+    bulkUpdateVariantsDirectValidator
 } = require("../helper/productVariant.validator");
 
 
@@ -1529,6 +1531,266 @@ router.post('/bulk-update',
 router.get('/bulk-update/download-sample',
     [authMiddleware(true)],
     productVariantController.downloadVariantSampleExcel
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/product/{product_id}/generate:
+ *   post:
+ *     summary: Generate all possible variants for a product based on attributes with used_in_variation set to true
+ *     tags:
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product to generate variants for
+ *     responses:
+ *       201:
+ *         description: Variants generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Product variants generated successfully
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ProductVariant'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: No attributes found with used_in_variation set to true
+ *       404:
+ *         description: Product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Product not found
+ *       409:
+ *         description: Conflict
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Some attribute combinations already exist
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       attribute_id:
+ *                         type: integer
+ *                       term_id:
+ *                         type: integer
+ *                       variant_id:
+ *                         type: integer
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Error generating product variants
+ *                 error:
+ *                   type: string
+ */
+router.post('/product/:product_id/generate',
+    [authMiddleware(true), validateRequest(generateVariantsValidator)],
+    productVariantController.generateVariants
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/product/{product_id}/bulk-update:
+ *   put:
+ *     summary: Bulk update variants for a product
+ *     tags: 
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               updates:
+ *                 type: object
+ *                 properties:
+ *                   price:
+ *                     type: object
+ *                     properties:
+ *                       type:
+ *                         type: string
+ *                         enum: [set, increase, decrease]
+ *                         description: Type of price update
+ *                       value:
+ *                         type: number
+ *                         description: Value to set, increase, or decrease by
+ *                       is_percentage:
+ *                         type: boolean
+ *                         description: Whether the value is a percentage
+ *                   discount_price:
+ *                     type: object
+ *                     properties:
+ *                       type:
+ *                         type: string
+ *                         enum: [set, increase, decrease]
+ *                         description: Type of discount price update
+ *                       value:
+ *                         type: number
+ *                         description: Value to set, increase, or decrease by
+ *                       is_percentage:
+ *                         type: boolean
+ *                         description: Whether the value is a percentage
+ *                   purchase_price:
+ *                     type: object
+ *                     properties:
+ *                       type:
+ *                         type: string
+ *                         enum: [set, increase, decrease]
+ *                         description: Type of purchase price update
+ *                       value:
+ *                         type: number
+ *                         description: Value to set, increase, or decrease by
+ *                       is_percentage:
+ *                         type: boolean
+ *                         description: Whether the value is a percentage
+ *                   weight:
+ *                     type: number
+ *                     description: Weight in grams
+ *                   length:
+ *                     type: number
+ *                     description: Length in centimeters
+ *                   width:
+ *                     type: number
+ *                     description: Width in centimeters
+ *                   height:
+ *                     type: number
+ *                     description: Height in centimeters
+ *                   stock:
+ *                     type: integer
+ *                     description: Stock quantity
+ *                   low_stock_threshold:
+ *                     type: integer
+ *                     description: Low stock threshold
+ *                   stock_status:
+ *                     type: string
+ *                     enum: [in_stock, out_of_stock, low_stock]
+ *                     description: Stock status
+ *                   status:
+ *                     type: string
+ *                     enum: [active, inactive]
+ *                     description: Variant status
+ *     responses:
+ *       200:
+ *         description: Variants updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ProductVariant'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *       404:
+ *         description: Product or variants not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ */
+router.put('/product/:product_id/bulk-update',
+    [authMiddleware(true), validateRequest(bulkUpdateVariantsDirectValidator)],
+    productVariantController.bulkUpdateVariantsDirect
 );
 
 module.exports = router;

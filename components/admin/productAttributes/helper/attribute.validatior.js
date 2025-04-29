@@ -3,6 +3,46 @@ const constants = require('../../../../config/constants');
 const multer = require('multer');
 const path = require('path');
 
+// Configure multer for handling image uploads
+const imageStorage = multer.memoryStorage();
+const imageUpload = multer({
+    storage: imageStorage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+        if (allowedMimeTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.'), false);
+        }
+    },
+});
+
+// Configure multer for handling Excel file uploads
+const excelStorage = multer.memoryStorage();
+const excelUpload = multer({
+    storage: excelStorage,
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.xlsx', '.xls'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
+        }
+        cb(null, true);
+    },
+});
+
+// Middleware for image upload
+exports.uploadImageMiddleware = imageUpload.single('image');
+
+// Middleware for Excel file upload
+exports.uploadExcelMiddleware = excelUpload.single('file');
+
 exports.createAttributeValidator = [
     body('name')
         .trim()
@@ -36,7 +76,15 @@ exports.createAttributeValidator = [
         .optional()
         .isIn(constants.attributeEnums.sortOrders)
         .withMessage('Invalid sort order')
-        .default('custom')
+        .default('custom'),
+
+    body('image')
+        .custom((value, { req }) => {
+            if (req.file && !['image/jpeg', 'image/png', 'image/gif'].includes(req.file.mimetype)) {
+                throw new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.');
+            }
+            return true;
+        })
 ];
 
 exports.updateAttributeValidator = [
@@ -76,7 +124,20 @@ exports.updateAttributeValidator = [
     body('sort_order')
         .optional()
         .isIn(constants.attributeEnums.sortOrders)
-        .withMessage('Invalid sort order')
+        .withMessage('Invalid sort order'),
+
+    body('new_image')
+        .optional()
+        .isBoolean()
+        .withMessage('new_image must be a boolean'),
+
+    body('image')
+        .custom((value, { req }) => {
+            if (req.file && !['image/jpeg', 'image/png', 'image/gif'].includes(req.file.mimetype)) {
+                throw new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.');
+            }
+            return true;
+        })
 ];
 
 exports.getAttributeValidator = [
@@ -125,26 +186,6 @@ exports.getAttributesValidator = [
       .withMessage('show_deleted must be true or false')
 ];
 
-// Configure multer for handling file uploads
-const storage = multer.memoryStorage();
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB limit
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedExtensions = ['.xlsx', '.xls'];
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (!allowedExtensions.includes(ext)) {
-            return cb(new Error('Only .xlsx and .xls files are allowed!'), false);
-        }
-        cb(null, true);
-    },
-});
-
-// Middleware for file upload
-exports.uploadFileMiddleware = upload.single('file');
-
 exports.bulkUpdateAttributesValidator = [
     body('file')
     .custom((value, { req }) => {
@@ -153,4 +194,10 @@ exports.bulkUpdateAttributesValidator = [
         }
         return true;
     }),
+];
+
+exports.removeAttributeImageValidator = [
+    param('id')
+        .isInt({ min: 1 })
+        .withMessage('Invalid attribute ID')
 ];

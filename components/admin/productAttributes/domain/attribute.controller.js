@@ -4,8 +4,24 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
+const AWS = require("aws-sdk");
+const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 
 const slugManager = new SlugManager(SlugRelation);
+const s3 = new AWS.S3();
+
+// Helper function for image upload
+const uploadAttributeImage = async (file, attributeId) => {
+    const { originalname, mimetype, buffer } = file;
+    const fileName = generateUniqueFileName(originalname);
+    const params = {
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: `attributes/${attributeId}/${fileName}`,
+        Body: buffer,
+        ContentType: mimetype
+    };
+    return uploadFiletToS3(params);
+};
 
 module.exports.createAttribute = async (req, res, next) => {
     const transaction = await Attribute.sequelize.transaction();
@@ -19,6 +35,7 @@ module.exports.createAttribute = async (req, res, next) => {
         } = req.body;
 
         const { id: updated_by } = req.user;
+        const file = req.file; // Get uploaded file
 
         // Check if attribute slug exists (case-insensitive)
         const existingAttribute = await Attribute.findOne({
@@ -44,6 +61,14 @@ module.exports.createAttribute = async (req, res, next) => {
             updated_by
         }, { transaction });
 
+        // Handle image upload if file exists
+        let imageUrl = null;
+        if (file) {
+            const { Location } = await uploadAttributeImage(file, newAttribute.id);
+            imageUrl = Location;
+            await newAttribute.update({ image_url: imageUrl }, { transaction });
+        }
+
         // Create slug relation
         await slugManager.createOrUpdateSlug(newAttribute.slug, 'attribute', newAttribute.id, transaction);
 
@@ -52,7 +77,8 @@ module.exports.createAttribute = async (req, res, next) => {
 
         // Prepare response data
         const responseData = {
-            ...newAttribute.toJSON()
+            ...newAttribute.toJSON(),
+            image_url: imageUrl
         };
 
         return successResponse(
@@ -78,16 +104,34 @@ module.exports.updateAttribute = async (req, res, next) => {
             slug, 
             description, 
             type,
-            sort_order
+            sort_order,
+            new_image = false
         } = req.body;
 
         const { id: updated_by } = req.user;
+        const file = req.file;
 
         // Find the attribute
         const attribute = await Attribute.findByPk(id, { transaction });
         if (!attribute) {
             await transaction.rollback();
             return errorResponse(res, { message: "Attribute not found" }, "Not found", 404);
+        }
+
+        // Handle image update if new_image is true and file exists
+        if (new_image && file) {
+            // Delete old image if exists
+            if (attribute.image_url) {
+                const oldKey = attribute.image_url.split(".amazonaws.com/")[1];
+                await s3.deleteObject({
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: oldKey
+                }).promise();
+            }
+
+            // Upload new image
+            const { Location } = await uploadAttributeImage(file, id);
+            await attribute.update({ image_url: Location }, { transaction });
         }
 
         // If slug is being changed, check for duplicates
@@ -130,8 +174,7 @@ module.exports.updateAttribute = async (req, res, next) => {
         return successResponse(
             res, 
             updatedAttribute, 
-            "Attribute updated successfully",
-            201
+            "Attribute updated successfully"
         );
 
     } catch (error) {
@@ -329,6 +372,7 @@ module.exports.getAttribute = async (req, res, next) => {
                 'name',
                 'slug',
                 'description',
+                'image_url',
                 'type',
                 'sort_order',
                 'created_at',
@@ -393,6 +437,7 @@ module.exports.getAttributes = async (req, res, next) => {
                 'name',
                 'slug',
                 'description',
+                'image_url',
                 'type',
                 'sort_order',
                 'created_at',
@@ -570,6 +615,51 @@ module.exports.downloadSampleAttributes = async (req, res, next) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Remove an attribute's image
+ */
+module.exports.removeAttributeImage = async (req, res, next) => {
+    const transaction = await Attribute.sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { id: updated_by } = req.user;
+
+        // Find the attribute
+        const attribute = await Attribute.findByPk(id, { transaction });
+        if (!attribute) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Attribute not found" }, "Not found", 404);
+        }
+
+        // If no image exists, return success
+        if (!attribute.image_url) {
+            await transaction.rollback();
+            return successResponse(res, null, "No image to remove");
+        }
+
+        // Delete the image from S3
+        const oldKey = attribute.image_url.split(".amazonaws.com/")[1];
+        await s3.deleteObject({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: oldKey
+        }).promise();
+
+        // Update the attribute to remove the image URL
+        await attribute.update({ 
+            image_url: null,
+            updated_by
+        }, { transaction });
+
+        await transaction.commit();
+        return successResponse(res, null, "Image removed successfully");
+
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Remove Attribute Image Error:', error);
         return errorResponse(res, error, error.message);
     }
 };
