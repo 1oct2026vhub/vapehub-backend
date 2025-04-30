@@ -1,7 +1,7 @@
 'use strict';
 const { Model } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
-const trustpilotHelper = require('../components/order/helper/trustpilot.helper');
+const reviewController = require('../components/review/domain/review.controller');
 const logger = require('../library/logger');
 
 module.exports = (sequelize, DataTypes) => {
@@ -113,40 +113,47 @@ module.exports = (sequelize, DataTypes) => {
           
           // Send Trustpilot invitation for both delivered and completed statuses
           if (newStatus === 'delivered' || newStatus === 'completed') {
-            // Get user details
-            const user = await instance.getUser({
-              attributes: ['id', 'first_name', 'last_name', 'email']
+            // Fetch the complete order with all necessary associations
+            const order = await Order.findOne({
+              where: { id: instance.id },
+              include: [
+                {
+                  model: sequelize.models.User,
+                  as: 'user',
+                  attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                  model: sequelize.models.OrderItem,
+                  as: 'orderItems',
+                  include: [
+                    {
+                      model: sequelize.models.Product,
+                      as: 'product',
+                      attributes: ['name']
+                    },
+                    {
+                      model: sequelize.models.ProductVariant,
+                      as: 'variant',
+                      attributes: ['slug', 'price']
+                    }
+                  ]
+                }
+              ]
             });
 
-            if (user) {
-              // Get order items with product and variant details
-              const orderItems = await instance.getOrderItems({
-                include: [
-                  {
-                    model: sequelize.models.Product,
-                    as: 'product',
-                    attributes: ['name']
-                  },
-                  {
-                    model: sequelize.models.ProductVariant,
-                    as: 'variant',
-                    attributes: ['slug', 'price']
-                  }
-                ]
-              });
-
+            if (order && order.user) {
               // Format product details for Trustpilot
-              const productDetails = orderItems.map(item => ({
+              const productDetails = order.orderItems.map(item => ({
                 name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
                 price: item.variant ? item.variant.price : item.unit_price,
                 quantity: item.quantity
               }));
 
               // Add product details to the order instance
-              instance.productDetails = productDetails;
+              order.productDetails = productDetails;
 
-              await trustpilotHelper.sendInvitation(instance, user);
-              logger.info(`Trustpilot invitation sent for order ${instance.order_unique_id} with status ${newStatus}`);
+              await reviewController.sendInvitation(order, order.user);
+              logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
             }
           }
         }
