@@ -71,7 +71,7 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         min: 0,
         isLessThanPrice(value) {
-          if (value && this.price && value >= this.price) {
+          if (value && value !== null && value !== 0 && this.price && this.price !== null && this.price !== 0 && value >= this.price) {
             throw new Error('Discount price must be less than regular price');
           }
         }

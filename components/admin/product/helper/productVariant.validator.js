@@ -25,10 +25,11 @@ const commonValidations = {
     variantBaseFields: [
         body('slug')
             .optional()
-            .isString()
-            .trim()
-            .isLength({ min: 3, max: 100 })
-            .withMessage('Slug must be between 3 and 100 characters'),
+            .custom((value) => {
+                if (value === null) return true;
+                if (typeof value === 'string' && value.trim().length >= 3 && value.trim().length <= 100) return true;
+                throw new Error('Slug must be between 3 and 100 characters');
+            }),
         body('price')
             .optional()
             .custom((value) => {
@@ -42,7 +43,7 @@ const commonValidations = {
             .custom((value, { req }) => {
                 if (value === null) return true;
                 if (typeof value === 'number' && value >= 0) {
-                    if (req.body.price !== null && value >= req.body.price) {
+                    if (value !== 0 && req.body.price && req.body.price !== 0 && value >= req.body.price) {
                         throw new Error('Discount price must be less than regular price');
                     }
                     return true;
