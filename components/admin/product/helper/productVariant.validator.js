@@ -31,56 +31,94 @@ const commonValidations = {
             .withMessage('Slug must be between 3 and 100 characters'),
         body('price')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Price must be a positive number'),
+            .custom((value) => {
+                if (value === null) value = 0;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Price must be a positive number or null');
+            })
+            .default(0),
         body('discount_price')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Discount price must be a positive number')
             .custom((value, { req }) => {
-                if (value >= req.body.price) {
-                    throw new Error('Discount price must be less than regular price');
+                if (value === null) return true;
+                if (typeof value === 'number' && value >= 0) {
+                    if (req.body.price !== null && value >= req.body.price) {
+                        throw new Error('Discount price must be less than regular price');
+                    }
+                    return true;
                 }
-                return true;
+                throw new Error('Discount price must be a positive number');
             }),
         body('purchase_price')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Purchase price must be a positive number'),
+            .custom((value) => {
+                if (value === null)  value = 0;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Purchase price must be a positive number');
+            }),
         body('stock')
             .optional()
-            .isInt({ min: 0 })
-            .withMessage('Stock must be a positive integer'),
+            .custom((value) => {
+                if (value === null)  value = 0;
+                if (Number.isInteger(value) && value >= 0) return true;
+                throw new Error('Stock must be a positive integer');
+            })
+            .default(0),
         body('low_stock_threshold')
             .optional()
-            .isInt({ min: 0 })
-            .withMessage('Low stock threshold must be a positive integer'),
+            .custom((value) => {
+                if (value === null)  value = 0;
+                if (Number.isInteger(value) && value >= 0) return true;
+                throw new Error('Low stock threshold must be a positive integer');
+            })
+            .default(0),
         body('weight')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Weight must be a positive number'),
+            .custom((value) => {
+                if (value === null) return true;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Weight must be a positive number');
+            })
+            .default(0),
         body('length')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Length must be a positive number'),
+            .custom((value) => {
+                if (value === null) return true;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Length must be a positive number');
+            })
+            .default(0),
         body('width')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Width must be a positive number'),
+            .custom((value) => {
+                if (value === null) return true;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Width must be a positive number');
+            })
+            .default(0),
         body('height')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Height must be a positive number'),
+            .custom((value) => {
+                if (value === null) return true;
+                if (typeof value === 'number' && value >= 0) return true;
+                throw new Error('Height must be a positive number');
+            })
+            .default(0),
         body('barcode')
             .optional()
-            .isString()
-            .trim()
-            .isLength({ min: 3, max: 50 })
-            .withMessage('Barcode must be between 3 and 50 characters'),
+            .custom((value) => {
+                if (value === null)  value = '';
+                if (typeof value === 'string' && value.trim().length >= 3 && value.trim().length <= 50) return true;
+                throw new Error('Barcode must be between 3 and 50 characters');
+            }),
         body('status')
             .optional()
-            .isIn(['active', 'inactive'])
-            .withMessage('Status must be either active or inactive')
+            .custom((value) => {
+                if (value === null) value = 'active';
+                if (['active', 'inactive'].includes(value)) return true;
+                throw new Error('Status must be either active or inactive');
+            })
+            .default('active')
     ],
 
     attributeTermId: [
