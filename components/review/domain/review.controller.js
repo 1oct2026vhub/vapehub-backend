@@ -1,12 +1,22 @@
 const axios = require('axios');
 const logger = require('../../../library/logger');
+const reviewHelper = require('../helper/review.helper');
 
 const apiKey = process.env.TRUSTPILOT_API_KEY;
+const apiSecret = process.env.TRUSTPILOT_API_SECRET;
 const businessUnitId = process.env.TRUSTPILOT_BUSINESS_UNIT_ID;
 const baseUrl = 'https://invitations-api.trustpilot.com/v1/private/business-units';
+const authUrl = 'https://api.trustpilot.com/v1/oauth/oauth-business-users-for-applications/accesstoken';
 
+
+// call from order model when order status is delivered or completed
 async function sendInvitation(order, user) {
     try {
+        // Get access token first
+        const accessToken = await reviewHelper.getAccessToken();
+        // Get the default template ID
+        const templateId = await reviewHelper.getDefaultTemplateId(accessToken);
+
         const invitationData = {
             recipientEmail: user.email,
             recipientName: `${user.first_name} ${user.last_name}`,
@@ -14,7 +24,7 @@ async function sendInvitation(order, user) {
             locale: 'en-US',
             tags: ['order', order.status],
             preferredSendTime: new Date().toISOString(),
-            templateId: process.env.TRUSTPILOT_TEMPLATE_ID,
+            templateId: templateId,
             redirectUri: `${process.env.FRONTEND_URL}/order/${order.order_unique_id}`,
             consumer: {
                 email: user.email,
@@ -35,38 +45,41 @@ async function sendInvitation(order, user) {
                 })
             }
         };
+        console.log("invitationData>>>>", invitationData);
         const response = await axios.post(
-            `${baseUrl}/${businessUnitId}/invitations`,
+            `${baseUrl}/${businessUnitId}/email-invitations`,
             invitationData,
             {
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`,
+                    'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json'
                 }
             }
         );
 
-        logger.info(`Trustpilot invitation sent for order ${order.order_unique_id} with status ${order.status}`);
+        logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${order.status}`);
         return response.data;
     } catch (error) {
-        logger.error('Error sending Trustpilot invitation:', error);
+        logger.error('Error sending review invitation:', error);
         throw error;
     }
 }
 
 async function getInvitationStatus(invitationId) {
     try {
+        const accessToken = await reviewHelper.getAccessToken();
+
         const response = await axios.get(
             `${baseUrl}/${businessUnitId}/invitations/${invitationId}`,
             {
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`
+                    'Authorization': `Bearer ${accessToken}`
                 }
             }
         );
         return response.data;
     } catch (error) {
-        logger.error('Error getting Trustpilot invitation status:', error);
+        logger.error('Error getting review invitation status:', error);
         throw error;
     }
 }

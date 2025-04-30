@@ -8,10 +8,11 @@ exports.validatePlaceOrder = [
     .withMessage("Email is required"),
 
   body("phone")
-    .matches(/^\+?[0-9]{7,15}$/)
-    .withMessage("Invalid phone number format")
+    .matches(/^\+?[0-9\s]{7,15}$/)
+    .withMessage("Invalid phone number format. Only numbers, spaces and optional + at start are allowed")
     .notEmpty()
-    .withMessage("Phone number is required"),
+    .withMessage("Phone number is required")
+    .customSanitizer(value => value.replace(/\s+/g, '')), // Remove spaces before saving
 
   body("couponCode").optional().isString().withMessage("Coupon code must be a string"),
 

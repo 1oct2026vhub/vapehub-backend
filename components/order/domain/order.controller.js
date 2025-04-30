@@ -347,7 +347,7 @@ module.exports.placeOrder = async (req, res, next) => {
             phone: phone
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
-        
+
         if (coupon) {
             // First check if user has already used this coupon
             const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
