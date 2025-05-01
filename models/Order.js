@@ -1,6 +1,8 @@
 'use strict';
 const { Model } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
+const reviewController = require('../components/review/domain/review.controller');
+const logger = require('../library/logger');
 
 module.exports = (sequelize, DataTypes) => {
   class Order extends Model {
@@ -101,6 +103,64 @@ module.exports = (sequelize, DataTypes) => {
      */
     canBeReturned() {
       return ['delivered', 'completed'].includes(this.status);
+    }
+
+    static async handleStatusChange(instance) {
+      try {
+        // Only proceed if status has changed
+        if (instance.changed('status')) {
+          const newStatus = instance.status;
+          
+          // Send Trustpilot invitation for both delivered and completed statuses
+          if (newStatus === 'delivered' || newStatus === 'completed') {
+            // Fetch the complete order with all necessary associations
+            const order = await Order.findOne({
+              where: { id: instance.id },
+              include: [
+                {
+                  model: sequelize.models.User,
+                  as: 'user',
+                  attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                  model: sequelize.models.OrderItem,
+                  as: 'orderItems',
+                  include: [
+                    {
+                      model: sequelize.models.Product,
+                      as: 'product',
+                      attributes: ['name']
+                    },
+                    {
+                      model: sequelize.models.ProductVariant,
+                      as: 'variant',
+                      attributes: ['slug', 'price']
+                    }
+                  ]
+                }
+              ]
+            });
+
+            if (order && order.user) {
+              // Format product details for Trustpilot
+              const productDetails = order.orderItems.map(item => ({
+                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                price: item.variant ? item.variant.price : item.unit_price,
+                quantity: item.quantity
+              }));
+
+              // Add product details to the order instance
+              order.productDetails = productDetails;
+
+              await reviewController.sendInvitation(order, order.user);
+              logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('Error handling order status update:', error);
+        // Don't throw the error as we don't want to block the order status update
+      }
     }
 
     /**
@@ -414,6 +474,9 @@ module.exports = (sequelize, DataTypes) => {
 
           await sequelize.models.OrderLog.create(logData, { transaction: options.transaction });
         }
+      },
+      afterUpdate: async (instance) => {
+        await Order.handleStatusChange(instance);
       }
     }
   });

@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, sequelize } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, sequelize } = require("../../../models");
+const { Op } = require('sequelize');
 const logger = require("../../../library/logger");
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -9,10 +10,8 @@ const axios = require("axios");
 
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
-        console.log("Viva Wallet webhook received", req.body);
         if (req.method === 'POST') {
             const webhookData = req.body;
-            
             // Handle Successfull transaction payment event (EventTypeId: 1796)
             if (webhookData.EventTypeId === 1796) {
                 const { EventData } = webhookData;
@@ -159,46 +158,45 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
                         }
                     }
-
                     // Clear the user's cart
                     await Cart.destroy({ 
                         where: { user_id: order.user_id }
                     });
 
                     // Create transaction record
-                    await sequelize.models.Transaction.create({
-                        userId: order.user_id,
-                        orderId: order.id,
-                        paymentMethod: 'vivaWallet',
-                        transactionType: 'PURCHASE',
-                        amount: Amount,
-                        currency: CurrencyCode,
-                        status: 'COMPLETED',
-                        referenceNumber: referenceNumber,
-                        notes: CustomerTrns,
-                        metadata: {
-                            StatusId: StatusId,
-                            TransactionId: TransactionId,
-                            cardNumber: CardNumber,
-                            cardType: CardTypeId,
-                            BankId: BankId,
-                            cardExpirationDate: CardExpirationDate,
-                            cardIssuingBank: CardIssuingBank,
-                            cardCountryCode: CardCountryCode,
-                            CurrencyCode: CurrencyCode,
-                            transactionTypeId: TransactionTypeId,
-                            transactionReferenceNumber: ReferenceNumber,
-                            totalInstallments: TotalInstallments,
-                            currentInstallment: CurrentInstallment,
-                            conversionRate: ConversionRate,
-                            originalAmount: OriginalAmount,
-                            originalCurrencyCode: OriginalCurrencyCode,
-                            cardUniqueReference: CardUniqueReference,
-                            digitalWalletId: DigitalWalletId,
-                            loyaltyTriggered: LoyaltyTriggered,
-                            tags: Tags
-                        }
-                    });
+                    // await sequelize.models.Transaction.create({
+                    //     userId: order.user_id,
+                    //     orderId: order.id,
+                    //     paymentMethod: 'vivaWallet',
+                    //     transactionType: 'PURCHASE',
+                    //     amount: Amount,
+                    //     currency: CurrencyCode,
+                    //     status: 'COMPLETED',
+                    //     referenceNumber: referenceNumber,
+                    //     notes: CustomerTrns,
+                    //     metadata: {
+                    //         StatusId: StatusId,
+                    //         TransactionId: TransactionId,
+                    //         cardNumber: CardNumber,
+                    //         cardType: CardTypeId,
+                    //         BankId: BankId,
+                    //         cardExpirationDate: CardExpirationDate,
+                    //         cardIssuingBank: CardIssuingBank,
+                    //         cardCountryCode: CardCountryCode,
+                    //         CurrencyCode: CurrencyCode,
+                    //         transactionTypeId: TransactionTypeId,
+                    //         transactionReferenceNumber: ReferenceNumber,
+                    //         totalInstallments: TotalInstallments,
+                    //         currentInstallment: CurrentInstallment,
+                    //         conversionRate: ConversionRate,
+                    //         originalAmount: OriginalAmount,
+                    //         originalCurrencyCode: OriginalCurrencyCode,
+                    //         cardUniqueReference: CardUniqueReference,
+                    //         digitalWalletId: DigitalWalletId,
+                    //         loyaltyTriggered: LoyaltyTriggered,
+                    //         tags: Tags
+                    //     }
+                    // });
 
                     // Create success notification
                     await createNotification({
