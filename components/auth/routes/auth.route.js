@@ -117,6 +117,12 @@ router.post('/register',
  *           type: string
  *         required: true
  *         description: The verification token sent to the user's email.
+ *       - in: query
+ *         name: referral_code
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Optional referral code from an existing user.
  *     responses:
  *       200:
  *         description: Email verification successful.
