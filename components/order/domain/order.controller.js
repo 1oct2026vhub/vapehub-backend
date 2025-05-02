@@ -613,397 +613,397 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
         }
         
         // Handle successful payment (statusId: F)
-        let referenceNumber = parseInt(transactionData.orderCode).toString();   // `REF${parseInt(transactionData.orderCode).toString()}`;
-        if (transactionData.statusId === "F" && transactionData.orderCode) {
-            // Find the order by orderCode
-            const order = await Order.findOne({
-                where: { user_id: userId, order_code: transactionData.orderCode },
-                include: [
-                    { model: User, as: 'user' },
-                    { 
-                        model: OrderItem, 
-                        as: 'orderItems',
-                        include: [
-                            {
-                                model: Product,
-                                as: 'product',
-                                attributes: ['id', 'name', 'price']
-                            },
-                            {
-                                model: ProductVariant,
-                                as: 'variant',
-                                attributes: ['id', 'slug', 'price', 'stock']
-                            }
-                        ]
-                    },
-                    {
-                        model: UserAddress,
-                        as: 'shippingAddress',
-                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                    },
-                    {
-                        model: UserAddress,
-                        as: 'billingAddress',
-                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderShippingAddress',
-                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderBillingAddress',
-                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                    },
-                    {
-                        model: ShippingMethod,
-                        as: 'shippingMethod',
-                        attributes: ['id', 'shipping_method', 'shipping_cost']
-                    }
-                ]
-            });
+        // let referenceNumber = parseInt(transactionData.orderCode).toString();   // `REF${parseInt(transactionData.orderCode).toString()}`;
+        // if (transactionData.statusId === "F" && transactionData.orderCode) {
+        //     // Find the order by orderCode
+        //     const order = await Order.findOne({
+        //         where: { user_id: userId, order_code: transactionData.orderCode },
+        //         include: [
+        //             { model: User, as: 'user' },
+        //             { 
+        //                 model: OrderItem, 
+        //                 as: 'orderItems',
+        //                 include: [
+        //                     {
+        //                         model: Product,
+        //                         as: 'product',
+        //                         attributes: ['id', 'name', 'price']
+        //                     },
+        //                     {
+        //                         model: ProductVariant,
+        //                         as: 'variant',
+        //                         attributes: ['id', 'slug', 'price', 'stock']
+        //                     }
+        //                 ]
+        //             },
+        //             {
+        //                 model: UserAddress,
+        //                 as: 'shippingAddress',
+        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+        //             },
+        //             {
+        //                 model: UserAddress,
+        //                 as: 'billingAddress',
+        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+        //             },
+        //             {
+        //                 model: OrderAddress,
+        //                 as: 'orderShippingAddress',
+        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+        //             },
+        //             {
+        //                 model: OrderAddress,
+        //                 as: 'orderBillingAddress',
+        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+        //             },
+        //             {
+        //                 model: ShippingMethod,
+        //                 as: 'shippingMethod',
+        //                 attributes: ['id', 'shipping_method', 'shipping_cost']
+        //             }
+        //         ]
+        //     });
 
-            if (order) {
-                // Update order status to processing
-                await order.update({ status: 'processing' });
-                // Create order log for successful payment
-                await sequelize.models.OrderLog.create({
-                    order_id: order.id,
-                    user_id: order.user_id,
-                    status: 'processing',
-                    label: 'Payment Successful via Viva Wallet'
-                });
+        //     if (order) {
+        //         // Update order status to processing
+        //         await order.update({ status: 'processing' });
+        //         // Create order log for successful payment
+        //         await sequelize.models.OrderLog.create({
+        //             order_id: order.id,
+        //             user_id: order.user_id,
+        //             status: 'processing',
+        //             label: 'Payment Successful via Viva Wallet'
+        //         });
                 
-                // Reduce stock for each order item
-                for (const item of order.orderItems) {
-                    if (item.variant) {
-                        // Update variant stock
-                        await ProductVariant.update(
-                            { stock: sequelize.literal(`stock - ${item.quantity}`) },
-                            { 
-                                where: { 
-                                    id: item.variant.id,
-                                    stock: { [Op.gte]: item.quantity }
-                                }
-                            }
-                        );
-                    } else {
-                        // Update product stock
-                        await Product.update(
-                            { stock_quantity: sequelize.literal(`stock_quantity - ${item.quantity}`) },
-                            { 
-                                where: { 
-                                    id: item.product_id,
-                                    stock_quantity: { [Op.gte]: item.quantity }
-                                }
-                            }
-                        );
-                    }
-                }
+        //         // Reduce stock for each order item
+        //         for (const item of order.orderItems) {
+        //             if (item.variant) {
+        //                 // Update variant stock
+        //                 await ProductVariant.update(
+        //                     { stock: sequelize.literal(`stock - ${item.quantity}`) },
+        //                     { 
+        //                         where: { 
+        //                             id: item.variant.id,
+        //                             stock: { [Op.gte]: item.quantity }
+        //                         }
+        //                     }
+        //                 );
+        //             } else {
+        //                 // Update product stock
+        //                 await Product.update(
+        //                     { stock_quantity: sequelize.literal(`stock_quantity - ${item.quantity}`) },
+        //                     { 
+        //                         where: { 
+        //                             id: item.product_id,
+        //                             stock_quantity: { [Op.gte]: item.quantity }
+        //                         }
+        //                     }
+        //                 );
+        //             }
+        //         }
                 
-                // Clear the user's cart
-                await Cart.destroy({ 
-                    where: { user_id: order.user_id }
-                });
+        //         // Clear the user's cart
+        //         await Cart.destroy({ 
+        //             where: { user_id: order.user_id }
+        //         });
                 
-                // Send order confirmation email
-                const emailData = {
-                    emailTypes: 'ORDER_CONFIRMATION',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt.toLocaleDateString(),
-                        status: order.status,
-                        shippingMethod: order.shippingMethod.shipping_method,
-                        shippingCost: order.shipping_cost,
-                        totalAmount: order.total,
-                        items: order.orderItems.map(item => ({
-                            name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-                            quantity: item.quantity,
-                            price: item.unit_price,
-                            total: item.total
-                        })),
-                        shippingAddress: order.orderShippingAddress,
-                        billingAddress: order.orderBillingAddress,
-                        paymentMethod: 'VivaWallet',
-                        transactionId: transactionId
-                    }
-                };
+        //         // Send order confirmation email
+        //         const emailData = {
+        //             emailTypes: 'ORDER_CONFIRMATION',
+        //             to: order.user.email,
+        //             context: {
+        //                 userName: order.user.first_name || order.user.email.split('@')[0],
+        //                 orderId: order.id,
+        //                 orderUniqueId: order.order_unique_id,
+        //                 orderCode: order.order_code,
+        //                 orderDate: order.createdAt.toLocaleDateString(),
+        //                 status: order.status,
+        //                 shippingMethod: order.shippingMethod.shipping_method,
+        //                 shippingCost: order.shipping_cost,
+        //                 totalAmount: order.total,
+        //                 items: order.orderItems.map(item => ({
+        //                     name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+        //                     quantity: item.quantity,
+        //                     price: item.unit_price,
+        //                     total: item.total
+        //                 })),
+        //                 shippingAddress: order.orderShippingAddress,
+        //                 billingAddress: order.orderBillingAddress,
+        //                 paymentMethod: 'VivaWallet',
+        //                 transactionId: transactionId
+        //             }
+        //         };
 
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        //         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
-                // Create transaction record
-                await Transaction.create({
-                    userId: userId,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',    
-                    transactionType: 'PURCHASE',
-                    amount: transactionData.amount,
-                    currency: transactionData.currencyCode,
-                    status: 'COMPLETED',
-                    referenceNumber: referenceNumber,
-                    notes: transactionData.customerTrns,
-                    metadata: {
-                        bankId: transactionData.bankId,
-                        cardNumber: transactionData.cardNumber,
-                        cardType: transactionData.cardTypeId,
-                        cardExpirationDate: transactionData.cardExpirationDate,
-                        cardIssuingBank: transactionData.cardIssuingBank,
-                        cardCountryCode: transactionData.cardCountryCode,
-                        sourceCode: transactionData.sourceCode,
-                        transactionTypeId: transactionData.transactionTypeId,
-                        switching: transactionData.switching,
-                        recurringSupport: transactionData.recurringSupport,
-                        totalInstallments: transactionData.totalInstallments,
-                        currentInstallment: transactionData.currentInstallment,
-                        conversionRate: transactionData.conversionRate,
-                        originalAmount: transactionData.originalAmount,
-                        originalCurrencyCode: transactionData.originalCurrencyCode,
-                        cardUniqueReference: transactionData.cardUniqueReference,
-                        digitalWalletId: transactionData.digitalWalletId,
-                        loyaltyTransactions: transactionData.loyaltyTransactions
-                    }
-                });
+        //         // Create transaction record
+        //         await Transaction.create({
+        //             userId: userId,
+        //             orderId: order.id,
+        //             paymentMethod: 'vivaWallet',    
+        //             transactionType: 'PURCHASE',
+        //             amount: transactionData.amount,
+        //             currency: transactionData.currencyCode,
+        //             status: 'COMPLETED',
+        //             referenceNumber: referenceNumber,
+        //             notes: transactionData.customerTrns,
+        //             metadata: {
+        //                 bankId: transactionData.bankId,
+        //                 cardNumber: transactionData.cardNumber,
+        //                 cardType: transactionData.cardTypeId,
+        //                 cardExpirationDate: transactionData.cardExpirationDate,
+        //                 cardIssuingBank: transactionData.cardIssuingBank,
+        //                 cardCountryCode: transactionData.cardCountryCode,
+        //                 sourceCode: transactionData.sourceCode,
+        //                 transactionTypeId: transactionData.transactionTypeId,
+        //                 switching: transactionData.switching,
+        //                 recurringSupport: transactionData.recurringSupport,
+        //                 totalInstallments: transactionData.totalInstallments,
+        //                 currentInstallment: transactionData.currentInstallment,
+        //                 conversionRate: transactionData.conversionRate,
+        //                 originalAmount: transactionData.originalAmount,
+        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
+        //                 cardUniqueReference: transactionData.cardUniqueReference,
+        //                 digitalWalletId: transactionData.digitalWalletId,
+        //                 loyaltyTransactions: transactionData.loyaltyTransactions
+        //             }
+        //         });
 
-                // Create success notification
-                await createNotification({
-                    userId: userId,
-                    type: 'payment',
-                    action: 'success',
-                    data: {
-                        amount: transactionData.amount,
-                        orderId: order.id,
-                        relatedId: order.id
-                    }
-                });
-            }
-        }
+        //         // Create success notification
+        //         await createNotification({
+        //             userId: userId,
+        //             type: 'payment',
+        //             action: 'success',
+        //             data: {
+        //                 amount: transactionData.amount,
+        //                 orderId: order.id,
+        //                 relatedId: order.id
+        //             }
+        //         });
+        //     }
+        // }
 
-        // Handle failed payment (statusId: E)
-        if (transactionData.statusId === "E") {
-            // Find and destroy the order
-            const order = await Order.findOne({
-                where: {user_id: userId, order_code: transactionData.orderCode }
-            });
-            if (order) {
-                await order.update({ status: 'fail' });
-                // await order.destroy();
-                // await order.destroy();
-                // Create failed transaction record
-                await Transaction.create({
-                    userId: userId,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',
-                    transactionType: 'PURCHASE',
-                    amount: transactionData.amount,
-                    currency: transactionData.currencyCode,
-                    status: 'FAILED',
-                    // referenceNumber: referenceNumber,
-                    notes: transactionData.customerTrns,
-                    metadata: {
-                        bankId: transactionData.bankId,
-                        cardNumber: transactionData.cardNumber,
-                        cardType: transactionData.cardTypeId,
-                        cardExpirationDate: transactionData.cardExpirationDate,
-                        cardIssuingBank: transactionData.cardIssuingBank,
-                        cardCountryCode: transactionData.cardCountryCode,
-                        sourceCode: transactionData.sourceCode,
-                        transactionTypeId: transactionData.transactionTypeId,
-                        switching: transactionData.switching,
-                        recurringSupport: transactionData.recurringSupport,
-                        totalInstallments: transactionData.totalInstallments,
-                        currentInstallment: transactionData.currentInstallment,
-                        conversionRate: transactionData.conversionRate,
-                        originalAmount: transactionData.originalAmount,
-                        originalCurrencyCode: transactionData.originalCurrencyCode,
-                        cardUniqueReference: transactionData.cardUniqueReference,
-                        digitalWalletId: transactionData.digitalWalletId,
-                        loyaltyTransactions: transactionData.loyaltyTransactions
-                    }
-                });
+        // // Handle failed payment (statusId: E)
+        // if (transactionData.statusId === "E") {
+        //     // Find and destroy the order
+        //     const order = await Order.findOne({
+        //         where: {user_id: userId, order_code: transactionData.orderCode }
+        //     });
+        //     if (order) {
+        //         await order.update({ status: 'fail' });
+        //         // await order.destroy();
+        //         // await order.destroy();
+        //         // Create failed transaction record
+        //         await Transaction.create({
+        //             userId: userId,
+        //             orderId: order.id,
+        //             paymentMethod: 'vivaWallet',
+        //             transactionType: 'PURCHASE',
+        //             amount: transactionData.amount,
+        //             currency: transactionData.currencyCode,
+        //             status: 'FAILED',
+        //             // referenceNumber: referenceNumber,
+        //             notes: transactionData.customerTrns,
+        //             metadata: {
+        //                 bankId: transactionData.bankId,
+        //                 cardNumber: transactionData.cardNumber,
+        //                 cardType: transactionData.cardTypeId,
+        //                 cardExpirationDate: transactionData.cardExpirationDate,
+        //                 cardIssuingBank: transactionData.cardIssuingBank,
+        //                 cardCountryCode: transactionData.cardCountryCode,
+        //                 sourceCode: transactionData.sourceCode,
+        //                 transactionTypeId: transactionData.transactionTypeId,
+        //                 switching: transactionData.switching,
+        //                 recurringSupport: transactionData.recurringSupport,
+        //                 totalInstallments: transactionData.totalInstallments,
+        //                 currentInstallment: transactionData.currentInstallment,
+        //                 conversionRate: transactionData.conversionRate,
+        //                 originalAmount: transactionData.originalAmount,
+        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
+        //                 cardUniqueReference: transactionData.cardUniqueReference,
+        //                 digitalWalletId: transactionData.digitalWalletId,
+        //                 loyaltyTransactions: transactionData.loyaltyTransactions
+        //             }
+        //         });
 
-                // Create failed notification
-                await createNotification({
-                    userId: userId,
-                    type: 'payment',
-                    action: 'failed',
-                    data: {
-                        amount: transactionData.amount,
-                        orderId: order.id,
-                        relatedId: order.id
-                    }
-                });
-            }
-        }
+        //         // Create failed notification
+        //         await createNotification({
+        //             userId: userId,
+        //             type: 'payment',
+        //             action: 'failed',
+        //             data: {
+        //                 amount: transactionData.amount,
+        //                 orderId: order.id,
+        //                 relatedId: order.id
+        //             }
+        //         });
+        //     }
+        // }
 
-        // Handle refund payment (statusId: R)
-        if (transactionData.statusId === "R") {
-            const order = await Order.findOne({
-                where: {user_id: userId, order_code: transactionData.orderCode }
-            });
-            if (order) {
-                await order.update({ status: 'refunded' });
+        // // Handle refund payment (statusId: R)
+        // if (transactionData.statusId === "R") {
+        //     const order = await Order.findOne({
+        //         where: {user_id: userId, order_code: transactionData.orderCode }
+        //     });
+        //     if (order) {
+        //         await order.update({ status: 'refunded' });
                 
-                // Create refund transaction record
-                await Transaction.create({
-                    userId: userId,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',
-                    transactionType: 'REFUND',
-                    amount: transactionData.amount,
-                    currency: transactionData.currencyCode,
-                    status: 'COMPLETED',
-                    referenceNumber: referenceNumber,
-                    notes: transactionData.customerTrns,
-                    metadata: {
-                        bankId: transactionData.bankId,
-                        cardNumber: transactionData.cardNumber,
-                        cardType: transactionData.cardTypeId,
-                        cardExpirationDate: transactionData.cardExpirationDate,
-                        cardIssuingBank: transactionData.cardIssuingBank,
-                        cardCountryCode: transactionData.cardCountryCode,
-                        sourceCode: transactionData.sourceCode,
-                        transactionTypeId: transactionData.transactionTypeId,
-                        switching: transactionData.switching,
-                        recurringSupport: transactionData.recurringSupport,
-                        totalInstallments: transactionData.totalInstallments,
-                        currentInstallment: transactionData.currentInstallment,
-                        conversionRate: transactionData.conversionRate,
-                        originalAmount: transactionData.originalAmount,
-                        originalCurrencyCode: transactionData.originalCurrencyCode,
-                        cardUniqueReference: transactionData.cardUniqueReference,
-                        digitalWalletId: transactionData.digitalWalletId,
-                        loyaltyTransactions: transactionData.loyaltyTransactions
-                    }
-                });
+        //         // Create refund transaction record
+        //         await Transaction.create({
+        //             userId: userId,
+        //             orderId: order.id,
+        //             paymentMethod: 'vivaWallet',
+        //             transactionType: 'REFUND',
+        //             amount: transactionData.amount,
+        //             currency: transactionData.currencyCode,
+        //             status: 'COMPLETED',
+        //             referenceNumber: referenceNumber,
+        //             notes: transactionData.customerTrns,
+        //             metadata: {
+        //                 bankId: transactionData.bankId,
+        //                 cardNumber: transactionData.cardNumber,
+        //                 cardType: transactionData.cardTypeId,
+        //                 cardExpirationDate: transactionData.cardExpirationDate,
+        //                 cardIssuingBank: transactionData.cardIssuingBank,
+        //                 cardCountryCode: transactionData.cardCountryCode,
+        //                 sourceCode: transactionData.sourceCode,
+        //                 transactionTypeId: transactionData.transactionTypeId,
+        //                 switching: transactionData.switching,
+        //                 recurringSupport: transactionData.recurringSupport,
+        //                 totalInstallments: transactionData.totalInstallments,
+        //                 currentInstallment: transactionData.currentInstallment,
+        //                 conversionRate: transactionData.conversionRate,
+        //                 originalAmount: transactionData.originalAmount,
+        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
+        //                 cardUniqueReference: transactionData.cardUniqueReference,
+        //                 digitalWalletId: transactionData.digitalWalletId,
+        //                 loyaltyTransactions: transactionData.loyaltyTransactions
+        //             }
+        //         });
 
-                // Create refund notification
-                await createNotification({
-                    userId: userId,
-                    type: 'payment',
-                    action: 'refunded',
-                    data: {
-                        amount: transactionData.amount,
-                        orderId: order.id,
-                        relatedId: order.id
-                    }
-                });
-            }
-        }
+        //         // Create refund notification
+        //         await createNotification({
+        //             userId: userId,
+        //             type: 'payment',
+        //             action: 'refunded',
+        //             data: {
+        //                 amount: transactionData.amount,
+        //                 orderId: order.id,
+        //                 relatedId: order.id
+        //             }
+        //         });
+        //     }
+        // }
 
-        // Handle pending payment (statusId: A)
-        if (transactionData.statusId === "A") {
-            const order = await Order.findOne({
-                where: {user_id: userId, order_code: transactionData.orderCode }
-            });
-            if (order) {
-                await order.update({ status: 'pending' });
+        // // Handle pending payment (statusId: A)
+        // if (transactionData.statusId === "A") {
+        //     const order = await Order.findOne({
+        //         where: {user_id: userId, order_code: transactionData.orderCode }
+        //     });
+        //     if (order) {
+        //         await order.update({ status: 'pending' });
                 
-                // Create pending transaction record
-                await Transaction.create({
-                    userId: userId,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',
-                    transactionType: 'PURCHASE',
-                    amount: transactionData.amount,
-                    currency: transactionData.currencyCode,
-                    status: 'PENDING',
-                    referenceNumber: referenceNumber,
-                    notes: transactionData.customerTrns,
-                    metadata: {
-                        bankId: transactionData.bankId,
-                        cardNumber: transactionData.cardNumber,
-                        cardType: transactionData.cardTypeId,
-                        cardExpirationDate: transactionData.cardExpirationDate,
-                        cardIssuingBank: transactionData.cardIssuingBank,
-                        cardCountryCode: transactionData.cardCountryCode,
-                        sourceCode: transactionData.sourceCode,
-                        transactionTypeId: transactionData.transactionTypeId,
-                        switching: transactionData.switching,
-                        recurringSupport: transactionData.recurringSupport,
-                        totalInstallments: transactionData.totalInstallments,
-                        currentInstallment: transactionData.currentInstallment,
-                        conversionRate: transactionData.conversionRate,
-                        originalAmount: transactionData.originalAmount,
-                        originalCurrencyCode: transactionData.originalCurrencyCode,
-                        cardUniqueReference: transactionData.cardUniqueReference,
-                        digitalWalletId: transactionData.digitalWalletId,
-                        loyaltyTransactions: transactionData.loyaltyTransactions
-                    }
-                });
+        //         // Create pending transaction record
+        //         await Transaction.create({
+        //             userId: userId,
+        //             orderId: order.id,
+        //             paymentMethod: 'vivaWallet',
+        //             transactionType: 'PURCHASE',
+        //             amount: transactionData.amount,
+        //             currency: transactionData.currencyCode,
+        //             status: 'PENDING',
+        //             referenceNumber: referenceNumber,
+        //             notes: transactionData.customerTrns,
+        //             metadata: {
+        //                 bankId: transactionData.bankId,
+        //                 cardNumber: transactionData.cardNumber,
+        //                 cardType: transactionData.cardTypeId,
+        //                 cardExpirationDate: transactionData.cardExpirationDate,
+        //                 cardIssuingBank: transactionData.cardIssuingBank,
+        //                 cardCountryCode: transactionData.cardCountryCode,
+        //                 sourceCode: transactionData.sourceCode,
+        //                 transactionTypeId: transactionData.transactionTypeId,
+        //                 switching: transactionData.switching,
+        //                 recurringSupport: transactionData.recurringSupport,
+        //                 totalInstallments: transactionData.totalInstallments,
+        //                 currentInstallment: transactionData.currentInstallment,
+        //                 conversionRate: transactionData.conversionRate,
+        //                 originalAmount: transactionData.originalAmount,
+        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
+        //                 cardUniqueReference: transactionData.cardUniqueReference,
+        //                 digitalWalletId: transactionData.digitalWalletId,
+        //                 loyaltyTransactions: transactionData.loyaltyTransactions
+        //             }
+        //         });
 
-                // Create pending notification
-                await createNotification({
-                    userId: userId,
-                    type: 'payment',
-                    action: 'pending',
-                    data: {
-                        amount: transactionData.amount,
-                        orderId: order.id,
-                        relatedId: order.id
-                    }
-                });
-            }
-        }
+        //         // Create pending notification
+        //         await createNotification({
+        //             userId: userId,
+        //             type: 'payment',
+        //             action: 'pending',
+        //             data: {
+        //                 amount: transactionData.amount,
+        //                 orderId: order.id,
+        //                 relatedId: order.id
+        //             }
+        //         });
+        //     }
+        // }
 
-        // Handle cancel payment (statusId: X)
-        if (transactionData.statusId === "X") {
-            const order = await Order.findOne({
-                where: {user_id: userId, order_code: transactionData.orderCode }
-            });
-            if (order) {
-                await order.update({ status: 'cancel' });
+        // // Handle cancel payment (statusId: X)
+        // if (transactionData.statusId === "X") {
+        //     const order = await Order.findOne({
+        //         where: {user_id: userId, order_code: transactionData.orderCode }
+        //     });
+        //     if (order) {
+        //         await order.update({ status: 'cancel' });
                 
-                // Create cancel transaction record
-                await Transaction.create({
-                    userId: userId,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',
-                    transactionType: 'PURCHASE',
-                    amount: transactionData.amount,
-                    currency: transactionData.currencyCode,
-                    status: 'CANCELLED',
-                    referenceNumber: referenceNumber,
-                    notes: transactionData.customerTrns,
-                    metadata: {
-                        bankId: transactionData.bankId,
-                        cardNumber: transactionData.cardNumber,
-                        cardType: transactionData.cardTypeId,
-                        cardExpirationDate: transactionData.cardExpirationDate,
-                        cardIssuingBank: transactionData.cardIssuingBank,
-                        cardCountryCode: transactionData.cardCountryCode,
-                        sourceCode: transactionData.sourceCode,
-                        transactionTypeId: transactionData.transactionTypeId,
-                        switching: transactionData.switching,
-                        recurringSupport: transactionData.recurringSupport,
-                        totalInstallments: transactionData.totalInstallments,
-                        currentInstallment: transactionData.currentInstallment,
-                        conversionRate: transactionData.conversionRate,
-                        originalAmount: transactionData.originalAmount,
-                        originalCurrencyCode: transactionData.originalCurrencyCode,
-                        cardUniqueReference: transactionData.cardUniqueReference,
-                        digitalWalletId: transactionData.digitalWalletId,
-                        loyaltyTransactions: transactionData.loyaltyTransactions
-                    }
-                });
+        //         // Create cancel transaction record
+        //         await Transaction.create({
+        //             userId: userId,
+        //             orderId: order.id,
+        //             paymentMethod: 'vivaWallet',
+        //             transactionType: 'PURCHASE',
+        //             amount: transactionData.amount,
+        //             currency: transactionData.currencyCode,
+        //             status: 'CANCELLED',
+        //             referenceNumber: referenceNumber,
+        //             notes: transactionData.customerTrns,
+        //             metadata: {
+        //                 bankId: transactionData.bankId,
+        //                 cardNumber: transactionData.cardNumber,
+        //                 cardType: transactionData.cardTypeId,
+        //                 cardExpirationDate: transactionData.cardExpirationDate,
+        //                 cardIssuingBank: transactionData.cardIssuingBank,
+        //                 cardCountryCode: transactionData.cardCountryCode,
+        //                 sourceCode: transactionData.sourceCode,
+        //                 transactionTypeId: transactionData.transactionTypeId,
+        //                 switching: transactionData.switching,
+        //                 recurringSupport: transactionData.recurringSupport,
+        //                 totalInstallments: transactionData.totalInstallments,
+        //                 currentInstallment: transactionData.currentInstallment,
+        //                 conversionRate: transactionData.conversionRate,
+        //                 originalAmount: transactionData.originalAmount,
+        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
+        //                 cardUniqueReference: transactionData.cardUniqueReference,
+        //                 digitalWalletId: transactionData.digitalWalletId,
+        //                 loyaltyTransactions: transactionData.loyaltyTransactions
+        //             }
+        //         });
 
-                // Create cancel notification
-                await createNotification({
-                    userId: userId,
-                    type: 'payment',
-                    action: 'cancelled',
-                    data: {
-                        amount: transactionData.amount,
-                        orderId: order.id,
-                        relatedId: order.id
-                    }
-                });
-            }
-        }
+        //         // Create cancel notification
+        //         await createNotification({
+        //             userId: userId,
+        //             type: 'payment',
+        //             action: 'cancelled',
+        //             data: {
+        //                 amount: transactionData.amount,
+        //                 orderId: order.id,
+        //                 relatedId: order.id
+        //             }
+        //         });
+        //     }
+        // }
 
         // Format the response data
         const paymentDetails = {payment_method: 'vivaWallet', ...transactionData};

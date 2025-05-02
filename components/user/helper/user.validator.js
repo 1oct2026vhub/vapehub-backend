@@ -18,12 +18,12 @@ exports.validateProfileUpdate = [
 
     check('phone')
         .optional()
-        .matches(/^\+?[\d-]{10,15}$/)
+        .matches(/^\+?[\d- ]{10,15}$/)
         .custom((value) => {
-            const digitCount = value.replace(/[-\+]/g, '').length;
+            const digitCount = value.replace(/[-\+\s]/g, '').length;
             return digitCount >= 10 && digitCount <= 15;
         })
-        .withMessage('Phone number must be between 10 to 15 digits (excluding + and hyphens)'),
+        .withMessage('Phone number must be between 10 to 15 digits (excluding +, hyphens and spaces)'),
 ];
 
 exports.validateCreateUserAddress = [
@@ -93,7 +93,17 @@ exports.validateCreateUserAddress = [
                 throw new Error('Country cannot be empty or contain only spaces');
             }
             return true;
+        }),
+    body('phone')
+        .optional()
+        .custom((value) => {
+            if (!value || value.trim() === '') {
+                return true;
+            }
+            const digitCount = value.replace(/[-\+\s]/g, '').length;
+            return digitCount >= 10 && digitCount <= 15;
         })
+        .withMessage('Phone number must be between 10 to 15 digits (excluding +, hyphens and spaces)'),
 ];
 
 exports.validateUpdateUserAddress = [
@@ -163,7 +173,17 @@ exports.validateUpdateUserAddress = [
                 throw new Error('Country cannot be empty or contain only spaces');
             }
             return true;
+        }),
+    check('phone')
+        .optional()
+        .custom((value) => {
+            if (!value || value.trim() === '') {
+                return true;
+            }
+            const digitCount = value.replace(/[-\+\s]/g, '').length;
+            return digitCount >= 10 && digitCount <= 15;
         })
+        .withMessage('Phone number must be between 10 to 15 digits (excluding +, hyphens and spaces)'),
 ];
 
 exports.validateChangePassword = [

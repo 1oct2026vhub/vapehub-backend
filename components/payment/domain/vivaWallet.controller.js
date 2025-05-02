@@ -12,6 +12,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
             const webhookData = req.body;
+            console.log(webhookData.EventData);
             // Handle Successfull transaction payment event (EventTypeId: 1796)
             if (webhookData.EventTypeId === 1796) {
                 const { EventData } = webhookData;
@@ -164,39 +165,39 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     });
 
                     // Create transaction record
-                    // await sequelize.models.Transaction.create({
-                    //     userId: order.user_id,
-                    //     orderId: order.id,
-                    //     paymentMethod: 'vivaWallet',
-                    //     transactionType: 'PURCHASE',
-                    //     amount: Amount,
-                    //     currency: CurrencyCode,
-                    //     status: 'COMPLETED',
-                    //     referenceNumber: referenceNumber,
-                    //     notes: CustomerTrns,
-                    //     metadata: {
-                    //         StatusId: StatusId,
-                    //         TransactionId: TransactionId,
-                    //         cardNumber: CardNumber,
-                    //         cardType: CardTypeId,
-                    //         BankId: BankId,
-                    //         cardExpirationDate: CardExpirationDate,
-                    //         cardIssuingBank: CardIssuingBank,
-                    //         cardCountryCode: CardCountryCode,
-                    //         CurrencyCode: CurrencyCode,
-                    //         transactionTypeId: TransactionTypeId,
-                    //         transactionReferenceNumber: ReferenceNumber,
-                    //         totalInstallments: TotalInstallments,
-                    //         currentInstallment: CurrentInstallment,
-                    //         conversionRate: ConversionRate,
-                    //         originalAmount: OriginalAmount,
-                    //         originalCurrencyCode: OriginalCurrencyCode,
-                    //         cardUniqueReference: CardUniqueReference,
-                    //         digitalWalletId: DigitalWalletId,
-                    //         loyaltyTriggered: LoyaltyTriggered,
-                    //         tags: Tags
-                    //     }
-                    // });
+                    await sequelize.models.Transaction.create({
+                        userId: order.user_id,
+                        orderId: order.id,
+                        paymentMethod: 'vivaWallet',
+                        transactionType: 'PURCHASE',
+                        amount: Amount,
+                        currency: CurrencyCode,
+                        status: 'COMPLETED',
+                        referenceNumber: referenceNumber,
+                        notes: CustomerTrns,
+                        metadata: {
+                            StatusId: StatusId,
+                            TransactionId: TransactionId,
+                            cardNumber: CardNumber,
+                            cardType: CardTypeId,
+                            BankId: BankId,
+                            cardExpirationDate: CardExpirationDate,
+                            cardIssuingBank: CardIssuingBank,
+                            cardCountryCode: CardCountryCode,
+                            CurrencyCode: CurrencyCode,
+                            transactionTypeId: TransactionTypeId,
+                            transactionReferenceNumber: ReferenceNumber,
+                            totalInstallments: TotalInstallments,
+                            currentInstallment: CurrentInstallment,
+                            conversionRate: ConversionRate,
+                            originalAmount: OriginalAmount,
+                            originalCurrencyCode: OriginalCurrencyCode,
+                            cardUniqueReference: CardUniqueReference,
+                            digitalWalletId: DigitalWalletId,
+                            loyaltyTriggered: LoyaltyTriggered,
+                            tags: Tags
+                        }
+                    });
 
                     // Create success notification
                     await createNotification({
@@ -438,106 +439,108 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                 if (!order) {
                     return errorResponse(res, {}, 'Order not found in database', 404);
                 }
+                if (StatusId === "E") {
+                    // Update order status to failed
+                    await order.update({ status: 'fail' });
 
-                // Update order status to failed
-                await order.update({ status: 'fail' });
+                    // Create order log for failed payment
+                    await sequelize.models.OrderLog.create({
+                        order_id: order.id,
+                        user_id: order.user_id,
+                        status: 'fail',
+                        label: 'Payment Failed via Viva Wallet',
+                            additional_info: JSON.stringify({
+                            transactionId: TransactionId,
+                            OrderCode: OrderCode,
+                            amount: Amount,
+                            currency: CurrencyCode,
+                            bankId: BankId,
+                            cardType: CardTypeId,
+                            cardIssuingBank: CardIssuingBank,
+                            cardCountryCode: CardCountryCode,
+                            responseCode: ResponseCode,
+                            responseEventId: ResponseEventId
+                        })
+                    });
 
-                // Create order log for failed payment
-                await sequelize.models.OrderLog.create({
-                    order_id: order.id,
-                    user_id: order.user_id,
-                    status: 'fail',
-                    label: 'Payment Failed via Viva Wallet',
-                    additional_info: JSON.stringify({
-                        transactionId: TransactionId,
-                        OrderCode: OrderCode,
+                    // Create failed transaction record
+                    await sequelize.models.Transaction.create({
+                        userId: order.user_id,
+                        orderId: order.id,
+                        paymentMethod: 'vivaWallet',
+                        transactionType: 'PURCHASE',
                         amount: Amount,
                         currency: CurrencyCode,
-                        bankId: BankId,
-                        cardType: CardTypeId,
-                        cardIssuingBank: CardIssuingBank,
-                        cardCountryCode: CardCountryCode,
-                        responseCode: ResponseCode,
-                        responseEventId: ResponseEventId
-                    })
-                });
+                        status: 'FAILED',
+                        referenceNumber: OrderCode.toString(),
+                        notes: CustomerTrns,
+                        metadata: {
+                            StatusId: StatusId,
+                            TransactionId: TransactionId,
+                            cardNumber: CardNumber,
+                            cardType: CardTypeId,
+                            BankId: BankId,
+                            cardExpirationDate: CardExpirationDate,
+                            cardIssuingBank: CardIssuingBank,
+                            cardCountryCode: CardCountryCode,
+                            CurrencyCode: CurrencyCode,
+                            transactionTypeId: TransactionTypeId,
+                            totalInstallments: TotalInstallments,
+                            currentInstallment: CurrentInstallment,
+                            conversionRate: ConversionRate,
+                            originalAmount: OriginalAmount,
+                            originalCurrencyCode: OriginalCurrencyCode,
+                            cardUniqueReference: CardUniqueReference,
+                            digitalWalletId: DigitalWalletId,
+                            loyaltyTriggered: LoyaltyTriggered,
+                            tags: Tags,
+                            responseCode: ResponseCode,
+                            responseEventId: ResponseEventId
+                        }
+                    });
 
-                // Create failed transaction record
-                await sequelize.models.Transaction.create({
-                    userId: order.user_id,
-                    orderId: order.id,
-                    paymentMethod: 'vivaWallet',
-                    transactionType: 'PURCHASE',
-                    amount: Amount,
-                    currency: CurrencyCode,
-                    status: 'FAILED',
-                    referenceNumber: OrderCode.toString(),
-                    notes: CustomerTrns,
-                    metadata: {
-                        StatusId: StatusId,
-                        TransactionId: TransactionId,
-                        cardNumber: CardNumber,
-                        cardType: CardTypeId,
-                        BankId: BankId,
-                        cardExpirationDate: CardExpirationDate,
-                        cardIssuingBank: CardIssuingBank,
-                        cardCountryCode: CardCountryCode,
-                        CurrencyCode: CurrencyCode,
-                        transactionTypeId: TransactionTypeId,
-                        totalInstallments: TotalInstallments,
-                        currentInstallment: CurrentInstallment,
-                        conversionRate: ConversionRate,
-                        originalAmount: OriginalAmount,
-                        originalCurrencyCode: OriginalCurrencyCode,
-                        cardUniqueReference: CardUniqueReference,
-                        digitalWalletId: DigitalWalletId,
-                        loyaltyTriggered: LoyaltyTriggered,
-                        tags: Tags,
-                        responseCode: ResponseCode,
-                        responseEventId: ResponseEventId
-                    }
-                });
+                    // Create failed notification
+                    await createNotification({
+                        userId: order.user_id,
+                        type: 'payment',
+                        action: 'failed',
+                        data: {
+                            amount: Amount,
+                            orderId: order.id,
+                            relatedId: order.id,
+                            reason: 'Payment failed via Viva Wallet'
+                        }
+                    });
 
-                // Create failed notification
-                await createNotification({
-                    userId: order.user_id,
-                    type: 'payment',
-                    action: 'failed',
-                    data: {
-                        amount: Amount,
+                    // Send failure email
+                    // const emailData = {
+                    //     emailTypes: 'PAYMENT_FAILED',
+                    //     to: order.user.email,
+                    //     context: {
+                    //         userName: order.user.first_name || order.user.email.split('@')[0],
+                    //         orderId: order.id,
+                    //         orderUniqueId: order.order_unique_id,
+                    //         orderCode: order.order_code,
+                    //         orderDate: order.createdAt.toLocaleDateString(),
+                    //         status: 'failed',
+                    //         amount: Amount,
+                    //         currency: CurrencyCode,
+                    //         transactionId: TransactionId,
+                    //         reason: 'Payment failed via Viva Wallet'
+                    //     }
+                    // };
+
+                    // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+
+                    return successResponse(res, {
+                        message: 'Payment failed notification processed successfully',
                         orderId: order.id,
-                        relatedId: order.id,
-                        reason: 'Payment failed via Viva Wallet'
-                    }
-                });
-
-                // Send failure email
-                const emailData = {
-                    emailTypes: 'PAYMENT_FAILED',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
                         orderCode: order.order_code,
-                        orderDate: order.createdAt.toLocaleDateString(),
-                        status: 'failed',
-                        amount: Amount,
-                        currency: CurrencyCode,
-                        transactionId: TransactionId,
-                        reason: 'Payment failed via Viva Wallet'
-                    }
-                };
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-
-                return successResponse(res, {
-                    message: 'Payment failed notification processed successfully',
-                    orderId: order.id,
-                    orderCode: order.order_code,
-                    status: order.status,
-                    transactionId: TransactionId
-                });
+                        status: order.status,
+                        transactionId: TransactionId
+                    });
+                }
+                
             }
             // Handle cancelled order (EventTypeId: 4865)
             else if (webhookData.EventTypeId === 4865) {
