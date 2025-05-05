@@ -3,7 +3,7 @@ const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink } = requi
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
-
+const seoService = require("../../../components/admin/seo/domain/seo.service");
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -11,6 +11,13 @@ const ENTITY_TYPE_PRIORITY = {
   product: 3,
   product_variant: 4,
   blog: 5
+};
+
+const getEntityType = (type) => {
+  if (type === 'blog') return 'blog_post';
+  if (type === 'blog_category') return 'blog_category';
+  if (type === 'product_variant') return 'product';
+  return type;
 };
 
 module.exports.getHomeCarousel = async (req, res, next) => {
@@ -137,10 +144,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
 
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
+            const seoData = await seoService.getSeoMeta(
+                getEntityType(slugRelations[0].entity_type),
+                slugRelations[0].slug
+            );
             return successResponse(res, {
                 slug: slugRelations[0].slug,
                 entity_type: slugRelations[0].entity_type,
-                entity_id: slugRelations[0].entity_id
+                entity_id: slugRelations[0].entity_id,
+                seo: seoData
             }, 'Success');
         }
 
@@ -230,6 +242,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         }, "Invalid request", 400);
 
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };
