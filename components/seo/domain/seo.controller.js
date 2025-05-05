@@ -1,7 +1,9 @@
 const { SitemapStream, streamToPromise } = require('sitemap');
 const { createGzip } = require('zlib');
 const db = require('../../../models');
-const { createError } = require('../../../utils/errorHandler');
+const { errorResponse, successResponse } = require("../../../utils/responseUtils");
+
+
 
 const seoController = {
   // Get SEO metadata by slug
@@ -22,7 +24,7 @@ const seoController = {
 
       res.json(seoMeta);
     } catch (error) {
-      next(createError(500, error.message));
+      next(errorResponse(500, error.message));
     }
   },
 
@@ -60,7 +62,7 @@ const seoController = {
         throw e;
       });
     } catch (error) {
-      next(createError(500, error.message));
+      next(errorResponse(500, error.message));
     }
   },
 

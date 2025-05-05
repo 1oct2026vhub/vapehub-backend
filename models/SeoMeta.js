@@ -3,9 +3,9 @@ const { DataTypes } = require('sequelize');
 module.exports = (sequelize) => {
   const SeoMeta = sequelize.define('SeoMeta', {
     id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
+      type: DataTypes.BIGINT,
+      primaryKey: true,
+      autoIncrement: true
     },
     entityType: {
       type: DataTypes.ENUM('page', 'product', 'category', 'brand', 'blog_category', 'blog_post'),
@@ -56,6 +56,7 @@ module.exports = (sequelize) => {
     }
   }, {
     timestamps: true,
+    tableName: 'seo_meta',
     indexes: [
       {
         unique: true,
@@ -63,6 +64,10 @@ module.exports = (sequelize) => {
       }
     ]
   });
+
+  SeoMeta.associate = (models) => {
+    // Add any associations here if needed
+  };
 
   return SeoMeta;
 }; 

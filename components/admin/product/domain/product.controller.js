@@ -6,6 +6,7 @@ const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
+const seoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -585,6 +586,11 @@ module.exports.updateProduct = async (req, res, next) => {
             updated_by
         };
 
+        // Update SEO metadata when slug changes
+        if (cleanSlug && product.slug !== cleanSlug) {
+            await seoService.updateSeoSlug('product', id, cleanSlug);
+        }
+
         // Update only if there are changes
         if (Object.keys(updatedFields).length > 0) {
             await product.update(updatedFields, { transaction });
@@ -621,6 +627,9 @@ module.exports.updateProduct = async (req, res, next) => {
             ]
         });
 
+        // Update SEO noIndex based on product status
+        await seoService.updateProductNoIndex(id, updatedProduct.status);
+
         await transaction.commit();
         return successResponse(res, updatedProduct, "Product updated successfully");
     } catch (error) {
@@ -652,6 +661,9 @@ module.exports.deleteProduct = async (req, res, next) => {
 
         // Delete slug relation first
         await slugManager.deleteSlug('product', id, transaction);
+
+        // Update SEO noIndex to true before deletion
+        await SeoService.updateNoIndex('product', id, true);
 
         // Perform a soft delete
         await product.destroy({ transaction });
@@ -695,6 +707,10 @@ module.exports.restoreProduct = async (req, res, next) => {
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);
+
+        // Update SEO noIndex based on product status and published state
+        const noIndex = product.status !== 'published';
+        await seoService.updateNoIndex('product', id, noIndex);
 
         await transaction.commit();
         logger.info(`Product ID ${id} restored successfully`);
@@ -1346,9 +1362,24 @@ module.exports.updateProductStatus = async (req, res, next) => {
             updated_by
         }, { transaction });
 
+        // Update SEO noIndex based on product status
+        await seoService.updateProductNoIndex(productId, status);
+
+        // Update category and brand SEO based on product status
+        const category = await Category.findByPk(product.category_id, { transaction });
+        if (category) {
+            await seoService.updateCategoryNoIndex(category.id);
+        }
+
+        const brand = await Brand.findByPk(product.brand_id, { transaction });
+        if (brand) {
+            await seoService.updateBrandNoIndex(brand.id);
+        }
+
         await transaction.commit();
         return successResponse(res, { message: "Product status updated successfully" });
     } catch (error) {
+        console.log(error);
         await transaction.rollback();
         logger.error('Error updating product status:', error);
         return errorResponse(res, error, error.message);

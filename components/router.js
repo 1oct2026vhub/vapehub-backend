@@ -1,39 +1,34 @@
 // Your router setup
-const express = require('express');
-const router = express.Router();
+const router = require("express").Router();
 
-// Import all route modules
-const authRoutes = require('./auth/auth.route');
-const userRoutes = require('./user/user.route');
-const productRoutes = require('./product/product.route');
-const categoryRoutes = require('./category/category.route');
-const brandRoutes = require('./brand/brand.route');
-const cartRoutes = require('./Cart/cart.route');
-const checkoutRoutes = require('./checkout/checkout.route');
-const orderRoutes = require('./order/order.route');
-const shippingMethodRoutes = require('./shippingMethod/shippingMethod.route');
-const paymentRoutes = require('./payment/payment.route');
-const notificationRoutes = require('./notification/notification.route');
-const menuRoutes = require('./menu/menu.route');
-const footerRoutes = require('./footer/footer.route');
-const blogRoutes = require('./blog/blog.route');
-const seoRoutes = require('./seo/seo.route');
+router.get("/", (req, res) => {
+    res.send("Hello World! from GET");
+});
 
-// Mount all routes
-router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/products', productRoutes);
-router.use('/categories', categoryRoutes);
-router.use('/brands', brandRoutes);
-router.use('/cart', cartRoutes);
-router.use('/checkout', checkoutRoutes);
-router.use('/orders', orderRoutes);
-router.use('/shipping-methods', shippingMethodRoutes);
-router.use('/payment', paymentRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/menu', menuRoutes);
-router.use('/footer', footerRoutes);
-router.use('/blog', blogRoutes);
-router.use('/seo', seoRoutes);
+router.post("/", (req, res) => {
+    res.send("Hello World from POST!");
+});
+
+// This should be under the correct path
+router.use('/auth', require('./auth/routes/auth.route'));
+router.use("/brands", require("./brand/routes/brand.route"))
+router.use("/category", require("./category/routes/category.route"))
+router.use("/product", require("./product/routes/product.route"))
+router.use("/faqs", require("./FAQ/routes/faqs.route"))
+router.use("/cart", require("./Cart/routes/cart.route"))
+router.use("/admin", require("./admin/admin.route"))
+router.use("/mailSubscription", require("./mailSubcription/routes/mailSubscription.route"))
+router.use("/testimonials", require("./testimonial/routes/testimonial.route"))
+router.use("/blogs", require("./blog/routes/blog.route"))
+router.use("/users", require("./user/routes/user.route"))
+router.use("/home", require("./homePage/routes/homePage.route"))
+router.use("/checkout", require("./checkout/routes/checkout.route"))
+router.use("/order", require("./order/routes/order.route"))
+router.use("/shipping-method", require("./shippingMethod/routes/shippingMethod.route"))
+router.use("/email", require("../library/mailsInDev/index").emailRouter)
+router.use("/notifications", require("./notification/routes/notification.route"))
+router.use("/payment", require("./payment/routes/payment.route"))
+router.use("/menu", require("./menu/routes/menu.route"))
+router.use("/footer", require("./footer/routes/footer.route"))
 
 module.exports = router;

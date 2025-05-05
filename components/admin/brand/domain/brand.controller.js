@@ -4,6 +4,7 @@ const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
+const seoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -214,7 +215,10 @@ module.exports.updateBrand = async (req, res, next) => {
         if (slug && slug !== brand.slug) {
             await slugManager.createOrUpdateSlug(slug, 'brand', id, t);
         }
-
+        // Update SEO slug if slug has changed
+        if (slug && brand.slug !== slug) {
+            await seoService.updateSeoSlug('brand', id, slug);
+        }
         // Update brand
         await brand.update({
             name: name?.trim() || brand.name,
@@ -223,6 +227,10 @@ module.exports.updateBrand = async (req, res, next) => {
             logo_url,
             updated_by
         }, { transaction: t });
+
+        // Update SEO noIndex based on brand status
+        await seoService.updateBrandNoIndex(id);
+
 
         await t.commit();
         return successResponse(res, brand, "Brand updated successfully");
@@ -266,6 +274,9 @@ module.exports.deleteBrand = async (req, res, next) => {
         // Soft delete the brand
         await brand.destroy({ transaction: t });
 
+        // Update SEO noIndex based on brand status
+        await seoService.updateNoIndex('brand', id, true);
+
         await t.commit();
         return successResponse(res, {}, "Brand soft deleted successfully", 200);
     } catch (error) {
@@ -293,6 +304,9 @@ module.exports.restoreBrand = async (req, res, next) => {
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
+
+        // Update SEO noIndex based on brand status
+        await seoService.updateBrandNoIndex(id);
 
         await t.commit();
         return successResponse(res, {}, "Brand restored successfully", 200);

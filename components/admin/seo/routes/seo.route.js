@@ -12,7 +12,15 @@ const seoController = require('../domain/seo.controller');
  *       type: object
  *       required:
  *         - slug
+ *         - entityType
  *       properties:
+ *         entityType:
+ *           type: string
+ *           enum: [page, product, category, brand, blog_category, blog_post]
+ *           description: Type of entity
+ *         entityId:
+ *           type: string
+ *           description: ID of the entity (required for all entity types except 'page')
  *         title:
  *           type: string
  *           description: SEO title
@@ -58,7 +66,6 @@ const seoController = require('../domain/seo.controller');
  *         required: false
  *         schema:
  *           type: string
- *           format: uuid
  *         description: ID of the entity (optional for pages)
  *       - in: query
  *         name: slug
@@ -88,28 +95,13 @@ router.get(
 
 /**
  * @swagger
- * /api/admin/seo/{entityType}/{entityId}:
- *   put:
+ * /api/admin/seo:
+ *   post:
  *     summary: Create or update SEO metadata for an entity
  *     tags:
  *       - ADMIN - SEO
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: entityType
- *         required: true
- *         schema:
- *           type: string
- *           enum: [page, product, category, brand, blog_category, blog_post]
- *         description: Type of entity
- *       - in: path
- *         name: entityId
- *         required: false
- *         schema:
- *           type: string
- *           format: uuid
- *         description: ID of the entity
  *     requestBody:
  *       required: true
  *       content:
@@ -122,14 +114,100 @@ router.get(
  *       201:
  *         description: SEO metadata created successfully
  *       400:
- *         description: Invalid input
+ *         description: Invalid input - entityId is required for non-page entities
+ *       401:
+ *         description: Unauthorized access
+ *       404:
+ *         description: Entity not found
+ */
+router.post(
+    "/",
+    [authMiddleware(true), validateRequest(validationRules.upsertSeoMeta)],
+    (req, res, next) => {
+        // If entityType is 'page', set entityId to null
+        if (req.body.entityType === 'page') {
+            req.body.entityId = null;
+        }
+        seoController.upsertSeoMeta(req, res, next);
+    }
+);
+
+/**
+ * @swagger
+ * /api/admin/seo:
+ *   get:
+ *     summary: List SEO metadata with filtering and pagination
+ *     tags:
+ *       - ADMIN - SEO
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: entityType
+ *         schema:
+ *           type: string
+ *           enum: [page, product, category, brand, blog_category, blog_post]
+ *         description: Filter by entity type
+ *       - in: query
+ *         name: entityId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by entity ID
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         description: Search keyword for title, description, focus keyword, or slug
+ *       - in: query
+ *         name: noIndex
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter by noIndex status
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: List of SEO metadata retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/SeoMeta'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
  *       401:
  *         description: Unauthorized access
  */
-router.put(
-    "/:entityType/:entityId?",
-    [authMiddleware(true), validateRequest(validationRules.upsertSeoMeta)],
-    seoController.upsertSeoMeta
+router.get(
+    "/",
+    [authMiddleware(true), validateRequest(validationRules.listSeoMeta)],
+    seoController.listSeoMeta
 );
 
 module.exports = router; 

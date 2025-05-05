@@ -4,6 +4,7 @@ const { Blog, User, BlogCategory, BlogTag, SlugRelation, sequelize } = require("
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);  
+const seoService = require('../../seo/domain/seo.service');
 
 const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
 
@@ -300,7 +301,8 @@ module.exports.updateBlog = async (req, res) => {
 
         const blog = await Blog.findByPk(id, { transaction });
         if (!blog) {
-            throw new Error('Blog post not found');
+            await transaction.rollback();
+            return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
         }
 
         const image_url = await handleImageUpload(req.file) || blog.image_url;
@@ -309,7 +311,11 @@ module.exports.updateBlog = async (req, res) => {
         if (slug && slug !== blog.slug) {
             await slugManager.createOrUpdateSlug(slug, 'blog', id, transaction);
         }
-
+        // Update SEO slug if slug has changed
+        if (slug && blog.slug !== slug) {
+            await seoService.updateSeoSlug('blog', id, slug);
+        }
+        
         // Prepare update data
         const updateData = {
             ...(title && { title }),
@@ -340,6 +346,10 @@ module.exports.updateBlog = async (req, res) => {
         // Update relations
         await updateBlogRelations(id, { categories: parsedCategories, tags: parsedTags }, transaction);
 
+        // Update SEO noIndex based on blog post status and publication date
+        await seoService.updateBlogPostNoIndex(id, status, published_at);
+
+
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {
             include: [
@@ -351,10 +361,10 @@ module.exports.updateBlog = async (req, res) => {
         });
 
         await transaction.commit();
-        successResponse(res, updatedBlog, 'Blog post updated successfully');
+        return successResponse(res, updatedBlog, "Blog post updated successfully");
     } catch (error) {
         await transaction.rollback();
-        errorResponse(res, error);
+        return errorResponse(res, error, error.message);
     }
 };
 
@@ -372,6 +382,9 @@ module.exports.deleteBlog = async (req, res) => {
 
         // This will cascade delete relations due to model associations
         await blog.destroy({ transaction });
+
+        // Update SEO noIndex to true before deletion
+        await seoService.updateNoIndex('blog', req.params.id, true);
 
         await transaction.commit();
         successResponse(res, null, 'Blog post deleted successfully');
@@ -398,6 +411,9 @@ module.exports.restoreBlog = async (req, res) => {
         }
 
         await blog.restore();
+
+        // Update SEO noIndex based on blog status
+        await seoService.updateBlogPostNoIndex(blog.id, blog.status, blog.published_at);
         
         // Recreate slug using static method
         await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, transaction);

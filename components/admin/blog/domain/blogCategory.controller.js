@@ -3,6 +3,7 @@ const { BlogCategory, SlugRelation, sequelize } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
+const seoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -244,8 +245,16 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         if (parent_id !== null) {
             updateData.parent_id = parent_id;
         }
-
+ 
+        // Update SEO slug if slug has changed
+        if (slug && category.slug !== slug) {
+            await seoService.updateSeoSlug('blog_category', id, slug);
+        }
         await category.update(updateData, { transaction: t });
+
+        // Update SEO noIndex based on category status
+        await seoService.updateBlogCategoryNoIndex(id, status);
+
 
         await t.commit();
 
@@ -275,6 +284,9 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
 
         // Soft delete the category
         await category.destroy({ transaction: t });
+
+        // Update SEO noIndex based on category status
+        await seoService.updateNoIndex('blog_category', id, true);
 
         await t.commit();
 
@@ -308,6 +320,9 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
+
+        // Update SEO noIndex based on category status
+        await seoService.updateBlogCategoryNoIndex(id, category.status);
 
         await t.commit();
 
