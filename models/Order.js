@@ -1,7 +1,6 @@
 'use strict';
 const { Model } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
-const reviewController = require('../components/review/domain/review.controller');
 const logger = require('../library/logger');
 
 module.exports = (sequelize, DataTypes) => {

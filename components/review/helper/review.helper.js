@@ -1,11 +1,31 @@
 const axios = require('axios');
 const logger = require('../../../library/logger');
+const { uploadFiletToS3, generateUniqueFileName } = require("../../../library/s3/s3Helper");
 const apiKey = process.env.TRUSTPILOT_API_KEY;
 const apiSecret = process.env.TRUSTPILOT_API_SECRET;
 const businessUnitId = process.env.TRUSTPILOT_BUSINESS_UNIT_ID;
 const baseUrl = 'https://invitations-api.trustpilot.com/v1/private/business-units';
 const authUrl = 'https://api.trustpilot.com/v1/oauth/oauth-business-users-for-applications/accesstoken';
 
+// Helper function to handle media upload to S3
+const handleMediaUpload = async (file) => {
+    if (!file) return null;
+    try {
+        const { originalname, mimetype, buffer } = file;
+        const fileName = generateUniqueFileName(originalname);
+        const params = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: `reviews/${fileName}`,
+            Body: buffer,
+            ContentType: mimetype
+        };
+        const uploadedMedia = await uploadFiletToS3(params);
+        return uploadedMedia?.Location;
+    } catch (error) {
+        logger.error('Error uploading media to S3:', error);
+        throw new Error("Media upload failed");
+    }
+};
 
 async function getAccessToken() {
     try {
@@ -87,5 +107,6 @@ async function getDefaultTemplateId(accessToken) {
 module.exports = {
     getAccessToken,
     getInvitationTemplates,
-    getDefaultTemplateId
+    getDefaultTemplateId,
+    handleMediaUpload
 };

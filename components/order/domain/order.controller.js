@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -15,7 +15,6 @@ module.exports.getOrders = async (req, res) => {
         const userId = req.user.id; // Get user ID from authenticated token
         const { page = 1, limit = 10 } = req.query; // Default page 1 and 10 items per page
         const offset = (page - 1) * limit;
-
         // Get user data
         const user = await User.findOne({
             where: { id: userId },
