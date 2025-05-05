@@ -1,5 +1,7 @@
 const { Notification } = require('../../../models');
 const { Op } = require('sequelize');
+const { errorResponse, successResponse } = require("../../../utils/responseUtils");
+
 
 /**
  * Get notifications for a user with pagination
@@ -15,17 +17,16 @@ const getUserNotifications = async (req, res) => {
       limit,
       offset
     });
-
-    res.json({
-      data: notifications.rows,
+    return successResponse(res, {
+      rows: notifications.rows,
       pagination: {
         total: notifications.count,
         currentPage: parseInt(page),
         totalPages: Math.ceil(notifications.count / limit)
       }
-    });
+    }, "Success");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch notifications' });
+    return errorResponse(res, error, "Failed to fetch notifications");
   }
 };
 
@@ -41,9 +42,9 @@ const getUnreadNotifications = async (req, res) => {
       },
       order: [['created_at', 'DESC']]
     });
-    res.json(notifications);
+    return successResponse(res, notifications, "Success");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch unread notifications' });
+    return errorResponse(res, error, "Failed to fetch unread notifications");
   }
 };
 
@@ -58,9 +59,9 @@ const getUnreadCount = async (req, res) => {
         is_read: false
       }
     });
-    res.json({ count });
+    return successResponse(res, { count }, "Success");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch unread count' });
+    return errorResponse(res, error, "Failed to fetch unread count");
   }
 };
 
@@ -77,13 +78,13 @@ const markAsRead = async (req, res) => {
     });
 
     if (!notification) {
-      return res.status(404).json({ error: 'Notification not found' });
+      return errorResponse(res, { message: "Notification not found" }, "Notification not found", 404);
     }
 
-    await notification.markAsRead();
-    res.json(notification);
+    await notification.update({ is_read: true });
+    return successResponse(res, notification, "Success");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to mark notification as read' });
+    return errorResponse(res, error, "Failed to mark notification as read");
   }
 };
 
@@ -101,9 +102,9 @@ const markAllAsRead = async (req, res) => {
         }
       }
     );
-    res.json({ message: 'All notifications marked as read' });
+    return successResponse(res, null, "All notifications marked as read successfully");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    return errorResponse(res, error, "Failed to mark all notifications as read");
   }
 };
 
@@ -120,13 +121,13 @@ const deleteNotification = async (req, res) => {
     });
 
     if (!notification) {
-      return res.status(404).json({ error: 'Notification not found' });
+      return errorResponse(res, { message: "Notification not found" }, "Notification not found", 404);
     }
 
     await notification.destroy();
-    res.json({ message: 'Notification deleted successfully' });
+    return successResponse(res, null, "Notification deleted successfully");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete notification' });
+    return errorResponse(res, error, "Failed to delete notification");
   }
 };
 
@@ -139,9 +140,9 @@ const createNotification = async (req, res) => {
       ...req.body,
       user_id: req.user.id
     });
-    res.status(201).json(notification);
+    return successResponse(res, notification, "Notification created successfully", 201);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create notification' });
+    return errorResponse(res, error, "Failed to create notification");
   }
 };
 
@@ -164,16 +165,16 @@ const getNotificationsByType = async (req, res) => {
       offset
     });
 
-    res.json({
-      data: notifications.rows,
+    return successResponse(res, {
+      rows: notifications.rows,
       pagination: {
         total: notifications.count,
         currentPage: parseInt(page),
         totalPages: Math.ceil(notifications.count / limit)
       }
-    });
+    }, "Notifications fetched successfully");
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch notifications by type' });
+    return errorResponse(res, error, "Failed to fetch notifications by type");
   }
 };
 

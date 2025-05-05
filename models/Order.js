@@ -1,8 +1,8 @@
 'use strict';
 const { Model } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
-const reviewController = require('../components/review/domain/review.controller');
 const logger = require('../library/logger');
+const reviewHelper = require('../components/review/helper/review.helper');
 
 module.exports = (sequelize, DataTypes) => {
   class Order extends Model {
@@ -152,7 +152,7 @@ module.exports = (sequelize, DataTypes) => {
               // Add product details to the order instance
               order.productDetails = productDetails;
 
-              await reviewController.sendInvitation(order, order.user);
+              await reviewHelper.sendInvitation(order, order.user);
               logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
             }
           }
