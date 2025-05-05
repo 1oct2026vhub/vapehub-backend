@@ -1,9 +1,10 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Transaction, Order, User, Product, ProductVariant, StockMovement, StockReservation, Coupon, MailSubscription, Blog, Carousel, BannerImage, sequelize, Role } = require("../../../../models");
+const { Transaction, Order, User, Product, ProductVariant, StockMovement, StockReservation, Coupon, MailSubscription, Blog, Carousel, BannerImage, sequelize, Role, SeoMeta } = require("../../../../models");
 const { Op } = require('sequelize');
 const dashboardHelper = require('../helper/dashboard.helper');
 const logger = require("../../../../library/logger");
 const { getDashboardDateRanges } = require("../../../../utils/dateUtils");
+const seoService = require('../../seo/domain/seo.service');
 
 module.exports.getDashboardStats = async (req, res, next) => {
     try {
@@ -137,6 +138,63 @@ module.exports.getDashboardStats = async (req, res, next) => {
             ]
         });
 
+        // SEO Statistics
+        const seoStats = await Promise.all([
+            // Get total content count by type
+            SeoMeta.findAll({
+                attributes: [
+                    'entityType',
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+                ],
+                group: ['entityType'],
+                raw: true
+            }),
+            // Get content with health status
+            SeoMeta.findAll({
+                raw: true
+            })
+        ]);
+
+        const [contentByType, allContent] = seoStats;
+
+        // Calculate health statistics
+        const healthStats = await Promise.all(allContent.map(async (item) => {
+            try {
+                const identifier = item.entityType === 'page' ? item.slug : item.entityId;
+                const health = await seoService.checkSeoHealth(item.entityType, identifier);
+                return {
+                    ...item,
+                    health
+                };
+            } catch (error) {
+                logger.error({ error, item }, 'Error getting health check for dashboard');
+                return {
+                    ...item,
+                    health: null
+                };
+            }
+        }));
+
+        const seoStatistics = {
+            totalContent: allContent.length,
+            contentByType: contentByType.reduce((acc, curr) => {
+                acc[curr.entityType] = parseInt(curr.count);
+                return acc;
+            }, {}),
+            healthDistribution: {
+                green: healthStats.filter(item => item.health?.status === 'green').length,
+                orange: healthStats.filter(item => item.health?.status === 'orange').length,
+                red: healthStats.filter(item => item.health?.status === 'red').length,
+                unknown: healthStats.filter(item => !item.health).length
+            },
+            commonIssues: {
+                missingTitle: allContent.filter(item => !item.title).length,
+                missingDescription: allContent.filter(item => !item.description).length,
+                missingFocusKeyword: allContent.filter(item => !item.focusKeyword).length,
+                noIndexEnabled: allContent.filter(item => item.noIndex).length
+            }
+        };
+
         const stats = {
             sales: {
                 today: todaySales || 0,
@@ -159,7 +217,8 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 activeBanners
             },
             recentTransactions,
-            recentOrders
+            recentOrders,
+            seo: seoStatistics
         };
 
         // Format the response data

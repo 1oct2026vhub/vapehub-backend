@@ -4,6 +4,7 @@ const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
 const SlugManager = require("../../../../utils/slugManager");
+const seoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -222,6 +223,11 @@ module.exports.updateCategory = async (req, res, next) => {
             }
         }
 
+        // Update SEO slug if slug has changed
+        if (slug && category.slug !== slug) {
+            await seoService.updateSeoSlug('category', id, slug);
+        }
+        
          // Update category
          await category.update({
             name: name?.trim() || category.name,
@@ -231,6 +237,9 @@ module.exports.updateCategory = async (req, res, next) => {
             updated_by,
             parent_id
         }, { transaction: t });
+
+        // Update SEO noIndex based on category status
+        await seoService.updateCategoryNoIndex(id);
 
         // Update slug if provided
         if (slug && slug !== category.slug) {
@@ -280,6 +289,9 @@ module.exports.deleteCategory = async (req, res, next) => {
         // Delete the category
         await category.destroy({ transaction: t });
 
+        // Update SEO noIndex based on category status
+        await seoService.updateNoIndex('category', id, true);   
+
         await t.commit();
         return successResponse(res, {}, "Category deleted successfully", 200);
     } catch (error) {
@@ -306,6 +318,9 @@ module.exports.restoreCategory = async (req, res, next) => {
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
+
+        // Update SEO noIndex based on category status
+        await seoService.updateCategoryNoIndex(id);
 
         await t.commit();
         return successResponse(res, {}, "Category restored successfully", 200);
