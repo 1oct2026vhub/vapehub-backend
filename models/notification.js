@@ -76,6 +76,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'ID of the related entity (order_id, product_id, etc.)'
     },
+    url: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'URL for notification action or redirect'
+    },
     is_read: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
