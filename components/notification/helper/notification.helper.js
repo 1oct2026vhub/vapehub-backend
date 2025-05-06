@@ -16,9 +16,9 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
         // Define notification messages based on type and action
         const messages = {
             order: {
-                created: `New order #${data.orderUniqueId || 'N/A'} has been created`,
+                created: `Thank you for your order! Order #${data.orderUniqueId || 'N/A'} has been placed successfully.`,
                 updated: `Order #${data.orderUniqueId || 'N/A'} has been updated`,
-                cancelled: `Order #${data.orderUniqueId || 'N/A'} has been cancelled`,
+                cancelled: `Your order #${data.orderUniqueId || 'N/A'} has been cancelled. Any payment made will be refunded shortly.`,
                 completed: `Order #${data.orderUniqueId || 'N/A'} has been completed`,
                 shipped: `Order #${data.orderUniqueId || 'N/A'} has been shipped`,
                 delivered: `Order #${data.orderUniqueId || 'N/A'} has been delivered`,
