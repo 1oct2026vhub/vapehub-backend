@@ -47,24 +47,13 @@ module.exports.login = async (req, res, next) => {
                 user.token = token;
                 user.token_expiry = token_expiry;
                 await user.save();
-                // Get referral code from user's referrer
-                let referral_code = null;
-                if (user.referred_by) {
-                    const referrer = await User.findOne({
-                        where: { id: user.referred_by },
-                        attributes: ['referral_code']
-                    });
-                    if (referrer) {
-                        referral_code = referrer.referral_code;
-                    }
-                }
                 const username = user?.first_name ?? user.email.split('@')[0];
                 const data = {
                     emailTypes: constants.emailTypes.REGISTER,
                     to: user.email,
                     context: {
                         userName: username,
-                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}&referral_code=${referral_code}`,
+                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
                         expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
@@ -164,7 +153,7 @@ module.exports.register = async (req, res, next) => {
             to: user.email,
             context: {
                 userName: username,
-                verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}&referral_code=${referral_code}`,
+                verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
                 expiryTime: moment(token_expiry).format('LLLL'),
             },
             attachments: ""
@@ -180,7 +169,7 @@ module.exports.register = async (req, res, next) => {
 
 module.exports.verifyEmail = async (req, res, next) => {
     try {
-        const { token, referral_code } = req.query;
+        const { token } = req.query;
         const user = await User.findOne({ where: { token } });
         if (!user) {
             throw {
@@ -190,14 +179,6 @@ module.exports.verifyEmail = async (req, res, next) => {
                     token: "Invalid link or link expired",
                 }
             }
-        }
-
-        // If referral code is provided, find the referrer
-        let referrer = null;
-        if (referral_code) {
-            referrer = await User.findOne({
-                where: { referral_code }
-            });
         }
 
         // check is user verified email
@@ -225,7 +206,18 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token_expiry = null;
         await user.save();
         // update referral record if referrer exists
-        if (referrer) {
+        let referral_code = null;
+        let referrer = null;
+        if (user.referred_by) {
+            referrer = await User.findOne({
+                where: { id: user.referred_by },
+                attributes: ['id', 'referral_code', 'referral_points']
+            });
+            if (referrer) {
+                referral_code = referrer.referral_code;
+            }
+        }
+        if (referral_code) {
             await Referral.update(
                 { 
                     points_awarded: 10,
