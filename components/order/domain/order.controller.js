@@ -1065,6 +1065,7 @@ module.exports.cancelOrder = async (req, res) => {
             action: 'cancelled',
             data: {
                 orderId: order.id,
+                orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
                 reason: 'Viva Wallet Order Cancelled'
             },
@@ -1271,6 +1272,7 @@ module.exports.checkOrderStock = async (req, res) => {
                         action: 'cancelled',
                         data: {
                             orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
                             orderCode: order.order_code,
                             reason: 'Viva Wallet Order Not Found'
                         },

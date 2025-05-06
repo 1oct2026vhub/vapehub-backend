@@ -16,14 +16,14 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
         // Define notification messages based on type and action
         const messages = {
             order: {
-                created: `New order #${data.orderId || 'N/A'} has been created`,
-                updated: `Order #${data.orderId || 'N/A'} has been updated`,
-                cancelled: `Order #${data.orderId || 'N/A'} has been cancelled`,
-                completed: `Order #${data.orderId || 'N/A'} has been completed`,
-                shipped: `Order #${data.orderId || 'N/A'} has been shipped`,
-                delivered: `Order #${data.orderId || 'N/A'} has been delivered`,
-                payment_success: `Payment for order #${data.orderId || 'N/A'} was successful`,
-                payment_failed: `Payment for order #${data.orderId || 'N/A'} failed`
+                created: `New order #${data.orderUniqueId || 'N/A'} has been created`,
+                updated: `Order #${data.orderUniqueId || 'N/A'} has been updated`,
+                cancelled: `Order #${data.orderUniqueId || 'N/A'} has been cancelled`,
+                completed: `Order #${data.orderUniqueId || 'N/A'} has been completed`,
+                shipped: `Order #${data.orderUniqueId || 'N/A'} has been shipped`,
+                delivered: `Order #${data.orderUniqueId || 'N/A'} has been delivered`,
+                payment_success: `Payment for order #${data.orderUniqueId || 'N/A'} was successful`,
+                payment_failed: `Payment for order #${data.orderUniqueId || 'N/A'} failed`
             },
             payment: {
                 success: `Payment of £${data.amount || 'N/A'} was successful`,
@@ -45,9 +45,9 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
                 new_review: `New review received for ${data.productName || 'N/A'}`
             },
             shipping: {
-                shipped: `Order #${data.orderId || 'N/A'} has been shipped`,
-                delivered: `Order #${data.orderId || 'N/A'} has been delivered`,
-                delayed: `Order #${data.orderId || 'N/A'} shipping has been delayed`
+                shipped: `Order #${data.orderUniqueId || 'N/A'} has been shipped`,
+                delivered: `Order #${data.orderUniqueId || 'N/A'} has been delivered`,
+                delayed: `Order #${data.orderUniqueId || 'N/A'} shipping has been delayed`
             }
         };
 

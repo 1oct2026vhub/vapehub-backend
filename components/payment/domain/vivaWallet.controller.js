@@ -212,6 +212,20 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         url: `${process.env.FRONTEND_URL}/my-account/orders`
                     });
 
+                    // Create success notification
+                    await createNotification({
+                        userId: order.user_id,
+                        type: 'order',
+                        action: 'created',
+                        data: {
+                            amount: Amount,
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            relatedId: order.id,
+                            reason: 'Order created via Viva Wallet'
+                        },
+                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                    });
                     // Send order confirmation email
                     const emailData = {
                         emailTypes: 'ORDER_CONFIRMATION',
@@ -318,6 +332,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         data: {
                             amount: Amount,
                             orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
@@ -607,6 +622,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         action: 'cancelled',
                         data: {
                             orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
                             orderCode: order.order_code,
                             reason: 'Cancelled via Viva Wallet'
                         },
