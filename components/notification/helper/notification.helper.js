@@ -11,7 +11,7 @@ const logger = require('../../../library/logger');
  * @param {string} [params.title] - Optional custom title
  * @returns {Promise<Notification>}
  */
-const createNotification = async ({ userId, type, action, data, title }) => {
+const createNotification = async ({ userId, type, action, data, title, url }) => {
     try {
         // Define notification messages based on type and action
         const messages = {
@@ -68,7 +68,8 @@ const createNotification = async ({ userId, type, action, data, title }) => {
             title: title || `${type.charAt(0).toUpperCase() + type.slice(1)} Update`,
             related_id: data.relatedId || null,
             is_read: false,
-            is_pushed: false
+            is_pushed: false,
+            url: url || null
         };
 
         // Create the notification using the model

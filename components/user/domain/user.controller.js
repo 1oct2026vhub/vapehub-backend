@@ -56,7 +56,8 @@ const updateUserProfile = async (req, res, next) => {
             data: {
                 message: 'Your profile has been updated successfully'
             },
-            title: 'Profile Updated'
+            title: 'Profile Updated',
+            url: `${process.env.FRONTEND_URL}/my-account/personal-info`
         });
 
         return res.status(200).json({ success: true, message: 'Profile updated successfully' });
@@ -127,7 +128,8 @@ const createUserAddress = async (req, res, next) => {
             data: {
                 message: 'New address has been added successfully'
             },
-            title: 'New Address Added'
+            title: 'New Address Added',
+            url: `${process.env.FRONTEND_URL}/my-account/addresses`
         });
 
         successResponse(res, newAddress, 'Address added successfully', 201);
@@ -176,7 +178,8 @@ const updateUserAddress = async (req, res, next) => {
             data: {
                 message: 'Address has been updated successfully'
             },
-            title: 'Address Updated'
+            title: 'Address Updated',
+            url: `${process.env.FRONTEND_URL}/my-account/addresses`
         });
 
         successResponse(res, userAddress, 'Address updated successfully', 200);
@@ -209,7 +212,8 @@ const deleteUserAddress = async (req, res, next) => {
             data: {
                 message: 'Address has been deleted successfully'
             },
-            title: 'Address Deleted'
+            title: 'Address Deleted',
+            url: `${process.env.FRONTEND_URL}/my-account/addresses`
         });
 
         successResponse(res, userAddress, 'Address deleted successfully', 200);
@@ -250,7 +254,8 @@ const changeUserPassword = async (req, res, next) => {
             data: {
                 message: 'Your password has been changed successfully'
             },
-            title: 'Password Changed'
+            title: 'Password Changed',
+            url: `${process.env.FRONTEND_URL}/my-account/security`
         });
 
         successResponse(res, user, 'Password updated successfully', 200);
@@ -302,7 +307,8 @@ const referFriend = async (req, res, next) => {
                 data: {
                     message: `Referral invitation sent to ${email}`
                 },
-                title: 'Friend Referral'
+                title: 'Friend Referral',
+                url: `${process.env.FRONTEND_URL}/my-account/referrals`
             });
 
             successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
@@ -316,7 +322,8 @@ const referFriend = async (req, res, next) => {
                 data: {
                     message: `Failed to send referral invitation to ${email}. Please try again later.`
                 },
-                title: 'Referral Email Failed'
+                title: 'Referral Email Failed',
+                url: `${process.env.FRONTEND_URL}/my-account/referrals`
             });
             return errorResponse(res, emailError, { message: 'Failed to send referral email' }, 500);
         }
@@ -501,7 +508,8 @@ const deleteAccount = async (req, res) => {
             data: {
                 message: 'Your account has been deleted successfully'
             },
-            title: 'Account Deleted'
+            title: 'Account Deleted',
+            url: `${process.env.FRONTEND_URL}/my-account/personal-info`
         });
 
         // Delete the user account

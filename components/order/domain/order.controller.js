@@ -1058,6 +1058,19 @@ module.exports.cancelOrder = async (req, res) => {
             label: 'Order Cancelled'
         }, { transaction });
 
+        // Create notification for cancellation
+        await createNotification({
+            userId: userId,
+            type: 'order',
+            action: 'cancelled',
+            data: {
+                orderId: order.id,
+                orderCode: order.order_code,
+                reason: 'Viva Wallet Order Cancelled'
+            },
+            url: `${process.env.FRONTEND_URL}/my-account/orders`
+        });
+
         await transaction.commit();
 
         return successResponse(res, {
@@ -1260,7 +1273,8 @@ module.exports.checkOrderStock = async (req, res) => {
                             orderId: order.id,
                             orderCode: order.order_code,
                             reason: 'Viva Wallet Order Not Found'
-                        }
+                        },
+                        url: `${process.env.FRONTEND_URL}/my-account/orders`
                     });
 
                     // Send cancellation email
