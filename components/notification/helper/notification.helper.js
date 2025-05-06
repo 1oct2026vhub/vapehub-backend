@@ -26,11 +26,11 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
                 payment_failed: `Payment for order #${data.orderId || 'N/A'} failed`
             },
             payment: {
-                success: `Payment of $${data.amount || 'N/A'} was successful`,
-                failed: `Payment of $${data.amount || 'N/A'} failed`,
-                refunded: `Refund of $${data.amount || 'N/A'} has been processed`,
-                pending: `Payment of $${data.amount || 'N/A'} is pending`,
-                cancelled: `Payment of $${data.amount || 'N/A'} has been cancelled`
+                success: `Payment of £${data.amount || 'N/A'} was successful`,
+                failed: `Payment of £${data.amount || 'N/A'} failed`,
+                refunded: `Refund of £${data.amount || 'N/A'} has been processed`,
+                pending: `Payment of £${data.amount || 'N/A'} is pending`,
+                cancelled: `Payment of £${data.amount || 'N/A'} has been cancelled`
             },
             system: {
                 maintenance: 'System maintenance scheduled',
