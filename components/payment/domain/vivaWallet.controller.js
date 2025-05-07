@@ -209,7 +209,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderId: order.id,
                             relatedId: order.id
                         },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                        url: '/my-account/orders'
                     });
 
                     // Create success notification
@@ -224,7 +224,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Order created via Viva Wallet'
                         },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                        url: '/my-account/orders'
                     });
                     // Send order confirmation email
                     const emailData = {
@@ -336,7 +336,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                        url: '/my-account/orders'
                     });
 
                     // Send failure email
@@ -527,7 +527,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                        url: '/my-account/orders'
                     });
 
                     // Send failure email
@@ -626,7 +626,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderCode: order.order_code,
                             reason: 'Cancelled via Viva Wallet'
                         },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
+                        url: '/my-account/orders'
                     });
 
                     // Send cancellation email
