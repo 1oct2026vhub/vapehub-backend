@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const {  getFooterSections } = require('../domain/footer.controller');
 
 /**
@@ -72,6 +71,6 @@ const {  getFooterSections } = require('../domain/footer.controller');
  *       500:
  *         description: Internal server error
  */
-router.get('/', authenticateJWT, getFooterSections);
+router.get('/', getFooterSections);
 
 module.exports = router; 
