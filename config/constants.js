@@ -128,5 +128,16 @@ module.exports = {
     },
     paymentMethodEnums: ['worldPay', 'vivaWallet'],
     transactionTypeEnums: ['PURCHASE', 'REFUND'],
-    transactionStatusEnums: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED']
+    transactionStatusEnums: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED'],
+    
+    productStatus: {
+        DRAFT: 'draft',
+        PUBLISHED: 'published',
+        ARCHIVED: 'archived'
+    },
+    productStatusEnums: [
+        'draft',
+        'published',
+        'archived'
+    ]
 }

@@ -31,5 +31,5 @@ router.use("/payment", require("./payment/routes/payment.route"))
 router.use("/menu", require("./menu/routes/menu.route"))
 router.use("/footer", require("./footer/routes/footer.route"))
 router.use("/review", require("./review/routes/review.route"))
-router.use("/seo", require("./admin/seo/routes/seo.route"))
+router.use("/seo", require("./seo/routes/seo.route"))
 module.exports = router;

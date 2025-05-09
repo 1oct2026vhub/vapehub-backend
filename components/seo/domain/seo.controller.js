@@ -3,28 +3,34 @@ const { createGzip } = require('zlib');
 const db = require('../../../models');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 
-
-
 const seoController = {
   // Get SEO metadata by slug
   async getSeoBySlug(req, res, next) {
     try {
+      console.log('Fetching SEO metadata');
       const { slug } = req.params;
+      
+      // Sanitize the slug
+      const sanitizedSlug = slug.trim().toLowerCase();
       
       const seoMeta = await db.SeoMeta.findOne({
         where: {
-          slug,
+          slug: sanitizedSlug,
           noIndex: false
-        }
+        },
+        attributes: ['id', 'slug', 'title', 'description', 'focusKeyword', 'noIndex']
       });
       
       if (!seoMeta) {
-        return res.status(404).json({ message: 'SEO metadata not found' });
+        console.log(`No SEO metadata found for slug: ${sanitizedSlug}`);
+        return errorResponse(res, {}, 'SEO metadata not found', 404);
       }
 
-      res.json(seoMeta);
+      console.log(`Successfully retrieved SEO metadata for slug: ${sanitizedSlug}`);
+      successResponse(res, seoMeta, 'SEO metadata retrieved successfully');
     } catch (error) {
-      next(errorResponse(500, error.message));
+      console.error('Error fetching SEO metadata:', error);
+      return errorResponse(res, error, 'Failed to fetch SEO metadata', 500);
     }
   },
 
@@ -62,19 +68,25 @@ const seoController = {
         throw e;
       });
     } catch (error) {
-      next(errorResponse(500, error.message));
+      console.error('Error generating sitemap:', error);
+      return errorResponse(res, error, 'Failed to generate sitemap', 500);
     }
   },
 
   // Serve robots.txt
   getRobotsTxt(req, res) {
-    const sitemapUrl = `${process.env.FRONTEND_URL || 'https://www.vapehub.co.uk'}/sitemap.xml`;
-    const robotsTxt = `User-agent: *
+    try {
+      const sitemapUrl = `${process.env.FRONTEND_URL || 'https://www.vapehub.co.uk'}/sitemap.xml`;
+      const robotsTxt = `User-agent: *
 Disallow: /admin
 Sitemap: ${sitemapUrl}`;
 
-    res.type('text/plain');
-    res.send(robotsTxt);
+      res.type('text/plain');
+      res.send(robotsTxt);
+    } catch (error) {
+      console.error('Error serving robots.txt:', error);
+      return errorResponse(res, error, 'Failed to serve robots.txt', 500);
+    }
   }
 };
 
