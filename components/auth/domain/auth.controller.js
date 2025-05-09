@@ -206,33 +206,33 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token_expiry = null;
         await user.save();
         // update referral record if referrer exists
-        let referral_code = null;
-        let referrer = null;
-        if (user.referred_by) {
-            referrer = await User.findOne({
-                where: { id: user.referred_by },
-                attributes: ['id', 'referral_code', 'referral_points']
-            });
-            if (referrer) {
-                referral_code = referrer.referral_code;
-            }
-        }
-        if (referral_code) {
-            await Referral.update(
-                { 
-                    points_awarded: 10,
-                    status: 'completed'
-                },
-                { 
-                    where: { 
-                        referrer_id: referrer.id,
-                        referred_user_id: user.id,
-                        referral_code: referral_code
-                    }
-                }
-            );
-            await referrer.addReferralPoints(10); // Add 10 points for successful referral
-        }
+        // let referral_code = null;
+        // let referrer = null;
+        // if (user.referred_by) {
+        //     referrer = await User.findOne({
+        //         where: { id: user.referred_by },
+        //         attributes: ['id', 'referral_code', 'referral_points']
+        //     });
+        //     if (referrer) {
+        //         referral_code = referrer.referral_code;
+        //     }
+        // }
+        // if (referral_code) {
+        //     await Referral.update(
+        //         { 
+        //             points_awarded: 10,
+        //             status: 'completed'
+        //         },
+        //         { 
+        //             where: { 
+        //                 referrer_id: referrer.id,
+        //                 referred_user_id: user.id,
+        //                 referral_code: referral_code
+        //             }
+        //         }
+        //     );
+        //     await referrer.addReferralPoints(10); // Add 10 points for successful referral
+        // }
         const userData = {
             id: user.id,
             first_name: user?.first_name,
@@ -338,7 +338,7 @@ module.exports.resetPassword = async (req, res, next) => {
             dob: user?.dob,
         }
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
-        return successResponse(res, { message: "Password reset successful! Please log in to continue.", ...userData, accessToken, refreshToken }, "Password reset successful! Please log in to continue.", 200);
+        return successResponse(res, { message: "Password reset successful.", ...userData, accessToken, refreshToken }, "Password reset successful.", 200);
     } catch (error) {
         return errorResponse(res, error);
     }
