@@ -21,6 +21,7 @@ async function getTrendingProducts(limit = 10) {
         products p ON o.product_id = p.id
       WHERE 
         o.createdAt BETWEEN :startOfMonth AND :endOfMonth
+        AND p.status = 'published'
       GROUP BY 
         p.id
       ORDER BY 
@@ -178,7 +179,7 @@ const fetchProducts2 = async (query) => {
   }
 }
 
-const fetchProducts = async (query) => {
+const fetchProducts = async (query, status = 'published') => {
   try {
     const {
       sort_by = 'id',
@@ -268,7 +269,8 @@ const fetchProducts = async (query) => {
         brand_id: {
           [Op.in]: brand.split(',').map(Number)
         }
-      })
+      }),
+      status: status
     };
 
     // Create a separate variant where clause without the price range filter

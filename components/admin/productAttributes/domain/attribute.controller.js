@@ -461,7 +461,7 @@ module.exports.getAttributes = async (req, res, next) => {
             searchConditions.push(
                 { name: { [Op.like]: `%${keyword}%` } },
                 { slug: { [Op.like]: `%${keyword}%` } },
-                { description: { [Op.like]: `%${keyword}%` } }
+                // { description: { [Op.like]: `%${keyword}%` } }
             );
             
             queryOptions.where[Op.or] = searchConditions;
