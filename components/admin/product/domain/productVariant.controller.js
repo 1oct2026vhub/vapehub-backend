@@ -449,7 +449,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         barcode: variant.barcode || null,
         stock: variant.stock || 0,
         low_stock_threshold: variant.low_stock_threshold || 5,
-        stock_status: updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 5),
+        stock_status: variant.stock_status || updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 5),
         status: variant.status || 'active',
         updated_by
     };
@@ -1646,7 +1646,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                         barcode: barcode?.trim() || null,
                         stock: parseInt(stock) || 0,
                         low_stock_threshold: parseInt(low_stock_threshold) || 0,
-                        stock_status: stock_status?.trim() || 'in_stock',
+                        stock_status: stock_status?.trim() || updateStockStatus(parseInt(stock) || 0, parseInt(low_stock_threshold) || 0),
                         status: status?.trim() || 'active',
                         product_id: product.id,
                         updated_by
@@ -2241,6 +2241,9 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
                 return errorResponse(res, { message: 'Invalid stock status value' }, 'Invalid stock status value', 400);
             }
             updateData.stock_status = updates.stock_status;
+        }
+        else if (updates.stock || updates.low_stock_threshold) {
+            updateData.stock_status = updateStockStatus(parseInt(updates.stock) || 0, parseInt(updates.low_stock_threshold) || 0);
         }
 
         if (updates.status) {
