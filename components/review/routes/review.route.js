@@ -29,8 +29,6 @@ const reviewValidator = require('../helper/review.validator');
  *                 type: integer
  *               product_id:
  *                 type: integer
- *               media_id:
- *                 type: integer
  *               company_name:
  *                 type: string
  *               rating:
