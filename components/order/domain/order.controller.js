@@ -119,12 +119,6 @@ module.exports.getOrders = async (req, res) => {
         // Mapping orders to include the image URL for each order item
         const mappedOrders = orders.map(order => {
             // Update order status if needed
-            if (order.status === 'cancel') {
-                order.status = 'cancelled';
-            } else if (order.status === 'fail') {
-                order.status = 'failed';
-            }
-
             order.orderItems.forEach(item => {
                 if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
                     item.variant.primary_image_url = item.variant.variantImages[0].image_url;
@@ -556,11 +550,11 @@ module.exports.getOrderById = async (req, res) => {
         }
 
         // Update order status if needed
-        if (order.status === 'cancel') {
-            order.status = 'cancelled';
-        } else if (order.status === 'fail') {
-            order.status = 'failed';
-        }
+        // if (order.status === 'cancel') {
+        //     order.status = 'cancelled';
+        // } else if (order.status === 'fail') {
+        //     order.status = 'failed';
+        // }
 
         // Add primary image URL to each order item
         order.orderItems.forEach(item => {
@@ -1069,7 +1063,7 @@ module.exports.cancelOrder = async (req, res) => {
                 orderCode: order.order_code,
                 reason: 'Viva Wallet Order Cancelled'
             },
-            url: `${process.env.FRONTEND_URL}/my-account/orders`
+            url: '/my-account/orders'
         });
 
         await transaction.commit();
@@ -1265,19 +1259,19 @@ module.exports.checkOrderStock = async (req, res) => {
                         label: 'Order Cancelled - Viva Wallet Order Not Found'
                     });
 
-                    // Create notification for cancellation
-                    await createNotification({
-                        userId: req.user.id,
-                        type: 'order',
-                        action: 'cancelled',
-                        data: {
-                            orderId: order.id,
-                            orderUniqueId: order.order_unique_id,
-                            orderCode: order.order_code,
-                            reason: 'Viva Wallet Order Not Found'
-                        },
-                        url: `${process.env.FRONTEND_URL}/my-account/orders`
-                    });
+                    // // Create notification for cancellation
+                    // await createNotification({
+                    //     userId: req.user.id,
+                    //     type: 'order',
+                    //     action: 'cancelled',
+                    //     data: {
+                    //         orderId: order.id,
+                    //         orderUniqueId: order.order_unique_id,
+                    //         orderCode: order.order_code,
+                    //         reason: 'Viva Wallet Order Not Found'
+                    //     },
+                    //     url: '/my-account/orders'
+                    // });
 
                     // Send cancellation email
                     // const emailData = {
