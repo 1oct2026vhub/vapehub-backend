@@ -4,11 +4,15 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
+const { productStatus } = require("../../../config/constants");
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+            ...req.query,
+            status: productStatus.PUBLISHED
+        });
         return successResponse(res, { 
             ...additionalData,
             products, 
@@ -80,7 +84,11 @@ module.exports.getProductByid = async (req, res, next) => {
             }
         ];
         const product = await Product.findOne({
-            where: { id: req.params.id }, include: includeClause
+            where: { 
+                id: req.params.id,
+                status: productStatus.PUBLISHED
+            }, 
+            include: includeClause
         });
         if (!product) {
             throw new Error("Product not found");
@@ -489,7 +497,11 @@ module.exports.uploadImage = async (req, res) => {
 module.exports.listAllproductsBySlug = async (req, res, next) => {
     try {
         const product = await Product.findOne({
-            where: { slug: req.params.slug }, include: [
+            where: { 
+                slug: req.params.slug,
+                status: productStatus.PUBLISHED
+            }, 
+            include: [
                 { model: Category, as: 'Category' },
                 { model: Brand, as: 'Brand' },
                 {
@@ -561,7 +573,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         // Find product with all necessary relations
         const product = await Product.findOne({
-            where: { id: product_id },
+            where: { 
+                id: product_id,
+                status: productStatus.PUBLISHED
+            },
             include: [
                 {
                     model: Category,

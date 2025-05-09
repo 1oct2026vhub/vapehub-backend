@@ -11,13 +11,13 @@ const SEO_HEALTH_STATUS = {
 
 // SEO Health Metrics Weights
 const SEO_METRICS_WEIGHTS = {
-  TITLE_LENGTH: 0.15,
-  DESCRIPTION_LENGTH: 0.15,
-  FOCUS_KEYWORD: 0.15,
-  NO_INDEX: 0.15,
-  SLUG_OPTIMIZATION: 0.15,
-  META_TAGS: 0.15,
-  CONTENT_LENGTH: 0.10
+  TITLELENGTH: 0.15,
+  DESCRIPTIONLENGTH: 0.15,
+  FOCUSKEYWORD: 0.15,
+  NOINDEX: 0.15,
+  SLUGOPTIMIZATION: 0.15,
+  METATAGS: 0.15,
+  CONTENTLENGTH: 0.10
 };
 
 class SeoService {
@@ -256,9 +256,16 @@ class SeoService {
     try {
       this.logger.info({ entityType, entityId }, 'Checking SEO health');
 
-      const seoMeta = await this.models.SeoMeta.findOne({
-        where: { entityType, entityId }
-      });
+      let seoMeta;
+      if (entityType === 'page') {
+        seoMeta = await this.models.SeoMeta.findOne({
+          where: { entityType, slug: entityId }
+        });
+      } else {
+        seoMeta = await this.models.SeoMeta.findOne({
+          where: { entityType, entityId }
+        });
+      }
 
       if (!seoMeta) {
         this.logger.warn({ entityType, entityId }, 'SEO metadata not found for health check');
@@ -274,13 +281,13 @@ class SeoService {
 
       // Calculate individual metrics scores
       const metrics = {
-        titleLength: this.checkTitleLength(seoMeta.title),
-        descriptionLength: this.checkDescriptionLength(seoMeta.description),
-        focusKeyword: this.checkFocusKeyword(seoMeta.focusKeyword),
-        noIndex: this.checkNoIndex(seoMeta.noIndex),
-        slugOptimization: this.checkSlugOptimization(seoMeta.slug),
-        metaTags: this.checkMetaTags(seoMeta),
-        contentLength: await this.checkContentLength(entityType, entityId)
+        titleLength: Number(this.checkTitleLength(seoMeta.title)) || 0,
+        descriptionLength: Number(this.checkDescriptionLength(seoMeta.description)) || 0,
+        focusKeyword: Number(this.checkFocusKeyword(seoMeta.focusKeyword)) || 0,
+        noIndex: Number(this.checkNoIndex(seoMeta.noIndex)) || 0,
+        slugOptimization: Number(this.checkSlugOptimization(seoMeta.slug)) || 0,
+        metaTags: Number(this.checkMetaTags(seoMeta)) || 0,
+        contentLength: Number(await this.checkContentLength(entityType, entityId)) || 0
       };
 
       // Calculate weighted score
@@ -306,7 +313,14 @@ class SeoService {
       };
     } catch (error) {
       this.logger.error({ error, entityType, entityId }, 'Error checking SEO health');
-      // throw error;
+      return {
+        status: SEO_HEALTH_STATUS.RED,
+        score: 0,
+        details: {
+          message: 'Error checking SEO health',
+          issues: ['Failed to perform SEO health check']
+        }
+      };
     }
   }
 
@@ -463,9 +477,19 @@ class SeoService {
    * @returns {number} Weighted score between 0 and 1
    */
   calculateWeightedScore(metrics) {
-    return Object.entries(metrics).reduce((total, [metric, score]) => {
-      return total + (score * SEO_METRICS_WEIGHTS[metric.toUpperCase()]);
+    if (!metrics || typeof metrics !== 'object') {
+      console.log('Invalid metrics input');
+      return 0;
+    }
+
+    const result = Object.entries(metrics).reduce((total, [metric, score]) => {
+      const weight = SEO_METRICS_WEIGHTS[metric.toUpperCase()];
+      const weightedScore = score * weight;
+      return total + weightedScore;
     }, 0);
+
+    // Convert decimal to percentage and round to 2 decimal places
+    return Math.round(result * 100);
   }
 
   /**
