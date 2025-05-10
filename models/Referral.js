@@ -19,6 +19,14 @@ module.exports = (sequelize, DataTypes) => {
                 onDelete: 'SET NULL',
                 onUpdate: 'CASCADE'
             });
+
+            // Order relation
+            this.belongsTo(models.Order, {
+                foreignKey: 'order_id',
+                as: 'order',
+                onDelete: 'SET NULL',
+                onUpdate: 'CASCADE'
+            });
         }
     }
 
@@ -41,6 +49,14 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
             references: {
                 model: 'users',
+                key: 'id'
+            }
+        },
+        order_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: {
+                model: 'orders',
                 key: 'id'
             }
         },

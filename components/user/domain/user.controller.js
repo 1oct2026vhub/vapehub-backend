@@ -298,13 +298,14 @@ const referFriend = async (req, res, next) => {
         }
 
         try {
-            // Generate unique 8-letter referral coupon code using email
+            // Generate unique 8-letter referral coupon code using email and timestamp
+            const timestamp = Date.now().toString(36).toUpperCase(); // Convert timestamp to base36
             const emailHash = Buffer.from(email).toString('base64')
                 .replace(/[^A-Za-z]/g, '')  // Remove non-letters
-                .slice(0, 8)                // Take first 8 letters
+                .slice(0, 4)                // Take first 4 letters
                 .toUpperCase();             // Convert to uppercase
             
-            const referral_coupon_code = emailHash;
+            const referral_coupon_code =  `${emailHash}${timestamp.slice(-4)}`; // Combine email hash and last 4 chars of timestamp;
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,
@@ -606,11 +607,10 @@ const getReferralStats = async (req, res) => {
             where: {
                 referrer_id: userId
             },
-            attributes: ['id', 'status', 'points_awarded', 'created_at'],
             include: [{
                 model: User,
-                as: 'referrer',
-                attributes: ['id', 'first_name', 'last_name', 'email']
+                as: 'referredUser',
+                attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
             }],
             order: [['created_at', 'DESC']],
             limit: 5
@@ -623,13 +623,20 @@ const getReferralStats = async (req, res) => {
             referral_methods: referralMethods,
             recent_referrals: recentReferrals.map(referral => ({
                 id: referral.id,
+                referrer_id: referral.referrer_id,
+                referred_user_id: referral.referred_user_id,
+                referral_code: referral.referral_code,
+                referral_coupon_code: referral.referral_coupon_code,
                 status: referral.status,
                 points_awarded: referral.points_awarded,
+                referral_value_type: referral.referral_value_type,
+                referral_value: referral.referral_value,
                 created_at: referral.created_at,
-                user: referral.referrer ? {
-                    id: referral.referrer.id,
-                    name: `${referral.referrer.first_name} ${referral.referrer.last_name}`,
-                    email: referral.referrer.email
+                referred_user: referral.referredUser ? {
+                    id: referral.referredUser.id,
+                    name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
+                    email: referral.referredUser.email,
+                    phone: referral.referredUser.phone
                 } : null
             }))
         };

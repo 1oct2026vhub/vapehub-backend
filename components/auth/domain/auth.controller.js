@@ -109,52 +109,12 @@ module.exports.register = async (req, res, next) => {
                 errors: { email: "User eamil already exists" },
             }
         }
-
-        // If referral code is provided, find the referrer
-        let referral_coupon = '';
         let referrer = null;
-        let referral_method = null;
-        let activeReferralMethod = null;
         if (referral_code) {
             referrer = await User.findOne({
-                where: { referral_code }
+                where: { referral_code },
+                attributes: ['id', 'referral_code', 'referral_points']
             });
-            referral_method = await Referral.findOne({
-                where: {
-                    email: email,
-                    referral_code: referral_code,
-                },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
-            });
-
-            // Get active referral method
-            activeReferralMethod = await ReferralMethod.findOne({
-                where: { 
-                    status: 'active',
-                    primary: true
-                },
-                attributes: ['id', 'referral_value_type', 'referral_value']
-            });
-
-            if(!referral_method){
-                // Generate unique 8-letter referral coupon code using email
-                const emailHash = Buffer.from(email).toString('base64')
-                .replace(/[^A-Za-z]/g, '')  // Remove non-letters
-                .slice(0, 8)                // Take first 8 letters
-                .toUpperCase();             // Convert to uppercase
-        
-                referral_coupon = emailHash;
-                
-                await Referral.create({
-                    email: email,
-                    referrer_id: referrer.id,
-                    referral_code: referral_code,
-                    referral_coupon_code: referral_coupon,
-                    status: 'pending',
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
-                });
-            }
         }
 
         const role = await Role.findOne({
@@ -176,17 +136,60 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
 
-        if(referral_method){
-            await Referral.update({
-                referred_user_id: user.id,
-                referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                referral_value: activeReferralMethod?.referral_value || '10'
-            }, {
+        // If referral code is provided, find the referrer
+        
+        if (referral_code) {
+            
+            const referral_method = await Referral.findOne({
                 where: {
                     email: email,
-                    referral_code: referral_code
-                }
+                    referral_code: referral_code,
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
             });
+
+            // Get active referral method
+            const activeReferralMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: true
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value']
+            });
+
+            if(!referral_method){
+                // Generate unique 8-letter referral coupon code using email and timestamp
+                const timestamp = Date.now().toString(36).toUpperCase(); // Convert timestamp to base36
+                const emailHash = Buffer.from(email).toString('base64')
+                    .replace(/[^A-Za-z]/g, '')  // Remove non-letters
+                    .slice(0, 4)                // Take first 4 letters
+                    .toUpperCase();             // Convert to uppercase
+                
+                const referral_coupon = `${emailHash}${timestamp.slice(-4)}`; // Combine email hash and last 4 chars of timestamp
+                
+                await Referral.create({
+                    email: email,
+                    referrer_id: referrer.id,
+                    referral_code: referral_code,
+                    referral_coupon_code: referral_coupon,
+                    status: 'pending',
+                    referred_user_id: user.id,
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
+                });
+            }
+            else{
+                await Referral.update({
+                    referred_user_id: user.id,
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
+                }, {
+                    where: {
+                        email: email,
+                        referral_code: referral_code
+                    }
+                });
+            }
         }
 
         const username = user?.first_name ?? user.email.split('@')[0];
