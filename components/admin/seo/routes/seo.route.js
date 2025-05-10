@@ -152,7 +152,6 @@ router.post(
  *         name: entityId
  *         schema:
  *           type: string
- *           format: uuid
  *         description: Filter by entity ID
  *       - in: query
  *         name: keyword

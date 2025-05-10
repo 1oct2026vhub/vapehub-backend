@@ -7,6 +7,7 @@ const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
 const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
+const referral_method = require('../../../models/referral_method');
 
 
 module.exports.login = async (req, res, next) => {
@@ -92,7 +93,7 @@ module.exports.login = async (req, res, next) => {
 module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
-        let referral_code = req.query.referral_code;
+        let{ referral_code } = req.query;
         if (!referral_code) {
             referral_code = null;
         }
@@ -110,11 +111,35 @@ module.exports.register = async (req, res, next) => {
         }
 
         // If referral code is provided, find the referrer
+        let referral_coupon = '';
         let referrer = null;
         if (referral_code) {
             referrer = await User.findOne({
                 where: { referral_code }
             });
+            const referral_method = await Referral.findOne({
+                where: {
+                    email: email,
+                    referral_code: referral_code,
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
+            });
+            if(!referral_method){
+                
+                const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                for (let i = 0; i < 7; i++) {
+                    referral_coupon += characters.charAt(Math.floor(Math.random() * characters.length));
+                } 
+                
+                await Referral.create({
+                    email: email,
+                    referrer_id: referrer.id,
+                    referral_code: referral_code,
+                    referral_coupon_code: referral_coupon,
+                    status: 'pending'
+                });
+                
+            }
         }
 
         const role = await Role.findOne({
@@ -137,14 +162,16 @@ module.exports.register = async (req, res, next) => {
         });
 
         // Create referral record if referrer exists
-        if (referrer) {
-            await Referral.create({
-                referrer_id: referrer.id,
-                referred_user_id: user.id,
-                referral_code: referral_code,
-                status: 'pending'
-            });
-        }
+        // if (referrer) {
+        //     await Referral.create({
+        //         referrer_id: referrer.id,
+        //         referred_user_id: user.id,
+        //         referral_code: referral_code,
+        //         // referral_coupon_code: referral_coupon_code,
+        //         status: 'pending'
+        //     });
+        // }
+     
 
         const username = user?.first_name ?? user.email.split('@')[0];
 
@@ -163,6 +190,7 @@ module.exports.register = async (req, res, next) => {
 
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
+        console.log(error)
         return errorResponse(res, error);
     }
 }
