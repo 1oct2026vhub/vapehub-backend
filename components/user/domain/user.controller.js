@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Referral } = require("../../../models");
+const { User, UserAddress, Referral, ReferralMethod } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
@@ -96,7 +96,6 @@ const fetchUserAddress = async (req, res, next) => {
     }
 
 }
-
 
 const createUserAddress = async (req, res, next) => {
     try {
@@ -282,8 +281,32 @@ const referFriend = async (req, res, next) => {
             return errorResponse(res, {}, 'Invalid referral code' , 400);
         }
 
+        // Get the primary active referral method
+        const referralMethod = await ReferralMethod.findOne({
+            where: { 
+                status: 'active',
+                primary: true
+            }
+        });
+
+        if (!referralMethod) {
+            return errorResponse(res, {}, 'No active referral method found' , 400);
+        }
+
         try {
-            // Send referral email
+            // Generate unique 6-digit alphanumeric referral coupon code
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let referral_coupon_code = '';
+            for (let i = 0; i < 7; i++) {
+                referral_coupon_code += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            const referral_coupon = await Referral.create({
+                email: email,
+                referrer_id: referrer_id,
+                referral_code: referral_code,
+                referral_coupon_code: referral_coupon_code
+            });
+            // Send referral email with coupon code
             const username = email.split('@')[0];
             const referralLink = `${process.env.FRONTEND_URL}/?referral_code=${referral_code}`;
             const data = {
@@ -292,8 +315,9 @@ const referFriend = async (req, res, next) => {
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    token: referral_code,
-                    // currentYear: new Date().getFullYear()
+                    token: referral_coupon_code,
+                    referralValue: referralMethod.referral_value,
+                    referralValueType: referralMethod.referral_value_type
                 },
                 attachments: ""
             };
@@ -311,7 +335,14 @@ const referFriend = async (req, res, next) => {
                 url: '/my-account/referrals'
             });
 
-            successResponse(res, { message: "Referral invitation sent successfully" }, 'Success');
+            successResponse(res, { 
+                message: "Referral invitation sent successfully",
+                referral_coupon_code: referral_coupon_code,
+                referral_method: {
+                    value_type: referralMethod.referral_value_type,
+                    value: referralMethod.referral_value
+                }
+            }, 'Success');
         } catch (emailError) {
             console.error('Error sending referral email:', emailError);
             // Still create notification but indicate email failed
@@ -543,7 +574,6 @@ const getReferralStats = async (req, res) => {
                 status: 'completed'
             }
         });
-
         // Get pending referrals count
         const pendingReferrals = await Referral.count({
             where: {
@@ -551,13 +581,19 @@ const getReferralStats = async (req, res) => {
                 status: 'pending'
             }
         });
-
         // Get total points earned
         const totalPoints = await Referral.sum('points_awarded', {
             where: {
                 referrer_id: userId,
                 status: 'completed'
             }
+        });
+
+        // Get active referral methods
+        const referralMethods = await ReferralMethod.findAll({
+            where: { status: 'active' },
+            order: [['primary', 'DESC'], ['created_at', 'DESC']],
+            attributes: ['id', 'referral_value_type', 'referral_value', 'status', 'primary']
         });
 
         // Get recent referrals with user details
@@ -578,6 +614,7 @@ const getReferralStats = async (req, res) => {
             total_referrals: totalReferrals || 0,
             pending_referrals: pendingReferrals || 0,
             total_points: totalPoints || 0,
+            referral_methods: referralMethods,
             recent_referrals: recentReferrals.map(referral => ({
                 id: referral.id,
                 status: referral.status,
@@ -598,4 +635,155 @@ const getReferralStats = async (req, res) => {
     }
 };
 
-module.exports = {userProfile, updateUserProfile, fetchUserAddress, createUserAddress, updateUserAddress, deleteUserAddress, changeUserPassword, referFriend, processReferral, awardFirstPurchasePoints, awardProfileCompletionPoints, deleteAccount, getReferralStats}
+const createReferralMethod = async (req, res) => {
+    try {
+        const { referral_value_type, referral_value, status, primary } = req.body;
+
+        // Validate required fields
+        if (!referral_value_type || !referral_value) {
+            throw {
+                statusCode: 400,
+                message: 'Referral value type and value are required'
+            };
+        }
+
+        // Validate referral_value_type
+        if (!['percentage', 'fixed'].includes(referral_value_type)) {
+            throw {
+                statusCode: 400,
+                message: 'Referral value type must be either percentage or fixed'
+            };
+        }
+
+        // If this is set as primary, unset any existing primary methods
+        if (primary) {
+            await ReferralMethod.update(
+                { primary: false },
+                { where: { primary: true } }
+            );
+        }
+
+        // Create new referral method
+        const referralMethod = await ReferralMethod.create({
+            referral_value_type,
+            referral_value,
+            status: status || 'active',
+            primary: primary || false
+        });
+
+        // Create notification for new referral method
+        await createNotification({
+            userId: req.user.id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'New referral method has been created successfully'
+            },
+            title: 'Referral Method Created',
+            url: '/admin/referral-methods'
+        });
+
+        successResponse(res, referralMethod, 'Referral method created successfully');
+    } catch (error) {
+        console.error('Error creating referral method:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+const updateReferralMethod = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { referral_value_type, referral_value, status, primary } = req.body;
+
+        // Find the referral method
+        const referralMethod = await ReferralMethod.findByPk(id);
+        if (!referralMethod) {
+            throw {
+                statusCode: 404,
+                message: 'Referral method not found'
+            };
+        }
+
+        // Validate referral_value_type if provided
+        if (referral_value_type && !['percentage', 'fixed'].includes(referral_value_type)) {
+            throw {
+                statusCode: 400,
+                message: 'Referral value type must be either percentage or fixed'
+            };
+        }
+
+        // If setting as primary, unset any existing primary methods
+        if (primary) {
+            await ReferralMethod.update(
+                { primary: false },
+                { 
+                    where: { 
+                        primary: true,
+                        id: { [Op.ne]: id } // Exclude current method
+                    }
+                }
+            );
+        }
+
+        // Update the referral method
+        const updateData = {};
+        if (referral_value_type) updateData.referral_value_type = referral_value_type;
+        if (referral_value) updateData.referral_value = referral_value;
+        if (status) updateData.status = status;
+        if (typeof primary === 'boolean') updateData.primary = primary;
+
+        await referralMethod.update(updateData);
+
+        // Create notification for referral method update
+        await createNotification({
+            userId: req.user.id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: 'Referral method has been updated successfully'
+            },
+            title: 'Referral Method Updated',
+            url: '/admin/referral-methods'
+        });
+
+        // Fetch updated record
+        const updatedMethod = await ReferralMethod.findByPk(id);
+
+        successResponse(res, updatedMethod, 'Referral method updated successfully');
+    } catch (error) {
+        console.error('Error updating referral method:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+const getReferralMethods = async (req, res) => {
+    try {
+        const referralMethods = await ReferralMethod.findAll({
+            order: [['created_at', 'DESC']]
+        });
+
+        successResponse(res, referralMethods, 'Referral methods retrieved successfully');
+    } catch (error) {
+        console.error('Error fetching referral methods:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports = {
+    userProfile, 
+    updateUserProfile, 
+    fetchUserAddress, 
+    createUserAddress, 
+    updateUserAddress, 
+    deleteUserAddress, 
+    changeUserPassword, 
+    referFriend, 
+    processReferral, 
+    awardFirstPurchasePoints, 
+    awardProfileCompletionPoints, 
+    deleteAccount, 
+    getReferralStats,
+    createReferralMethod,
+    updateReferralMethod,
+    getReferralMethods
+};
