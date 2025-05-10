@@ -58,13 +58,6 @@ router.post("/login", authController.login);
  *         required: false
  *         description: Optional referral code from an existing user
  *         example: ABC123
- *       - in: query
- *         name: referral_coupon_code
- *         schema:
- *           type: string
- *         required: false
- *         description: Optional referral coupon code for discounts
- *         example: A7B2C9
  *     requestBody:
  *       required: true
  *       content:
