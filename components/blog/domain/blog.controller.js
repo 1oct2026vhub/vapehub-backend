@@ -22,8 +22,8 @@ module.exports.listAllBlogs = async (req, res, next) => {
             whereCondition = {
                 ...whereCondition,
                 [Op.or]: [
-                    { title: { [Op.iLike]: `%${search}%` } },
-                    { content: { [Op.iLike]: `%${search}%` } }
+                    { title: { [Op.like]: `%${search.toLowerCase()}%` } },
+                    // { content: { [Op.like]: `%${search.toLowerCase()}%` } }
                 ]
             };
         }

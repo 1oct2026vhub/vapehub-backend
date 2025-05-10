@@ -19,7 +19,8 @@ module.exports.listAllBlogs = async (req, res) => {
                 [Op.or]: [
                     { id: { [Op.like]: `%${search}%` } },
                     { title: { [Op.like]: `%${search}%` } },
-                    { content: { [Op.like]: `%${search}%` } }
+                    { slug: { [Op.like]: `%${search}%` } },
+                    // { content: { [Op.like]: `%${search}%` } }
                 ]
             };
         }
