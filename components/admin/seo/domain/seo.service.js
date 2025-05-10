@@ -498,8 +498,8 @@ class SeoService {
    * @returns {string} Health status
    */
   determineHealthStatus(score) {
-    if (score >= 0.8) return SEO_HEALTH_STATUS.GREEN;
-    if (score >= 0.5) return SEO_HEALTH_STATUS.ORANGE;
+    if (score >= 80) return SEO_HEALTH_STATUS.GREEN;
+    if (score >= 50) return SEO_HEALTH_STATUS.ORANGE;
     return SEO_HEALTH_STATUS.RED;
   }
 
