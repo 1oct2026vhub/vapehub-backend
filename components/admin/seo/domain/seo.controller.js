@@ -162,10 +162,10 @@ const seoController = {
       // Keyword Search
       if (keyword) {
         whereClause[Op.or] = [
-          { title: { [Op.iLike]: `%${keyword}%` } },
-          { description: { [Op.iLike]: `%${keyword}%` } },
-          { focusKeyword: { [Op.iLike]: `%${keyword}%` } },
-          { slug: { [Op.iLike]: `%${keyword}%` } }
+          { title: { [Op.like]: `%${keyword.toLowerCase()}%` } },
+          { description: { [Op.like]: `%${keyword.toLowerCase()}%` } },
+          { focusKeyword: { [Op.like]: `%${keyword.toLowerCase()}%` } },
+          { slug: { [Op.like]: `%${keyword.toLowerCase()}%` } }
         ];
       }
 
