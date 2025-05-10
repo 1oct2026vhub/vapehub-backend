@@ -304,6 +304,7 @@ const referFriend = async (req, res, next) => {
                 .slice(0, 8)                // Take first 8 letters
                 .toUpperCase();             // Convert to uppercase
             
+            const referral_coupon_code = emailHash;
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,

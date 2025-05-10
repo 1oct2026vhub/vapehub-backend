@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role, Referral } = require("../../../models");
+const { User, Role, Referral, ReferralMethod } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -113,32 +113,47 @@ module.exports.register = async (req, res, next) => {
         // If referral code is provided, find the referrer
         let referral_coupon = '';
         let referrer = null;
+        let referral_method = null;
+        let activeReferralMethod = null;
         if (referral_code) {
             referrer = await User.findOne({
                 where: { referral_code }
             });
-            const referral_method = await Referral.findOne({
+            referral_method = await Referral.findOne({
                 where: {
                     email: email,
                     referral_code: referral_code,
                 },
                 attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
             });
+
+            // Get active referral method
+            activeReferralMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: true
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value']
+            });
+
             if(!referral_method){
-                
-                const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                for (let i = 0; i < 7; i++) {
-                    referral_coupon += characters.charAt(Math.floor(Math.random() * characters.length));
-                } 
+                // Generate unique 8-letter referral coupon code using email
+                const emailHash = Buffer.from(email).toString('base64')
+                .replace(/[^A-Za-z]/g, '')  // Remove non-letters
+                .slice(0, 8)                // Take first 8 letters
+                .toUpperCase();             // Convert to uppercase
+        
+                referral_coupon = emailHash;
                 
                 await Referral.create({
                     email: email,
                     referrer_id: referrer.id,
                     referral_code: referral_code,
                     referral_coupon_code: referral_coupon,
-                    status: 'pending'
+                    status: 'pending',
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
                 });
-                
             }
         }
 
@@ -161,17 +176,18 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
 
-        // Create referral record if referrer exists
-        // if (referrer) {
-        //     await Referral.create({
-        //         referrer_id: referrer.id,
-        //         referred_user_id: user.id,
-        //         referral_code: referral_code,
-        //         // referral_coupon_code: referral_coupon_code,
-        //         status: 'pending'
-        //     });
-        // }
-     
+        if(referral_method){
+            await Referral.update({
+                referred_user_id: user.id,
+                referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                referral_value: activeReferralMethod?.referral_value || '10'
+            }, {
+                where: {
+                    email: email,
+                    referral_code: referral_code
+                }
+            });
+        }
 
         const username = user?.first_name ?? user.email.split('@')[0];
 
@@ -190,7 +206,6 @@ module.exports.register = async (req, res, next) => {
 
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
-        console.log(error)
         return errorResponse(res, error);
     }
 }
