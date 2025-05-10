@@ -11,14 +11,6 @@ module.exports = (sequelize, DataTypes) => {
                 onDelete: 'CASCADE',
                 onUpdate: 'CASCADE'
             });
-
-            // Referred user relation
-            this.belongsTo(models.User, { 
-                foreignKey: 'referred_user_id',
-                as: 'referredUser',
-                onDelete: 'CASCADE',
-                onUpdate: 'CASCADE'
-            });
         }
     }
 
@@ -36,17 +28,21 @@ module.exports = (sequelize, DataTypes) => {
                 key: 'id'
             }
         },
-        referred_user_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'users',
-                key: 'id'
-            }
-        },
         referral_code: {
             type: DataTypes.STRING(15),
             allowNull: false
+        },
+        referral_coupon_code: {
+            type: DataTypes.STRING(10),
+            allowNull: false,
+            unique: true
+        },
+        email: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            validate: {
+                isEmail: true
+            }
         },
         points_awarded: {
             type: DataTypes.INTEGER,
@@ -67,7 +63,7 @@ module.exports = (sequelize, DataTypes) => {
         indexes: [
             {
                 unique: true,
-                fields: ['referred_user_id']
+                fields: ['referral_coupon_code']
             }
         ]
     });
