@@ -22,7 +22,7 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
             whereCondition[Op.or] = [
                 { name: { [Op.like]: `%${search}%` } },
                 { slug: { [Op.like]: `%${search}%` } },
-                { description: { [Op.like]: `%${search}%` } }
+                // { description: { [Op.like]: `%${search}%` } }
             ];
         }
 
