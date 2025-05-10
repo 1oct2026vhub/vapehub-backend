@@ -112,15 +112,17 @@ module.exports.register = async (req, res, next) => {
 
         // If referral code is provided, find the referrer
         let referral_coupon = '';
+        let referrer = null;
         if (referral_code) {
-            let referrer = await User.findOne({
+            referrer = await User.findOne({
                 where: { referral_code }
             });
             const referral_method = await Referral.findOne({
                 where: {
                     email: email,
                     referral_code: referral_code,
-                }
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
             });
             if(!referral_method){
                 
@@ -188,6 +190,7 @@ module.exports.register = async (req, res, next) => {
 
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
+        console.log(error)
         return errorResponse(res, error);
     }
 }
