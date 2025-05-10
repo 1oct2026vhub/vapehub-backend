@@ -11,6 +11,14 @@ module.exports = (sequelize, DataTypes) => {
                 onDelete: 'CASCADE',
                 onUpdate: 'CASCADE'
             });
+
+            // Referred user relation
+            this.belongsTo(models.User, {
+                foreignKey: 'referred_user_id',
+                as: 'referredUser',
+                onDelete: 'SET NULL',
+                onUpdate: 'CASCADE'
+            });
         }
     }
 
@@ -23,6 +31,14 @@ module.exports = (sequelize, DataTypes) => {
         referrer_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
+            references: {
+                model: 'users',
+                key: 'id'
+            }
+        },
+        referred_user_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
             references: {
                 model: 'users',
                 key: 'id'
@@ -52,6 +68,15 @@ module.exports = (sequelize, DataTypes) => {
         status: {
             type: DataTypes.ENUM('pending', 'completed', 'failed'),
             defaultValue: 'pending'
+        },
+        referral_value_type: {
+            type: DataTypes.ENUM('percentage', 'fixed'),
+            allowNull: true,
+            defaultValue: 'percentage'
+        },
+        referral_value: {
+            type: DataTypes.STRING,
+            allowNull: true
         }
     }, {
         sequelize,

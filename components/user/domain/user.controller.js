@@ -298,12 +298,12 @@ const referFriend = async (req, res, next) => {
         }
 
         try {
-            // Generate unique 6-digit alphanumeric referral coupon code
-            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let referral_coupon_code = '';
-            for (let i = 0; i < 7; i++) {
-                referral_coupon_code += characters.charAt(Math.floor(Math.random() * characters.length));
-            }
+            // Generate unique 8-letter referral coupon code using email
+            const emailHash = Buffer.from(email).toString('base64')
+                .replace(/[^A-Za-z]/g, '')  // Remove non-letters
+                .slice(0, 8)                // Take first 8 letters
+                .toUpperCase();             // Convert to uppercase
+            
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,
@@ -321,7 +321,7 @@ const referFriend = async (req, res, next) => {
                     referralLink: referralLink,
                     token: referral_coupon_code,
                     referralValue: referralMethod.referral_value,
-                    referralValueType: referralMethod.referral_value_type
+                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : ''
                 },
                 attachments: ""
             };
