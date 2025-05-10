@@ -165,42 +165,42 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         where: { user_id: order.user_id }
                     });
 
-                    // Check if this is user's first purchase and handle referral points
-                    const userOrderCount = await Order.count({
-                        where: { 
-                            user_id: order.user_id,
-                            status: 'processing'
-                        }
-                    });
+                    // // Check if this is user's first purchase and handle referral points
+                    // const userOrderCount = await Order.count({
+                    //     where: { 
+                    //         user_id: order.user_id,
+                    //         status: 'processing'
+                    //     }
+                    // });
 
-                    if (userOrderCount === 1) {
-                        // Find referral record
-                        const referral = await Referral.findOne({
-                            where: {
-                                referred_user_id: order.user_id,
-                                status: 'pending'
-                            },
-                            include: [{
-                                model: User,
-                                as: 'referrer',
-                                attributes: ['id', 'referral_points']
-                            }]
-                        });
+                    // if (userOrderCount === 1) {
+                    //     // Find referral record
+                    //     const referral = await Referral.findOne({
+                    //         where: {
+                    //             referred_user_id: order.user_id,
+                    //             status: 'pending'
+                    //         },
+                    //         include: [{
+                    //             model: User,
+                    //             as: 'referrer',
+                    //             attributes: ['id', 'referral_points']
+                    //         }]
+                    //     });
 
-                        if (referral && referral.referrer) {
-                            // Update referral record
-                            await referral.update({
-                                points_awarded: 10,
-                                status: 'completed'
-                            });
+                    //     if (referral && referral.referrer) {
+                    //         // Update referral record
+                    //         await referral.update({
+                    //             // points_awarded: 10,
+                    //             status: 'completed'
+                    //         });
 
-                            // Add points to referrer (the user who referred)
-                            await User.update(
-                                { referral_points: sequelize.literal('referral_points + 10') },
-                                { where: { id: referral.referrer_id } }
-                            );
-                        }
-                    }
+                    //         // Add points to referrer (the user who referred)
+                    //         await User.update(
+                    //             { referral_points: sequelize.literal('referral_points + 10') },
+                    //             { where: { id: referral.referrer_id } }
+                    //         );
+                    //     }
+                    // }
 
                     // Create transaction record
                     await sequelize.models.Transaction.create({
