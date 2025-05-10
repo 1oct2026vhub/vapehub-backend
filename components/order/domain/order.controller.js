@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor, Order, OrderItem, sequelize, Transaction} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -158,7 +158,7 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        const { email, phone, couponCode, referral_coupon_code, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
         
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
@@ -244,6 +244,8 @@ module.exports.placeOrder = async (req, res, next) => {
         let calculatedTotal = subTotal;
         let coupon = null;
         let userUsedCoupon = {};
+        let referralDiscount = 0;
+
         if (couponCode) {
             coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
             if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
@@ -255,13 +257,35 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
+
+        // Apply Referral Coupon
+        if (referral_coupon_code) {
+            const referral = await Referral.findOne({
+                where: {
+                    referral_coupon_code: referral_coupon_code,
+                    status: 'pending'
+                }
+            });
+
+            if (referral) {
+                const referralValue = parseFloat(referral.referral_value);
+                if (!isNaN(referralValue)) {
+                    referralDiscount = referral.referral_value_type === 'percentage' 
+                        ? (referralValue / 100) * subTotal 
+                        : referralValue;
+                    
+                    // Ensure discount doesn't exceed subtotal
+                    referralDiscount = Math.min(referralDiscount, subTotal);
+                    calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                }
+            }
+        }
         
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
         
         // Ensure Price Integrity
-        // if (calculatedTotal !== total) throw { message: "Total price mismatch. Possible price manipulation detected.", statusCode: 400 };
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
 
         let orderCode = 0;
@@ -349,6 +373,27 @@ module.exports.placeOrder = async (req, res, next) => {
                 await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
             }
         }
+        if(referral_coupon_code){
+            try {
+                // First find the referral to ensure it exists and is not locked
+                const referral = await Referral.findOne({
+                    where: {
+                        referral_coupon_code: referral_coupon_code
+                    },
+                    lock: true,
+                    transaction
+                });
+
+                if (referral) {
+                    await referral.update({
+                        order_id: order.id
+                    }, { transaction });
+                }
+            } catch (error) {
+                logger.error('Error updating referral with order:', error);
+                // Continue with order creation even if referral update fails
+            }
+        }
         
         // else{
             // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
@@ -412,7 +457,8 @@ module.exports.placeOrder = async (req, res, next) => {
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
-                        discount: coupon ? coupon.discount_value : 0,
+                        coupon_discount: coupon ? (subTotal - calculatedTotal) : 0,
+                        referral_discount: referralDiscount,
                         total: calculatedTotal
                     },
                     shipping: { address: shippingAddrs },
