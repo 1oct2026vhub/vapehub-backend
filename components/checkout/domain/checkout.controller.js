@@ -234,9 +234,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                 }
                 referralMessage = 'Referral discount applied successfully';
                 total = Math.max(0, total - referralDiscount);
-                console.log("total>>>", total)
-                console.log("referralPercentage>>>", referralPercentage)
-                console.log("referralDiscount>>>", referralDiscount)
             } else {
                 referralMessage = 'No active referral method found';
             }

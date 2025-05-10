@@ -270,7 +270,10 @@ const referFriend = async (req, res, next) => {
         const referrer_id = req.user.id;
 
         // Check if the email is already registered
-        const existingUser = await User.findOne({ where: { email } });
+        const existingUser = await User.findOne({ 
+            where: { email },
+            attributes: ['id', 'email']
+        });
         if (existingUser) {
             return errorResponse(res, {}, 'User with this email already exists' , 400);
         }
@@ -286,7 +289,8 @@ const referFriend = async (req, res, next) => {
             where: { 
                 status: 'active',
                 primary: true
-            }
+            },
+            attributes: ['id', 'referral_value_type', 'referral_value']
         });
 
         if (!referralMethod) {
@@ -601,9 +605,10 @@ const getReferralStats = async (req, res) => {
             where: {
                 referrer_id: userId
             },
+            attributes: ['id', 'status', 'points_awarded', 'created_at'],
             include: [{
                 model: User,
-                as: 'referredUser',
+                as: 'referrer',
                 attributes: ['id', 'first_name', 'last_name', 'email']
             }],
             order: [['created_at', 'DESC']],
@@ -620,10 +625,10 @@ const getReferralStats = async (req, res) => {
                 status: referral.status,
                 points_awarded: referral.points_awarded,
                 created_at: referral.created_at,
-                user: referral.referredUser ? {
-                    id: referral.referredUser.id,
-                    name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
-                    email: referral.referredUser.email
+                user: referral.referrer ? {
+                    id: referral.referrer.id,
+                    name: `${referral.referrer.first_name} ${referral.referrer.last_name}`,
+                    email: referral.referrer.email
                 } : null
             }))
         };
