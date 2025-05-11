@@ -137,8 +137,7 @@ module.exports.register = async (req, res, next) => {
         });
 
         // If referral code is provided, find the referrer
-        
-        if (referral_code) {
+        if (referral_code && referrer) {
             
             const referral_method = await Referral.findOne({
                 where: {
@@ -156,8 +155,20 @@ module.exports.register = async (req, res, next) => {
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value']
             });
+            if(referral_method){   //email referral 
+                await Referral.update({
+                    referred_user_id: user.id,
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
+                }, {
+                    where: {
+                        email: email,
+                        referral_code: referral_code
+                    }
+                });
 
-            if(!referral_method){   //social media referral
+            }
+            else{   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
                 const timestamp = Date.now().toString(36).toUpperCase(); // Convert timestamp to base36
                 const emailHash = Buffer.from(email).toString('base64')
@@ -177,18 +188,6 @@ module.exports.register = async (req, res, next) => {
                     points_awarded: 10,
                     referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
                     referral_value: activeReferralMethod?.referral_value || '10'
-                });
-            }
-            else{   //email referral
-                await Referral.update({
-                    referred_user_id: user.id,
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
-                }, {
-                    where: {
-                        email: email,
-                        referral_code: referral_code
-                    }
                 });
             }
         }
