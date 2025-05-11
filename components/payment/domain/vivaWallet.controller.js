@@ -1,19 +1,18 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, sequelize } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, sequelize } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require("../../../library/logger");
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
-const { Referral } = require("../../../models");
+// const { Referral } = require("../../../models");
 
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
             const webhookData = req.body;
-            console.log(webhookData.EventData);
             // Handle Successfull transaction payment event (EventTypeId: 1796)
             if (webhookData.EventTypeId === 1796) {
                 const { EventData } = webhookData;
@@ -174,7 +173,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             }
                         }
                     });
-
                     if (userOrderCount === 1) {
                         // Find referral record
                         const referral = await Referral.findOne({
@@ -191,7 +189,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 attributes: ['id', 'referral_points']
                             }]
                         });
-
                         if (referral && referral.status === 'pending' && referral.referrer) {
                             // Update referral record
                             await referral.update({
@@ -210,7 +207,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         const referral = await Referral.findOne({
                             where: {
                                 order_id: order.id,
-                                referred_id: order.user_id,
+                                referrer_id: order.user_id,
                                 status: 'completed'
                             },
                             include: [{
@@ -219,7 +216,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 attributes: ['id', 'referral_points']
                             }]
                         });
-
                         if (referral && referral.referrer) {
                             // Update referral record
                             await referral.update({
