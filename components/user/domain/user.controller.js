@@ -613,7 +613,7 @@ const getReferralStats = async (req, res) => {
                 attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
             }],
             order: [['created_at', 'DESC']],
-            limit: 5
+            limit: 10
         });
 
         const response = {

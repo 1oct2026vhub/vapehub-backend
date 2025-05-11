@@ -152,12 +152,12 @@ module.exports.register = async (req, res, next) => {
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true
+                    primary: false  //primary false means it is referred person      
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value']
             });
 
-            if(!referral_method){
+            if(!referral_method){   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
                 const timestamp = Date.now().toString(36).toUpperCase(); // Convert timestamp to base36
                 const emailHash = Buffer.from(email).toString('base64')
@@ -174,11 +174,12 @@ module.exports.register = async (req, res, next) => {
                     referral_coupon_code: referral_coupon,
                     status: 'pending',
                     referred_user_id: user.id,
+                    points_awarded: 10,
                     referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
                     referral_value: activeReferralMethod?.referral_value || '10'
                 });
             }
-            else{
+            else{   //email referral
                 await Referral.update({
                     referred_user_id: user.id,
                     referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',

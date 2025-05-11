@@ -1,7 +1,7 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -245,38 +245,59 @@ module.exports.placeOrder = async (req, res, next) => {
         let coupon = null;
         let userUsedCoupon = {};
         let referralDiscount = 0;
-
+        let discount = 0;
         if (couponCode) {
             coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
             if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                 userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
                 if (!userUsedCoupon) {
-                    let discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                    discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                     discount = Math.min(discount, coupon.maximum_discount || subTotal);
                     calculatedTotal = Math.max(0, subTotal - discount);
                 }
             }
         }
-
         // Apply Referral Coupon
         if (referral_coupon_code) {
             const referral = await Referral.findOne({
                 where: {
                     referral_coupon_code: referral_coupon_code,
-                    status: 'pending'
+                    status: {
+                        [Op.in]: ['pending', 'completed']
+                    }
                 }
             });
 
             if (referral) {
-                const referralValue = parseFloat(referral.referral_value);
+                let referralValue;
+                let referralValueType;
+
+                if (referral.status === 'pending') {
+                    referralValue = parseFloat(referral.referral_value);
+                    referralValueType = referral.referral_value_type;
+                } else {
+                    // For completed status, get values from referral method
+                    const referralMethod = await ReferralMethod.findOne({
+                        where: {
+                            primary: true,  //primary true means it is referrer person
+                            status: 'active'
+                        }
+                    });
+                    if (referralMethod) {
+                        referralValue = parseFloat(referralMethod.referral_value);
+                        referralValueType = referralMethod.referral_value_type;
+                    }
+                }
+
                 if (!isNaN(referralValue)) {
-                    referralDiscount = referral.referral_value_type === 'percentage' 
+                    referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * subTotal 
                         : referralValue;
                     
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    console.log(referralDiscount, calculatedTotal);
                 }
             }
         }
@@ -457,7 +478,7 @@ module.exports.placeOrder = async (req, res, next) => {
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
-                        coupon_discount: coupon ? (subTotal - calculatedTotal) : 0,
+                        coupon_discount: coupon ? discount : 0,         //(subTotal - calculatedTotal)
                         referral_discount: referralDiscount,
                         total: calculatedTotal
                     },
