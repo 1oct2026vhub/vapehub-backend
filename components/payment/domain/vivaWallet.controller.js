@@ -169,7 +169,9 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     const userOrderCount = await Order.count({
                         where: { 
                             user_id: order.user_id,
-                            status: 'processing'
+                            status: {
+                                [Op.in]: ['processing', 'delivered', 'completed']
+                            }
                         }
                     });
 
@@ -177,8 +179,11 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         // Find referral record
                         const referral = await Referral.findOne({
                             where: {
+                                order_id: order.id,
                                 referred_user_id: order.user_id,
-                                status: 'pending'
+                                status: {
+                                    [Op.in]: ['pending', 'completed']
+                                }
                             },
                             include: [{
                                 model: User,
@@ -187,17 +192,17 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             }]
                         });
 
-                        if (referral && referral.referrer) {
+                        if (referral && referral.status === 'pending' && referral.referrer) {
                             // Update referral record
                             await referral.update({
                                 status: 'completed'
                             });
-
-                            // Add points to referrer (the user who referred)
-                            await User.update(
-                                { referral_points: sequelize.literal('referral_points + 10') },
-                                { where: { id: referral.referrer_id } }
-                            );
+                        }
+                        else if (referral && referral.status === 'completed' && referral.referrer) {
+                            // Update referral record
+                            await referral.update({
+                                status: 'applied'
+                            });
                         }
                     }
                     else{
