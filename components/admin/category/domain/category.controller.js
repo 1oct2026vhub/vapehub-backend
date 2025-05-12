@@ -319,10 +319,12 @@ module.exports.restoreCategory = async (req, res, next) => {
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
 
-        // Update SEO noIndex based on category status
-        await seoService.updateCategoryNoIndex(id);
 
         await t.commit();
+
+        // Update SEO noIndex based on category status
+        await seoService.updateCategoryNoIndex(id);
+        
         return successResponse(res, {}, "Category restored successfully", 200);
     } catch (error) {
         await t.rollback();
