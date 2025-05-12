@@ -625,6 +625,7 @@ const getReferralStats = async (req, res) => {
             total_referrals: totalReferrals || 0,
             pending_referrals: pendingReferrals || 0,
             referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
+            referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
             recent_referrals: recentReferrals.map(referral => ({
                 id: referral.id,
