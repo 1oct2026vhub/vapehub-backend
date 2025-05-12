@@ -209,101 +209,105 @@ module.exports.applyCoupon = async (req, res, next) => {
         }
         
         total = subTotal
-        // Process referral discount if referral coupon code is provided
-        const referral = await Referral.findOne({
-            where: {
-                referral_coupon_code: couponCode
-            },
-            attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'created_at', 'updated_at']
-        });
         let coupon = null;
-        if (referral) {
-            // Fetch active referral method independently
-            const referralMethod = await ReferralMethod.findOne({
-                where: { 
-                    status: 'active',
-                    primary: true // Get the primary active method
-                }
+        if(couponCode){
+            // Process referral discount if referral coupon code is provided
+            const referral = await Referral.findOne({
+                where: {
+                    referral_coupon_code: couponCode
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'created_at', 'updated_at']
             });
-            if (referralMethod) {
-                if (referralMethod.referral_value_type === 'percentage') {
-                    referralPercentage = parseFloat(referralMethod.referral_value);
+        
+            if (referral) {
+                // Fetch active referral method independently
+                const referralMethod = await ReferralMethod.findOne({
+                    where: { 
+                        status: 'active',
+                        primary: true // Get the primary active method
+                    }
+                });
+                if (referralMethod) {
+                    if (referralMethod.referral_value_type === 'percentage') {
+                        referralPercentage = parseFloat(referralMethod.referral_value);
                     referralDiscount = (referralPercentage / 100) * subTotal;
                 } else if (referralMethod.referral_value_type === 'fixed') {
                     referralDiscount = parseFloat(referralMethod.referral_value);
                 }
                 referralMessage = 'Referral discount applied successfully';
                 total = Math.max(0, total - referralDiscount);
-            } else {
-                referralMessage = 'No active referral method found';
-            }
-            coupon = couponCode;
-        } 
-        else {
-             // Check if expired
-            coupon = await Coupon.findOne({
-            where: {
-                code: couponCode,
-                status: "active",
-                start_date: { [Op.lte]: new Date() }, // Coupon has started
-                end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
-            }
-            }); 
-            if (!coupon) {
-                throw {
-                    statusCode: 404,
-                    message: 'Invalid or expired coupon code'
+                } else {
+                    referralMessage = 'No active referral method found';
                 }
-            }
-
-            const userUsedCoupon = await CouponUsage.findOne({
-                 where: { user_id: userId, coupon_id: coupon.id }
-            });
-
-            //isSingleUse
-            // if (coupon.is_single_use) {
-            if (userUsedCoupon) {
-                throw {
-                    statusCode: 400,
-                    message: 'You have already used this coupon.'
+                coupon = couponCode;
+            } 
+            else {
+                // Check if expired
+                coupon = await Coupon.findOne({
+                    where: {
+                        code: couponCode,
+                        status: "active",
+                        start_date: { [Op.lte]: new Date() }, // Coupon has started
+                        end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
-            }
+                }); 
+                if (!coupon) {
+                    throw {
+                        statusCode: 404,
+                        message: 'Invalid or expired coupon code'
+                    }
+                }
+
+                const userUsedCoupon = await CouponUsage.findOne({
+                    where: { user_id: userId, coupon_id: coupon.id }
+                });
+
+                //isSingleUse
+                // if (coupon.is_single_use) {
+                if (userUsedCoupon) {
+                    throw {
+                        statusCode: 400,
+                        message: 'You have already used this coupon.'
+                    }
+                }
             
         // }
 
-            // Check usage limit
-            if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit) ) {
-                throw {
-                    statusCode: 400,
-                    message: 'Coupon usage limit reached'
+                // Check usage limit
+                if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit) ) {
+                    throw {
+                        statusCode: 400,
+                        message: 'Coupon usage limit reached'
+                    }
                 }
-            }
         
-            // Check minimum purchase requirement
-            if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
-                throw {
-                    statusCode: 400,
-                    message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
-                }
-            }      
+                // Check minimum purchase requirement
+                if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+                    throw {
+                        statusCode: 400,
+                        message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
+                    }
+                }      
 
-            //calculate discount
-            let discount = 0;
+                //calculate discount
+                let discount = 0;
 
-            if(!userUsedCoupon){
-                if (coupon.discount_type === "percentage") {
-                    discount = (coupon.discount_value / 100) * subTotal;
-                } else if (coupon.discount_type === "fixed_amount") {
-                    discount = coupon.discount_value;
+                if(!userUsedCoupon){
+                    if (coupon.discount_type === "percentage") {
+                        discount = (coupon.discount_value / 100) * subTotal;
+                    } else if (coupon.discount_type === "fixed_amount") {
+                        discount = coupon.discount_value;
+                    }
+                    if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                        discount = coupon.maximum_discount;
+                    }
+                    if(parseFloat(discount) > parseFloat(subTotal)){
+                        discount = coupon.maximum_discount
+                    }
+                    total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
                 }
-                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                    discount = coupon.maximum_discount;
-                }
-                if(parseFloat(discount) > parseFloat(subTotal)){
-                    discount = coupon.maximum_discount
-                }
-                total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
             }
+
         }
         
 

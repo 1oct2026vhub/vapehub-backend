@@ -572,7 +572,12 @@ const deleteAccount = async (req, res) => {
 const getReferralStats = async (req, res) => {
     try {
         const userId = req.user.id;
-
+        // Get total referrals count
+        const referrer = await Referral.findOne({
+            where: {
+                referred_user_id: userId
+            }
+        });
         // Get total referrals count
         const totalReferrals = await Referral.count({
             where: {
@@ -619,7 +624,8 @@ const getReferralStats = async (req, res) => {
         const response = {
             total_referrals: totalReferrals || 0,
             pending_referrals: pendingReferrals || 0,
-            total_points: totalPoints || 0,
+            referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
+            referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
             recent_referrals: recentReferrals.map(referral => ({
                 id: referral.id,
