@@ -226,7 +226,6 @@ module.exports.applyCoupon = async (req, res, next) => {
             if (referral) {
                 let referralValue;
                 let referralValueType;
-
                 if (referral.status === 'pending') {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referral.referral_value_type;
@@ -243,7 +242,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                         referralValueType = referralMethod.referral_value_type;
                     }
                 }
-
                 if (!isNaN(referralValue)) {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * total 
@@ -254,8 +252,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                     total = Math.max(0, total - referralDiscount);
                 }
                 coupon = referral.referral_coupon_code;
-                referral_value = referral.referral_value;
-                referral_value_type = referral.referral_value_type;
+                referral_value = referralValue;
+                referral_value_type = referralValueType;
             } 
             else {
                 // Check if expired
@@ -325,8 +323,6 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
 
         }
-        
-
         
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));

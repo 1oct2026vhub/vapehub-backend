@@ -82,7 +82,7 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: 0
         },
         status: {
-            type: DataTypes.ENUM('pending', 'completed', 'failed'),
+            type: DataTypes.ENUM('pending', 'completed', 'failed', 'applied'),
             defaultValue: 'pending'
         },
         referral_value_type: {
