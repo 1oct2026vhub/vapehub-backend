@@ -6,7 +6,7 @@ const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
-const seoService = require('../../seo/domain/seo.service');
+const SeoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -588,7 +588,7 @@ module.exports.updateProduct = async (req, res, next) => {
 
         // Update SEO metadata when slug changes
         if (cleanSlug && product.slug !== cleanSlug) {
-            await seoService.updateSeoSlug('product', id, cleanSlug);
+            await SeoService.updateSeoSlug('product', id, cleanSlug);
         }
 
         // Update only if there are changes
@@ -628,7 +628,7 @@ module.exports.updateProduct = async (req, res, next) => {
         });
 
         // Update SEO noIndex based on product status
-        await seoService.updateProductNoIndex(id, updatedProduct.status);
+        await SeoService.updateProductNoIndex(id, updatedProduct.status);
 
         await transaction.commit();
         return successResponse(res, updatedProduct, "Product updated successfully");
@@ -710,7 +710,7 @@ module.exports.restoreProduct = async (req, res, next) => {
 
         // Update SEO noIndex based on product status and published state
         const noIndex = product.status !== 'published';
-        await seoService.updateNoIndex('product', id, noIndex);
+        await SeoService.updateNoIndex('product', id, noIndex);
 
         await transaction.commit();
         logger.info(`Product ID ${id} restored successfully`);
@@ -1363,17 +1363,17 @@ module.exports.updateProductStatus = async (req, res, next) => {
         }, { transaction });
 
         // Update SEO noIndex based on product status
-        await seoService.updateProductNoIndex(productId, status);
+        await SeoService.updateProductNoIndex(productId, status);
 
         // Update category and brand SEO based on product status
         const category = await Category.findByPk(product.category_id, { transaction });
         if (category) {
-            await seoService.updateCategoryNoIndex(category.id);
+            await SeoService.updateCategoryNoIndex(category.id);
         }
 
         const brand = await Brand.findByPk(product.brand_id, { transaction });
         if (brand) {
-            await seoService.updateBrandNoIndex(brand.id);
+            await SeoService.updateBrandNoIndex(brand.id);
         }
 
         await transaction.commit();
