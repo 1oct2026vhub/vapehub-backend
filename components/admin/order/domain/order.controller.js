@@ -42,10 +42,23 @@ module.exports.listAllOrders = async (req, res, next) => {
        
         // Search filter
         if (search) {
+            // Split search term into parts for full name search
+            const searchTerms = search.trim().split(/\s+/);
+            
             // First find matching user IDs
             const matchingUsers = await User.findAll({
                 where: {
                     [Op.or]: [
+                        // Match full name combinations
+                        ...searchTerms.map((term, index) => ({
+                            [Op.and]: [
+                                { first_name: { [Op.like]: `%${term}%` } },
+                                ...searchTerms.slice(index + 1).map(nextTerm => ({
+                                    last_name: { [Op.like]: `%${nextTerm}%` }
+                                }))
+                            ]
+                        })),
+                        // Match individual fields
                         { first_name: { [Op.like]: `%${search}%` } },
                         { last_name: { [Op.like]: `%${search}%` } },
                         { email: { [Op.like]: `%${search}%` } }
