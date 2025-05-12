@@ -448,8 +448,8 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         description: variant.description || null,
         barcode: variant.barcode || null,
         stock: variant.stock || 0,
-        low_stock_threshold: variant.low_stock_threshold || 5,
-        stock_status: variant.stock_status || updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 5),
+        low_stock_threshold: variant.low_stock_threshold || 0,
+        stock_status: variant.stock_status || updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 0),
         status: variant.status || 'active',
         updated_by
     };

@@ -30,7 +30,20 @@ exports.listTransactions = async (req, res) => {
       };
     }
     if (search) {
+      // Split search term into parts for full name search
+      const searchTerms = search.trim().split(/\s+/);
+      
       where[Op.or] = [
+        // Match full name combinations
+        ...searchTerms.map((term, index) => ({
+          [Op.and]: [
+            { '$user.first_name$': { [Op.like]: `%${term}%` } },
+            ...searchTerms.slice(index + 1).map(nextTerm => ({
+              '$user.last_name$': { [Op.like]: `%${nextTerm}%` }
+            }))
+          ]
+        })),
+        // Match individual fields
         { '$user.first_name$': { [Op.like]: `%${search}%` } },
         { '$user.last_name$': { [Op.like]: `%${search}%` } },
         { '$user.email$': { [Op.like]: `%${search}%` } },
