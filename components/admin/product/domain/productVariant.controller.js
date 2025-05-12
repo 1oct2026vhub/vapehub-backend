@@ -847,11 +847,7 @@ module.exports.removeProductVariant = async (req, res) => {
             await Promise.all(
                 variant.variantImages.map(async (image) => {
                     const key = image.image_url.split('.com/')[1]; // Extract key from URL
-                    const params = {
-                        Bucket: process.env.AWS_S3_BUCKET,
-                        Key: key
-                    };
-                    return deleteFile(params);
+                    await deleteFile(key);
                 })
             );
         }
@@ -876,6 +872,7 @@ module.exports.removeProductVariant = async (req, res) => {
         return successResponse(res, null, "Product variant removed successfully");
     } catch (error) {
         await transaction.rollback();
+        console.log(error);
         logger.error('Remove Product Variant Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -1050,10 +1047,6 @@ module.exports.deleteVariantImage = async (req, res) => {
 
         // Delete image from S3
         const key = image.image_url.split('.com/')[1]; // Extract key from URL
-        // const params = {
-        //     Bucket: process.env.AWS_S3_BUCKET,
-        //     Key: key
-        // };
         await deleteFile(key);
 
         // Delete image record
