@@ -125,27 +125,21 @@ class SeoService {
     try {
       this.logger.info({ categoryId }, 'Updating category noIndex');
       
-      const category = await this.models.Category.findByPk(categoryId, {
-        include: [{
-          model: this.models.Product,
-          where: { deletedAt: null },
-          required: false
-        }]
-      });
+      const category = await this.models.Category.findByPk(categoryId);
 
       if (!category) {
         this.logger.warn({ categoryId }, 'Category not found');
-        throw new Error('Category not found');
+        return { success: false, message: 'Category not found' };
       }
 
-      const noIndex = !category.Products || !category.Products.length;
+      // Set noIndex to true if category is deleted, false otherwise
+      const noIndex = category.deletedAt !== null;
       const result = await this.updateNoIndex('category', categoryId, noIndex);
       this.logger.info({ categoryId, noIndex }, 'Successfully updated category noIndex');
-      return result;
+      return { success: true, ...result };
     } catch (error) {
-      console.log(error);
       this.logger.error({ error, categoryId }, 'Error updating category noIndex');
-      // throw error;
+      return { success: false, message: error.message || 'Error updating category noIndex' };
     }
   }
 
@@ -158,60 +152,48 @@ class SeoService {
     try {
       this.logger.info({ brandId }, 'Updating brand noIndex');
       
-      const brand = await this.models.Brand.findByPk(brandId, {
-        include: [{
-          model: this.models.Product,
-          where: { status: 'active', deleted_at: null },
-          required: false
-        }]
-      });
+      const brand = await this.models.Brand.findByPk(brandId);
 
       if (!brand) {
         this.logger.warn({ brandId }, 'Brand not found');
-        throw new Error('Brand not found');
+        return { success: false, message: 'Brand not found' };
       }
 
-      const noIndex = !brand.Products.length;
+      // Set noIndex to true if brand is deleted, false otherwise
+      const noIndex = brand.deletedAt !== null;
       const result = await this.updateNoIndex('brand', brandId, noIndex);
       this.logger.info({ brandId, noIndex }, 'Successfully updated brand noIndex');
-      return result;
+      return { success: true, ...result };
     } catch (error) {
       this.logger.error({ error, brandId }, 'Error updating brand noIndex');
-      // throw error;
+      return { success: false, message: error.message || 'Error updating brand noIndex' };
     }
   }
 
   /**
-   * Update noIndex for blog categories based on status and posts
+   * Update noIndex for blog categories based on deleted status
    * @param {string} categoryId - Blog category ID
-   * @param {string} status - Category status
    * @returns {Promise<Object>} Updated SEO metadata
    */
-  async updateBlogCategoryNoIndex(categoryId, status) {
+  async updateBlogCategoryNoIndex(categoryId) {
     try {
-      this.logger.info({ categoryId, status }, 'Updating blog category noIndex');
+      this.logger.info({ categoryId }, 'Updating blog category noIndex');
       
-      const category = await this.models.BlogCategory.findByPk(categoryId, {
-        include: [{
-          model: this.models.Blog,
-          where: { status: 'published', deleted_at: null },
-          through: { attributes: [] },
-          required: false
-        }]
-      });
+      const category = await this.models.BlogCategory.findByPk(categoryId);
 
       if (!category) {
         this.logger.warn({ categoryId }, 'Blog category not found');
-        throw new Error('Blog category not found');
+        return { success: false, message: 'Blog category not found' };
       }
 
-      const noIndex = status !== 'active' || !category.Blogs.length;
+      // Set noIndex to true if blog category is deleted, false otherwise
+      const noIndex = category.deletedAt !== null;
       const result = await this.updateNoIndex('blog_category', categoryId, noIndex);
-      this.logger.info({ categoryId, status, noIndex }, 'Successfully updated blog category noIndex');
-      return result;
+      this.logger.info({ categoryId, noIndex }, 'Successfully updated blog category noIndex');
+      return { success: true, ...result };
     } catch (error) {
-      this.logger.error({ error, categoryId, status }, 'Error updating blog category noIndex');
-      // throw error;
+      this.logger.error({ error, categoryId }, 'Error updating blog category noIndex');
+      return { success: false, message: error.message || 'Error updating blog category noIndex' };
     }
   }
 
@@ -335,7 +317,9 @@ class SeoService {
     if (length >= 50 && length <= 60) return 1;
     if (length >= 40 && length <= 70) return 0.8;
     if (length >= 30 && length <= 80) return 0.6;
-    return 0.3;
+    if (length >= 20 && length <= 90) return 0.4;
+    if (length >= 10 && length <= 100) return 0.2;
+    return 0.1; // Very low score for extremely short titles
   }
 
   /**
@@ -349,7 +333,9 @@ class SeoService {
     if (length >= 150 && length <= 160) return 1;
     if (length >= 120 && length <= 180) return 0.8;
     if (length >= 100 && length <= 200) return 0.6;
-    return 0.3;
+    if (length >= 50 && length <= 250) return 0.4;
+    if (length >= 20 && length <= 300) return 0.2;
+    return 0.1; // Very low score for extremely short descriptions
   }
 
   /**

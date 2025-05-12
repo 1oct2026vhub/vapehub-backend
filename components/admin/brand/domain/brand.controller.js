@@ -304,11 +304,12 @@ module.exports.restoreBrand = async (req, res, next) => {
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
+        
+        await t.commit();
 
         // Update SEO noIndex based on brand status
         await seoService.updateBrandNoIndex(id);
 
-        await t.commit();
         return successResponse(res, {}, "Brand restored successfully", 200);
     } catch (error) {
         await t.rollback();
