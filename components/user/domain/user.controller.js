@@ -611,7 +611,9 @@ const getReferralStats = async (req, res) => {
         const recentReferrals = await Referral.findAll({
             where: {
                 referrer_id: userId,
-                status: 'completed'
+                status: {
+                    [Op.in]: ['completed', 'applied']
+                }
             },
             include: [{
                 model: User,
