@@ -118,6 +118,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                             as: 'product',
                             attributes: ['id', 'name', 'slug'],
                             required: false,
+                            paranoid: false,
                             include: [
                                 {
                                     model: ProductImage,
@@ -132,7 +133,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                             model: ProductVariant,
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'slug'],
-                            required: false
+                            required: false,
+                            paranoid: false
                         }
                     ]
                 }
@@ -187,6 +189,7 @@ module.exports.getOrderById = async (req, res, next) => {
                             model: Product,
                             as: 'product',
                             attributes: ['id', 'name', 'slug', 'description'],
+                            paranoid: false,
                             include: [
                                 {
                                     model: ProductImage,
@@ -200,7 +203,8 @@ module.exports.getOrderById = async (req, res, next) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'stock', 'slug']
+                            attributes: ['id', 'barcode', 'price', 'stock', 'slug'],
+                            paranoid: false
                         }
                     ]
                 },
