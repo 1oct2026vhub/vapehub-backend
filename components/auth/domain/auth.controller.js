@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role, Referral } = require("../../../models");
+const { User, Role, Referral, ReferralMethod } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -109,37 +109,12 @@ module.exports.register = async (req, res, next) => {
                 errors: { email: "User eamil already exists" },
             }
         }
-
-        // If referral code is provided, find the referrer
-        let referral_coupon = '';
         let referrer = null;
         if (referral_code) {
             referrer = await User.findOne({
-                where: { referral_code }
+                where: { referral_code },
+                attributes: ['id', 'referral_code', 'referral_points']
             });
-            const referral_method = await Referral.findOne({
-                where: {
-                    email: email,
-                    referral_code: referral_code,
-                },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
-            });
-            if(!referral_method){
-                
-                const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                for (let i = 0; i < 7; i++) {
-                    referral_coupon += characters.charAt(Math.floor(Math.random() * characters.length));
-                } 
-                
-                await Referral.create({
-                    email: email,
-                    referrer_id: referrer.id,
-                    referral_code: referral_code,
-                    referral_coupon_code: referral_coupon,
-                    status: 'pending'
-                });
-                
-            }
         }
 
         const role = await Role.findOne({
@@ -161,17 +136,61 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
 
-        // Create referral record if referrer exists
-        // if (referrer) {
-        //     await Referral.create({
-        //         referrer_id: referrer.id,
-        //         referred_user_id: user.id,
-        //         referral_code: referral_code,
-        //         // referral_coupon_code: referral_coupon_code,
-        //         status: 'pending'
-        //     });
-        // }
-     
+        // If referral code is provided, find the referrer
+        if (referral_code && referrer) {
+            
+            const referral_method = await Referral.findOne({
+                where: {
+                    email: email,
+                    referral_code: referral_code,
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
+            });
+
+            // Get active referral method
+            const activeReferralMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: false  //primary false means it is referred person      
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value']
+            });
+            if(referral_method){   //email referral 
+                await Referral.update({
+                    referred_user_id: user.id,
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
+                }, {
+                    where: {
+                        email: email,
+                        referral_code: referral_code
+                    }
+                });
+
+            }
+            else{   //social media referral
+                // Generate unique 8-letter referral coupon code using email and timestamp
+                const timestamp = Date.now().toString(36).toUpperCase(); // Convert timestamp to base36
+                const emailHash = Buffer.from(email).toString('base64')
+                    .replace(/[^A-Za-z]/g, '')  // Remove non-letters
+                    .slice(0, 4)                // Take first 4 letters
+                    .toUpperCase();             // Convert to uppercase
+                
+                const referral_coupon = `${emailHash}${timestamp.slice(-4)}`; // Combine email hash and last 4 chars of timestamp
+                
+                await Referral.create({
+                    email: email,
+                    referrer_id: referrer.id,
+                    referral_code: referral_code,
+                    referral_coupon_code: referral_coupon,
+                    status: 'pending',
+                    referred_user_id: user.id,
+                    points_awarded: 10,
+                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
+                    referral_value: activeReferralMethod?.referral_value || '10'
+                });
+            }
+        }
 
         const username = user?.first_name ?? user.email.split('@')[0];
 
@@ -190,7 +209,6 @@ module.exports.register = async (req, res, next) => {
 
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
-        console.log(error)
         return errorResponse(res, error);
     }
 }

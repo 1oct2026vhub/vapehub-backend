@@ -422,6 +422,11 @@ router.get('/:id', authenticateJWT, orderController.getOrderById);
  *                 type: string
  *                 nullable: true
  *                 example: "DISCOUNT10"
+ *               referral_coupon_code:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "BNZPW48W"
+ *                 description: "The referral coupon code to apply discount"
  *               shipping_method_id:
  *                 type: integer
  *                 example: 1
