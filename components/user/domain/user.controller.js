@@ -610,7 +610,8 @@ const getReferralStats = async (req, res) => {
         // Get recent referrals with user details
         const recentReferrals = await Referral.findAll({
             where: {
-                referrer_id: userId
+                referrer_id: userId,
+                status: 'completed'
             },
             include: [{
                 model: User,
@@ -627,7 +628,7 @@ const getReferralStats = async (req, res) => {
             referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
             referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
-            recent_referrals: recentReferrals.map(referral => ({
+            recent_referrals: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
                 id: referral.id,
                 referrer_id: referral.referrer_id,
                 referred_user_id: referral.referred_user_id,
@@ -644,7 +645,7 @@ const getReferralStats = async (req, res) => {
                     email: referral.referredUser.email,
                     phone: referral.referredUser.phone
                 } : null
-            }))
+            })) : []
         };
 
         successResponse(res, response, 'Referral statistics retrieved successfully');

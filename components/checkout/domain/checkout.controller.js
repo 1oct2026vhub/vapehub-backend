@@ -210,36 +210,52 @@ module.exports.applyCoupon = async (req, res, next) => {
         
         total = subTotal
         let coupon = null;
+        let referral_value = null;
+        let referral_value_type = null;
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
                 where: {
-                    referral_coupon_code: couponCode
-                },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'created_at', 'updated_at']
-            });
-        
-            if (referral) {
-                // Fetch active referral method independently
-                const referralMethod = await ReferralMethod.findOne({
-                    where: { 
-                        status: 'active',
-                        primary: true // Get the primary active method
+                    referral_coupon_code: couponCode,
+                    status: {
+                        [Op.in]: ['pending', 'completed']
                     }
-                });
-                if (referralMethod) {
-                    if (referralMethod.referral_value_type === 'percentage') {
-                        referralPercentage = parseFloat(referralMethod.referral_value);
-                    referralDiscount = (referralPercentage / 100) * subTotal;
-                } else if (referralMethod.referral_value_type === 'fixed') {
-                    referralDiscount = parseFloat(referralMethod.referral_value);
-                }
-                referralMessage = 'Referral discount applied successfully';
-                total = Math.max(0, total - referralDiscount);
+                },
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'created_at', 'updated_at']
+            });
+            if (referral) {
+                let referralValue;
+                let referralValueType;
+
+                if (referral.status === 'pending') {
+                    referralValue = parseFloat(referral.referral_value);
+                    referralValueType = referral.referral_value_type;
                 } else {
-                    referralMessage = 'No active referral method found';
+                    // For completed status, get values from referral method
+                    const referralMethod = await ReferralMethod.findOne({
+                        where: {
+                            primary: true,  //primary true means it is referrer person
+                            status: 'active'
+                        }
+                    });
+                    if (referralMethod) {
+                        referralValue = parseFloat(referralMethod.referral_value);
+                        referralValueType = referralMethod.referral_value_type;
+                    }
                 }
-                coupon = couponCode;
+
+                if (!isNaN(referralValue)) {
+                    referralDiscount = referralValueType === 'percentage' 
+                        ? (referralValue / 100) * total 
+                        : referralValue;
+                    
+                    // Ensure discount doesn't exceed subtotal
+                    referralDiscount = Math.min(referralDiscount, total);
+                    total = Math.max(0, total - referralDiscount);
+                }
+                coupon = referral.referral_coupon_code;
+                referral_value = referral.referral_value;
+                referral_value_type = referral.referral_value_type;
             } 
             else {
                 // Check if expired
@@ -319,7 +335,9 @@ module.exports.applyCoupon = async (req, res, next) => {
             shippingCost,
             subTotal,
             total,
-            coupon
+            coupon,
+            referral_value,
+            referral_value_type
         }
         successResponse(res, resObj, 'Success');
     } catch (error) {
