@@ -158,7 +158,7 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, referral_coupon_code, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
         
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
@@ -246,22 +246,11 @@ module.exports.placeOrder = async (req, res, next) => {
         let userUsedCoupon = {};
         let referralDiscount = 0;
         let discount = 0;
+        let referral_flag = false;
         if (couponCode) {
-            coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
-            if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
-                userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
-                if (!userUsedCoupon) {
-                    discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                    discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                    calculatedTotal = Math.max(0, subTotal - discount);
-                }
-            }
-        }
-        // Apply Referral Coupon
-        if (referral_coupon_code) {
             const referral = await Referral.findOne({
                 where: {
-                    referral_coupon_code: referral_coupon_code,
+                    referral_coupon_code: couponCode,
                     status: {
                         [Op.in]: ['pending', 'completed']
                     }
@@ -298,6 +287,19 @@ module.exports.placeOrder = async (req, res, next) => {
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
                     console.log(referralDiscount, calculatedTotal);
+                }
+                referral_flag = true;
+                
+            }
+            else{
+                coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
+                if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
+                    userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
+                    if (!userUsedCoupon) {
+                        discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                        discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                        calculatedTotal = Math.max(0, subTotal - discount);
+                    }
                 }
             }
         }
@@ -394,12 +396,12 @@ module.exports.placeOrder = async (req, res, next) => {
                 await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
             }
         }
-        if(referral_coupon_code){
+        if(couponCode && referral_flag){
             try {
                 // First find the referral to ensure it exists and is not locked
                 const referral = await Referral.findOne({
                     where: {
-                        referral_coupon_code: referral_coupon_code
+                        referral_coupon_code: couponCode
                     },
                     lock: true,
                     transaction
