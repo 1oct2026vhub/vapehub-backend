@@ -263,10 +263,10 @@ module.exports.placeOrder = async (req, res, next) => {
                 let referralValue;
                 let referralValueType;
 
-                if (referral.status === 'pending') {
+                if (referral.status === 'pending'  && referral.referred_user_id === user_id) {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referral.referral_value_type;
-                } else {
+                } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
                     // For completed status, get values from referral method
                     const referralMethod = await ReferralMethod.findOne({
                         where: {

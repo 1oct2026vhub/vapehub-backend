@@ -221,15 +221,15 @@ module.exports.applyCoupon = async (req, res, next) => {
                         [Op.in]: ['pending', 'completed']
                     }
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'created_at', 'updated_at']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at']
             });
             if (referral) {
                 let referralValue;
                 let referralValueType;
-                if (referral.status === 'pending') {
+                if (referral.status === 'pending' && referral.referred_user_id === userId) {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referral.referral_value_type;
-                } else {
+                } else if (referral.status === 'completed' && referral.referrer_id === userId) {
                     // For completed status, get values from referral method
                     const referralMethod = await ReferralMethod.findOne({
                         where: {
