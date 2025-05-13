@@ -497,14 +497,17 @@ module.exports.getOrderById = async (req, res) => {
                                       {
                                         model: Attribute,
                                         as: 'attribute',
-                                        attributes: ['id', 'name', 'type']
+                                        attributes: ['id', 'name', 'type'],
+                                        paranoid: false
                                       },
                                       {
                                         model: AttributeTerm,
                                         as: 'term',
-                                        attributes: ['id', 'name', 'slug']
+                                        attributes: ['id', 'name', 'slug'],
+                                        paranoid: false
                                       }
-                                    ]
+                                    ],
+                                    paranoid: false
                                   },
                                 {
                                     model: ProductVariantImage,
