@@ -288,7 +288,6 @@ module.exports.placeOrder = async (req, res, next) => {
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
-                    console.log(referralDiscount, calculatedTotal);
                 }
                 referral_flag = true;
                 
