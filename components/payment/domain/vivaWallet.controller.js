@@ -295,7 +295,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: `Order created via Viva Wallet`
                         },
-                        url: `/my-account/order-details/${order.id}`
+                        url: `/order-details/${order.id}`
                     });
                     // Send order confirmation email
                     const emailData = {
