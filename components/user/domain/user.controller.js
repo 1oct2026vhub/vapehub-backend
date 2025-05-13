@@ -288,7 +288,7 @@ const referFriend = async (req, res, next) => {
         const referralMethod = await ReferralMethod.findOne({
             where: { 
                 status: 'active',
-                primary: true
+                primary: false
             },
             attributes: ['id', 'referral_value_type', 'referral_value']
         });
