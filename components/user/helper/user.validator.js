@@ -18,12 +18,15 @@ exports.validateProfileUpdate = [
 
     check('phone')
         .optional()
-        .matches(/^\+?[\d- ]{10,15}$/)
         .custom((value) => {
-            const digitCount = value.replace(/[-\+\s]/g, '').length;
-            return digitCount >= 10 && digitCount <= 15;
+            if (!value || value.trim() === '') {
+                return true;
+            }
+            // Remove all non-digit characters and check length
+            const digitsOnly = value.replace(/\D/g, '');
+            return digitsOnly.length >= 10 && digitsOnly.length <= 15;
         })
-        .withMessage('Phone number must be between 10 to 15 digits (excluding +, hyphens and spaces)'),
+        .withMessage('Phone number must be between 10 to 15 digits'),
 ];
 
 exports.validateCreateUserAddress = [

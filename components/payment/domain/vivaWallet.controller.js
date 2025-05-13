@@ -189,16 +189,21 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 attributes: ['id', 'referral_points']
                             }]
                         });
+                        
                         if (referral && referral.status === 'pending' && referral.referrer) {
                             // Update referral record
                             await referral.update({
                                 status: 'completed'
                             });
-                            // Create referral notification
+                            // Create notification for referrer
                             await createNotification({
                                 userId: referral.referrer_id,
-                                type: 'referrals',
-                                action: 'new_referral',
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `You have a new referral code waiting to be claimed`
+                                },
+                                title: 'Referral',
                                 url: '/my-account/referrals'
                             });
                         }
@@ -288,9 +293,9 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderId: order.id,
                             orderUniqueId: order.order_unique_id,
                             relatedId: order.id,
-                            reason: 'Order created via Viva Wallet'
+                            reason: `Order created via Viva Wallet`
                         },
-                        url: '/my-account/orders'
+                        url: `/my-account/order-details/${order.id}`
                     });
                     // Send order confirmation email
                     const emailData = {

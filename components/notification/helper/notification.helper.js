@@ -30,7 +30,8 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
                 failed: `Payment of £${data.amount || 'N/A'} failed`,
                 refunded: `Refund of £${data.amount || 'N/A'} has been processed`,
                 pending: `Payment of £${data.amount || 'N/A'} is pending`,
-                cancelled: `Payment of £${data.amount || 'N/A'} has been cancelled`
+                cancelled: `Payment of £${data.amount || 'N/A'} has been cancelled`,
+                new_referral: `You have a new referral code waiting to be claimed`
             },
             system: {
                 maintenance: 'System maintenance scheduled',
@@ -49,20 +50,15 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
                 delivered: `Order #${data.orderUniqueId || 'N/A'} has been delivered`,
                 delayed: `Order #${data.orderUniqueId || 'N/A'} shipping has been delayed`
             },
-            referrals:{
-                new_referral: `You have a new referral code waiting to be claimed`
-            }
         };
 
         // Validate notification type
-        const validTypes = ['order', 'payment', 'system', 'product', 'shipping'];
+        const validTypes = ['order', 'payment', 'system', 'product', 'shipping', 'referrals'];
         if (!validTypes.includes(type)) {
             throw new Error(`Invalid notification type. Must be one of: ${validTypes.join(', ')}`);
         }
-
         // Get the appropriate message based on type and action
         const message = messages[type]?.[action] || 'Notification';
-
         // Create notification data based on model structure
         const notificationData = {
             user_id: userId,
@@ -74,7 +70,6 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
             is_pushed: false,
             url: url || null
         };
-
         // Create the notification using the model
         const notification = await Notification.create(notificationData);
 
