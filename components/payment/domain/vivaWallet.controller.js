@@ -194,6 +194,13 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             await referral.update({
                                 status: 'completed'
                             });
+                            // Create referral notification
+                            await createNotification({
+                                userId: referral.referrer_id,
+                                type: 'referrals',
+                                action: 'new_referral',
+                                url: '/my-account/referrals'
+                            });
                         }
                         else if (referral && referral.status === 'completed' && referral.referrer) {
                             // Update referral record
