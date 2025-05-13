@@ -48,6 +48,9 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
                 shipped: `Order #${data.orderUniqueId || 'N/A'} has been shipped`,
                 delivered: `Order #${data.orderUniqueId || 'N/A'} has been delivered`,
                 delayed: `Order #${data.orderUniqueId || 'N/A'} shipping has been delayed`
+            },
+            referrals:{
+                new_referral: `You have a new referral code waiting to be claimed`
             }
         };
 
