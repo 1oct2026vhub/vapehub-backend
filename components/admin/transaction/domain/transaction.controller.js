@@ -91,8 +91,8 @@ exports.getTransactionDetails = async (req, res) => {
           include: [
             { model: OrderItem, as: 'orderItems',
               include: [
-                { model: Product, as: 'product', attributes: ['id', 'name', 'slug'] },
-                { model: ProductVariant, as: 'variant', attributes: ['id', 'barcode', 'price', 'slug'] }
+                { model: Product, as: 'product', attributes: ['id', 'name', 'slug'], paranoid: false },
+                { model: ProductVariant, as: 'variant', attributes: ['id', 'barcode', 'price', 'slug'], paranoid: false }
               ]
             },
             { model: ShippingMethod, as: 'shippingMethod', attributes: ['id', 'shipping_method', 'shipping_cost'], required: false },
