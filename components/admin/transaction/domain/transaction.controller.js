@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm } = require('../../../../models');
+const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon } = require('../../../../models');
 const { Op } = require('sequelize');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -153,6 +153,12 @@ exports.getTransactionDetails = async (req, res) => {
               as: 'billingAddress', 
               attributes: ['id', 'name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'], 
               required: false 
+            },
+            {
+              model: Coupon,
+              as: 'coupon',
+              attributes: ['id', 'code', 'description', 'discount_type', 'discount_value', 'minimum_purchase', 'maximum_discount'],
+              required: false
             }
           ]
         }

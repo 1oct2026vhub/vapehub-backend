@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -236,7 +236,8 @@ module.exports.getOrderById = async (req, res, next) => {
                                     as: 'variantImages',
                                     attributes: ['id', 'image_url', 'is_primary'],
                                     where: { is_primary: true },
-                                    required: false
+                                    required: false,
+                                    paranoid: false
                                 },
                                 {
                                     model: ProductVariantAttribute,
@@ -265,6 +266,12 @@ module.exports.getOrderById = async (req, res, next) => {
                         }
                     ],
                     order: [['createdAt', 'ASC']]
+                },
+                {
+                    model: Coupon,
+                    as: 'coupon',
+                    attributes: ['id', 'code', 'discount_type', 'discount_value', 'description', 'createdAt', 'updatedAt'],
+                    paranoid: false
                 }
             ]
         });
