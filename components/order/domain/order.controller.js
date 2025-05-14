@@ -673,7 +673,7 @@ module.exports.getOrderById = async (req, res) => {
                     
                     // Calculate discount price if value type is percentage
                     if (referral.referral_value_type === 'percentage' && referral.referral_value) {
-                        order.referral_discount = (parseFloat(referral.referral_value) / 100) * order.total;
+                        order.referral_discount = (parseFloat(referral.referral_value) / 100) * order.sub_total;
                     } else if (referral.referral_value) {
                         order.referral_discount = parseFloat(referral.referral_value);
                     }
@@ -692,7 +692,7 @@ module.exports.getOrderById = async (req, res) => {
                         
                         // Calculate discount price if value type is percentage
                         if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
-                            order.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.total;
+                            order.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.sub_total;
                         } else if (referralMethod.referral_value) {
                             order.referral_discount = parseFloat(referralMethod.referral_value);
                         }
@@ -712,7 +712,7 @@ module.exports.getOrderById = async (req, res) => {
             // Calculate discount amount based on coupon type
             if (coupon.discount_type === 'percentage' && coupon.discount_value) {
                 // Use sub_total if available, otherwise use total
-                const baseAmount = order.sub_total || order.total;
+                const baseAmount = order.sub_total;
                 order.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
             } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
                 order.coupon_discount = parseFloat(coupon.discount_value);
