@@ -202,7 +202,7 @@ module.exports.placeOrder = async (req, res, next) => {
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
             // Validate Stock
             if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.slug}.`);
-            if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
+            // if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
             subTotal += unitPrice * quantity;
@@ -630,7 +630,36 @@ module.exports.getOrderById = async (req, res) => {
         // } else if (order.status === 'fail') {
         //     order.status = 'failed';
         // }
-
+        // const referral = await Referral.findOne({
+        //     where: {
+        //         referrer_id: userId
+        //     },
+        //     include: [
+        //         {
+        //             model: ReferralMethod,
+        //             as: 'referralMethod',
+        //             where: {
+        //                 primary: true
+        //             }
+        //         }
+        //     ]
+        // });
+        // if(referral){
+        //     // order.referral_id = referral.id;
+        //     order.referral_code = referral.referralMethod.referral_code;
+        //     order.referral_value = referral.referralMethod.referral_value;
+        //     order.referral_value_type = referral.referralMethod.referral_value_type;
+        // }
+        // else{
+        //     const referral = await Referral.findOne({
+        //         where: {
+        //             referred_id: userId
+        //         }
+        //     });
+        //     order.referral_code = referral.referral_coupon_code;
+        //     order.referral_value = referral.referral_value;
+        //     order.referral_value_type = referral.referral_value_type;
+        // }
         // Add primary image URL to each order item
         order.orderItems.forEach(item => {
             if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
