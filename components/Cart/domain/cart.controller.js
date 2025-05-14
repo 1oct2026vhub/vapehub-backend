@@ -19,7 +19,8 @@ const includeClause = [
             //         { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
             //     ]
             // }
-        ]
+        ],
+        paranoid: false
     },
     {
         model: ProductVariant,
@@ -35,12 +36,14 @@ const includeClause = [
                 model: ProductVariantAttribute,
                 as: 'variantAttributes',
                 include: [
-                    { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
-                    { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
-                ]
+                    { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'], paranoid: false },
+                    { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'], paranoid: false }
+                ],
+                paranoid: false
             },
             { model: ProductVariantImage, as: 'variantImages', attributes: ['id', 'variant_id', 'image_url', 'is_primary'] },
-        ]
+        ],
+        paranoid: false
     },
 ]
 
