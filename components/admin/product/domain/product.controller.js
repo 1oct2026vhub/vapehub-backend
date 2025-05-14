@@ -282,12 +282,10 @@ module.exports.getProductById = async (req, res, next) => {
                 {
                     model: ProductImage,
                     as: "ProductImages",
-                    paranoid: false
                 },
                 {
                     model: ProductAttributeTerm,
                     as: "productAttributeTerms",
-                    paranoid: false,
                     attributes: [
                         "id",
                         "product_id",
@@ -320,7 +318,6 @@ module.exports.getProductById = async (req, res, next) => {
                 {
                     model: ProductVariant,
                     as: "variants",
-                    paranoid: false,
                     attributes: [
                         "id",
                         "product_id",
@@ -343,7 +340,6 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductVariantImage,
                             as: "variantImages",
-                            paranoid: false,
                             attributes: [
                                 "id",
                                 "variant_id",
@@ -354,7 +350,6 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductVariantAttribute,
                             as: "variantAttributes",
-                            paranoid: false,
                             attributes: [
                                 "id",
                                 "variant_id",
@@ -367,7 +362,6 @@ module.exports.getProductById = async (req, res, next) => {
                                 {
                                     model: AttributeTerm,
                                     as: "term",
-                                    paranoid: false,
                                     attributes: [
                                         "id",
                                         "name",
@@ -377,7 +371,6 @@ module.exports.getProductById = async (req, res, next) => {
                                 {
                                     model: Attribute,
                                     as: "attribute",
-                                    paranoid: false,
                                     attributes: [
                                         "id",
                                         "name",
