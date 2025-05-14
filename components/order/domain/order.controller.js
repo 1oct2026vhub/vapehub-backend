@@ -184,13 +184,23 @@ module.exports.placeOrder = async (req, res, next) => {
             where: { user_id },
             include: [
                 { model: User, attributes: ["id", "first_name", "last_name", "email", "phone"], as: "user" },
-                { model: Product, include: [{ model: ProductVariant, as: "variants" }], as: "product" },
+                { 
+                    model: Product, 
+                    where: { deletedAt: null },
+                    include: [
+                        { 
+                            model: ProductVariant, 
+                            as: "variants",
+                            where: { deleted_at: null },
+                            required: false
+                        }
+                    ], 
+                    as: "product" 
+                },
             ],
             transaction
         });
-
         if (!cartItems.length) throw new Error("Cart is empty");
-        
         let subTotal = 0;
         const orderItems = [];
         const orderDetails = [];
@@ -199,13 +209,13 @@ module.exports.placeOrder = async (req, res, next) => {
             const { product, variant_id, quantity } = item;
             if (!product) throw new Error(`Product ${product.name} not found.`);
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
+            if (variant == null) throw new Error(`Product ${product.name} with variant not found.`);
             // Validate Stock
             if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.slug}.`);
             if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
             subTotal += unitPrice * quantity;
-            
             orderItems.push({
                 product_id: item.product_id,
                 variant_id: variant_id || null,
@@ -248,6 +258,8 @@ module.exports.placeOrder = async (req, res, next) => {
         let referralDiscount = 0;
         let discount = 0;
         let referral_flag = false;
+        let referralId = null;
+        let discountType = null;
         if (couponCode) {
             const referral = await Referral.findOne({
                 where: {
@@ -261,7 +273,6 @@ module.exports.placeOrder = async (req, res, next) => {
             if (referral) {
                 let referralValue;
                 let referralValueType;
-
                 if (referral.status === 'pending'  && referral.referred_user_id === user_id) {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referral.referral_value_type;
@@ -289,16 +300,26 @@ module.exports.placeOrder = async (req, res, next) => {
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
                 }
                 referral_flag = true;
-                
+                referralId = referral.id;
+                discountType = referralValueType;
             }
             else{
                 coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
                     if (!userUsedCoupon) {
+                        let discount_type = 0;
+                        if(coupon.discount_type === "percentage"){
+                            discount_type = coupon.discount_type;
+                        }
+                        else if(coupon.discount_type === "fixed_amount"){
+                            discount_type = "fixed";
+                        }
                         discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                         discount = Math.min(discount, coupon.maximum_discount || subTotal);
                         calculatedTotal = Math.max(0, subTotal - discount);
+                        discountType = discount_type;
+                        referralDiscount = discount;
                     }
                 }
             }
@@ -384,7 +405,11 @@ module.exports.placeOrder = async (req, res, next) => {
             order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
             shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
             email: email,
-            phone: phone
+            phone: phone,
+            sub_total: subTotal,
+            discount_price: referralDiscount,
+            discount_type: discountType,
+            referral_id: referralId
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
@@ -464,6 +489,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // }
         // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
+
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
@@ -521,14 +547,13 @@ module.exports.getOrderById = async (req, res) => {
         if (!user) {
             return errorResponse(res, {}, 'User not found', 404);
         }
-
         const order = await Order.findOne({
             where: { 
                 id: orderId,
                 user_id: userId // Ensure the order belongs to the authenticated user
             },
             attributes: [
-                'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
+                'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone', 'referral_id'
             ],
             include: [
                 {
@@ -619,6 +644,7 @@ module.exports.getOrderById = async (req, res) => {
                 }
             ]
         });
+
         if (!order) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
@@ -629,36 +655,50 @@ module.exports.getOrderById = async (req, res) => {
         // } else if (order.status === 'fail') {
         //     order.status = 'failed';
         // }
-        // const referral = await Referral.findOne({
-        //     where: {
-        //         referrer_id: userId
-        //     },
-        //     include: [
-        //         {
-        //             model: ReferralMethod,
-        //             as: 'referralMethod',
-        //             where: {
-        //                 primary: true
-        //             }
-        //         }
-        //     ]
-        // });
-        // if(referral){
-        //     // order.referral_id = referral.id;
-        //     order.referral_code = referral.referralMethod.referral_code;
-        //     order.referral_value = referral.referralMethod.referral_value;
-        //     order.referral_value_type = referral.referralMethod.referral_value_type;
-        // }
-        // else{
-        //     const referral = await Referral.findOne({
-        //         where: {
-        //             referred_id: userId
-        //         }
-        //     });
-        //     order.referral_code = referral.referral_coupon_code;
-        //     order.referral_value = referral.referral_value;
-        //     order.referral_value_type = referral.referral_value_type;
-        // }
+        console.log("order.referral_id>>>", order.referral_id);
+        if(order.referral_id){
+            const referral = await Referral.findOne({
+                where: {
+                    id: order.referral_id
+                }
+            });
+            console.log("referral>>>", referral);
+            
+            if(referral) {
+                if(referral.referred_user_id === userId){
+                    order.referral_code = referral.referral_coupon_code;
+                    order.referral_value = referral.referral_value;
+                    order.referral_value_type = referral.referral_value_type;
+                    
+                    // Calculate discount price if value type is percentage
+                    if (referral.referral_value_type === 'percentage' && referral.referral_value) {
+                        order.referral_discount = (parseFloat(referral.referral_value) / 100) * order.total;
+                    } else if (referral.referral_value) {
+                        order.referral_discount = parseFloat(referral.referral_value);
+                    }
+                }
+                else if(referral.referrer_id === userId){
+                    const referralMethod = await ReferralMethod.findOne({
+                        where: {
+                            primary: true,
+                            status: 'active'
+                        }
+                    });
+                    if(referralMethod) {
+                        order.referral_code = referral.referral_coupon_code;
+                        order.referral_value = referralMethod.referral_value;
+                        order.referral_value_type = referralMethod.referral_value_type;
+                        
+                        // Calculate discount price if value type is percentage
+                        if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
+                            order.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.total;
+                        } else if (referralMethod.referral_value) {
+                            order.referral_discount = parseFloat(referralMethod.referral_value);
+                        }
+                    }
+                }
+            }
+        }
         // Add primary image URL to each order item
         order.orderItems.forEach(item => {
             if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
@@ -668,7 +708,6 @@ module.exports.getOrderById = async (req, res) => {
                 item.variant.primary_image_url = item.variant.variantImages[0].image_url;
             }
         });
-
         successResponse(res, {
             user: {
                 id: user.id,
@@ -678,7 +717,13 @@ module.exports.getOrderById = async (req, res) => {
                 phone: user.phone,
                 receive_promotions: user.receive_promotions
             },
-            order: order
+            order: order,
+            referral: {
+                referral_code: order.referral_code,
+                referral_value: order.referral_value,
+                referral_value_type: order.referral_value_type,
+                referral_discount: order.referral_discount || 0
+            }
         }, 'Order fetched successfully', 200);
 
     } catch (error) {
