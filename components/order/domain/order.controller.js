@@ -553,7 +553,8 @@ module.exports.getOrderById = async (req, res) => {
                 user_id: userId // Ensure the order belongs to the authenticated user
             },
             attributes: [
-                'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone', 'referral_id'
+                'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 
+                'createdAt', 'email', 'phone', 'referral_id', 'sub_total', 'discount_type'
             ],
             include: [
                 {
@@ -655,14 +656,14 @@ module.exports.getOrderById = async (req, res) => {
         // } else if (order.status === 'fail') {
         //     order.status = 'failed';
         // }
-        console.log("order.referral_id>>>", order.referral_id);
+        
+        // Process referral discount if order has a referral_id
         if(order.referral_id){
             const referral = await Referral.findOne({
                 where: {
                     id: order.referral_id
                 }
             });
-            console.log("referral>>>", referral);
             
             if(referral) {
                 if(referral.referred_user_id === userId){
@@ -699,6 +700,42 @@ module.exports.getOrderById = async (req, res) => {
                 }
             }
         }
+        // Process coupon discount if order has a coupon_id
+        else if (order.coupon) {
+            const coupon = order.coupon;
+            
+            // Set coupon data
+            order.coupon_code = coupon.code;
+            order.coupon_value = coupon.discount_value;
+            order.coupon_type = coupon.discount_type;
+            
+            // Calculate discount amount based on coupon type
+            if (coupon.discount_type === 'percentage' && coupon.discount_value) {
+                // Use sub_total if available, otherwise use total
+                const baseAmount = order.sub_total || order.total;
+                order.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
+            } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
+                order.coupon_discount = parseFloat(coupon.discount_value);
+            }
+        }
+
+         if(order.referral_id){
+            order.referral = {
+                coupon_code: order.referral_code,
+                coupon_value: order.referral_value,
+                coupon_type: order.referral_value_type,
+                coupon_discount: order.referral_discount || 0
+            }
+         }
+         if(order.coupon){
+            order.referral = {
+                coupon_code: order.coupon_code,
+                coupon_value: order.coupon_value,
+                coupon_type: order.coupon_type,
+                coupon_discount: order.coupon_discount || 0
+            }
+         }
+        
         // Add primary image URL to each order item
         order.orderItems.forEach(item => {
             if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
@@ -718,12 +755,7 @@ module.exports.getOrderById = async (req, res) => {
                 receive_promotions: user.receive_promotions
             },
             order: order,
-            referral: {
-                referral_code: order.referral_code,
-                referral_value: order.referral_value,
-                referral_value_type: order.referral_value_type,
-                referral_discount: order.referral_discount || 0
-            }
+            referral: order.referral,
         }, 'Order fetched successfully', 200);
 
     } catch (error) {
