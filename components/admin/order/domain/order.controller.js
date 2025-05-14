@@ -227,6 +227,9 @@ module.exports.getOrderById = async (req, res, next) => {
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug'],
                             paranoid: false,
+                            where: {
+                                id: { [Op.col]: 'orderItems.variant_id' }
+                            },
                             include: [
                                 {
                                     model: ProductVariantImage,
