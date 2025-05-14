@@ -23,12 +23,21 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'SET NULL', 
         onUpdate: 'CASCADE' 
       });
+
+      this.belongsTo(models.Referral, {
+        foreignKey: 'referral_id',
+        as: 'referral',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE'
+      });
+
       this.belongsTo(models.ShippingMethod, { 
         foreignKey: 'shipping_method_id', 
         as: 'shippingMethod',
         onDelete: 'CASCADE', 
         onUpdate: 'CASCADE' 
       });
+
       this.belongsTo(models.UserAddress, { 
         foreignKey: 'shipping_address_id', 
         as: 'shippingAddress',
@@ -337,6 +346,23 @@ module.exports = (sequelize, DataTypes) => {
     phone: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    sub_total: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0
+    },
+    discount_type: {
+      type: DataTypes.ENUM('percentage', 'fixed', 'referral'),
+      allowNull: true
+    },
+    referral_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'referrals',
+        key: 'id'
+      }
     },
     createdAt: {
       type: DataTypes.DATE,
