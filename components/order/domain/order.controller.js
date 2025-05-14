@@ -195,14 +195,13 @@ module.exports.placeOrder = async (req, res, next) => {
         const orderItems = [];
         const orderDetails = [];
         // const stockUpdates = [];
-
         for (const item of cartItems) {
             const { product, variant_id, quantity } = item;
-            if (!product) throw new Error(`Product ${item.product_id} not found.`);
+            if (!product) throw new Error(`Product ${product.name} not found.`);
             const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
             // Validate Stock
             if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.slug}.`);
-            // if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
+            if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
             subTotal += unitPrice * quantity;

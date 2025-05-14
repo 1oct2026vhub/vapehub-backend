@@ -29,11 +29,13 @@ module.exports.checkout = async (req, res, next) => {
                             model: Product,
                             attributes: ["id", "name", "price", "discount_price", "stock_quantity"], // Product details
                             as: "product",
+                            paranoid: false
                           },
                           {
                             model: ProductVariant,
-                            attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"], // product variant details
-                            as: "variant"
+                            attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"], // product variant details
+                            as: "variant",
+                            paranoid: false
                           }
                         ]
                       });
