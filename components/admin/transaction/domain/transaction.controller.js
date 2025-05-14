@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress } = require('../../../../models');
+const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm } = require('../../../../models');
 const { Op } = require('sequelize');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -86,18 +86,74 @@ exports.getTransactionDetails = async (req, res) => {
   try {
     const transaction = await Transaction.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'user', paranoid: false },
-        { model: Order, as: 'order',
+        { 
+          model: User, 
+          as: 'user', 
+          paranoid: false 
+        },
+        { 
+          model: Order, 
+          as: 'order',
           include: [
-            { model: OrderItem, as: 'orderItems',
+            { 
+              model: OrderItem, 
+              as: 'orderItems',
               include: [
-                { model: Product, as: 'product', attributes: ['id', 'name', 'slug'], paranoid: false },
-                { model: ProductVariant, as: 'variant', attributes: ['id', 'barcode', 'price', 'slug'], paranoid: false }
+                { 
+                  model: Product, 
+                  as: 'product', 
+                  attributes: ['id', 'name', 'slug'], 
+                  paranoid: false 
+                },
+                { 
+                  model: ProductVariant, 
+                  as: 'variant', 
+                  attributes: ['id', 'barcode', 'price', 'slug', 'stock'], 
+                  paranoid: false,
+                  where: {
+                    id: { [Op.col]: 'order->orderItems.variant_id' }
+                  },
+                  include: [
+                    { 
+                      model: ProductVariantImage, 
+                      as: 'variantImages', 
+                      attributes: ['id', 'image_url', 'is_primary'], 
+                      where: { is_primary: true },
+                      required: false,
+                      paranoid: false
+                    },
+                    {
+                      model: ProductVariantAttribute,
+                      as: 'variantAttributes',
+                      paranoid: false,
+                      attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
+                      include: [
+                        { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
+                        { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
+                      ]
+                    }
+                  ]
+                }
               ]
             },
-            { model: ShippingMethod, as: 'shippingMethod', attributes: ['id', 'shipping_method', 'shipping_cost'], required: false },
-            { model: UserAddress, as: 'shippingAddress', attributes: ['id', 'name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'], required: false },
-            { model: UserAddress, as: 'billingAddress', attributes: ['id', 'name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'], required: false }
+            { 
+              model: ShippingMethod, 
+              as: 'shippingMethod', 
+              attributes: ['id', 'shipping_method', 'shipping_cost'], 
+              required: false 
+            },
+            { 
+              model: UserAddress, 
+              as: 'shippingAddress', 
+              attributes: ['id', 'name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'], 
+              required: false 
+            },
+            { 
+              model: UserAddress, 
+              as: 'billingAddress', 
+              attributes: ['id', 'name', 'last_name', 'street', 'town', 'county', 'post_code', 'country', 'phone'], 
+              required: false 
+            }
           ]
         }
       ]
