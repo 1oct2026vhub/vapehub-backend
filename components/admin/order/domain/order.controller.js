@@ -136,7 +136,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                             required: false,
                             paranoid: false,
                             where: {
-                                id: sequelize.col('OrderItem.variant_id')
+                                id: sequelize.col('orderItems.variant_id')
                             },
                             include: [
                                 {
