@@ -2,10 +2,10 @@ const { ReferralMethod } = require('../../../../models');
 const { Op } = require('sequelize');
 
 class ReferralMethodHelper {
-  static async unsetExistingPrimary() {
+  static async unsetExistingPrimaryByReferType(referType) {
     return await ReferralMethod.update(
       { primary: false },
-      { where: { primary: true } }
+      { where: { primary: true, refer_type: referType } }
     );
   }
 
@@ -14,14 +14,14 @@ class ReferralMethodHelper {
   }
 
   static async create(data) {
-    // If setting as primary, first unset any existing primary
+    // If setting as primary, first unset any existing primary for the same refer_type
     if (data.primary) {
-      await this.unsetExistingPrimary();
+      await this.unsetExistingPrimaryByReferType(data.refer_type);
     } else {
-      // If not setting as primary, check if this will be the first record
-      const count = await ReferralMethod.count();
+      // If not setting as primary, check if this will be the first record for this refer_type
+      const count = await ReferralMethod.count({ where: { refer_type: data.refer_type } });
       if (count === 0) {
-        data.primary = true; // Force primary for first record
+        data.primary = true; // Force primary for first record of this refer_type
       }
     }
     return await ReferralMethod.create(data);
@@ -33,14 +33,19 @@ class ReferralMethodHelper {
       return null;
     }
 
-    // If setting as primary, first unset any existing primary
+    // If setting as primary, first unset any existing primary for the same refer_type
     if (data.primary) {
-      await this.unsetExistingPrimary();
+      await this.unsetExistingPrimaryByReferType(referralMethod.refer_type);
     } else {
-      // If unsetting primary, check if this is the only primary record
-      const primaryCount = await ReferralMethod.count({ where: { primary: true } });
+      // If unsetting primary, check if this is the only primary record for this refer_type
+      const primaryCount = await ReferralMethod.count({ 
+        where: { 
+          primary: true,
+          refer_type: referralMethod.refer_type 
+        } 
+      });
       if (primaryCount <= 1 && referralMethod.primary) {
-        data.primary = true; // Force primary if it's the only primary record
+        data.primary = true; // Force primary if it's the only primary record for this refer_type
       }
     }
 
@@ -53,11 +58,16 @@ class ReferralMethodHelper {
       return null;
     }
 
-    // Check if this is the only primary record
+    // Check if this is the only primary record for this refer_type
     if (referralMethod.primary) {
-      const primaryCount = await ReferralMethod.count({ where: { primary: true } });
+      const primaryCount = await ReferralMethod.count({ 
+        where: { 
+          primary: true,
+          refer_type: referralMethod.refer_type 
+        } 
+      });
       if (primaryCount <= 1) {
-        return null; // Don't allow deletion if it's the only primary record
+        return null; // Don't allow deletion if it's the only primary record for this refer_type
       }
     }
 
@@ -108,7 +118,8 @@ class ReferralMethodHelper {
         ...searchWhere,
         [Op.or]: [
           { referral_value: { [Op.like]: `%${search}%` } },
-          { referral_value_type: { [Op.like]: `%${search}%` } }
+          { referral_value_type: { [Op.like]: `%${search}%` } },
+          { refer_type: { [Op.like]: `%${search}%` } }
         ]
       };
     }
@@ -130,14 +141,19 @@ class ReferralMethodHelper {
       return null;
     }
 
-    // If setting as primary, first unset any existing primary
+    // If setting as primary, first unset any existing primary for the same refer_type
     if (primary) {
-      await this.unsetExistingPrimary();
+      await this.unsetExistingPrimaryByReferType(referralMethod.refer_type);
     } else {
-      // If unsetting primary, check if this is the only primary record
-      const primaryCount = await ReferralMethod.count({ where: { primary: true } });
+      // If unsetting primary, check if this is the only primary record for this refer_type
+      const primaryCount = await ReferralMethod.count({ 
+        where: { 
+          primary: true,
+          refer_type: referralMethod.refer_type 
+        } 
+      });
       if (primaryCount <= 1 && referralMethod.primary) {
-        return null; // Don't allow unsetting if it's the only primary record
+        return null; // Don't allow unsetting if it's the only primary record for this refer_type
       }
     }
 

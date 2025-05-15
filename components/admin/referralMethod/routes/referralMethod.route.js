@@ -13,6 +13,7 @@ const referralMethodController = require('../domain/referralMethod.controller');
  *       required:
  *         - referral_value_type
  *         - referral_value
+ *         - refer_type
  *       properties:
  *         referral_value_type:
  *           type: string
@@ -21,6 +22,10 @@ const referralMethodController = require('../domain/referralMethod.controller');
  *         referral_value:
  *           type: string
  *           description: Value of the referral (percentage or fixed amount)
+ *         refer_type:
+ *           type: string
+ *           enum: [referrer, referral]
+ *           description: Type of referral (referrer or referral)
  *         status:
  *           type: string
  *           enum: [active, inactive]

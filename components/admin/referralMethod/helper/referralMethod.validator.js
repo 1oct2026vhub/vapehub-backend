@@ -23,6 +23,10 @@ const referralMethodValidationRules = [
       return true;
     }),
 
+  body("refer_type")
+    .notEmpty().withMessage("Refer type is required")
+    .isIn(['referrer', 'referral']).withMessage("Refer type must be either referrer or referral"),
+
   body("status")
     .optional()
     .isIn(['active', 'inactive']).withMessage("Status must be either active or inactive"),
@@ -55,6 +59,10 @@ const referralMethodUpdateValidationRules = [
       return true;
     }),
 
+  body("refer_type")
+    .optional()
+    .isIn(['referrer', 'referral']).withMessage("Refer type must be either referrer or referral"),
+
   body("status")
     .optional()
     .isIn(['active', 'inactive']).withMessage("Status must be either active or inactive"),
@@ -73,6 +81,10 @@ const referralMethodListValidationRules = [
     .optional()
     .isIn(['true', 'false']).withMessage("Primary must be either true or false"),
 
+  query("refer_type")
+    .optional()
+    .isIn(['referrer', 'referral']).withMessage("Refer type must be either referrer or referral"),
+
   query("page")
     .optional()
     .isInt({ min: 1 }).withMessage("Page must be a positive integer"),
@@ -83,7 +95,7 @@ const referralMethodListValidationRules = [
 
   query("sort_by")
     .optional()
-    .isIn(['id', 'referral_value_type', 'referral_value', 'status', 'primary', 'created_at', 'updated_at'])
+    .isIn(['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary', 'created_at', 'updated_at'])
     .withMessage("Invalid sort field"),
 
   query("order")
