@@ -843,20 +843,20 @@ module.exports.removeProductVariant = async (req, res) => {
         await slugManager.deleteSlug('product_variant', variant_id, transaction);
 
         // Delete images from S3 if they exist
-        if (variant.variantImages && variant.variantImages.length > 0) {
-            await Promise.all(
-                variant.variantImages.map(async (image) => {
-                    const key = image.image_url.split('.com/')[1]; // Extract key from URL
-                    await deleteFile(key);
-                })
-            );
-        }
+        // if (variant.variantImages && variant.variantImages.length > 0) {
+        //     await Promise.all(
+        //         variant.variantImages.map(async (image) => {
+        //             const key = image.image_url.split('.com/')[1]; // Extract key from URL
+        //             await deleteFile(key);
+        //         })
+        //     );
+        // }
 
         // Delete variant images from database
-        await ProductVariantImage.destroy({
-            where: { variant_id },
-            transaction
-        });
+        // await ProductVariantImage.destroy({
+        //     where: { variant_id },
+        //     transaction
+        // });
 
         // Delete variant attribute terms
         await ProductVariantAttribute.destroy({

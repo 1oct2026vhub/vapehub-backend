@@ -267,18 +267,21 @@ module.exports.getProductById = async (req, res, next) => {
 
         // Fetch the product by ID along with related data (Category, Brand, Images, Flavors, Variants, and Attributes)
         const product = await Product.findByPk(id, {
+            paranoid: false,
             include: [
                 {
                     model: Category,
-                    as: "Category"
+                    as: "Category",
+                    paranoid: false
                 },
                 {
                     model: Brand,
-                    as: "Brand"
+                    as: "Brand",
+                    paranoid: false
                 },
                 {
                     model: ProductImage,
-                    as: "ProductImages"
+                    as: "ProductImages",
                 },
                 {
                     model: ProductAttributeTerm,

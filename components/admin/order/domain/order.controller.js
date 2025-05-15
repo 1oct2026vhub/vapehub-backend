@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -134,7 +134,29 @@ module.exports.listAllOrders = async (req, res, next) => {
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'slug'],
                             required: false,
-                            paranoid: false
+                            paranoid: false,
+                            where: {
+                                id: sequelize.col('orderItems.variant_id')
+                            },
+                            include: [
+                                {
+                                    model: ProductVariantImage,
+                                    as: 'variantImages',
+                                    attributes: ['id', 'image_url', 'is_primary'],
+                                    where: { is_primary: true },
+                                    required: false
+                                },
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
+                                    include: [
+                                        { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
+                                        { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 }
@@ -204,7 +226,30 @@ module.exports.getOrderById = async (req, res, next) => {
                             model: ProductVariant,
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug'],
-                            paranoid: false
+                            paranoid: false,
+                            where: {
+                                id: { [Op.col]: 'orderItems.variant_id' }
+                            },
+                            include: [
+                                {
+                                    model: ProductVariantImage,
+                                    as: 'variantImages',
+                                    attributes: ['id', 'image_url', 'is_primary'],
+                                    where: { is_primary: true },
+                                    required: false,
+                                    paranoid: false
+                                },
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
+                                    include: [
+                                        { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
+                                        { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 },
@@ -221,6 +266,12 @@ module.exports.getOrderById = async (req, res, next) => {
                         }
                     ],
                     order: [['createdAt', 'ASC']]
+                },
+                {
+                    model: Coupon,
+                    as: 'coupon',
+                    attributes: ['id', 'code', 'discount_type', 'discount_value', 'description', 'createdAt', 'updatedAt'],
+                    paranoid: false
                 }
             ]
         });
