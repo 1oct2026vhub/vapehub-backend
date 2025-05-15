@@ -1,8 +1,9 @@
 'use strict';
 
-const { Coupon } = require('../../../models');
+const { Coupon } = require('../../../../models');
 const { Op } = require('sequelize');
-const { handleError } = require('../../../utils/errorHandler');
+const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
+const logger = require('../../../../library/logger');
 
 const couponController = {
   // Create a new coupon
@@ -15,12 +16,14 @@ const couponController = {
       };
 
       const coupon = await Coupon.create(couponData);
-      res.status(201).json({
-        success: true,
-        data: coupon
-      });
+      return successResponse(res, { coupon }, "Coupon created successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error creating coupon', { 
+        error: error.message,
+        stack: error.stack,
+        user: req.user.id
+      });
+      return errorResponse(res, error, error.message);
     }
   },
 
@@ -76,18 +79,20 @@ const couponController = {
         order: [['created_at', 'DESC']]
       });
 
-      res.json({
-        success: true,
-        data: coupons,
-        pagination: {
+      return successResponse(res, { coupons, pagination: {
           total: count,
           page: parseInt(page),
           limit: parseInt(limit),
           pages: Math.ceil(count / limit)
         }
-      });
+      }, "Coupons retrieved successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error fetching coupons', { 
+        error: error.message,
+        stack: error.stack,
+        filters: req.query
+      });
+      return errorResponse(res, error, error.message);
     }
   },
 
@@ -97,18 +102,18 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        return res.status(404).json({
-          success: false,
-          message: 'Coupon not found'
-        });
+        logger.warn('Coupon not found', { couponId: id });
+        return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
-      res.json({
-        success: true,
-        data: coupon
-      });
+      return successResponse(res, { coupon }, "Coupon retrieved successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error fetching coupon by ID', { 
+        error: error.message,
+        stack: error.stack,
+        couponId: req.params.id
+      });
+      return errorResponse(res, error, error.message);
     }
   },
 
@@ -118,10 +123,8 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        return res.status(404).json({
-          success: false,
-          message: 'Coupon not found'
-        });
+        logger.warn('Coupon not found for update', { couponId: id });
+        return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
       const updateData = {
@@ -131,12 +134,15 @@ const couponController = {
 
       await coupon.update(updateData);
 
-      res.json({
-        success: true,
-        data: coupon
-      });
+      return successResponse(res, { coupon }, "Coupon updated successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error updating coupon', { 
+        error: error.message,
+        stack: error.stack,
+        couponId: req.params.id,
+        user: req.user.id
+      });
+      return errorResponse(res, error, error.message);
     }
   },
 
@@ -146,20 +152,21 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        return res.status(404).json({
-          success: false,
-          message: 'Coupon not found'
-        });
+        logger.warn('Coupon not found for deletion', { couponId: id });
+        return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
       await coupon.destroy();
 
-      res.json({
-        success: true,
-        message: 'Coupon deleted successfully'
-      });
+      return successResponse(res, { message: 'Coupon deleted successfully' }, "Coupon deleted successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error deleting coupon', { 
+        error: error.message,
+        stack: error.stack,
+        couponId: req.params.id,
+        user: req.user.id
+      });
+      return errorResponse(res, error, error.message);
     }
   },
 
@@ -171,28 +178,26 @@ const couponController = {
       });
       
       if (!coupon) {
-        return res.status(404).json({
-          success: false,
-          message: 'Coupon not found'
-        });
+        logger.warn('Coupon not found for restoration', { couponId: id });
+        return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
       if (!coupon.deleted_at) {
-        return res.status(400).json({
-          success: false,
-          message: 'Coupon is not deleted'
-        });
+        logger.warn('Attempted to restore non-deleted coupon', { couponId: id });
+        return errorResponse(res, { message: 'Coupon is not deleted' }, "Bad Request", 400);
       }
 
       await coupon.restore();
 
-      res.json({
-        success: true,
-        message: 'Coupon restored successfully',
-        data: coupon
-      });
+      return successResponse(res, { coupon }, "Coupon restored successfully");
     } catch (error) {
-      handleError(res, error);
+      logger.error('Error restoring coupon', { 
+        error: error.message,
+        stack: error.stack,
+        couponId: req.params.id,
+        user: req.user.id
+      });
+      return errorResponse(res, error, error.message);
     }
   }
 };
