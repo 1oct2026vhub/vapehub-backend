@@ -307,12 +307,14 @@ module.exports.applyCoupon = async (req, res, next) => {
 
                 //calculate discount
                 let discount = 0;
-
+                let discount_type = '';
                 if(!userUsedCoupon){
                     if (coupon.discount_type === "percentage") {
                         discount = (coupon.discount_value / 100) * subTotal;
+                        discount_type = 'percentage';
                     } else if (coupon.discount_type === "fixed_amount") {
                         discount = coupon.discount_value;
+                        discount_type = 'fixed';
                     }
                     if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
                         discount = coupon.maximum_discount;
@@ -321,6 +323,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                         discount = coupon.maximum_discount
                     }
                     total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+                    referral_value = discount;
+                    referral_value_type = discount_type;
                 }
             }
 
