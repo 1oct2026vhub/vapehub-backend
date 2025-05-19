@@ -572,6 +572,10 @@ const deleteAccount = async (req, res) => {
 const getReferralStats = async (req, res) => {
     try {
         const userId = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
         // Get total referrals count
         const referrer = await Referral.findOne({
             where: {
@@ -607,7 +611,17 @@ const getReferralStats = async (req, res) => {
             attributes: ['id', 'referral_value_type', 'referral_value', 'status', 'primary']
         });
 
-        // Get recent referrals with user details
+        // Get total count of recent referrals for pagination
+        const totalRecentReferrals = await Referral.count({
+            where: {
+                referrer_id: userId,
+                status: {
+                    [Op.in]: ['completed', 'applied']
+                }
+            }
+        });
+
+        // Get recent referrals with user details (paginated)
         const recentReferrals = await Referral.findAll({
             where: {
                 referrer_id: userId,
@@ -621,7 +635,8 @@ const getReferralStats = async (req, res) => {
                 attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
             }],
             order: [['created_at', 'DESC']],
-            limit: 10
+            limit,
+            offset
         });
 
         const response = {
@@ -630,24 +645,32 @@ const getReferralStats = async (req, res) => {
             referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
             referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
-            recent_referrals: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
-                id: referral.id,
-                referrer_id: referral.referrer_id,
-                referred_user_id: referral.referred_user_id,
-                referral_code: referral.referral_code,
-                referral_coupon_code: referral.referral_coupon_code,
-                status: referral.status,
-                points_awarded: referral.points_awarded,
-                referral_value_type: referral.referral_value_type,
-                referral_value: referral.referral_value,
-                created_at: referral.created_at,
-                referred_user: referral.referredUser ? {
-                    id: referral.referredUser.id,
-                    name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
-                    email: referral.referredUser.email,
-                    phone: referral.referredUser.phone
-                } : null
-            })) : []
+            recent_referrals: {
+                data: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
+                    id: referral.id,
+                    referrer_id: referral.referrer_id,
+                    referred_user_id: referral.referred_user_id,
+                    referral_code: referral.referral_code,
+                    referral_coupon_code: referral.referral_coupon_code,
+                    status: referral.status,
+                    points_awarded: referral.points_awarded,
+                    referral_value_type: referral.referral_value_type,
+                    referral_value: referral.referral_value,
+                    created_at: referral.created_at,
+                    referred_user: referral.referredUser ? {
+                        id: referral.referredUser.id,
+                        name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
+                        email: referral.referredUser.email,
+                        phone: referral.referredUser.phone
+                    } : null
+                })) : [],
+                pagination: {
+                    total: totalRecentReferrals,
+                    page,
+                    limit,
+                    total_pages: Math.ceil(totalRecentReferrals / limit)
+                }
+            }
         };
 
         successResponse(res, response, 'Referral statistics retrieved successfully');
