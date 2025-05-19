@@ -301,7 +301,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
                     throw {
                         statusCode: 400,
-                        message: `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`
+                        message: `Coupon requires a minimum purchase of £${coupon.minimum_purchase}.`
                     }
                 }      
 

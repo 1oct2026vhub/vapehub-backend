@@ -727,6 +727,19 @@ router.delete('/delete-account', authenticateJWT, userController.deleteAccount);
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
  *     responses:
  *       200:
  *         description: Referral statistics retrieved successfully
@@ -751,34 +764,56 @@ router.delete('/delete-account', authenticateJWT, userController.deleteAccount);
  *                       type: integer
  *                       example: 1500
  *                     recent_referrals:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id:
- *                             type: integer
- *                             example: 1
- *                           status:
- *                             type: string
- *                             example: "completed"
- *                           points_awarded:
- *                             type: integer
- *                             example: 100
- *                           created_at:
- *                             type: string
- *                             format: date-time
- *                           user:
+ *                       type: object
+ *                       properties:
+ *                         data:
+ *                           type: array
+ *                           items:
  *                             type: object
  *                             properties:
  *                               id:
  *                                 type: integer
- *                               name:
+ *                                 example: 1
+ *                               status:
  *                                 type: string
- *                               email:
- *                                 type: string
- *                               joined_at:
+ *                                 example: "completed"
+ *                               points_awarded:
+ *                                 type: integer
+ *                                 example: 100
+ *                               created_at:
  *                                 type: string
  *                                 format: date-time
+ *                               user:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                                   email:
+ *                                     type: string
+ *                                   joined_at:
+ *                                     type: string
+ *                                     format: date-time
+ *                         pagination:
+ *                           type: object
+ *                           properties:
+ *                             total:
+ *                               type: integer
+ *                               description: Total number of records
+ *                               example: 50
+ *                             page:
+ *                               type: integer
+ *                               description: Current page number
+ *                               example: 1
+ *                             limit:
+ *                               type: integer
+ *                               description: Number of items per page
+ *                               example: 10
+ *                             total_pages:
+ *                               type: integer
+ *                               description: Total number of pages
+ *                               example: 5
  *       401:
  *         description: Unauthorized
  *       500:
