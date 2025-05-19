@@ -41,13 +41,20 @@ const getFaqs = async (req, res, next) => {
             whereClause.entity_id = entity_id;
         }
 
+        // Handle deleted filter
+        if (deleted === 'true') {
+            whereClause.deletedAt = { [Op.ne]: null };
+        } else {
+            whereClause.deletedAt = null;
+        }
+
         // Calculate offset for pagination
         const offset = (page - 1) * limit;
 
         // Get total count for pagination
         const total = await FAQ.count({
             where: whereClause,
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: !deleted // When deleted is true, we want to include soft-deleted items (paranoid: false)
         });
 
         // Get FAQs with pagination
@@ -56,7 +63,7 @@ const getFaqs = async (req, res, next) => {
             order: [[sort_by, order.toUpperCase()]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: !deleted // When deleted is true, we want to include soft-deleted items (paranoid: false)
         });
 
         return successResponse(res, {
