@@ -42,9 +42,9 @@ module.exports.getBanners = async (req, res) => {
 
         // Handle deleted filter
         if (deleted === 'true') {
-            whereClause.deleted_at = { [Op.ne]: null };
+            whereClause.deletedAt = { [Op.ne]: null };
         } else {
-            whereClause.deleted_at = null;
+            whereClause.deletedAt = null;
         }
         // Get banners with pagination
         const banners = await BannerImage.findAll({
@@ -62,6 +62,7 @@ module.exports.getBanners = async (req, res) => {
             results: banners
         }, 'Banners retrieved successfully');
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };
