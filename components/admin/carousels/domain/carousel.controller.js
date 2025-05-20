@@ -84,11 +84,16 @@ module.exports.getCarousels = async (req, res) => {
 
         // Calculate offset for pagination
         const offset = (page - 1) * limit;
-
+        // Handle deleted filter
+        if (deleted === 'true') {
+            whereClause.deletedAt = { [Op.ne]: null };
+        } else {
+            whereClause.deletedAt = null;
+        }
         // Get total count for pagination
         const total = await Carousel.count({
             where: whereClause,
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
         // Get carousels with pagination
@@ -97,7 +102,7 @@ module.exports.getCarousels = async (req, res) => {
             order: [[sort_by, order.toUpperCase()]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
         return successResponse(res, {
