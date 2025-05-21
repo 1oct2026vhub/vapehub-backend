@@ -123,6 +123,10 @@ module.exports = (sequelize, DataTypes) => {
     updated_by: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     sequelize,
@@ -130,6 +134,7 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'coupons',
     underscored: true,
     timestamps: true,
+    paranoid: true, // Enable soft deletes
     hooks: {
       beforeValidate: async (coupon) => {
         // Convert empty strings to null
