@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const couponController = require('../domain/coupon.controller');
-const { validateCoupon, validateQueryParams, validateIdParam } = require('../helper/coupon.validator');
+const { validateCreateCoupon, validateUpdateCoupon, validateQueryParams, validateIdParam } = require('../helper/coupon.validator');
 const { authMiddleware } = require('../../../../library/middleware');
 const { validateRequest } = require('../../../../utils/validationMiddleware');
 
@@ -85,7 +85,7 @@ const { validateRequest } = require('../../../../utils/validationMiddleware');
  *         description: Unauthorized
  */
 router.post('/', 
-  [authMiddleware(true), validateRequest(validateCoupon)], 
+  [authMiddleware(true), validateRequest(validateCreateCoupon)], 
   couponController.createCoupon
 );
 
@@ -213,7 +213,7 @@ router.get('/:id',
  *         description: Unauthorized
  */
 router.put('/:id', 
-  [authMiddleware(true), validateRequest([...validateIdParam, ...validateCoupon])],
+  [authMiddleware(true), validateRequest([...validateIdParam, ...validateUpdateCoupon])],
   couponController.updateCoupon
 );
 

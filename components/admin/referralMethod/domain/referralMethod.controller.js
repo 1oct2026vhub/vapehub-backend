@@ -7,13 +7,14 @@ class ReferralMethodController {
   // Add new referral method
   async add(req, res) {
     try {
-      const { referral_value_type, referral_value, status, primary } = req.body;
+      const { referral_value_type, referral_value, status, primary, refer_type } = req.body;
 
       const referralMethod = await ReferralMethodHelper.create({
         referral_value_type,
         referral_value,
         status,
-        primary
+        primary,
+        refer_type
       });
 
       return successResponse(res, {
@@ -22,6 +23,7 @@ class ReferralMethodController {
         data: referralMethod
       }, "Referral method created successfully");
     } catch (error) {
+      console.log(error);
       logger.error('Error creating referral method', { error: error.message, stack: error.stack });
       return errorResponse(res, error, error.message);
     }
