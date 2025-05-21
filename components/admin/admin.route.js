@@ -31,5 +31,7 @@ router.use('/footer', require('./footer/routes/footer.route'));
 router.use('/menus', require('./menu/routes/menu.route'));
 router.use('/seo', require('./seo/routes/seo.route'));
 router.use('/faqs', require('./faq/routes/faq.route'));
+router.use('/referral-method', require('./referralMethod/routes/referralMethod.route'));
+router.use('/coupons', require('./coupon/routes/coupon.route'));
 
 module.exports = router;
