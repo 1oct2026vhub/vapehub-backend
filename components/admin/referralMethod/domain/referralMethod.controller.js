@@ -23,7 +23,6 @@ class ReferralMethodController {
         data: referralMethod
       }, "Referral method created successfully");
     } catch (error) {
-      console.log(error);
       logger.error('Error creating referral method', { error: error.message, stack: error.stack });
       return errorResponse(res, error, error.message);
     }
