@@ -23,6 +23,14 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty: true
       }
     },
+    refer_type: {
+      type: DataTypes.ENUM('referrer', 'referral'),
+      allowNull: false,
+      defaultValue: 'referrer',
+      validate: {
+        isIn: [['referrer', 'referral']]
+      }
+    },
     status: {
       type: DataTypes.ENUM('active', 'inactive'),
       defaultValue: 'active',
