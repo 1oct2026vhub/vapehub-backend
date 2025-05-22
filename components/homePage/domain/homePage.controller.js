@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -275,5 +275,42 @@ module.exports.getFooterSections = async (req, res) => {
         success: false,
         error: 'Failed to fetch footer sections'
       });
+    }
+};
+
+/**
+ * Get active flash news
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getFlashNews = async (req, res, next) => {
+    try {
+        const { status } = req.query;
+        
+        // Build where clause
+        const whereClause = {};
+        if (status !== undefined) {
+            whereClause.status = status === 'true';
+        }
+
+        // Get flash news with ordering
+        const flashNews = await FlashNews.findAll({
+            where: whereClause,
+            order: [
+                ['created_at', 'DESC']
+            ],
+            attributes: ['id', 'label', 'url', 'status', 'created_at'],
+            include: [{
+                model: User,
+                as: 'updatedBy',
+                attributes: ['id', 'first_name', 'last_name', 'email']
+            }]
+        });
+
+        return successResponse(res, flashNews, 'Flash news retrieved successfully');
+    } catch (error) {
+        console.log(error);
+        return errorResponse(res, error, error.message);
     }
 };
