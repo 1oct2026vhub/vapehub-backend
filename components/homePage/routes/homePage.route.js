@@ -324,6 +324,62 @@ router.get('/footer', validateRequest([
 
 /**
  * @swagger
+ * /api/home/flash-news:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get flash news items
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: boolean
+ *         description: Filter by active status
+ *     responses:
+ *       200:
+ *         description: List of flash news items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   label:
+ *                     type: string
+ *                   url:
+ *                     type: string
+ *                   status:
+ *                     type: boolean
+ *                   created_at:
+ *                     type: string
+ *                     format: date-time
+ *                   updatedBy:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *       400:
+ *         description: Bad request (validation errors)
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/flash-news', 
+    validateRequest([
+        query('status')
+            .optional()
+            .isBoolean()
+            .withMessage('status must be a boolean')
+    ]), 
+    homePageController.getFlashNews
+);
+
+/**
+ * @swagger
  * /api/home/trustpilot-reviews:
  *   get:
  *     tags:

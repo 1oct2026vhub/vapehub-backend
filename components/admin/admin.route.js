@@ -33,5 +33,6 @@ router.use('/seo', require('./seo/routes/seo.route'));
 router.use('/faqs', require('./faq/routes/faq.route'));
 router.use('/referral-method', require('./referralMethod/routes/referralMethod.route'));
 router.use('/coupons', require('./coupon/routes/coupon.route'));
+router.use('/flash-news', require('./flashNews/routes/flashNews.route'));
 
 module.exports = router;
