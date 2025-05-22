@@ -197,6 +197,10 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 blog_category: {
                     validChildTypes: ['blog_variant'],
                     errorMessage: 'A blog category slug can only be followed by a blog variant slug'
+                },
+                deal: {
+                    validChildTypes: ['deal_variant'],
+                    errorMessage: 'A deal slug can only be followed by a deal variant slug'
                 }
             };
 

@@ -69,11 +69,6 @@ const {
  *           type: string
  *           format: date-time
  *           description: Deal validity end date
- *         productIds:
- *           type: array
- *           items:
- *             type: integer
- *           description: Array of product IDs associated with the deal
  */
 
 /**
@@ -81,7 +76,9 @@ const {
  * /api/admin/deals:
  *   post:
  *     summary: Create a new deal
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -105,7 +102,9 @@ router.post('/', [authMiddleware(true), validateRequest(createDealValidation)], 
  * /api/admin/deals/{id}:
  *   put:
  *     summary: Update an existing deal
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -137,7 +136,9 @@ router.put('/:id', [authMiddleware(true), validateRequest(updateDealValidation)]
  * /api/admin/deals:
  *   get:
  *     summary: List all deals
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -177,7 +178,9 @@ router.get('/', [authMiddleware(true), validateRequest(listDealsValidation)], de
  * /api/admin/deals/{id}:
  *   get:
  *     summary: Get a specific deal
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -201,7 +204,9 @@ router.get('/:id', [authMiddleware(true), validateRequest(getDealByIdValidation)
  * /api/admin/deals/product/{productId}:
  *   get:
  *     summary: Get all deals for a specific product
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -223,7 +228,9 @@ router.get('/product/:productId', [authMiddleware(true), validateRequest(getDeal
  * /api/admin/deals/{id}:
  *   delete:
  *     summary: Delete a deal
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -247,7 +254,9 @@ router.delete('/:id', [authMiddleware(true), validateRequest(deleteDealValidatio
  * /api/admin/deals/{id}/restore:
  *   patch:
  *     summary: Restore a soft-deleted deal
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -271,7 +280,9 @@ router.patch('/:id/restore', [authMiddleware(true), validateRequest(restoreDealV
  * /api/admin/deals/types:
  *   get:
  *     summary: Get all deal types
- *     tags: [Deals]
+ *     tags: 
+ *       - Admin
+ *          - Deals
  *     security:
  *       - bearerAuth: []
  *     responses:

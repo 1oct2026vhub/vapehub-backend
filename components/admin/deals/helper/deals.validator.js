@@ -74,17 +74,7 @@ const createDealValidation = [
                 throw new Error('Valid to date must be after valid from date');
             }
             return true;
-        }),
-
-    body('productIds')
-        .optional()
-        .isArray()
-        .withMessage('Product IDs must be an array')
-        .custom((value) => {
-            if (!value) return true;
-            return value.every(id => Number.isInteger(id) && id > 0);
         })
-        .withMessage('Invalid product IDs format')
 ];
 
 const updateDealValidation = [

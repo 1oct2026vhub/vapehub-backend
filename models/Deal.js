@@ -1,6 +1,8 @@
 'use strict';
 const { Model } = require('sequelize');
 const { DEAL_TYPE_ENUMS } = require('../config/constants');
+const SlugManager = require('../utils/slugManager');
+const { SlugRelation } = require('../models');
 
 module.exports = (sequelize, DataTypes) => {
     class Deal extends Model {
@@ -27,6 +29,11 @@ module.exports = (sequelize, DataTypes) => {
             validate: {
                 notEmpty: true
             }
+        },
+        slug: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: true
         },
         deal_type: {
             type: DataTypes.ENUM(DEAL_TYPE_ENUMS),
@@ -124,8 +131,30 @@ module.exports = (sequelize, DataTypes) => {
             },
             {
                 fields: ['valid_from', 'valid_to']
+            },
+            {
+                fields: ['slug'],
+                unique: true
             }
-        ]
+        ],
+        hooks: {
+            beforeCreate: async (deal) => {
+                const slugManager = new SlugManager(SlugRelation);
+                const slug = await slugManager.createOrUpdateSlug(deal.name, 'deal', deal.id);
+                deal.slug = slug.slug;
+            },
+            beforeUpdate: async (deal) => {
+                if (deal.changed('name')) {
+                    const slugManager = new SlugManager(SlugRelation);
+                    const slug = await slugManager.createOrUpdateSlug(deal.name, 'deal', deal.id);
+                    deal.slug = slug.slug;
+                }
+            },
+            afterDestroy: async (deal) => {
+                const slugManager = new SlugManager(SlugRelation);
+                await slugManager.deleteSlug('deal', deal.id);
+            }
+        }
     });
 
     return Deal;

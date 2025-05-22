@@ -8,11 +8,6 @@ module.exports.createDeal = async (req, res, next) => {
     try {
         const dealData = req.body;
         const deal = await Deal.create(dealData);
-
-        if (dealData.productIds && dealData.productIds.length > 0) {
-            await deal.setProducts(dealData.productIds);
-        }
-
         successResponse(res, deal, 'Deal created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -32,11 +27,6 @@ module.exports.updateDeal = async (req, res, next) => {
         }
 
         await deal.update(dealData);
-
-        if (dealData.productIds) {
-            await deal.setProducts(dealData.productIds);
-        }
-
         successResponse(res, deal, 'Deal updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
