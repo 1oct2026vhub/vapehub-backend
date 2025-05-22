@@ -378,4 +378,88 @@ router.get('/flash-news',
     homePageController.getFlashNews
 );
 
+/**
+ * @swagger
+ * /api/home/trustpilot-reviews:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get Trustpilot reviews
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: per_page
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of reviews per page
+ *       - in: query
+ *         name: stars
+ *         schema:
+ *           type: integer
+ *           enum: [1, 2, 3, 4, 5]
+ *         description: Filter reviews by star rating
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved reviews
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     reviews:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           stars:
+ *                             type: integer
+ *                           title:
+ *                             type: string
+ *                           text:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                           consumer:
+ *                             type: object
+ *                             properties:
+ *                               displayName:
+ *                                 type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         page:
+ *                           type: integer
+ *                         per_page:
+ *                           type: integer
+ *       400:
+ *         description: Bad request (validation errors)
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/trustpilot-reviews',
+    validateRequest([
+        query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+        query('per_page').optional().isInt({ min: 1, max: 100 }).withMessage('Per page must be between 1 and 100'),
+        query('stars').optional().isInt({ min: 1, max: 5 }).withMessage('Stars must be between 1 and 5')
+    ]),
+    homePageController.getTrustpilotReviews
+);
+
 module.exports = router
