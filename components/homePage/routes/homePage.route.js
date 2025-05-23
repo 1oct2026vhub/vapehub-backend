@@ -462,4 +462,101 @@ router.get('/trustpilot-reviews',
     homePageController.getTrustpilotReviews
 );
 
+/**
+ * @swagger
+ * /api/home/trustpilot-reviews/all:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get all Trustpilot reviews (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: per_page
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Number of reviews per page
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved all reviews
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     reviews:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           stars:
+ *                             type: integer
+ *                           title:
+ *                             type: string
+ *                           text:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                           consumer:
+ *                             type: object
+ *                             properties:
+ *                               displayName:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                               id:
+ *                                 type: string
+ *                           reply:
+ *                             type: object
+ *                             properties:
+ *                               message:
+ *                                 type: string
+ *                               createdAt:
+ *                                 type: string
+ *                           status:
+ *                             type: string
+ *                           language:
+ *                             type: string
+ *                           ratingCategory:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                         page:
+ *                           type: integer
+ *                         per_page:
+ *                           type: integer
+ *       401:
+ *         description: Unauthorized (admin access required)
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/trustpilot-reviews/all',
+    // authMiddleware(true), // Admin only access
+    validateRequest([
+        query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+        query('per_page').optional().isInt({ min: 1, max: 100 }).withMessage('Per page must be between 1 and 100')
+    ]),
+    homePageController.getAllTrustpilotReviews
+);
+
 module.exports = router

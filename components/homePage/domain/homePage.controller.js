@@ -6,6 +6,7 @@ const { Sequelize } = require('sequelize');
 const seoService = require("../../../components/admin/seo/domain/seo.service");
 const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
+const logger = require("../../../utils/logger");
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -450,6 +451,103 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
         return successResponse(res, responseData, 'Successfully retrieved reviews');
     } catch (error) {
         console.error('Error fetching Trustpilot reviews:', error);
+        return errorResponse(res, error, error.message || 'Failed to fetch reviews');
+    }
+};
+
+/**
+ * Get all Trustpilot reviews using private API endpoint
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getAllTrustpilotReviews = async (req, res, next) => {
+    try {
+        const { page = 1, per_page = 100 } = req.query;
+        
+        // Get access token
+        const accessToken = await getAccessToken();
+        
+        // Get business unit ID
+        const businessUnitId = await findBusinessUnitId(accessToken);
+
+        // Log the API request
+        logger.logInfo({
+            type: 'trustpilot_api_request',
+            endpoint: 'getAllReviews',
+            businessUnitId,
+            page,
+            per_page,
+            timestamp: new Date().toISOString()
+        });
+
+        // Make API request to get all reviews using private endpoint
+        const response = await axios.get(
+            `https://api.trustpilot.com/v1/private/business-units/${businessUnitId}/reviews`,
+            {
+                params: {
+                    page,
+                    perPage: per_page
+                },
+                headers: {
+                    'apikey': process.env.TRUSTPILOT_API_KEY,
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            }
+        );
+
+        // Process and format the reviews
+        const reviews = response.data.reviews.map(review => ({
+            id: review.id,
+            stars: review.stars,
+            title: review.title,
+            text: review.text,
+            createdAt: review.createdAt,
+            consumer: {
+                displayName: review.consumer.displayName,
+                email: review.consumer.email,
+                id: review.consumer.id
+            },
+            reply: review.reply ? {
+                message: review.reply.message,
+                createdAt: review.reply.createdAt
+            } : null,
+            status: review.status,
+            language: review.language,
+            ratingCategory: review.stars < 2 ? 'poor' : 
+                          review.stars >= 2 && review.stars < 4 ? 'good' :
+                          review.stars >= 4 && review.stars < 5 ? 'excellent' : 'outstanding'
+        }));
+
+        // Log successful response
+        logger.logInfo({
+            type: 'trustpilot_api_response',
+            endpoint: 'getAllReviews',
+            totalReviews: response.data.total,
+            page,
+            per_page,
+            timestamp: new Date().toISOString()
+        });
+
+        return successResponse(res, {
+            reviews,
+            pagination: {
+                total: response.data.total,
+                page: parseInt(page),
+                per_page: parseInt(per_page)
+            }
+        }, 'Successfully retrieved all reviews');
+
+    } catch (error) {
+        // Log error
+        logger.logError({
+            type: 'trustpilot_api_error',
+            endpoint: 'getAllReviews',
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+
         return errorResponse(res, error, error.message || 'Failed to fetch reviews');
     }
 };
