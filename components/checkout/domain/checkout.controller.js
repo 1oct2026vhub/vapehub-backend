@@ -69,17 +69,17 @@ module.exports.checkout = async (req, res, next) => {
         total = subTotal
 
         // Process referral discount if referral coupon code is provided
-        if (referralCouponCode) {
-            const referralResult = await processReferralDiscount(referralCouponCode);
-            if (referralResult.referral?.ReferralMethod?.referral_value_type === 'percentage') {
-                referralPercentage = referralResult.discount;
-                referralDiscount = (referralPercentage / 100) * subTotal;
-            } else {
-                referralDiscount = referralResult.discount;
-            }
-            referralMessage = referralResult.message;
-            total = Math.max(0, total - referralDiscount);
-        }
+        // if (referralCouponCode) {
+        //     const referralResult = await processReferralDiscount(referralCouponCode);
+        //     if (referralResult.referral?.ReferralMethod?.referral_value_type === 'percentage') {
+        //         referralPercentage = referralResult.discount;
+        //         referralDiscount = (referralPercentage / 100) * subTotal;
+        //     } else {
+        //         referralDiscount = referralResult.discount;
+        //     }
+        //     referralMessage = referralResult.message;
+        //     total = Math.max(0, total - referralDiscount);
+        // }
 
         // Process regular coupon if provided
         if (couponCode) {
@@ -223,28 +223,67 @@ module.exports.applyCoupon = async (req, res, next) => {
                         [Op.in]: ['pending', 'completed']
                     }
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at', 'minimum_purchase', 'maximum_purchase']
             });
             if (referral) {
                 let referralValue;
                 let referralValueType;
                 if (referral.status === 'pending' && referral.referred_user_id === userId) {
+                    
                     referralValue = parseFloat(referral.referral_value);
-                    referralValueType = referral.referral_value_type;
+                    referralValueType = referralValue!=0 ? referral.referral_value_type : '';
+                    // Check minimum purchase for fixed referral value
+                    if (referralValueType === 'fixed' && referral.minimum_purchase) {
+                        if (total < referral.minimum_purchase) {
+                            throw {
+                                statusCode: 400,
+                                message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
+                            }
+                        }
+                    }
+
+                    // Check maximum purchase limit
+                    if (referral.maximum_purchase && total > referral.maximum_purchase) {
+                        throw {
+                            statusCode: 400,
+                            message: `Order total exceeds the maximum purchase limit of £${referral.maximum_purchase} for this referral discount.`
+                        }
+                    }
                 } else if (referral.status === 'completed' && referral.referrer_id === userId) {
                     // For completed status, get values from referral method
                     const referralMethod = await ReferralMethod.findOne({
                         where: {
                             primary: true,  //primary true means it is referrer person
-                            status: 'active'
+                            status: 'active',
+                            refer_type: 'referrer'  //new
                         }
                     });
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
+
+                        // Check minimum purchase only for fixed referral value type
+                        if (referralMethod.referral_value_type === 'fixed' && referralMethod.minimum_purchase && total < referralMethod.minimum_purchase) {
+                            throw {
+                                statusCode: 400,
+                                message: `Minimum purchase amount of £${referralMethod.minimum_purchase} required to apply this referral discount.`
+                            }
+                        }
+
+                        // Check maximum purchase for referrer
+                        if (referralMethod.maximum_purchase && total > referralMethod.maximum_purchase) {
+                            throw {
+                                statusCode: 400,
+                                message: `Order total exceeds the maximum purchase limit of £${referralMethod.maximum_purchase} for this referral discount.`
+                            }
+                        }
+                    }
+                    else{
+                        referralValue = 0;
+                        referralValueType = '';
                     }
                 }
-                if (!isNaN(referralValue)) {
+                if (referralValue && !isNaN(referralValue)) {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * total 
                         : referralValue;

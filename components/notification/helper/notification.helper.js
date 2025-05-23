@@ -11,7 +11,7 @@ const logger = require('../../../library/logger');
  * @param {string} [params.title] - Optional custom title
  * @returns {Promise<Notification>}
  */
-const createNotification = async ({ userId, type, action, data, title, url }) => {
+const createNotification = async ({ userId, type, action, data, title, url, is_admin }) => {
     try {
         // Define notification messages based on type and action
         const messages = {
@@ -59,6 +59,7 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
         }
         // Get the appropriate message based on type and action
         const message = messages[type]?.[action] || 'Notification';
+        console.log("is_admin", is_admin);
         // Create notification data based on model structure
         const notificationData = {
             user_id: userId,
@@ -68,7 +69,8 @@ const createNotification = async ({ userId, type, action, data, title, url }) =>
             related_id: data.relatedId || null,
             is_read: false,
             is_pushed: false,
-            url: url || null
+            url: url || null,
+            is_admin: is_admin || false
         };
         // Create the notification using the model
         const notification = await Notification.create(notificationData);
