@@ -59,6 +59,9 @@ const validateCreateCoupon = [
       if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
         throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
       }
+      if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
+        throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
+      }
       return true;
     }),
 
@@ -195,6 +198,9 @@ const validateUpdateCoupon = [
     .custom((value, { req }) => {
       if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
         throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
+      }
+      if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
+        throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
       }
       return true;
     }),
