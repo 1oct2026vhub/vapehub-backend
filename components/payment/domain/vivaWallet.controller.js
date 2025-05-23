@@ -164,17 +164,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         where: { user_id: order.user_id }
                     });
 
-                    // // Check if this is user's first purchase and handle referral points
-                    // const userOrderCount = await Order.count({
-                    //     where: { 
-                    //         user_id: order.user_id,
-                    //         status: {
-                    //             [Op.in]: ['processing', 'delivered', 'completed']
-                    //         }
-                    //     }
-                    // });
-                    // if (userOrderCount === 1) {
-                        // Find referral record
                         const referral = await Referral.findOne({
                             where: {
                                 order_id: order.id,
@@ -206,35 +195,49 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 title: 'Referral',
                                 url: '/my-account/referrals'
                             });
+                            // Create notification for admin about successful referral purchase
+                            await createNotification({
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `Referred user ${order.user.email} has made their first purchase using referral code from ${referral.referrer.email}. Order #${order.order_unique_id}`
+                                },
+                                title: 'Referral Purchase Completed',
+                                url: '/admin/orders',
+                                is_admin: true
+                            });
                         }
                         else if (referral && referral.status === 'completed' && referral.referrer_id === order.user_id) {
                             // Update referral record
                             await referral.update({
                                 status: 'applied'
                             });
+
+                            // Create notification for admin about referrer using their coupon
+                            await createNotification({
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `Referrer ${order.user.email} has used their referral coupon for Order #${order.order_unique_id}`
+                                },
+                                title: 'Referral Coupon Used',
+                                url: '/admin/orders',
+                                is_admin: true
+                            });
+
+                            // Create notification for the referrer about using their coupon
+                            await createNotification({
+                                userId: order.user_id,
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `Your referral coupon has been successfully applied to Order #${order.order_unique_id}`
+                                },
+                                title: 'Referral Coupon Applied',
+                                url: `/order-details/${order.id}`
+                            });
                         }
-                    // }
-                    // else{
-                    //     // Find referral record
-                    //     const referral = await Referral.findOne({
-                    //         where: {
-                    //             order_id: order.id,
-                    //             referrer_id: order.user_id,
-                    //             status: 'completed'
-                    //         },
-                    //         include: [{
-                    //             model: User,
-                    //             as: 'referrer',
-                    //             attributes: ['id', 'referral_points']
-                    //         }]
-                    //     });
-                    //     if (referral && referral.referrer) {
-                    //         // Update referral record
-                    //         await referral.update({
-                    //             status: 'applied'
-                    //         });
-                    //     }
-                    // }
+
                     // Create transaction record
                     await sequelize.models.Transaction.create({
                         userId: order.user_id,
@@ -297,6 +300,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         },
                         url: `/order-details/${order.id}`
                     });
+
+                    // Create admin notification for new order
+                    await createNotification({
+                        type: 'order',
+                        action: 'created',
+                        data: {
+                            amount: Amount,
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            customerEmail: order.user.email,
+                            relatedId: order.id,
+                            reason: `New order placed via Viva Wallet`
+                        },
+                        title: 'New Order Placed',
+                        url: '/admin/orders',
+                        is_admin: true
+                    });
+
                     // Send order confirmation email
                     const emailData = {
                         emailTypes: 'ORDER_CONFIRMATION',
@@ -408,6 +429,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             reason: 'Payment failed via Viva Wallet'
                         },
                         url: '/my-account/orders'
+                    });
+
+                    // Create admin notification for failed payment
+                    await createNotification({
+                        type: 'payment',
+                        action: 'failed',
+                        data: {
+                            amount: Amount,
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            customerEmail: order.user.email,
+                            transactionId: TransactionId,
+                            responseCode: ResponseCode,
+                            reason: 'Payment failed via Viva Wallet'
+                        },
+                        title: 'Payment Failure Alert',
+                        url: '/admin/orders',
+                        is_admin: true
                     });
 
                     // Send failure email
@@ -601,6 +640,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         url: '/my-account/orders'
                     });
 
+                    // Create admin notification for failed payment
+                    await createNotification({
+                        type: 'payment',
+                        action: 'failed',
+                        data: {
+                            amount: Amount,
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            customerEmail: order.user.email,
+                            transactionId: TransactionId,
+                            responseCode: ResponseCode,
+                            reason: 'Payment failed via Viva Wallet'
+                        },
+                        title: 'Payment Failure Alert',
+                        url: '/admin/orders',
+                        is_admin: true
+                    });
+
                     // Send failure email
                     // const emailData = {
                     //     emailTypes: 'PAYMENT_FAILED',
@@ -697,7 +754,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderCode: order.order_code,
                             reason: 'Cancelled via Viva Wallet'
                         },
+                        title: 'Order Cancelled',
                         url: '/my-account/orders'
+                    });
+
+                    // Create admin notification for order cancellation
+                    await createNotification({
+                        type: 'order',
+                        action: 'cancelled',
+                        data: {
+                            orderId: order.id,
+                            orderUniqueId: order.order_unique_id,
+                            orderCode: order.order_code,
+                            customerEmail: order.user?.email,
+                            reason: 'Order cancelled via Viva Wallet'
+                        },
+                        title: 'Order Cancellation Alert',
+                        url: '/admin/orders',
+                        is_admin: true
                     });
 
                     // Send cancellation email

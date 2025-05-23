@@ -284,18 +284,34 @@ const referFriend = async (req, res, next) => {
             return errorResponse(res, {}, 'Invalid referral code' , 400);
         }
 
-        // Get the primary active referral method
+        // Check if this email has already been referred
+        const existingReferral = await Referral.findOne({
+            where: { 
+                email: email,
+                referrer_id: referrer_id,
+                status: {
+                    [Op.in]: ['pending', 'completed']
+                }
+            }
+        });
+
+        if (existingReferral) {
+            return errorResponse(res, {}, 'You have already referred this email address' , 400);
+        }
+
+        // Get the referral method
         const referralMethod = await ReferralMethod.findOne({
             where: { 
                 status: 'active',
-                primary: false
+                primary: true,  //previous is false
+                refer_type: 'referral'  //new
             },
             attributes: ['id', 'referral_value_type', 'referral_value']
         });
 
-        if (!referralMethod) {
-            return errorResponse(res, {}, 'No active referral method found' , 400);
-        }
+        // if (!referralMethod) {
+        //     return errorResponse(res, {}, 'No active referral method found' , 400);
+        // }
 
         try {
             // Generate unique 8-letter referral coupon code using email and timestamp
@@ -315,6 +331,8 @@ const referFriend = async (req, res, next) => {
             // Send referral email with coupon code
             const username = email.split('@')[0];
             const referralLink = `${process.env.FRONTEND_URL}/?referral_code=${referral_code}`;
+            const referralValue = referralMethod ? referralMethod.referral_value : '0';
+            const referralValueType = referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '';
             const data = {
                 emailTypes: constants.emailTypes.REFER_A_FRIEND,
                 to: email,
@@ -322,8 +340,10 @@ const referFriend = async (req, res, next) => {
                     userName: username,
                     referralLink: referralLink,
                     token: referral_coupon_code,
-                    referralValue: referralMethod.referral_value,
-                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : ''
+                    referralValue: referralMethod ? referralMethod.referral_value : '0',
+                    referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
+                    emailContent1: "Just when you thought your friend hasn't gifted you in a while, well here you have it! You have been invited to shop at VapeHub",
+                    emailContent2: referralMethod ? `and you've got a ${referralValue}${referralValueType} discount waiting for you! Use the coupon code below to claim your offer.` : ''
                 },
                 attachments: ""
             };
@@ -345,8 +365,8 @@ const referFriend = async (req, res, next) => {
                 message: "Referral invitation sent successfully",
                 referral_coupon_code: referral_coupon_code,
                 referral_method: {
-                    value_type: referralMethod.referral_value_type,
-                    value: referralMethod.referral_value
+                    value_type: referralMethod ? referralMethod.referral_value_type : '',
+                    value: referralMethod ? referralMethod.referral_value : ''
                 }
             }, 'Success');
         } catch (emailError) {
