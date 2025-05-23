@@ -251,6 +251,49 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
+        // Check if request is from a browser
+        const userAgent = req.headers['user-agent'];
+        const validBrowsers = [
+            'Mozilla', // Firefox, Chrome, Safari, Edge
+            'Chrome',
+            'Safari',
+            'Edge',
+            'Opera',
+            'Firefox',
+            'MSIE', // Internet Explorer
+            'Trident' // Internet Explorer
+        ];
+
+        if (!userAgent ||!validBrowsers.some(browser => userAgent.includes(browser))) {  //!userAgent || 
+            throw {
+                message: "Invalid request source",
+                statusCode: 403,
+                errors: {
+                    source: "Verification must be done through a web browser"
+                }
+            }
+        }
+
+        // Check if request has proper headers
+        const acceptHeader = req.headers.accept || '';
+        const validAcceptTypes = [
+            'text/html',
+            'application/json',
+            '*/*',
+            'text/*',
+            'application/*'
+        ];
+
+        if (!validAcceptTypes.some(type => acceptHeader.includes(type))) {
+            throw {
+                message: "Invalid request format",
+                statusCode: 403,
+                errors: {
+                    format: "Request must be made through a web browser"
+                }
+            }
+        }
+
         const user = await User.findOne({ where: { token } });
         if (!user) {
             throw {
