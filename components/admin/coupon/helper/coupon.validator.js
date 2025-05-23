@@ -64,8 +64,8 @@ const validateCreateCoupon = [
 
   body('usage_limit')
     .optional()
-    .isInt({ min: 1 })
-    .withMessage('Usage limit must be a positive integer')
+    .isInt({ min: 0 })
+    .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
         throw new Error('Usage limit must be 1 when is_single_use is true');
@@ -88,11 +88,18 @@ const validateCreateCoupon = [
     .notEmpty()
     .withMessage('Start date is required')
     .isISO8601()
-    .withMessage('Invalid start date format')
+    .withMessage('Invalid start date format. Must be in ISO 8601 format (e.g. "2024-03-20T10:30:00Z")')
     .custom((value) => {
       const startDate = new Date(value);
-      if (startDate < new Date()) {
-        throw new Error('Start date cannot be in the past');
+      if (isNaN(startDate.getTime())) {
+        throw new Error('Invalid start date');
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      if (startDateOnly < today) {
+        throw new Error('Start date cannot be before today');
       }
       return true;
     }),
@@ -100,16 +107,25 @@ const validateCreateCoupon = [
   body('end_date')
     .optional()
     .isISO8601()
-    .withMessage('Invalid end date format')
+    .withMessage('Invalid end date format. Must be in ISO 8601 format (e.g. "2024-03-20T23:59:59Z")')
     .custom((value, { req }) => {
       if (!value) return true;
       const startDate = new Date(req.body.start_date);
       const endDate = new Date(value);
-      if (endDate <= startDate) {
-        throw new Error('End date must be after start date');
+      if (isNaN(endDate.getTime())) {
+        throw new Error('Invalid end date');
       }
-      if (endDate < new Date()) {
-        throw new Error('End date cannot be in the past');
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      const endDateOnly = new Date(endDate);
+      endDateOnly.setHours(0, 0, 0, 0);
+      if (endDateOnly < startDateOnly) {
+        throw new Error('End date must be on or after start date');
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (endDateOnly < today) {
+        throw new Error('End date cannot be before today');
       }
       return true;
     }),
@@ -210,11 +226,18 @@ const validateUpdateCoupon = [
     .notEmpty()
     .withMessage('Start date is required')
     .isISO8601()
-    .withMessage('Invalid start date format')
+    .withMessage('Invalid start date format. Must be in ISO 8601 format (e.g. "2024-03-20T10:30:00Z")')
     .custom((value) => {
       const startDate = new Date(value);
-      if (startDate < new Date()) {
-        throw new Error('Start date cannot be in the past');
+      if (isNaN(startDate.getTime())) {
+        throw new Error('Invalid start date');
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      if (startDateOnly < today) {
+        throw new Error('Start date cannot be before today');
       }
       return true;
     }),
@@ -222,16 +245,25 @@ const validateUpdateCoupon = [
   body('end_date')
     .optional()
     .isISO8601()
-    .withMessage('Invalid end date format')
+    .withMessage('Invalid end date format. Must be in ISO 8601 format (e.g. "2024-03-20T23:59:59Z")')
     .custom((value, { req }) => {
       if (!value) return true;
       const startDate = new Date(req.body.start_date);
       const endDate = new Date(value);
-      if (endDate <= startDate) {
-        throw new Error('End date must be after start date');
+      if (isNaN(endDate.getTime())) {
+        throw new Error('Invalid end date');
       }
-      if (endDate < new Date()) {
-        throw new Error('End date cannot be in the past');
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      const endDateOnly = new Date(endDate);
+      endDateOnly.setHours(0, 0, 0, 0);
+      if (endDateOnly < startDateOnly) {
+        throw new Error('End date must be on or after start date');
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (endDateOnly < today) {
+        throw new Error('End date cannot be before today');
       }
       return true;
     }),

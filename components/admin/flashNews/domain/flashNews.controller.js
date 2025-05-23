@@ -104,12 +104,18 @@ module.exports.updateFlashNews = async (req, res, next) => {
  */
 module.exports.listAllFlashNews = async (req, res, next) => {
     try {
-        const { include_deleted, page = 1, limit = 10 } = req.query;
+        const { deleted, page = 1, limit = 10, search } = req.query;
         const offset = (page - 1) * limit;
         
         const where = {};
-        if (!include_deleted) {
+        if (deleted === 'true') {
+            where.deleted_at = { [Op.ne]: null };
+        } else {
             where.deleted_at = null;
+        }
+
+        if (search) {
+            where.label = { [Op.like]: `%${search}%` };
         }
         
         const totalCount = await FlashNews.count({ where });
@@ -119,6 +125,7 @@ module.exports.listAllFlashNews = async (req, res, next) => {
             order: [['created_at', 'DESC']],
             limit: parseInt(limit),
             offset: parseInt(offset),
+            paranoid: deleted !== 'true',
             include: [{
                 model: User,
                 as: 'updatedBy',
