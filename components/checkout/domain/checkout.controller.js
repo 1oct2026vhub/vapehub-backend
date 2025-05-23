@@ -233,17 +233,19 @@ module.exports.applyCoupon = async (req, res, next) => {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referralValue!=0 ? referral.referral_value_type : '';
                     // Check minimum purchase for fixed referral value
-                    if (referralValueType === 'fixed' && referral.minimum_purchase) {
-                        if (total < referral.minimum_purchase) {
-                            throw {
-                                statusCode: 400,
-                                message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
-                            }
+                    if (referralValueType === 'fixed' && parseFloat(referral.minimum_purchase) && parseFloat(total) < parseFloat(referral.minimum_purchase)) {
+                        throw {
+                            statusCode: 400,
+                            message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
                         }
                     }
-
+                    console.log("referral.maximum_purchase>>>>", referral.maximum_purchase);
+                    console.log("total>>>>", total);
+                    console.log("referral.maximum_purchase type>>>>", typeof parseFloat(referral.maximum_purchase), parseFloat(referral.maximum_purchase));
+                    console.log("total type>>>>", typeof total);
+                    
                     // Check maximum purchase limit
-                    if (referral.maximum_purchase && total > referral.maximum_purchase) {
+                    if (referral.maximum_purchase !== null && referral.maximum_purchase !== undefined && parseFloat(referral.maximum_purchase) > 0 && parseFloat(total) > parseFloat(referral.maximum_purchase)) {
                         throw {
                             statusCode: 400,
                             message: `Order total exceeds the maximum purchase limit of £${referral.maximum_purchase} for this referral discount.`
