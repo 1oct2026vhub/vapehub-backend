@@ -254,16 +254,25 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
-
         // Log verification attempt
         logger.logVerification({
             type: 'verification_attempt',
-            headers: req.headers,
-            query: req.query,
-            body: req.body,
-            request: req,
-            ip: req.ip,
-            timestamp: new Date().toISOString()
+            request: {
+                headers: req.headers,
+                query: req.query,
+                body: req.body,
+                method: req.method,
+                url: req.originalUrl,
+                ip: req.ip,
+                params: req.params,
+                cookies: req.cookies,
+                signedCookies: req.signedCookies,
+                protocol: req.protocol,
+                secure: req.secure,
+                hostname: req.hostname,
+                path: req.path,
+                timestamp: new Date().toISOString()
+            }
         });
 
         // Additional security checks for browser vs automated requests
