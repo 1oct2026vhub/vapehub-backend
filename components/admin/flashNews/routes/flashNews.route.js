@@ -62,9 +62,15 @@ router.post('/', withValidation(createOrUpdateFlashNewsValidation), flashNewsCon
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: include_deleted
+ *         name: deleted
  *         schema:
  *           type: boolean
+ *         description: Filter to show deleted records (true) or active records (false)
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search flash news by label
  *       - in: query
  *         name: page
  *         schema:

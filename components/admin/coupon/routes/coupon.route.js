@@ -50,11 +50,13 @@ const { validateRequest } = require('../../../../utils/validationMiddleware');
  *         start_date:
  *           type: string
  *           format: date-time
- *           description: Start date of coupon validity
+ *           description: Start date and time of coupon validity (ISO 8601 format, e.g. "2024-03-20T10:30:00Z")
+ *           example: "2024-03-20T10:30:00Z"
  *         end_date:
  *           type: string
  *           format: date-time
- *           description: End date of coupon validity
+ *           description: End date and time of coupon validity (ISO 8601 format, e.g. "2024-03-20T23:59:59Z")
+ *           example: "2024-03-20T23:59:59Z"
  *         status:
  *           type: string
  *           enum: [active, inactive]
