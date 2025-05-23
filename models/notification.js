@@ -42,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     user_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'users',
         key: 'id'
@@ -90,6 +90,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false
+    },
+    is_admin: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      // defaultValue: false,
+      comment: 'Indicates if this is an admin notification'
     }
   }, {
     sequelize,
@@ -110,6 +116,9 @@ module.exports = (sequelize, DataTypes) => {
       },
       {
         fields: ['created_at']
+      },
+      {
+        fields: ['is_admin']
       }
     ],
     hooks: {

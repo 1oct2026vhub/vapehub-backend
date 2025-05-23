@@ -275,22 +275,51 @@ module.exports.placeOrder = async (req, res, next) => {
                 let referralValueType;
                 if (referral.status === 'pending'  && referral.referred_user_id === user_id) {
                     referralValue = parseFloat(referral.referral_value);
-                    referralValueType = referral.referral_value_type;
+                    referralValueType = referralValue!=0 ? referral.referral_value_type : 'percentage';
+
+                    // Check minimum purchase for fixed referral value type
+                    if (referralValueType === 'fixed' && parseFloat(referral.minimum_purchase) && parseFloat(calculatedTotal) < parseFloat(referral.minimum_purchase)) {
+                        referralValue = 0;
+                        referralValueType = 'percentage';
+                    }
+
+                    // Check maximum purchase for all referral types
+                    if (parseFloat(referral.maximum_purchase) && parseFloat(calculatedTotal) > parseFloat(referral.maximum_purchase)) {
+                        referralValue = 0;
+                        referralValueType = 'percentage';
+                    }
                 } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
                     // For completed status, get values from referral method
                     const referralMethod = await ReferralMethod.findOne({
                         where: {
                             primary: true,  //primary true means it is referrer person
-                            status: 'active'
+                            status: 'active',
+                            refer_type: 'referrer'  //new
                         }
                     });
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
+
+                        // Check minimum purchase for fixed referral value type
+                        if (referralValueType === 'fixed' && referralMethod.minimum_purchase && calculatedTotal < referralMethod.minimum_purchase) {
+                            referralValue = 0;
+                            referralValueType = 'percentage';
+                        }
+
+                        // Check maximum purchase for all referral types
+                        if (referralMethod.maximum_purchase && calculatedTotal > referralMethod.maximum_purchase) {
+                            referralValue = 0;
+                            referralValueType = 'percentage';
+                        }
+                    }
+                    else{
+                        referralValue = 0;
+                        referralValueType = 'percentage';
                     }
                 }
 
-                if (!isNaN(referralValue)) {
+                if (referralValue && !isNaN(referralValue)) {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * subTotal 
                         : referralValue;
@@ -298,6 +327,9 @@ module.exports.placeOrder = async (req, res, next) => {
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                }
+                else{
+                    referralDiscount = 0;
                 }
                 referral_flag = true;
                 referralId = referral.id;
@@ -360,30 +392,72 @@ module.exports.placeOrder = async (req, res, next) => {
         }
         else if(payMethod === "Worldpay"){
             const generateTransactionReference = () => {
-                const timestamp = Date.now();
-                const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-                return `WP${timestamp}${random}`;
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let result = '';
+                for (let i = 0; i < 16; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
             };
             orderCode = generateTransactionReference();
+            
+            const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
+            const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
 
-            worldpayResponse = await axios.post(`${process.env.WORLDPAY_URL}/payment_pages`, {
+            // Validate and format country code
+            let countryCode = (billing_address.country || 'GB').toUpperCase();
+            if (countryCode.length !== 2) {
+                countryCode = 'GB'; // Default to GB if invalid
+            }
+            
+            try {
+                worldpayResponse = await axios({
+                    method: 'POST',
+                    url: `${process.env.WORLDPAY_URL}/payment_pages`,   //${process.env.WORLDPAY_URL}
                     headers: {
                         'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
                         'User-Agent': 'string',
-                        Authorization: 'Basic ' + Buffer.from('<username>:<password>').toString('base64')
+                        'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`
                     },
-                    body: JSON.stringify({
+                    data: {
                         transactionReference: orderCode,
-                        merchant: {entity: 'default'},
-                        narrative: {
-                        line1: 'VapeHub'
-                    },
-                    value: {
-                        currency: 'GBP',
-                        amount: calculatedTotal * 100
+                        merchant: {entity: process.env.WORLDPAY_MERCHANT_ID},    //process.env.WORLDPAY_ENTITY
+                        narrative: {line1: 'VapeHub Order'},
+                        value: {
+                            currency: 'GBP',
+                            amount: Math.round(calculatedTotal * 100)
+                        },
+                        description: 'VapeHub Order',
+                        billingAddressName: billing_address.first_name || 'Card Holder',
+                        billingAddress: {
+                            address1: billing_address.address_line_1 || '221B Baker Street',
+                            address2: billing_address.address_line_2 || 'Marylebone',
+                            address3: billing_address.region || 'Westminster',
+                            postalCode: billing_address.post_code || 'SW1 1AA',
+                            city: billing_address.city || 'London',
+                            state: billing_address.region || 'Greater London',
+                            countryCode: countryCode
+                        },
+                        // resultURLs: {   //payment-success
+                        //     successURL: `${process.env.FRONTEND_URL}/payment/success`,
+                        //     pendingURL: `${process.env.FRONTEND_URL}/payment/pending`,
+                        //     failureURL: `${process.env.FRONTEND_URL}/payment/failure`,
+                        //     errorURL: `${process.env.FRONTEND_URL}/payment/error`,
+                        //     cancelURL: `${process.env.FRONTEND_URL}/payment/cancel`,
+                        //     expiryURL: `${process.env.FRONTEND_URL}/payment/expiry`
+                        // 
                     }
-                })
-            });
+                });
+
+                if (!worldpayResponse.data) {
+                    throw new Error('No response data from Worldpay');
+                }
+
+                // console.log("Worldpay Response:", worldpayResponse.data);
+            } catch (error) {
+                console.error("Worldpay Error:", error.response?.data || error.message);
+                throw new Error(error.response?.data?.message || 'Failed to process payment with Worldpay');
+            }
         }
         // Generate random digit (0-9) and random alphabet (A-Z)
         const randomDigit = Math.floor(Math.random() * 10);
@@ -489,12 +563,11 @@ module.exports.placeOrder = async (req, res, next) => {
         // }
         // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
-
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
                 order_code: order.order_code,
-                worldpay_response: payMethod === "Worldpay" ? worldpayResponse : null,
+                worldpay_url: payMethod === "Worldpay" ? worldpayResponse.data.url : null,
                 order_details: {
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
@@ -538,6 +611,7 @@ module.exports.getOrderById = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
         const orderId = req.params.id;
+
         // Get user data
         const user = await User.findOne({
             where: { id: userId },
@@ -681,8 +755,9 @@ module.exports.getOrderById = async (req, res) => {
                 else if(referral.referrer_id === userId){
                     const referralMethod = await ReferralMethod.findOne({
                         where: {
-                            primary: true,
-                            status: 'active'
+                            primary: true,  // means it is referrer person
+                            status: 'active',
+                            refer_type: 'referrer'  //new
                         }
                     });
                     if(referralMethod) {

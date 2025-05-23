@@ -122,47 +122,117 @@ module.exports = (sequelize, DataTypes) => {
           
           // Send Trustpilot invitation for both delivered and completed statuses
           if (newStatus === 'delivered' || newStatus === 'completed') {
-            // Fetch the complete order with all necessary associations
-            const order = await Order.findOne({
-              where: { id: instance.id },
-              include: [
-                {
+            try {
+              
+              // 1. First get basic order with user
+              const order = await Order.findOne({
+                where: { id: instance.id },
+                include: [{
                   model: sequelize.models.User,
                   as: 'user',
                   attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                  model: sequelize.models.OrderItem,
-                  as: 'orderItems',
-                  include: [
-                    {
-                      model: sequelize.models.Product,
-                      as: 'product',
-                      attributes: ['name']
-                    },
-                    {
-                      model: sequelize.models.ProductVariant,
-                      as: 'variant',
-                      attributes: ['slug', 'price']
-                    }
-                  ]
-                }
-              ]
-            });
+                }]
+              });
+              if (!order) return;
 
-            if (order && order.user) {
-              // Format product details for Trustpilot
-              const productDetails = order.orderItems.map(item => ({
-                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-                price: item.variant ? item.variant.price : item.unit_price,
-                quantity: item.quantity
+              // 2. Get order items with products
+              const orderItems = await sequelize.models.OrderItem.findAll({
+                where: { order_id: instance.id },
+                include: [{
+                  model: sequelize.models.Product,
+                  as: 'product',
+                  attributes: ['id', 'name', 'slug'],
+                  include: [{
+                    model: sequelize.models.ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['image_url', 'is_primary'],
+                    required: false
+                  }]
+                }]
+              });
+
+              
+              // 3. Get variants for these items
+              const orderItemsWithVariants = await Promise.all(orderItems.map(async (item) => {
+                try {
+                  if (item.variant_id) {
+                    const variant = await sequelize.models.ProductVariant.findOne({
+                      where: { id: item.variant_id },
+                      include: [{
+                        model: sequelize.models.ProductVariantImage,
+                        as: 'variantImages',
+                        attributes: ['image_url','is_primary'],
+                        required: false
+                      }],
+                      raw: false
+                    });
+                    if (variant) {
+                      const variantData = variant.toJSON();
+                      return { ...item.toJSON(), variant: variantData };
+                    }
+                  }
+                  return item.toJSON();
+                } catch (error) {
+                  return item.toJSON();
+                }
               }));
 
-              // Add product details to the order instance
-              order.productDetails = productDetails;
+              // 4. Get product images
+              const orderItemsWithImages = await Promise.all(orderItemsWithVariants.map(async (item) => {
+                try {
+                  const productImages = await sequelize.models.ProductImage.findAll({
+                    where: { product_id: item.product_id },
+                    attributes: ['image_url', 'is_primary'],
+                    required: false,
+                    raw: false
+                  });
+                  return { 
+                    ...item, 
+                    productImages: productImages.map(img => img.toJSON())
+                  };
+                } catch (error) {
+                  console.error("Error getting product images:", error);
+                  return { ...item, productImages: [] };
+                }
+              }));
 
-              await reviewHelper.sendInvitation(order, order.user);
-              logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+              // Attach the enhanced order items to the order
+              order.orderItems = orderItemsWithImages;
+
+              if (order && order.user) {
+                // Format product details for Trustpilot
+                const productDetails = order.orderItems.map(item => {
+                  try {
+                    const detail = {
+                      name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                      price: item.variant ? item.variant.price : item.unit_price,
+                      quantity: item.quantity
+                    };
+                    return detail;
+                  } catch (error) {
+                    return {
+                      name: item.product?.name || "Unknown Product",
+                      price: item.unit_price || 0,
+                      quantity: item.quantity || 1
+                    };
+                  }
+                });
+
+                // Add product details to the order instance
+                order.productDetails = productDetails;
+
+                await reviewHelper.sendInvitation(order, order.user);
+                logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+              } else {
+                console.log("Order or user missing:", { 
+                  hasOrder: !!order, 
+                  hasUser: !!order?.user 
+                });
+              }
+            } catch (trustpilotError) {
+              // Log the error but don't throw it
+              logger.error('Error sending Trustpilot invitation:', trustpilotError);
+              // Continue with the order status update even if Trustpilot invitation fails
             }
           }
         }

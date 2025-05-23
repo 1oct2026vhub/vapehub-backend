@@ -8,6 +8,8 @@ const constants = require('../../../config/constants');
 const moment = require('moment');
 const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
 const referral_method = require('../../../models/referral_method');
+const { createNotification } = require('../../notification/helper/notification.helper');
+const logger = require('../../../utils/logger');
 
 
 module.exports.login = async (req, res, next) => {
@@ -94,6 +96,8 @@ module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
         let{ referral_code } = req.query;
+        console.log("referral_code>>>>", referral_code);
+        console.log("email, password>>>>", email, password);
         if (!referral_code) {
             referral_code = null;
         }
@@ -113,12 +117,30 @@ module.exports.register = async (req, res, next) => {
         if (referral_code) {
             referrer = await User.findOne({
                 where: { referral_code },
-                attributes: ['id', 'referral_code', 'referral_points']
+                attributes: ['id', 'referral_code', 'referral_points', 'email']
+            });
+
+            // Log referral information
+            logger.logInfo({
+                type: 'referral_registration',
+                referral_data: {
+                    referral_code,
+                    referrer: referrer ? {
+                        id: referrer.id,
+                        email: referrer.email,
+                        referral_code: referrer.referral_code,
+                        referral_points: referrer.referral_points
+                    } : null,
+                    request_body: req.body,
+                    request_query: req.query,
+                    timestamp: new Date().toISOString()
+                }
             });
         }
 
         const role = await Role.findOne({
             attributes: ['id'],
+            
             where: { permission: 'user' },
         });
         const roleId = role?.id || null;
@@ -136,6 +158,21 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
 
+        // Create notifications for all admin users
+
+        await createNotification({
+            user_id: null,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `New user registered: ${email}`
+            },
+            title: 'New User Registration',
+            url: '/admin/users',  // URL to the admin users list
+            is_admin: true
+        });
+        
+
         // If referral code is provided, find the referrer
         if (referral_code && referrer) {
             
@@ -144,29 +181,60 @@ module.exports.register = async (req, res, next) => {
                     email: email,
                     referral_code: referral_code,
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'minimum_purchase', 'maximum_purchase', 'referral_value_type', 'referral_value']
             });
-
+            console.log("referral_method>>>>", referral_method);
             // Get active referral method
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: false  //primary false means it is referred person      
+                    primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                    refer_type: 'referral'  //new
                 },
-                attributes: ['id', 'referral_value_type', 'referral_value']
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
             });
+            console.log("activeReferralMethod>>>>", activeReferralMethod);
+            // Log referral method information
+            logger.logInfo({
+                type: 'referral_method_details',
+                referral_method_data: {
+                    existing_referral: referral_method ? {
+                        id: referral_method.id,
+                        referrer_id: referral_method.referrer_id,
+                        referral_code: referral_method.referral_code,
+                        referral_coupon_code: referral_method.referral_coupon_code,
+                        email: referral_method.email,
+                        status: referral_method.status,
+                        minimum_purchase: referral_method.minimum_purchase,
+                        maximum_purchase: referral_method.maximum_purchase,
+                        referral_value_type: referral_method.referral_value_type,
+                        referral_value: referral_method.referral_value
+                    } : null,
+                    active_referral_method: activeReferralMethod ? {
+                        id: activeReferralMethod.id,
+                        referral_value_type: activeReferralMethod.referral_value_type,
+                        referral_value: activeReferralMethod.referral_value,
+                        minimum_purchase: activeReferralMethod.minimum_purchase,
+                        maximum_purchase: activeReferralMethod.maximum_purchase,
+                        refer_type: activeReferralMethod.refer_type
+                    } : null,
+                    timestamp: new Date().toISOString()
+                }
+            });
+
             if(referral_method){   //email referral 
                 await Referral.update({
                     referred_user_id: user.id,
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
+                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
+                    referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                    minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
                 }, {
                     where: {
                         email: email,
                         referral_code: referral_code
                     }
                 });
-
             }
             else{   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
@@ -186,10 +254,25 @@ module.exports.register = async (req, res, next) => {
                     status: 'pending',
                     referred_user_id: user.id,
                     points_awarded: 10,
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
+                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : '',
+                    referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                    minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
                 });
             }
+
+            // Create notification for admin about referral registration
+            await createNotification({
+                user_id: null,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `New user ${email} registered using referral code ${referral_code} from user ${referrer.email}`
+                },
+                title: 'New Referral Registration',
+                url: '/admin/users',  // URL to the admin users list
+                is_admin: true
+            });
         }
 
         const username = user?.first_name ?? user.email.split('@')[0];
@@ -216,8 +299,164 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
+
+        // Log verification attempt
+        logger.logVerification({
+            type: 'verification_attempt',
+            headers: req.headers,
+            query: req.query,
+            body: req.body,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
+
+        // Additional security checks for browser vs automated requests
+        const securityChecks = {
+            referer: req.headers.referer || req.headers.referrer,
+            origin: req.headers.origin,
+            secFetchDest: req.headers['sec-fetch-dest'],
+            secFetchMode: req.headers['sec-fetch-mode'],
+            secFetchSite: req.headers['sec-fetch-site'],
+            secFetchUser: req.headers['sec-fetch-user'],
+            acceptLanguage: req.headers['accept-language'],
+            connection: req.headers.connection,
+            cookie: req.headers.cookie,
+            host: req.headers.host,
+            userAgent: req.headers['user-agent']
+        };
+
+        // Log security checks
+        logger.logInfo({
+            type: 'verification_security_checks',
+            securityChecks,
+            timestamp: new Date().toISOString()
+        });
+
+        // Check for suspicious patterns
+        // const isSuspiciousRequest = 
+        //     // Missing common browser headers
+        //     (!securityChecks.referer && !securityChecks.origin) ||
+        //     // Missing Sec-Fetch headers (modern browsers)
+        //     (!securityChecks.secFetchDest && !securityChecks.secFetchMode) ||
+        //     // Missing Accept-Language (browsers typically send this)
+        //     !securityChecks.acceptLanguage ||
+        //     // Missing Connection header
+        //     !securityChecks.connection ||
+        //     // Missing Host header
+        //     !securityChecks.host ||
+        //     // Suspicious User-Agent patterns
+        //     (securityChecks.userAgent && (
+        //         securityChecks.userAgent.toLowerCase().includes('bot') ||
+        //         securityChecks.userAgent.toLowerCase().includes('spider') ||
+        //         securityChecks.userAgent.toLowerCase().includes('crawler') ||
+        //         securityChecks.userAgent.toLowerCase().includes('headless') ||
+            //     securityChecks.userAgent.toLowerCase().includes('phantomjs') ||
+            //     securityChecks.userAgent.toLowerCase().includes('selenium') ||
+            //     securityChecks.userAgent.toLowerCase().includes('puppeteer')
+            // ));
+
+        // if (isSuspiciousRequest) {
+        //     logger.logError({
+        //         type: 'suspicious_verification_attempt',
+        //         securityChecks,
+        //         ip: req.ip,
+        //         timestamp: new Date().toISOString()
+        //     });
+        //     throw {
+        //         message: "Suspicious verification attempt detected",
+        //         statusCode: 403,
+        //         errors: {
+        //             security: "This verification attempt appears to be automated or suspicious"
+        //         }
+        //     }
+        // }
+
+        // Check if request is from a browser or valid client
+        const userAgent = req.headers['user-agent'];
+        const validUserAgents = [
+            // Browsers
+            'Mozilla', // Firefox, Chrome, Safari, Edge
+            'Chrome',
+            'Safari',
+            'Edge',
+            'Opera',
+            'Firefox',
+            'MSIE', // Internet Explorer
+            'Trident', // Internet Explorer
+            'Mobile Safari', // Mobile Safari
+            'Android', // Android Browser
+            'Edg', // Microsoft Edge
+            // API Clients
+            'node', // Node.js
+            'axios', // Axios HTTP client
+            'PostmanRuntime', // Postman
+            'curl', // cURL
+            'python-requests', // Python Requests
+            'Java-http-client', // Java HTTP Client
+            'Go-http-client', // Go HTTP Client
+            'PHP-http-client', // PHP HTTP Client
+            'Ruby', // Ruby HTTP Client
+            'fetch', // Fetch API
+            'XMLHttpRequest' // XHR
+        ];
+
+        // Check if user agent exists and contains any valid identifier
+        const isValidUserAgent = userAgent && validUserAgents.some(agent => {
+            // Case insensitive check
+            return userAgent.toLowerCase().includes(agent.toLowerCase());
+        });
+
+        if (!isValidUserAgent) {
+            logger.logError({
+                type: 'invalid_user_agent',
+                userAgent,
+                headers: req.headers,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
+            throw {
+                message: "Invalid request source",
+                statusCode: 403,
+                errors: {
+                    source: "Verification must be done through a valid client"
+                }
+            }
+        }
+
+        // Check if request has proper headers
+        const acceptHeader = req.headers.accept || '';
+        const validAcceptTypes = [
+            'text/html',
+            'application/json',
+            '*/*',
+            'text/*',
+            'application/*'
+        ];
+
+        if (!validAcceptTypes.some(type => acceptHeader.includes(type))) {
+            logger.logError({
+                type: 'invalid_headers',
+                headers: req.headers,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
+            throw {
+                message: "Invalid request format",
+                statusCode: 403,
+                errors: {
+                    format: "Request must be made through a valid client"
+                }
+            }
+        }
+
         const user = await User.findOne({ where: { token } });
         if (!user) {
+            logger.logError({
+                type: 'invalid_token',
+                token,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid link or link expired",
                 statusCode: 400,
@@ -229,6 +468,13 @@ module.exports.verifyEmail = async (req, res, next) => {
 
         // check is user verified email
         if (user?.email_verified_at) {
+            logger.logError({
+                type: 'already_verified',
+                userId: user.id,
+                email: user.email,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Email already verified",
                 statusCode: 400,
@@ -239,6 +485,14 @@ module.exports.verifyEmail = async (req, res, next) => {
         }
 
         if (user.token_expiry < new Date()) {
+            logger.logError({
+                type: 'token_expired',
+                userId: user.id,
+                email: user.email,
+                tokenExpiry: user.token_expiry,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid link or link expired",
                 statusCode: 400,
@@ -247,6 +501,7 @@ module.exports.verifyEmail = async (req, res, next) => {
                 }
             }
         }
+
         user.email_verified_at = new Date();
         user.token = null;
         user.token_expiry = null;
@@ -293,6 +548,13 @@ module.exports.verifyEmail = async (req, res, next) => {
         return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
+        logger.logError({
+            type: 'verification_error',
+            error: error.message,
+            stack: error.stack,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
         return errorResponse(res, error);
     }
 }
