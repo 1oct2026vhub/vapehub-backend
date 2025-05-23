@@ -96,6 +96,8 @@ module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
         let{ referral_code } = req.query;
+        console.log("referral_code>>>>", referral_code);
+        console.log("email, password>>>>", email, password);
         if (!referral_code) {
             referral_code = null;
         }
@@ -181,7 +183,7 @@ module.exports.register = async (req, res, next) => {
                 },
                 attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'minimum_purchase', 'maximum_purchase', 'referral_value_type', 'referral_value']
             });
-
+            console.log("referral_method>>>>", referral_method);
             // Get active referral method
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
@@ -191,7 +193,7 @@ module.exports.register = async (req, res, next) => {
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
             });
-
+            console.log("activeReferralMethod>>>>", activeReferralMethod);
             // Log referral method information
             logger.logInfo({
                 type: 'referral_method_details',
