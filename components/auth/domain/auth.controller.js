@@ -258,13 +258,76 @@ module.exports.verifyEmail = async (req, res, next) => {
             type: 'verification_attempt',
             headers: req.headers,
             query: req.query,
+            body: req.body,
             ip: req.ip,
             timestamp: new Date().toISOString()
         });
 
-        // Check if request is from a browser
+        // Additional security checks for browser vs automated requests
+        const securityChecks = {
+            referer: req.headers.referer || req.headers.referrer,
+            origin: req.headers.origin,
+            secFetchDest: req.headers['sec-fetch-dest'],
+            secFetchMode: req.headers['sec-fetch-mode'],
+            secFetchSite: req.headers['sec-fetch-site'],
+            secFetchUser: req.headers['sec-fetch-user'],
+            acceptLanguage: req.headers['accept-language'],
+            connection: req.headers.connection,
+            cookie: req.headers.cookie,
+            host: req.headers.host,
+            userAgent: req.headers['user-agent']
+        };
+
+        // Log security checks
+        logger.logInfo({
+            type: 'verification_security_checks',
+            securityChecks,
+            timestamp: new Date().toISOString()
+        });
+
+        // Check for suspicious patterns
+        // const isSuspiciousRequest = 
+        //     // Missing common browser headers
+        //     (!securityChecks.referer && !securityChecks.origin) ||
+        //     // Missing Sec-Fetch headers (modern browsers)
+        //     (!securityChecks.secFetchDest && !securityChecks.secFetchMode) ||
+        //     // Missing Accept-Language (browsers typically send this)
+        //     !securityChecks.acceptLanguage ||
+        //     // Missing Connection header
+        //     !securityChecks.connection ||
+        //     // Missing Host header
+        //     !securityChecks.host ||
+        //     // Suspicious User-Agent patterns
+        //     (securityChecks.userAgent && (
+        //         securityChecks.userAgent.toLowerCase().includes('bot') ||
+        //         securityChecks.userAgent.toLowerCase().includes('spider') ||
+        //         securityChecks.userAgent.toLowerCase().includes('crawler') ||
+        //         securityChecks.userAgent.toLowerCase().includes('headless') ||
+            //     securityChecks.userAgent.toLowerCase().includes('phantomjs') ||
+            //     securityChecks.userAgent.toLowerCase().includes('selenium') ||
+            //     securityChecks.userAgent.toLowerCase().includes('puppeteer')
+            // ));
+
+        // if (isSuspiciousRequest) {
+        //     logger.logError({
+        //         type: 'suspicious_verification_attempt',
+        //         securityChecks,
+        //         ip: req.ip,
+        //         timestamp: new Date().toISOString()
+        //     });
+        //     throw {
+        //         message: "Suspicious verification attempt detected",
+        //         statusCode: 403,
+        //         errors: {
+        //             security: "This verification attempt appears to be automated or suspicious"
+        //         }
+        //     }
+        // }
+
+        // Check if request is from a browser or valid client
         const userAgent = req.headers['user-agent'];
-        const validBrowsers = [
+        const validUserAgents = [
+            // Browsers
             'Mozilla', // Firefox, Chrome, Safari, Edge
             'Chrome',
             'Safari',
@@ -275,18 +338,30 @@ module.exports.verifyEmail = async (req, res, next) => {
             'Trident', // Internet Explorer
             'Mobile Safari', // Mobile Safari
             'Android', // Android Browser
-            'Edg' // Microsoft Edge
+            'Edg', // Microsoft Edge
+            // API Clients
+            'node', // Node.js
+            'axios', // Axios HTTP client
+            'PostmanRuntime', // Postman
+            'curl', // cURL
+            'python-requests', // Python Requests
+            'Java-http-client', // Java HTTP Client
+            'Go-http-client', // Go HTTP Client
+            'PHP-http-client', // PHP HTTP Client
+            'Ruby', // Ruby HTTP Client
+            'fetch', // Fetch API
+            'XMLHttpRequest' // XHR
         ];
 
-        // Check if user agent exists and contains any valid browser identifier
-        const isValidBrowser = userAgent && validBrowsers.some(browser => {
+        // Check if user agent exists and contains any valid identifier
+        const isValidUserAgent = userAgent && validUserAgents.some(agent => {
             // Case insensitive check
-            return userAgent.toLowerCase().includes(browser.toLowerCase());
+            return userAgent.toLowerCase().includes(agent.toLowerCase());
         });
 
-        if (!isValidBrowser) {
+        if (!isValidUserAgent) {
             logger.logError({
-                type: 'invalid_browser',
+                type: 'invalid_user_agent',
                 userAgent,
                 headers: req.headers,
                 ip: req.ip,
@@ -296,7 +371,7 @@ module.exports.verifyEmail = async (req, res, next) => {
                 message: "Invalid request source",
                 statusCode: 403,
                 errors: {
-                    source: "Verification must be done through a web browser"
+                    source: "Verification must be done through a valid client"
                 }
             }
         }
@@ -322,7 +397,7 @@ module.exports.verifyEmail = async (req, res, next) => {
                 message: "Invalid request format",
                 statusCode: 403,
                 errors: {
-                    format: "Request must be made through a web browser"
+                    format: "Request must be made through a valid client"
                 }
             }
         }
