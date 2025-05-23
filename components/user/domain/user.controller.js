@@ -7,6 +7,7 @@ const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const { Op } = require('sequelize');
 const { Order, Transaction } = require('../../../models');
+const logger = require('../../../utils/logger');
 
 const userProfile = async (req, res, next) => {
     try {
@@ -596,12 +597,25 @@ const getReferralStats = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
+        // Log request details
+        logger.logInfo({
+            type: 'referral_stats_request',
+            user_id: userId,
+            query_params: {
+                page,
+                limit,
+                offset
+            },
+            timestamp: new Date().toISOString()
+        });
+
         // Get total referrals count
         const referrer = await Referral.findOne({
             where: {
                 referred_user_id: userId
             }
         });
+
         // Get total referrals count
         const totalReferrals = await Referral.count({
             where: {
@@ -609,6 +623,7 @@ const getReferralStats = async (req, res) => {
                 status: 'completed'
             }
         });
+
         // Get pending referrals count
         const pendingReferrals = await Referral.count({
             where: {
@@ -616,12 +631,26 @@ const getReferralStats = async (req, res) => {
                 status: 'pending'
             }
         });
+
         // Get total points earned
         const totalPoints = await Referral.sum('points_awarded', {
             where: {
                 referrer_id: userId,
                 status: 'completed'
             }
+        });
+
+        // Log referral counts
+        logger.logInfo({
+            type: 'referral_counts',
+            user_id: userId,
+            stats: {
+                total_referrals: totalReferrals,
+                pending_referrals: pendingReferrals,
+                total_points: totalPoints,
+                referrer_exists: !!referrer
+            },
+            timestamp: new Date().toISOString()
         });
 
         // Get active referral methods
@@ -659,6 +688,20 @@ const getReferralStats = async (req, res) => {
             offset
         });
 
+        // Log active referral methods
+        logger.logInfo({
+            type: 'active_referral_methods',
+            user_id: userId,
+            methods: referralMethods.map(method => ({
+                id: method.id,
+                value_type: method.referral_value_type,
+                value: method.referral_value,
+                status: method.status,
+                primary: method.primary
+            })),
+            timestamp: new Date().toISOString()
+        });
+
         const response = {
             total_referrals: totalReferrals || 0,
             pending_referrals: pendingReferrals || 0,
@@ -693,9 +736,31 @@ const getReferralStats = async (req, res) => {
             }
         };
 
+        // Log successful response
+        logger.logInfo({
+            type: 'referral_stats_response',
+            user_id: userId,
+            response_summary: {
+                total_referrals: response.total_referrals,
+                pending_referrals: response.pending_referrals,
+                has_referrer: !!response.referrer,
+                active_methods_count: response.referral_methods.length,
+                recent_referrals_count: response.recent_referrals.data.length,
+                pagination: response.recent_referrals.pagination
+            },
+            timestamp: new Date().toISOString()
+        });
+
         successResponse(res, response, 'Referral statistics retrieved successfully');
     } catch (error) {
-        console.error('Error fetching referral stats:', error);
+        // Log error
+        logger.logError({
+            type: 'referral_stats_error',
+            user_id: req.user.id,
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
         errorResponse(res, error, 'Failed to fetch referral statistics');
     }
 };

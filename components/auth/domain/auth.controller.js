@@ -96,6 +96,8 @@ module.exports.register = async (req, res, next) => {
     try {
         const { email, password } = req.body;
         let{ referral_code } = req.query;
+        console.log("referral_code>>>>", referral_code);
+        console.log("email, password>>>>", email, password);
         if (!referral_code) {
             referral_code = null;
         }
@@ -116,6 +118,23 @@ module.exports.register = async (req, res, next) => {
             referrer = await User.findOne({
                 where: { referral_code },
                 attributes: ['id', 'referral_code', 'referral_points', 'email']
+            });
+
+            // Log referral information
+            logger.logInfo({
+                type: 'referral_registration',
+                referral_data: {
+                    referral_code,
+                    referrer: referrer ? {
+                        id: referrer.id,
+                        email: referrer.email,
+                        referral_code: referrer.referral_code,
+                        referral_points: referrer.referral_points
+                    } : null,
+                    request_body: req.body,
+                    request_query: req.query,
+                    timestamp: new Date().toISOString()
+                }
             });
         }
 
@@ -164,7 +183,7 @@ module.exports.register = async (req, res, next) => {
                 },
                 attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'minimum_purchase', 'maximum_purchase', 'referral_value_type', 'referral_value']
             });
-
+            console.log("referral_method>>>>", referral_method);
             // Get active referral method
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
@@ -173,6 +192,34 @@ module.exports.register = async (req, res, next) => {
                     refer_type: 'referral'  //new
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
+            console.log("activeReferralMethod>>>>", activeReferralMethod);
+            // Log referral method information
+            logger.logInfo({
+                type: 'referral_method_details',
+                referral_method_data: {
+                    existing_referral: referral_method ? {
+                        id: referral_method.id,
+                        referrer_id: referral_method.referrer_id,
+                        referral_code: referral_method.referral_code,
+                        referral_coupon_code: referral_method.referral_coupon_code,
+                        email: referral_method.email,
+                        status: referral_method.status,
+                        minimum_purchase: referral_method.minimum_purchase,
+                        maximum_purchase: referral_method.maximum_purchase,
+                        referral_value_type: referral_method.referral_value_type,
+                        referral_value: referral_method.referral_value
+                    } : null,
+                    active_referral_method: activeReferralMethod ? {
+                        id: activeReferralMethod.id,
+                        referral_value_type: activeReferralMethod.referral_value_type,
+                        referral_value: activeReferralMethod.referral_value,
+                        minimum_purchase: activeReferralMethod.minimum_purchase,
+                        maximum_purchase: activeReferralMethod.maximum_purchase,
+                        refer_type: activeReferralMethod.refer_type
+                    } : null,
+                    timestamp: new Date().toISOString()
+                }
             });
 
             if(referral_method){   //email referral 
