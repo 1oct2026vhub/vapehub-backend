@@ -9,6 +9,7 @@ const moment = require('moment');
 const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
 const referral_method = require('../../../models/referral_method');
 const { createNotification } = require('../../notification/helper/notification.helper');
+const logger = require('../../../utils/logger');
 
 
 module.exports.login = async (req, res, next) => {
@@ -251,6 +252,16 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
+
+        // Log verification attempt
+        logger.logVerification({
+            type: 'verification_attempt',
+            headers: req.headers,
+            query: req.query,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
+
         // Check if request is from a browser
         const userAgent = req.headers['user-agent'];
         const validBrowsers = [
@@ -261,10 +272,26 @@ module.exports.verifyEmail = async (req, res, next) => {
             'Opera',
             'Firefox',
             'MSIE', // Internet Explorer
-            'Trident' // Internet Explorer
+            'Trident', // Internet Explorer
+            'Mobile Safari', // Mobile Safari
+            'Android', // Android Browser
+            'Edg' // Microsoft Edge
         ];
 
-        if (!userAgent ||!validBrowsers.some(browser => userAgent.includes(browser))) {  //!userAgent || 
+        // Check if user agent exists and contains any valid browser identifier
+        const isValidBrowser = userAgent && validBrowsers.some(browser => {
+            // Case insensitive check
+            return userAgent.toLowerCase().includes(browser.toLowerCase());
+        });
+
+        if (!isValidBrowser) {
+            logger.logError({
+                type: 'invalid_browser',
+                userAgent,
+                headers: req.headers,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid request source",
                 statusCode: 403,
@@ -285,6 +312,12 @@ module.exports.verifyEmail = async (req, res, next) => {
         ];
 
         if (!validAcceptTypes.some(type => acceptHeader.includes(type))) {
+            logger.logError({
+                type: 'invalid_headers',
+                headers: req.headers,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid request format",
                 statusCode: 403,
@@ -296,6 +329,12 @@ module.exports.verifyEmail = async (req, res, next) => {
 
         const user = await User.findOne({ where: { token } });
         if (!user) {
+            logger.logError({
+                type: 'invalid_token',
+                token,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid link or link expired",
                 statusCode: 400,
@@ -307,6 +346,13 @@ module.exports.verifyEmail = async (req, res, next) => {
 
         // check is user verified email
         if (user?.email_verified_at) {
+            logger.logError({
+                type: 'already_verified',
+                userId: user.id,
+                email: user.email,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Email already verified",
                 statusCode: 400,
@@ -317,6 +363,14 @@ module.exports.verifyEmail = async (req, res, next) => {
         }
 
         if (user.token_expiry < new Date()) {
+            logger.logError({
+                type: 'token_expired',
+                userId: user.id,
+                email: user.email,
+                tokenExpiry: user.token_expiry,
+                ip: req.ip,
+                timestamp: new Date().toISOString()
+            });
             throw {
                 message: "Invalid link or link expired",
                 statusCode: 400,
@@ -325,6 +379,7 @@ module.exports.verifyEmail = async (req, res, next) => {
                 }
             }
         }
+
         user.email_verified_at = new Date();
         user.token = null;
         user.token_expiry = null;
@@ -371,6 +426,13 @@ module.exports.verifyEmail = async (req, res, next) => {
         return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
+        logger.logError({
+            type: 'verification_error',
+            error: error.message,
+            stack: error.stack,
+            ip: req.ip,
+            timestamp: new Date().toISOString()
+        });
         return errorResponse(res, error);
     }
 }

@@ -95,5 +95,6 @@ app.use("/api", require('./components/router'));
 
 // Static files
 app.use("/public", express.static(path.join(__dirname, "public")));
+app.use("/logs", express.static(path.join(__dirname, "public/logs")));
 
 module.exports = app;
