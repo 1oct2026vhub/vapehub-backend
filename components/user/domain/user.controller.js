@@ -597,18 +597,6 @@ const getReferralStats = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
-        // Log request details
-        logger.logInfo({
-            type: 'referral_stats_request',
-            user_id: userId,
-            query_params: {
-                page,
-                limit,
-                offset
-            },
-            timestamp: new Date().toISOString()
-        });
-
         // Get total referrals count
         const referrer = await Referral.findOne({
             where: {
@@ -638,19 +626,6 @@ const getReferralStats = async (req, res) => {
                 referrer_id: userId,
                 status: 'completed'
             }
-        });
-
-        // Log referral counts
-        logger.logInfo({
-            type: 'referral_counts',
-            user_id: userId,
-            stats: {
-                total_referrals: totalReferrals,
-                pending_referrals: pendingReferrals,
-                total_points: totalPoints,
-                referrer_exists: !!referrer
-            },
-            timestamp: new Date().toISOString()
         });
 
         // Get active referral methods
@@ -686,20 +661,6 @@ const getReferralStats = async (req, res) => {
             order: [['created_at', 'DESC']],
             limit,
             offset
-        });
-
-        // Log active referral methods
-        logger.logInfo({
-            type: 'active_referral_methods',
-            user_id: userId,
-            methods: referralMethods.map(method => ({
-                id: method.id,
-                value_type: method.referral_value_type,
-                value: method.referral_value,
-                status: method.status,
-                primary: method.primary
-            })),
-            timestamp: new Date().toISOString()
         });
 
         const response = {
@@ -745,6 +706,7 @@ const getReferralStats = async (req, res) => {
                 pending_referrals: response.pending_referrals,
                 has_referrer: !!response.referrer,
                 active_methods_count: response.referral_methods.length,
+                referrer: referrer ? referrer : null,
                 recent_referrals_count: response.recent_referrals.data.length,
                 pagination: response.recent_referrals.pagination
             },
@@ -754,13 +716,6 @@ const getReferralStats = async (req, res) => {
         successResponse(res, response, 'Referral statistics retrieved successfully');
     } catch (error) {
         // Log error
-        logger.logError({
-            type: 'referral_stats_error',
-            user_id: req.user.id,
-            error: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
         errorResponse(res, error, 'Failed to fetch referral statistics');
     }
 };
