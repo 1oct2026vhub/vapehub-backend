@@ -8,6 +8,7 @@ const constants = require('../../../config/constants');
 const moment = require('moment');
 const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
 const referral_method = require('../../../models/referral_method');
+const { createNotification } = require('../../notification/helper/notification.helper');
 
 
 module.exports.login = async (req, res, next) => {
@@ -113,12 +114,13 @@ module.exports.register = async (req, res, next) => {
         if (referral_code) {
             referrer = await User.findOne({
                 where: { referral_code },
-                attributes: ['id', 'referral_code', 'referral_points']
+                attributes: ['id', 'referral_code', 'referral_points', 'email']
             });
         }
 
         const role = await Role.findOne({
             attributes: ['id'],
+            
             where: { permission: 'user' },
         });
         const roleId = role?.id || null;
@@ -136,6 +138,21 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
 
+        // Create notifications for all admin users
+
+        await createNotification({
+            user_id: null,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `New user registered: ${email}`
+            },
+            title: 'New User Registration',
+            url: '/admin/users',  // URL to the admin users list
+            is_admin: true
+        });
+        
+
         // If referral code is provided, find the referrer
         if (referral_code && referrer) {
             
@@ -144,29 +161,32 @@ module.exports.register = async (req, res, next) => {
                     email: email,
                     referral_code: referral_code,
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'minimum_purchase', 'maximum_purchase', 'referral_value_type', 'referral_value']
             });
 
             // Get active referral method
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: false  //primary false means it is referred person      
+                    primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                    refer_type: 'referral'  //new
                 },
-                attributes: ['id', 'referral_value_type', 'referral_value']
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
             });
+
             if(referral_method){   //email referral 
                 await Referral.update({
                     referred_user_id: user.id,
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
+                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
+                    referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                    minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
                 }, {
                     where: {
                         email: email,
                         referral_code: referral_code
                     }
                 });
-
             }
             else{   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
@@ -186,10 +206,25 @@ module.exports.register = async (req, res, next) => {
                     status: 'pending',
                     referred_user_id: user.id,
                     points_awarded: 10,
-                    referral_value_type: activeReferralMethod?.referral_value_type || 'percentage',
-                    referral_value: activeReferralMethod?.referral_value || '10'
+                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : '',
+                    referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                    minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
                 });
             }
+
+            // Create notification for admin about referral registration
+            await createNotification({
+                user_id: null,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `New user ${email} registered using referral code ${referral_code} from user ${referrer.email}`
+                },
+                title: 'New Referral Registration',
+                url: '/admin/users',  // URL to the admin users list
+                is_admin: true
+            });
         }
 
         const username = user?.first_name ?? user.email.split('@')[0];
