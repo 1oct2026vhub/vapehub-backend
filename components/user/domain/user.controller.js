@@ -307,7 +307,7 @@ const referFriend = async (req, res, next) => {
                 primary: true,  //previous is false
                 refer_type: 'referral'  //new
             },
-            attributes: ['id', 'referral_value_type', 'referral_value']
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type' ]
         });
 
         // if (!referralMethod) {
@@ -630,10 +630,14 @@ const getReferralStats = async (req, res) => {
 
         // Get active referral methods
         const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active' },
+            where: { status: 'active'},
             order: [['primary', 'DESC'], ['created_at', 'DESC']],
-            attributes: ['id', 'referral_value_type', 'referral_value', 'status', 'primary']
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary']
         });
+
+        // Separate referral methods based on refer_type
+        const referralMethod = referralMethods.find(method => method.refer_type === 'referral');
+        const referrerMethod = referralMethods.find(method => method.refer_type === 'referrer');
 
         // Get total count of recent referrals for pagination
         const totalRecentReferrals = await Referral.count({
@@ -669,6 +673,22 @@ const getReferralStats = async (req, res) => {
             referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
             referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
+            referred_user_method: referralMethod ? {
+                id: referralMethod.id,
+                referral_value_type: referralMethod.referral_value_type,
+                referral_value: referralMethod.referral_value,
+                refer_type: referralMethod.refer_type,
+                status: referralMethod.status,
+                primary: referralMethod.primary
+            } : null,
+            referrer_user_method: referrerMethod ? {
+                id: referrerMethod.id,
+                referral_value_type: referrerMethod.referral_value_type,
+                referral_value: referrerMethod.referral_value,
+                refer_type: referrerMethod.refer_type,
+                status: referrerMethod.status,
+                primary: referrerMethod.primary
+            } : null,
             recent_referrals: {
                 data: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
                     id: referral.id,
