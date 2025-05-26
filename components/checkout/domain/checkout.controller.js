@@ -291,7 +291,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                     total = Math.max(0, total - referralDiscount);
                 }
                 coupon = referral.referral_coupon_code;
-                referral_value = referralValue;
+                referral_value = parseFloat(referralValue);
                 referral_value_type = referralValueType;
             } 
             else {
@@ -304,6 +304,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
                 }); 
+
                 if (!coupon) {
                     throw {
                         statusCode: 404,
@@ -359,9 +360,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (parseFloat(discount) > parseFloat(subTotal)) {
                     discount = subTotal;
                 }
-
                 total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
-                referral_value = discount;
+                referral_value = parseFloat(discount);
                 referral_value_type = discount_type;
             }
 
@@ -369,13 +369,14 @@ module.exports.applyCoupon = async (req, res, next) => {
         
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+        referral_value = Math.floor(referral_value * 100) / 100
         const resObj = {
             totalItems,
             shippingCost,
             subTotal,
             total,
             coupon,
-            referral_value,
+            referral_value: referral_value,
             referral_value_type
         }
         successResponse(res, resObj, 'Success');
