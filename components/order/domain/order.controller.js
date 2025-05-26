@@ -723,15 +723,14 @@ module.exports.getOrderById = async (req, res) => {
         if (!order) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
-
         // Update order status if needed
         // if (order.status === 'cancel') {
         //     order.status = 'cancelled';
         // } else if (order.status === 'fail') {
         //     order.status = 'failed';
         // }
-        
         // Process referral discount if order has a referral_id
+        let orders = {}
         if(order.referral_id){
             const referral = await Referral.findOne({
                 where: {
@@ -741,16 +740,16 @@ module.exports.getOrderById = async (req, res) => {
             
             if(referral) {
                 if(referral.referred_user_id === userId){
-                    order.referral_code = referral.referral_coupon_code;
-                    order.referral_value = referral.referral_value;
-                    order.referral_value_type = referral.referral_value_type;
-                    
+                    orders.referral_code = referral.referral_coupon_code;
+                    orders.referral_value = referral.referral_value;
+                    orders.referral_value_type = referral.referral_value_type;
+                    orders.referral_discount = order.discount_price;
                     // Calculate discount price if value type is percentage
-                    if (referral.referral_value_type === 'percentage' && referral.referral_value) {
-                        order.referral_discount = (parseFloat(referral.referral_value) / 100) * order.sub_total;
-                    } else if (referral.referral_value) {
-                        order.referral_discount = parseFloat(referral.referral_value);
-                    }
+                    // if (referral.referral_value_type === 'percentage' && referral.referral_value) {
+                    //     orders.referral_discount = (parseFloat(referral.referral_value) / 100) * order.sub_total;
+                    // } else if (referral.referral_value) {
+                    //     orders.referral_discount = parseFloat(referral.referral_value);
+                    // }
                 }
                 else if(referral.referrer_id === userId){
                     const referralMethod = await ReferralMethod.findOne({
@@ -761,16 +760,16 @@ module.exports.getOrderById = async (req, res) => {
                         }
                     });
                     if(referralMethod) {
-                        order.referral_code = referral.referral_coupon_code;
-                        order.referral_value = referralMethod.referral_value;
-                        order.referral_value_type = referralMethod.referral_value_type;
-                        
+                        orders.referral_code = referral.referral_coupon_code;
+                        orders.referral_value = referralMethod.referral_value;
+                        orders.referral_value_type = referralMethod.referral_value_type;
+                        orders.referral_discount = order.discount_price;
                         // Calculate discount price if value type is percentage
-                        if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
-                            order.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.sub_total;
-                        } else if (referralMethod.referral_value) {
-                            order.referral_discount = parseFloat(referralMethod.referral_value);
-                        }
+                        // if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
+                        //     orders.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.sub_total;
+                        // } else if (referralMethod.referral_value) {
+                        //     orders.referral_discount = parseFloat(referralMethod.referral_value);
+                        // }
                     }
                 }
             }
@@ -780,34 +779,33 @@ module.exports.getOrderById = async (req, res) => {
             const coupon = order.coupon;
             
             // Set coupon data
-            order.coupon_code = coupon.code;
-            order.coupon_value = coupon.discount_value;
-            order.coupon_type = coupon.discount_type;
-            
+            orders.coupon_code = coupon.code;
+            orders.coupon_value = coupon.discount_value;
+            orders.coupon_type = coupon.discount_type;
+            orders.coupon_discount = order.discount_price;
             // Calculate discount amount based on coupon type
-            if (coupon.discount_type === 'percentage' && coupon.discount_value) {
-                // Use sub_total if available, otherwise use total
-                const baseAmount = order.sub_total;
-                order.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
-            } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
-                order.coupon_discount = parseFloat(coupon.discount_value);
-            }
+            // if (coupon.discount_type === 'percentage' && coupon.discount_value) {
+            //     // Use sub_total if available, otherwise use total
+            //     const baseAmount = order.sub_total;
+            //     orders.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
+            // } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
+            //     orders.coupon_discount = parseFloat(coupon.discount_value);
+            // }
         }
-
          if(order.referral_id){
             order.referral = {
-                coupon_code: order.referral_code,
-                coupon_value: order.referral_value,
-                coupon_type: order.referral_value_type,
-                coupon_discount: order.referral_discount || 0
+                coupon_code: orders.referral_code,
+                coupon_value: orders.referral_value,
+                coupon_type: orders.referral_value_type,
+                coupon_discount: Math.floor((orders.referral_discount || 0) * 100) / 100
             }
          }
          if(order.coupon){
             order.referral = {
-                coupon_code: order.coupon_code,
-                coupon_value: order.coupon_value,
-                coupon_type: order.coupon_type,
-                coupon_discount: order.coupon_discount || 0
+                coupon_code: orders.coupon_code,
+                coupon_value: orders.coupon_value,
+                coupon_type: orders.coupon_type,
+                coupon_discount: Math.floor((orders.coupon_discount || 0) * 100) / 100
             }
          }
         
@@ -829,7 +827,7 @@ module.exports.getOrderById = async (req, res) => {
                 phone: user.phone,
                 receive_promotions: user.receive_promotions
             },
-            order: order,
+            order: orders,
             referral: order.referral,
         }, 'Order fetched successfully', 200);
 
