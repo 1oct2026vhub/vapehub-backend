@@ -334,6 +334,7 @@ const referFriend = async (req, res, next) => {
             const referralLink = `${process.env.FRONTEND_URL}/?referral_code=${referral_code}`;
             const referralValue = referralMethod ? referralMethod.referral_value : '0';
             const referralValueType = referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '';
+            const poundsymbol = referralMethod ? referralMethod.referral_value_type === 'fixed' ? '£' : '' : '';
             const data = {
                 emailTypes: constants.emailTypes.REFER_A_FRIEND,
                 to: email,
@@ -344,7 +345,7 @@ const referFriend = async (req, res, next) => {
                     referralValue: referralMethod ? referralMethod.referral_value : '0',
                     referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
                     emailContent1: "Just when you thought your friend hasn't gifted you in a while, well here you have it! You have been invited to shop at VapeHub",
-                    emailContent2: referralMethod ? `and you've got a ${referralValue}${referralValueType} discount waiting for you! Use the coupon code below to claim your offer.` : ''
+                    emailContent2: referralMethod ? `and you've got a ${poundsymbol}${referralValue}${referralValueType} discount waiting for you! Use the coupon code below to claim your offer.` : ''
                 },
                 attachments: ""
             };
