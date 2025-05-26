@@ -339,7 +339,7 @@ module.exports.placeOrder = async (req, res, next) => {
                 coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
-                    if (!userUsedCoupon) {
+                    if (!userUsedCoupon || !coupon.is_single_use) {
                         let discount_type = 0;
                         if(coupon.discount_type === "percentage"){
                             discount_type = coupon.discount_type;
