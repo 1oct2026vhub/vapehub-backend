@@ -379,7 +379,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             referral_value: referral_value,
             referral_value_type
         }
-        successResponse(res, resObj, 'Success');
+        successResponse(res, resObj, 'Coupon Applied Successfully');
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);

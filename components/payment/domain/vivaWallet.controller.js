@@ -152,12 +152,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         }
                     }
                     if (order.coupon_id) {
-                        // First check if user has already used this coupon
-                        const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id: order.user_id,  coupon_id: order.coupon_id }, defaults: { order_id: order.id } });
-                        // Only update coupon usage count if this is a new usage
-                        if (created) {
-                            await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
-                        }
+                        await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
                     }
                     // Clear the user's cart
                     await Cart.destroy({ 
