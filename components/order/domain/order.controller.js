@@ -260,6 +260,7 @@ module.exports.placeOrder = async (req, res, next) => {
         let referral_flag = false;
         let referralId = null;
         let discountType = null;
+        let coupon_count_flag = false;
         if (couponCode) {
             const referral = await Referral.findOne({
                 where: {
@@ -352,6 +353,7 @@ module.exports.placeOrder = async (req, res, next) => {
                         calculatedTotal = Math.max(0, subTotal - discount);
                         discountType = discount_type;
                         referralDiscount = discount;
+                        coupon_count_flag = true;
                     }
                 }
             }
@@ -453,7 +455,6 @@ module.exports.placeOrder = async (req, res, next) => {
                     throw new Error('No response data from Worldpay');
                 }
 
-                // console.log("Worldpay Response:", worldpayResponse.data);
             } catch (error) {
                 console.error("Worldpay Error:", error.response?.data || error.message);
                 throw new Error(error.response?.data?.message || 'Failed to process payment with Worldpay');
@@ -467,7 +468,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // Create Order
         const order = await Order.create({
             user_id,
-            coupon_id: coupon && (!userUsedCoupon || !coupon.is_single_use) ? coupon.id : null,
+            coupon_id: coupon && coupon_count_flag ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
             // shipping_address_id: 0,
@@ -486,15 +487,14 @@ module.exports.placeOrder = async (req, res, next) => {
             referral_id: referralId
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
-
-        if (coupon) {
+        // if (coupon && coupon_count_flag) {
             // First check if user has already used this coupon
-            const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
+            // const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
             // Only update coupon usage count if this is a new usage
-            if (created) {
-                await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
-            }
-        }
+            // if (!userUsedCoupon || !coupon.is_single_use) {
+                // await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
+            // }
+        // }
         if(couponCode && referral_flag){
             try {
                 // First find the referral to ensure it exists and is not locked
@@ -1556,20 +1556,28 @@ module.exports.checkOrderStock = async (req, res) => {
 
 module.exports.orderCode = async (req, res) => {
     try {
-        const orderCode = req.params.orderCode;
-        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
-        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
-        const orderDetails = await axios({
-                    method: "GET",
-                    url: `https://demo.vivapayments.com/api/orders/${orderCode}`,
-                    
-                    headers: {
-                      "Authorization": "Basic " + credentials,
-                    }
+        const orderInstance = await Order.findOne({
+            where: { id: req.params.orderCode }
         });
-        res.json(orderDetails.data)
+
+        if (orderInstance) {
+            // Update using instance method to trigger hooks
+            await orderInstance.update({ status: "delivered" });
+        }
+        // const orderCode = req.params.orderCode;
+        // var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        // var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
+        // // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
+        // var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        // const orderDetails = await axios({
+        //             method: "GET",
+        //             url: `https://demo.vivapayments.com/api/orders/${orderCode}`,
+                    
+        //             headers: {
+        //               "Authorization": "Basic " + credentials,
+        //             }
+        // });
+        // res.json(orderDetails.data)
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
