@@ -248,7 +248,7 @@ module.exports.register = async (req, res, next) => {
                     status: 'pending',
                     referred_user_id: user.id,
                     points_awarded: 10,
-                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : '',
+                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
                     referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
                     minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
                     maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
