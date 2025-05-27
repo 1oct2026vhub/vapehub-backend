@@ -467,7 +467,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // Create Order
         const order = await Order.create({
             user_id,
-            coupon_id: coupon && !userUsedCoupon ? coupon.id : null,
+            coupon_id: coupon && (!userUsedCoupon || !coupon.is_single_use) ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
             // shipping_address_id: 0,
