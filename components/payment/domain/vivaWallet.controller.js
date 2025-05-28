@@ -2,7 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
 const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, sequelize } = require("../../../models");
 const { Op } = require('sequelize');
-const logger = require("../../../library/logger");
+const logger = require("../../../utils/logger");
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
@@ -152,12 +152,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         }
                     }
                     if (order.coupon_id) {
-                        // First check if user has already used this coupon
-                        const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id: order.user_id,  coupon_id: order.coupon_id }, defaults: { order_id: order.id } });
-                        // Only update coupon usage count if this is a new usage
-                        if (created) {
-                            await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
-                        }
+                        await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
                     }
                     // Clear the user's cart
                     await Cart.destroy({ 
@@ -175,7 +170,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             include: [{
                                 model: User,
                                 as: 'referrer',
-                                attributes: ['id', 'referral_points']
+                                attributes: ['id', 'referral_points', 'email']
                             }]
                         });
                         
@@ -184,13 +179,67 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             await referral.update({
                                 status: 'completed'
                             });
+
+                            // Get the referral method to get discount details
+                            const referralMethod = await sequelize.models.ReferralMethod.findOne({
+                                where: { 
+                                    primary: true, 
+                                    status: 'active',
+                                    refer_type: 'referrer'
+                                }
+                            });
+
+                            const discountText = referralMethod.referral_value_type === 'percentage' 
+                                ? `${referralMethod.referral_value}%` 
+                                : `£${referralMethod.referral_value}`;
+
+                            // Send email to referrer about their reward
+                            const referrerEmail = referral.referrer.email;
+                            const username = referrerEmail.split('@')[0];
+                            const data = {
+                                emailTypes: 'REFERRER_REWARD',
+                                to: referrerEmail,
+                                context: {
+                                    userName: username,
+                                    referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                    token: referral.referral_coupon_code,
+                                    referralValue: referralMethod.referral_value,
+                                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                    emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                    emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                },
+                                referralMethod: referralMethod,
+                                attachments: ""
+                            };
+                            
+                            // Log email data
+                            logger.logInfo({
+                                type: 'referral_reward_email',
+                                data: {
+                                    emailTypes: 'REFERRER_REWARD',
+                                    to: referrerEmail,
+                                    context: {
+                                        userName: username,
+                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                        token: referral.referral_coupon_code,
+                                        referralValue: referralMethod.referral_value,
+                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                    },
+                                    attachments: ""
+                                }
+                            });
+
+                            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
                             // Create notification for referrer
                             await createNotification({
                                 userId: referral.referrer_id,
                                 type: 'system',
                                 action: 'alert',
                                 data: {
-                                    message: `You have a new referral code waiting to be claimed`
+                                    message: `You have a new referral code ${referral.referral_coupon_code} with ${discountText} discount waiting to be claimed`
                                 },
                                 title: 'Referral',
                                 url: '/my-account/referrals'
@@ -332,6 +381,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             shippingMethod: order.shippingMethod.shipping_method,
                             shippingCost: order.shipping_cost,
                             totalAmount: order.total,
+                            discountPrice: order.discount_price || 0,
                             items: order.orderItems.map(item => ({
                                 name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
                                 quantity: item.quantity,

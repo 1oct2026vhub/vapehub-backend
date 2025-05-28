@@ -7,14 +7,16 @@ class ReferralMethodController {
   // Add new referral method
   async add(req, res) {
     try {
-      const { referral_value_type, referral_value, status, primary, refer_type } = req.body;
+      const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
 
       const referralMethod = await ReferralMethodHelper.create({
         referral_value_type,
         referral_value,
         status,
         primary,
-        refer_type
+        refer_type,
+        minimum_purchase,
+        maximum_purchase
       });
 
       return successResponse(res, {
@@ -32,7 +34,7 @@ class ReferralMethodController {
   async edit(req, res) {
     try {
       const { id } = req.params;
-      const { referral_value_type, referral_value, status, primary } = req.body;
+      const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
 
       const referralMethod = await ReferralMethodHelper.findById(id);
       if (!referralMethod) {
@@ -44,7 +46,10 @@ class ReferralMethodController {
         referral_value_type,
         referral_value,
         status,
-        primary
+        primary,
+        refer_type,
+        minimum_purchase,
+        maximum_purchase
       });
 
       return successResponse(res, {

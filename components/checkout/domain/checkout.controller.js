@@ -239,10 +239,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                             message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
                         }
                     }
-                    console.log("referral.maximum_purchase>>>>", referral.maximum_purchase);
-                    console.log("total>>>>", total);
-                    console.log("referral.maximum_purchase type>>>>", typeof parseFloat(referral.maximum_purchase), parseFloat(referral.maximum_purchase));
-                    console.log("total type>>>>", typeof total);
                     
                     // Check maximum purchase limit
                     if (referral.maximum_purchase !== null && referral.maximum_purchase !== undefined && parseFloat(referral.maximum_purchase) > 0 && parseFloat(total) > parseFloat(referral.maximum_purchase)) {
@@ -295,7 +291,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                     total = Math.max(0, total - referralDiscount);
                 }
                 coupon = referral.referral_coupon_code;
-                referral_value = referralValue;
+                referral_value = parseFloat(referralValue);
                 referral_value_type = referralValueType;
             } 
             else {
@@ -308,6 +304,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
                 }); 
+
                 if (!coupon) {
                     throw {
                         statusCode: 404,
@@ -319,70 +316,70 @@ module.exports.applyCoupon = async (req, res, next) => {
                     where: { user_id: userId, coupon_id: coupon.id }
                 });
 
-                //isSingleUse
-                // if (coupon.is_single_use) {
-                if (userUsedCoupon) {
+                // Check if coupon is single use and has been used by this user
+                if (coupon.is_single_use && userUsedCoupon) {
                     throw {
                         statusCode: 400,
                         message: 'You have already used this coupon.'
                     }
                 }
-            
-        // }
 
                 // Check usage limit
-                if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit) ) {
+                if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {
                     throw {
                         statusCode: 400,
                         message: 'Coupon usage limit reached'
                     }
                 }
-        
+
                 // Check minimum purchase requirement
                 if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
                     throw {
                         statusCode: 400,
                         message: `Coupon requires a minimum purchase of £${coupon.minimum_purchase}.`
                     }
-                }      
+                }
 
-                //calculate discount
+                // Calculate discount
                 let discount = 0;
                 let discount_type = '';
-                if(!userUsedCoupon){
-                    if (coupon.discount_type === "percentage") {
-                        discount = (coupon.discount_value / 100) * subTotal;
-                        discount_type = 'percentage';
-                    } else if (coupon.discount_type === "fixed_amount") {
-                        discount = coupon.discount_value;
-                        discount_type = 'fixed';
-                    }
-                    if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                        discount = coupon.maximum_discount;
-                    }
-                    if(parseFloat(discount) > parseFloat(subTotal)){
-                        discount = coupon.maximum_discount
-                    }
-                    total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
-                    referral_value = discount;
-                    referral_value_type = discount_type;
+                if (coupon.discount_type === "percentage") {
+                    discount = (coupon.discount_value / 100) * subTotal;
+                    discount_type = 'percentage';
+                } else if (coupon.discount_type === "fixed_amount") {
+                    discount = coupon.discount_value;
+                    discount_type = 'fixed';
                 }
+
+                // Apply maximum discount limit if set
+                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                    discount = coupon.maximum_discount;
+                }
+
+                // Ensure discount doesn't exceed subtotal
+                if (parseFloat(discount) > parseFloat(subTotal)) {
+                    discount = subTotal;
+                }
+                total = Math.max(0, subTotal - discount); // Ensure total doesn't go negative
+                referral_value = parseFloat(discount);
+                referral_value_type = discount_type;
             }
 
         }
         
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+        referral_value = Math.floor(referral_value * 100) / 100
         const resObj = {
             totalItems,
             shippingCost,
             subTotal,
             total,
             coupon,
-            referral_value,
+            referral_value: referral_value,
             referral_value_type
         }
-        successResponse(res, resObj, 'Success');
+        successResponse(res, resObj, 'Coupon Applied Successfully');
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
