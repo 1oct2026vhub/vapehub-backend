@@ -873,6 +873,17 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
+        
+        // Log error details
+        logger.logError({
+            type: 'viva_wallet_webhook_error',
+            data: {
+                error: error.message,
+                stack: error.stack,
+                timestamp: new Date().toISOString()
+            }
+        });
+
         return errorResponse(res, error, 'Failed to process webhook');
     }
 };
