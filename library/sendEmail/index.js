@@ -58,6 +58,16 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // Ensure email templates directory exists
         const templatesDir = path.join(__dirname, '../../emailTemplates');
         const templateDir = path.join(templatesDir, emailConfig.folderName);
+        // Log email configuration and data
+        utilsLogger.logInfo({
+            type: 'email_config',
+            data: {
+                templatesDir,
+                templateDir,
+                folderName:emailConfig.folderName,
+                timestamp: new Date().toISOString()
+            }
+        });
         try {
             // Check if template directory exists
             await fs.access(templateDir);
@@ -124,6 +134,24 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 data: {
                     error: error.message,
                     emailType,
+                    templateDir,
+                    textPath,
+                    htmlPath,
+                    context: context,
+                    partials: {
+                        footer: path.join(templatesDir, 'partials/footer.hbs'),
+                        header: path.join(templatesDir, 'partials/header.hbs')
+                    },
+                    templateStructure: {
+                        mainTemplate: emailConfig.folderName,
+                        partialsDir: path.join(templatesDir, 'partials'),
+                        exists: {
+                            textTemplate: fs.existsSync(textPath),
+                            htmlTemplate: fs.existsSync(htmlPath),
+                            footerPartial: fs.existsSync(path.join(templatesDir, 'partials/footer.hbs')),
+                            headerPartial: fs.existsSync(path.join(templatesDir, 'partials/header.hbs'))
+                        }
+                    },
                     timestamp: new Date().toISOString()
                 }
             });
