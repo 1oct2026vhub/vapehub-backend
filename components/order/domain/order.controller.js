@@ -358,7 +358,7 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        
+        console.log("userUsedCoupon>>>>",userUsedCoupon);
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -1279,6 +1279,9 @@ module.exports.cancelOrder = async (req, res) => {
                 id: orderId,
                 user_id: userId
             },
+            include: [
+                { model: User, as: 'user' },
+            ],
             transaction
         });
 
@@ -1319,6 +1322,23 @@ module.exports.cancelOrder = async (req, res) => {
             },
             url: '/my-account/orders'
         });
+
+        // Send cancellation email
+        const emailData = {
+            emailTypes: 'ORDER_CANCELLATION',
+            to: order.email,
+            context: {
+                userName: order.user?.first_name || order.email.split('@')[0],
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                orderDate: order.createdAt.toLocaleDateString(),
+                status: 'cancelled',
+                reason: 'Cancelled via Viva Wallet'
+            }
+        };
+
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
 
         await transaction.commit();
 

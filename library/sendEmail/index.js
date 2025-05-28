@@ -44,44 +44,14 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             data.attachments = attachments
         }
 
-        // Log email configuration and data
-        utilsLogger.logInfo({
-            type: 'email_config',
-            data: {
-                emailType,
-                emailConfig,
-                data,
-                timestamp: new Date().toISOString()
-            }
-        });
-
         // Ensure email templates directory exists
         const templatesDir = path.join(__dirname, '../../emailTemplates');
         const templateDir = path.join(templatesDir, emailConfig.folderName);
-        // Log email configuration and data
-        utilsLogger.logInfo({
-            type: 'email_config',
-            data: {
-                templatesDir,
-                templateDir,
-                folderName:emailConfig.folderName,
-                timestamp: new Date().toISOString()
-            }
-        });
         try {
             // Check if template directory exists
             await fs.access(templateDir);
         } catch (error) {
             logger.error(`Email template directory not found: ${templateDir}`);
-            utilsLogger.logError({
-                type: 'email_template_error',
-                data: {
-                    error: error.message,
-                    emailType,
-                    templateDir,
-                    timestamp: new Date().toISOString()
-                }
-            });
             throw {
                 message: "Email template directory not found",
                 status: 500,
@@ -93,25 +63,9 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
-        utilsLogger.logInfo({
-            type: 'sending_email',
-            data: {
-                textPath,
-                htmlPath,
-                
-            }
-        });
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
-            utilsLogger.logInfo({
-                type: 'sending_email',
-                data: {
-                    text,
-                    html,
-                    
-                }
-            });
 
             data.text = Handlebars.compile(text)({ 
                 ...context, 
@@ -126,18 +80,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 currentYear: new Date().getFullYear()
             });
 
-            // Log email sending attempt
-            utilsLogger.logInfo({
-                type: 'sending_email',
-                data: {
-                    to,
-                    emailType,
-                    subject: data.subject,
-                    templateDir: emailConfig.folderName,
-                    timestamp: new Date().toISOString()
-                }
-            });
-
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);
@@ -146,18 +88,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             }
         } catch (error) {
             logger.error(`Error reading email templates: ${error.message}`);
-            utilsLogger.logError({
-                type: 'email_template_read_error',
-                data: {
-                    error: error.message,
-                    emailType,
-                    templateDir,
-                    textPath,
-                    htmlPath,
-                    context: context,
-                    timestamp: new Date().toISOString()
-                }
-            });
             throw {
                 message: "Error reading email templates",
                 status: 500,
@@ -167,15 +97,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         }
     } catch (error) {
         logger.error(`Error in sendEmail: ${error.message}`);
-        utilsLogger.logError({
-            type: 'email_send_error',
-            data: {
-                error: error.message,
-                emailType,
-                to,
-                timestamp: new Date().toISOString()
-            }
-        });
         throw error;
     }
 }
