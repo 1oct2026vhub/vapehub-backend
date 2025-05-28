@@ -332,7 +332,6 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
         // Get access token and business unit ID
         const accessToken = await getAccessToken();
         const businessUnitId = await findBusinessUnitId(accessToken);
-        // console.log("businessUnitId>>>>",businessUnitId);
 
         // Build query parameters
         const queryParams = {
@@ -455,35 +454,40 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
     }
 };
 
+
+
 /**
- * Get all Trustpilot reviews using private API endpoint
+ * Get Trustpilot product reviews
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
-module.exports.getAllTrustpilotReviews = async (req, res, next) => {
+module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
     try {
-        const { page = 1, per_page = 100 } = req.query;
+        const { 
+            page = 1, 
+            per_page = 10
+        } = req.query;
         
-        // Get access token
+        // Get access token and business unit ID
         const accessToken = await getAccessToken();
-        
-        // Get business unit ID
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Log the API request
         logger.logInfo({
             type: 'trustpilot_api_request',
-            endpoint: 'getAllReviews',
+            endpoint: 'getReviewSummaries',
             businessUnitId,
-            page,
-            per_page,
-            timestamp: new Date().toISOString()
+            requestDetails: {
+                page,
+                per_page,
+                timestamp: new Date().toISOString()
+            }
         });
 
-        // Make API request to get all reviews using private endpoint
+        // Get review summaries from Trustpilot API
         const response = await axios.get(
-            `https://api.trustpilot.com/v1/private/business-units/${businessUnitId}/reviews`,
+            `https://api.trustpilot.com/v1/private/product-reviews/business-units/${businessUnitId}/summaries`,
             {
                 params: {
                     page,
@@ -495,59 +499,239 @@ module.exports.getAllTrustpilotReviews = async (req, res, next) => {
                 }
             }
         );
-
-        // Process and format the reviews
-        const reviews = response.data.reviews.map(review => ({
-            id: review.id,
-            stars: review.stars,
-            title: review.title,
-            text: review.text,
-            createdAt: review.createdAt,
-            consumer: {
-                displayName: review.consumer.displayName,
-                email: review.consumer.email,
-                id: review.consumer.id
-            },
-            reply: review.reply ? {
-                message: review.reply.message,
-                createdAt: review.reply.createdAt
-            } : null,
-            status: review.status,
-            language: review.language,
-            ratingCategory: review.stars < 2 ? 'poor' : 
-                          review.stars >= 2 && review.stars < 4 ? 'good' :
-                          review.stars >= 4 && review.stars < 5 ? 'excellent' : 'outstanding'
-        }));
-
-        // Log successful response
+        // Log the API response
         logger.logInfo({
             type: 'trustpilot_api_response',
-            endpoint: 'getAllReviews',
-            totalReviews: response.data.total,
-            page,
-            per_page,
-            timestamp: new Date().toISOString()
+            endpoint: 'getReviewSummaries',
+            responseData: {
+                totalSummaries: response.data.summaries?.length || 0,
+                page,
+                per_page,
+                timestamp: new Date().toISOString()
+            }
         });
 
+        // If no summaries found, return empty response
+        if (!response.data.summaries || response.data.summaries.length === 0) {
+            return successResponse(res, {
+                summaries: [],
+                pagination: {
+                    total: 0,
+                    page: parseInt(page),
+                    per_page: parseInt(per_page)
+                }
+            }, 'No review summaries found');
+        }
+
+        // Process review summaries
+        const processedSummaries = response.data.summaries.map(summary => ({
+            id: summary.id,
+            name: summary.name,
+            sku: summary.sku,
+            brand: summary.brand,
+            numberOfReviews: {
+                total: summary.numberOfReviews?.total || 0,
+                oneStar: summary.numberOfReviews?.oneStar || 0,
+                twoStars: summary.numberOfReviews?.twoStars || 0,
+                threeStars: summary.numberOfReviews?.threeStars || 0,
+                fourStars: summary.numberOfReviews?.fourStars || 0,
+                fiveStars: summary.numberOfReviews?.fiveStars || 0
+            },
+            score: {
+                stars: summary.score?.stars || 0,
+                trustScore: summary.score?.trustScore || 0
+            }
+        }));
+
         return successResponse(res, {
-            reviews,
+            summaries: processedSummaries,
             pagination: {
-                total: response.data.total,
+                total: response.data.total || 0,
                 page: parseInt(page),
                 per_page: parseInt(per_page)
             }
-        }, 'Successfully retrieved all reviews');
+        }, 'Successfully retrieved review summaries');
 
     } catch (error) {
         // Log error
         logger.logError({
             type: 'trustpilot_api_error',
-            endpoint: 'getAllReviews',
+            endpoint: 'getReviewSummaries',
             error: error.message,
             stack: error.stack,
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data,
             timestamp: new Date().toISOString()
         });
 
-        return errorResponse(res, error, error.message || 'Failed to fetch reviews');
+        // Handle specific error cases
+        if (error.response) {
+            switch (error.response.status) {
+                case 404:
+                    return successResponse(res, {
+                        summaries: [],
+                        pagination: {
+                            total: 0,
+                            page: parseInt(req.query.page || 1),
+                            per_page: parseInt(req.query.per_page || 10)
+                        }
+                    }, 'No review summaries found');
+                case 401:
+                    return errorResponse(res, { message: 'Invalid Trustpilot API credentials' }, 'Authentication failed', 401);
+                case 403:
+                    return errorResponse(res, { message: 'Access to review summaries is forbidden' }, 'Access forbidden', 403);
+                case 400:
+                    return errorResponse(res, error.response.data || { message: 'Bad request' }, 'Bad request', 400);
+                default:
+                    return errorResponse(res, error.response.data || error.message, 'Failed to fetch review summaries', error.response.status);
+            }
+        }
+
+        return errorResponse(res, error, error.message || 'Failed to fetch review summaries');
+    }
+};
+
+module.exports.getTrustpilotProductReviews = async (req, res, next) => {
+    try {
+        const { 
+            page = 1, 
+            per_page = 10,
+            sku,
+            productUrl,
+            language,
+            stars,
+            locale,
+            attributeIds,
+            hasAttachments
+        } = req.query;
+        
+        // Get access token and business unit ID
+        const accessToken = await getAccessToken();
+        const businessUnitId = await findBusinessUnitId(accessToken);
+
+        // Log the API request
+        logger.logInfo({
+            type: 'trustpilot_api_request',
+            endpoint: 'getProductReviews',
+            businessUnitId,
+            requestDetails: {
+                page,
+                per_page,
+                sku,
+                productUrl,
+                language,
+                stars,
+                locale,
+                attributeIds,
+                hasAttachments,
+                timestamp: new Date().toISOString()
+            }
+        });
+
+        // Build query parameters
+        const queryParams = {
+            page,
+            perPage: per_page
+        };
+
+        // Add optional parameters if provided
+        if (sku) {
+            try {
+                const skuArray = JSON.parse(sku);
+                // queryParams['sku[]'] = Array.isArray(skuArray) ? skuArray : [sku];
+                queryParams['sku'] = sku;
+            } catch (e) {
+                // queryParams['sku[]'] = [sku];
+                queryParams['sku'] = sku;
+            }
+        }
+        // Get reviews from Trustpilot API
+        const response = await axios.get(
+            `https://api.trustpilot.com/v1/product-reviews/business-units/${businessUnitId}/reviews`,
+            {
+                params: queryParams,
+                headers: {
+                    'apikey': process.env.TRUSTPILOT_API_KEY,
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            }
+        );
+        
+        // Check if we have productReviews in the response
+        if (!response.data || !response.data.productReviews || !Array.isArray(response.data.productReviews)) {
+            return successResponse(res, {
+                reviews: [],
+                pagination: {
+                    total: 0,
+                    page: parseInt(page),
+                    per_page: parseInt(per_page)
+                }
+            }, 'No product reviews found');
+        }
+
+
+        // Process reviews
+        const processedReviews = response.data.productReviews.map(review => ({
+            id: review.id,
+            stars: review.stars,
+            title: review.title,
+            text: review.content,
+            createdAt: review.createdAt,
+            consumer: {
+                displayName: review.consumer?.displayName
+            },
+            language: review.language,
+            locale: review.locale,
+            hasAttachments: review.attachments?.length > 0,
+            attributes: review.attributeRatings || []
+        }));
+
+        return successResponse(res, {
+            reviews: processedReviews,
+            pagination: {
+                total: response.data.productReviews.length || 0,
+                page: parseInt(page),
+                per_page: parseInt(per_page)
+            }
+        }, 'Successfully retrieved product reviews');
+
+    } catch (error) {
+        // Log error
+        logger.logError({
+            type: 'trustpilot_api_error',
+            endpoint: 'getProductReviews',
+            error: error.message,
+            stack: error.stack,
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data,
+            timestamp: new Date().toISOString()
+        });
+
+        // Handle specific error cases
+        if (error.response) {
+            switch (error.response.status) {
+                case 404:
+                    return successResponse(res, {
+                        reviews: [],
+                        pagination: {
+                            total: 0,
+                            page: parseInt(req.query.page || 1),
+                            per_page: parseInt(req.query.per_page || 10)
+                        }
+                    }, 'No product reviews found');
+                case 401:
+                    return errorResponse(res, { message: 'Invalid Trustpilot API credentials' }, 'Authentication failed', 401);
+                case 403:
+                    return errorResponse(res, { message: 'Access to product reviews is forbidden' }, 'Access forbidden', 403);
+                case 400:
+                    return errorResponse(res, error.response.data || { message: 'Bad request' }, 'Bad request', 400);
+                default:
+                    return errorResponse(res, error.response.data || error.message, 'Failed to fetch product reviews', error.response.status);
+            }
+        }
+
+        return errorResponse(res, error, error.message || 'Failed to fetch product reviews');
     }
 };
