@@ -3,6 +3,7 @@ module.exports = {
         REGISTER: 'REGISTER',
         FORGOT_PASSWORD: 'FORGOT_PASSWORD',
         REFER_A_FRIEND: 'REFER_A_FRIEND',
+        REFERRER_REWARD: 'REFERRER_REWARD',
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
@@ -21,6 +22,11 @@ module.exports = {
         REFER_A_FRIEND: {
             folderName: 'refer_a_friend',
             subject: 'Invite Your Friends to Join | VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        REFERRER_REWARD: {
+            folderName: 'referrer_reward',
+            subject: 'Your Referral Reward is Ready! | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         ORDER_CONFIRMATION:{

@@ -153,7 +153,6 @@ async function sendInvitation(order, user) {
                 // productSkus: order.productDetails ? order.productDetails.map(item => item.sku || item.product_id) : []
             }
         };
-        
         const response = await axios.post(
             `${baseUrl}/${businessUnitId}/email-invitations`,
             invitationData,
@@ -165,7 +164,6 @@ async function sendInvitation(order, user) {
                 }
             }
         );
-        
         logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${order.status}`);
         return response.data;
     } catch (error) {
