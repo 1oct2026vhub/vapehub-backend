@@ -10,7 +10,9 @@ const {
     getDealByIdValidation,
     getDealsByProductValidation,
     deleteDealValidation,
-    restoreDealValidation
+    restoreDealValidation,
+    addProductsToDealValidation,
+    addProductToDealsValidation
 } = require("../helper/deals.validator");
 
 /**
@@ -31,6 +33,9 @@ const {
  *         name:
  *           type: string
  *           description: Name of the deal
+ *         slug:
+ *           type: string
+ *           description: URL-friendly version of the deal name
  *         deal_type:
  *           type: string
  *           enum: [BUY_N_FOR_FIXED, BUY_X_GET_Y_FREE, BUY_MORE_SAVE_MORE, BUNDLE, QUANTITY_DISCOUNT]
@@ -292,5 +297,91 @@ router.patch('/:id/restore', [authMiddleware(true), validateRequest(restoreDealV
  *         description: Unauthorized
  */
 router.get('/types', [authMiddleware(true)], dealsController.getDealTypes);
+
+/**
+ * @swagger
+ * /api/admin/deals/{id}/products:
+ *   post:
+ *     summary: Add products to a deal
+ *     tags: 
+ *       - Admin
+ *          - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the deal
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - product_ids
+ *             properties:
+ *               product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of product IDs to add to the deal
+ *     responses:
+ *       200:
+ *         description: Products added to deal successfully
+ *       400:
+ *         description: Invalid input data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Deal not found
+ */
+router.post('/:id/products', [authMiddleware(true), validateRequest(addProductsToDealValidation)], dealsController.addProductsToDeal);
+
+/**
+ * @swagger
+ * /api/admin/deals/product/{productId}:
+ *   post:
+ *     summary: Add a product to multiple deals
+ *     tags: 
+ *       - Admin
+ *          - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the product to add to deals
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - deal_ids
+ *             properties:
+ *               deal_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of deal IDs to add the product to
+ *     responses:
+ *       200:
+ *         description: Product added to deals successfully
+ *       400:
+ *         description: Invalid input data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Product not found
+ */
+router.post('/product/:productId', [authMiddleware(true), validateRequest(addProductToDealsValidation)], dealsController.addProductToDeals);
 
 module.exports = router; 

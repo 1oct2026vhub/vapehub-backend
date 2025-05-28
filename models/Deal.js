@@ -2,14 +2,13 @@
 const { Model } = require('sequelize');
 const { DEAL_TYPE_ENUMS } = require('../config/constants');
 const SlugManager = require('../utils/slugManager');
-const { SlugRelation } = require('../models');
 
 module.exports = (sequelize, DataTypes) => {
     class Deal extends Model {
         static associate(models) {
             // Define associations here
             Deal.belongsToMany(models.Product, {
-                through: 'deal_products',
+                through: models.DealProduct,
                 foreignKey: 'deal_id',
                 otherKey: 'product_id',
                 as: 'products'
@@ -136,25 +135,7 @@ module.exports = (sequelize, DataTypes) => {
                 fields: ['slug'],
                 unique: true
             }
-        ],
-        hooks: {
-            beforeCreate: async (deal) => {
-                const slugManager = new SlugManager(SlugRelation);
-                const slug = await slugManager.createOrUpdateSlug(deal.name, 'deal', deal.id);
-                deal.slug = slug.slug;
-            },
-            beforeUpdate: async (deal) => {
-                if (deal.changed('name')) {
-                    const slugManager = new SlugManager(SlugRelation);
-                    const slug = await slugManager.createOrUpdateSlug(deal.name, 'deal', deal.id);
-                    deal.slug = slug.slug;
-                }
-            },
-            afterDestroy: async (deal) => {
-                const slugManager = new SlugManager(SlugRelation);
-                await slugManager.deleteSlug('deal', deal.id);
-            }
-        }
+        ]
     });
 
     return Deal;
