@@ -211,24 +211,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 attachments: ""
                             };
                             
-                            // Log email data
-                            logger.logInfo({
-                                type: 'referral_reward_email',
-                                data: {
-                                    emailTypes: 'REFERRER_REWARD',
-                                    to: referrerEmail,
-                                    context: {
-                                        userName: username,
-                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
-                                        token: referral.referral_coupon_code,
-                                        referralValue: referralMethod.referral_value,
-                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
-                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
-                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
-                                    },
-                                    attachments: ""
-                                }
-                            });
+                            // // Log email data
+                            // logger.logInfo({
+                            //     type: 'referral_reward_email',
+                            //     data: {
+                            //         emailTypes: 'REFERRER_REWARD',
+                            //         to: referrerEmail,
+                            //         context: {
+                            //             userName: username,
+                            //             referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                            //             token: referral.referral_coupon_code,
+                            //             referralValue: referralMethod.referral_value,
+                            //             referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                            //             emailContent1: "Congratulations! Your referral has made their first purchase.",
+                            //             emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                            //         },
+                            //         attachments: ""
+                            //     }
+                            // });
 
                             await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
