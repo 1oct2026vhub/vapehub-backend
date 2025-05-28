@@ -124,6 +124,24 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 data: {
                     error: error.message,
                     emailType,
+                    templateDir,
+                    textPath,
+                    htmlPath,
+                    context: context,
+                    partials: {
+                        footer: path.join(templatesDir, 'partials/footer.hbs'),
+                        header: path.join(templatesDir, 'partials/header.hbs')
+                    },
+                    templateStructure: {
+                        mainTemplate: emailConfig.folderName,
+                        partialsDir: path.join(templatesDir, 'partials'),
+                        exists: {
+                            textTemplate: fs.existsSync(textPath),
+                            htmlTemplate: fs.existsSync(htmlPath),
+                            footerPartial: fs.existsSync(path.join(templatesDir, 'partials/footer.hbs')),
+                            headerPartial: fs.existsSync(path.join(templatesDir, 'partials/header.hbs'))
+                        }
+                    },
                     timestamp: new Date().toISOString()
                 }
             });
