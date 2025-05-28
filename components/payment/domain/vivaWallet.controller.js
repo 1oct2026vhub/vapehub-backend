@@ -170,7 +170,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             include: [{
                                 model: User,
                                 as: 'referrer',
-                                attributes: ['id', 'referral_points']
+                                attributes: ['id', 'referral_points', 'email']
                             }]
                         });
                         
@@ -179,13 +179,66 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             await referral.update({
                                 status: 'completed'
                             });
+
+                            // Get the referral method to get discount details
+                            const referralMethod = await sequelize.models.ReferralMethod.findOne({
+                                where: { 
+                                    primary: true, 
+                                    status: 'active',
+                                    refer_type: 'referrer'
+                                }
+                            });
+
+                            const discountText = referralMethod.referral_value_type === 'percentage' 
+                                ? `${referralMethod.referral_value}%` 
+                                : `£${referralMethod.referral_value}`;
+
+                            // Send email to referrer about their reward
+                            const referrerEmail = referral.referrer.email;
+                            const username = referrerEmail.split('@')[0];
+                            const data = {
+                                emailTypes: 'REFERRER_REWARD',
+                                to: referrerEmail,
+                                context: {
+                                    userName: username,
+                                    referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                    token: referral.referral_coupon_code,
+                                    referralValue: referralMethod.referral_value,
+                                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                    emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                    emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                },
+                                attachments: ""
+                            };
+                            
+                            // Log email data
+                            logger.logInfo({
+                                type: 'referral_reward_email',
+                                data: {
+                                    emailTypes: 'REFERRER_REWARD',
+                                    to: referrerEmail,
+                                    context: {
+                                        userName: username,
+                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                        token: referral.referral_coupon_code,
+                                        referralValue: referralMethod.referral_value,
+                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                    },
+                                    attachments: ""
+                                }
+                            });
+
+                            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
                             // Create notification for referrer
                             await createNotification({
                                 userId: referral.referrer_id,
                                 type: 'system',
                                 action: 'alert',
                                 data: {
-                                    message: `You have a new referral code waiting to be claimed`
+                                    message: `You have a new referral code ${referral.referral_coupon_code} with ${discountText} discount waiting to be claimed`
                                 },
                                 title: 'Referral',
                                 url: '/my-account/referrals'
