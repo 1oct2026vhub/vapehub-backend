@@ -189,17 +189,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 }
                             });
 
-                            // Log referral method found
-                            logger.logInfo({
-                                type: 'referral_method_found',
-                                data: {
-                                    referralMethodId: referralMethod.id,
-                                    referralValue: referralMethod.referral_value,
-                                    referralValueType: referralMethod.referral_value_type,
-                                    timestamp: new Date().toISOString()
-                                }
-                            });
-
                             const discountText = referralMethod.referral_value_type === 'percentage' 
                                 ? `${referralMethod.referral_value}%` 
                                 : `£${referralMethod.referral_value}`;
@@ -207,17 +196,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             // Send email to referrer about their reward
                             const referrerEmail = referral.referrer.email;
                             const username = referrerEmail.split('@')[0];
-
-                            // Log referrer details
-                            logger.logInfo({
-                                type: 'referrer_details',
-                                data: {
-                                    referrerId: referral.referrer_id,
-                                    referrerEmail: referrerEmail,
-                                    username: username,
-                                    timestamp: new Date().toISOString()
-                                }
-                            });
 
                             const data = {
                                 emailTypes: 'REFERRER_REWARD',
@@ -234,50 +212,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 referralMethod: referralMethod,
                                 attachments: ""
                             };
-
-                            // Log email data prepared
-                            logger.logInfo({
-                                type: 'email_data_prepared',
-                                data: {
-                                    emailType: data.emailTypes,
-                                    to: data.to,
-                                    token: data.context.token,
-                                    discountText: discountText,
-                                    timestamp: new Date().toISOString()
-                                }
-                            });
                             
-                            // Log email data
-                            logger.logInfo({
-                                type: 'referral_reward_email',
-                                data: {
-                                    emailTypes: 'REFERRER_REWARD',
-                                    to: referrerEmail,
-                                    context: {
-                                        userName: username,
-                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
-                                        token: referral.referral_coupon_code,
-                                        referralValue: referralMethod.referral_value,
-                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
-                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
-                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
-                                    },
-                                    attachments: ""
-                                }
-                            });
-
-                            // Log before sending email
-                            logger.logInfo({
-                                type: 'sending_referral_reward_email',
-                                data: {
-                                    to: data.to,
-                                    emailType: data.emailTypes,
-                                    referralId: referral.id,
-                                    orderId: order.id,
-                                    timestamp: new Date().toISOString()
-                                }
-                            });
-
                             await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
                             // Create notification for referrer
@@ -920,27 +855,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
-        
-        // Log error details
-        logger.logError({
-            type: 'viva_wallet_webhook_error',
-            data: {
-                error: error.message,
-                stack: error.stack,
-                name: error.name,
-                code: error.code,
-                status: error.status,
-                webhookData: req.body,
-                timestamp: new Date().toISOString(),
-                path: req.path,
-                method: req.method,
-                headers: {
-                    'content-type': req.headers['content-type'],
-                    'user-agent': req.headers['user-agent']
-                }
-            }
-        });
-
         return errorResponse(res, error, 'Failed to process webhook');
     }
 };
