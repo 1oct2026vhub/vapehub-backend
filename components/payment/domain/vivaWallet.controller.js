@@ -2,7 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
 const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, sequelize } = require("../../../models");
 const { Op } = require('sequelize');
-const logger = require("../../../library/logger");
+const logger = require("../../../utils/logger");
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
@@ -208,27 +208,28 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                     emailContent1: "Congratulations! Your referral has made their first purchase.",
                                     emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
                                 },
+                                referralMethod: referralMethod,
                                 attachments: ""
                             };
                             
-                            // // Log email data
-                            // logger.logInfo({
-                            //     type: 'referral_reward_email',
-                            //     data: {
-                            //         emailTypes: 'REFERRER_REWARD',
-                            //         to: referrerEmail,
-                            //         context: {
-                            //             userName: username,
-                            //             referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
-                            //             token: referral.referral_coupon_code,
-                            //             referralValue: referralMethod.referral_value,
-                            //             referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
-                            //             emailContent1: "Congratulations! Your referral has made their first purchase.",
-                            //             emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
-                            //         },
-                            //         attachments: ""
-                            //     }
-                            // });
+                            // Log email data
+                            logger.logInfo({
+                                type: 'referral_reward_email',
+                                data: {
+                                    emailTypes: 'REFERRER_REWARD',
+                                    to: referrerEmail,
+                                    context: {
+                                        userName: username,
+                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                        token: referral.referral_coupon_code,
+                                        referralValue: referralMethod.referral_value,
+                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                    },
+                                    attachments: ""
+                                }
+                            });
 
                             await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
