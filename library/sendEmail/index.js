@@ -58,6 +58,16 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // Ensure email templates directory exists
         const templatesDir = path.join(__dirname, '../../emailTemplates');
         const templateDir = path.join(templatesDir, emailConfig.folderName);
+        // Log email configuration and data
+        utilsLogger.logInfo({
+            type: 'email_config',
+            data: {
+                templatesDir,
+                templateDir,
+                folderName:emailConfig.folderName,
+                timestamp: new Date().toISOString()
+            }
+        });
         try {
             // Check if template directory exists
             await fs.access(templateDir);
