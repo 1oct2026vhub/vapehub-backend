@@ -93,9 +93,26 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
+        utilsLogger.logInfo({
+            type: 'sending_email',
+            data: {
+                textPath,
+                htmlPath,
+                
+            }
+        });
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
+            utilsLogger.logInfo({
+                type: 'sending_email',
+                data: {
+                    text,
+                    html,
+                    
+                }
+            });
+
             data.text = Handlebars.compile(text)({ 
                 ...context, 
                 host: process.env.HOST_URL, 
@@ -138,20 +155,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                     textPath,
                     htmlPath,
                     context: context,
-                    partials: {
-                        footer: path.join(templatesDir, 'partials/footer.hbs'),
-                        header: path.join(templatesDir, 'partials/header.hbs')
-                    },
-                    templateStructure: {
-                        mainTemplate: emailConfig.folderName,
-                        partialsDir: path.join(templatesDir, 'partials'),
-                        exists: {
-                            textTemplate: fs.existsSync(textPath),
-                            htmlTemplate: fs.existsSync(htmlPath),
-                            footerPartial: fs.existsSync(path.join(templatesDir, 'partials/footer.hbs')),
-                            headerPartial: fs.existsSync(path.join(templatesDir, 'partials/header.hbs'))
-                        }
-                    },
                     timestamp: new Date().toISOString()
                 }
             });
