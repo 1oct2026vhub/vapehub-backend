@@ -304,7 +304,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                         end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
                 }); 
-
+                console.log("new Date()>>>>", new Date());
+                console.log("coupon>>>>", coupon);
                 if (!coupon) {
                     throw {
                         statusCode: 404,

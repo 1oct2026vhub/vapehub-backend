@@ -358,7 +358,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        console.log("userUsedCoupon>>>>",userUsedCoupon);
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -559,7 +558,6 @@ module.exports.placeOrder = async (req, res, next) => {
             //       },
             // });
     
-            // console.log("Payment Successful:", response.data);
         // }
         // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
@@ -1434,7 +1432,6 @@ module.exports.checkOrderStock = async (req, res) => {
             }, 'Order cancelled due to insufficient stock', 400);
         }
         // const accessToken = await getVivaAccessToken();
-        // console.log(accessToken);  // https://demo.vivapayments.com/api/orders/{orderCode}
         // const response = await axios.patch(
         //     `${process.env.VIVA_API_BASE_3}/api/orders/${order.order_code}`,
         //     {
@@ -1444,12 +1441,10 @@ module.exports.checkOrderStock = async (req, res) => {
         //         }
         //     }
         // );
-        // console.log("response>>>>",response);
         // const transactionData = response.data;
         
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
@@ -1459,7 +1454,6 @@ module.exports.checkOrderStock = async (req, res) => {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        // console.log("orderDetails>>>>>", orderDetails)
         // Check if order state indicates cancellation (StateId 1 or 2)
         if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
             // Update order status to cancelled
@@ -1486,9 +1480,7 @@ module.exports.checkOrderStock = async (req, res) => {
             }, 'Order cancelled due to Viva Wallet state', 400);
         }
         //   const accessToken = await getVivaAccessToken();
-        //   console.log("accessToken>>>>>", accessToken)
         //   orderCode = await createVivaOrder(accessToken,order.total);
-        //   console.log("orderCode>>>>>", orderCode)
 //         var code = resp.data.Key;
 //         const resps = await axios({
 //             method: "PATCH",
@@ -1498,7 +1490,6 @@ module.exports.checkOrderStock = async (req, res) => {
 //               "Content-Type": "application/json"
 //             }
 // });
-// console.log("resps>>>>>", resps)
         await transaction.commit();
 
         return successResponse(res, {
@@ -1582,12 +1573,11 @@ module.exports.orderCode = async (req, res) => {
 
         // if (orderInstance) {
         //     // Update using instance method to trigger hooks
-        //     await orderInstance.update({ status: "delivered" });
+        //     await orderInstance.update({ status: "processing" });
         // }
         const orderCode = req.params.orderCode;
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
@@ -1597,7 +1587,7 @@ module.exports.orderCode = async (req, res) => {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        res.json(orderDetails.data)
+        res.json("sucess")
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
