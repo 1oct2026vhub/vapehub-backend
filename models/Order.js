@@ -120,6 +120,79 @@ module.exports = (sequelize, DataTypes) => {
         if (instance.changed('status')) {
           const newStatus = instance.status;
           
+          // Check stock levels when order status changes to processing
+          if (newStatus === 'processing') {
+            try {
+              // Get order items with variants
+              const orderItems = await sequelize.models.OrderItem.findAll({
+                where: { order_id: instance.id },
+                include: [{
+                  model: sequelize.models.ProductVariant,
+                  as: 'variant',
+                  attributes: ['id', 'stock', 'low_stock_threshold', 'stock_status', 'barcode', 'slug'],
+                  include: [{
+                    model: sequelize.models.Product,
+                    as: 'product',
+                    attributes: ['id', 'name', 'slug']
+                  }]
+                }]
+              });
+
+              // Check stock levels and create notifications
+              for (const item of orderItems) {
+                if (item.variant) {
+                  const variant = item.variant;
+                  const remainingStock = variant.stock - item.quantity;
+
+                  // Check for out of stock after this order
+                  if (remainingStock <= 0) {
+                    await sequelize.models.Notification.create({
+                      type: 'system',
+                      action: 'alert',
+                      title: 'Product Out of Stock',
+                      message: `Product "${variant.product.name}" (${variant.barcode}) - Variant: ${variant.slug} will be out of stock after processing order #${instance.order_unique_id}`,
+                      related_id: variant.product.id,
+                      url: `/admin/products/${variant.product.slug}?variant=${variant.slug}`,
+                      is_admin: true,
+                      data: {
+                        productId: variant.product.id,
+                        productSlug: variant.product.slug,
+                        variantId: variant.id,
+                        variantSlug: variant.slug,
+                        orderId: instance.id,
+                        remainingStock: 0
+                      }
+                    });
+                  }
+                  // Check for low stock threshold
+                  if (remainingStock <= variant.low_stock_threshold) {
+                    await sequelize.models.Notification.create({
+                      type: 'system',
+                      action: 'alert',
+                      title: 'Low Stock Alert',
+                      message: `Product "${variant.product.name}" (${variant.barcode}) - Variant: ${variant.slug} will have low stock (${remainingStock} units) after processing order #${instance.order_unique_id}`,
+                      related_id: variant.product.id,
+                      url: `/admin/products/${variant.product.slug}?variant=${variant.slug}`,
+                      is_admin: true,
+                      data: {
+                        productId: variant.product.id,
+                        productSlug: variant.product.slug,
+                        variantId: variant.id,
+                        variantSlug: variant.slug,
+                        orderId: instance.id,
+                        remainingStock: remainingStock,
+                        threshold: variant.low_stock_threshold
+                      }
+                    });
+                  }
+                }
+              }
+            } catch (stockError) {
+              logger.error('Error checking stock levels:', stockError);
+              // Continue with the order status update even if stock check fails
+            }
+          }
+
           // Send Trustpilot invitation for both delivered and completed statuses
           if (newStatus === 'delivered' || newStatus === 'completed') {
             try {
