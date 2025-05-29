@@ -5,6 +5,7 @@ const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
 const { formatNumber } = require('../../../../utils/dateUtils');
+const { createNotification } = require('../../../notification/helper/notification.helper');
 
 module.exports.listAllOrders = async (req, res, next) => {
     try {
@@ -301,7 +302,13 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         const { status } = req.body;
         const user_id = req?.user?.id;
 
-        const order = await Order.findByPk(id);
+        const order = await Order.findByPk(id, {
+            include: [{
+                model: User,
+                as: 'user',
+                attributes: ['id', 'first_name', 'last_name', 'email']
+            }]
+        });
         if (!order) {
             const error = new Error('Order not found');
             error.statusCode = 404;
@@ -322,6 +329,18 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         }, {
             isAdmin: true,  // Since this is in admin controller
             userId: user_id // Pass the user ID for logging
+        });
+
+        // Create notification for order status change
+        await createNotification({
+            userId: order.user_id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `Your order #${order.order_unique_id} status has been updated to ${status}`
+            },
+            title: 'Order Status Updated',
+            url: `/my-account/orders/${order.id}`
         });
 
         // Handle stock updates for cancelled orders
