@@ -11,6 +11,15 @@ module.exports.createDeal = async (req, res, next) => {
     try {
         const dealData = req.body;
         
+        // Validate bundle product IDs if deal type is BUNDLE
+        if (dealData.deal_type === DEAL_TYPES.BUNDLE) {
+            if (!dealData.bundle_product_ids_json || !Array.isArray(dealData.bundle_product_ids_json) || dealData.bundle_product_ids_json.length === 0) {
+                const error = new Error('Bundle deals must have at least one product ID');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+        
         // Create the deal first
         const deal = await Deal.create(dealData, { transaction });
         
@@ -51,6 +60,15 @@ module.exports.updateDeal = async (req, res, next) => {
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
+        }
+
+        // Validate bundle product IDs if deal type is BUNDLE
+        if (dealData.deal_type === DEAL_TYPES.BUNDLE || (deal.deal_type === DEAL_TYPES.BUNDLE && !dealData.deal_type)) {
+            if (!dealData.bundle_product_ids_json || !Array.isArray(dealData.bundle_product_ids_json) || dealData.bundle_product_ids_json.length === 0) {
+                const error = new Error('Bundle deals must have at least one product ID');
+                error.statusCode = 400;
+                throw error;
+            }
         }
 
         // Update the deal

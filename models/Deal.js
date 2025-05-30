@@ -88,6 +88,24 @@ module.exports = (sequelize, DataTypes) => {
                 }
             }
         },
+        bundle_product_ids_json: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            validate: {
+                isValidBundleProducts(value) {
+                    if (value && !Array.isArray(value)) {
+                        throw new Error('bundle_product_ids_json must be an array');
+                    }
+                    if (value) {
+                        value.forEach(id => {
+                            if (!Number.isInteger(id) || id <= 0) {
+                                throw new Error('Each product ID must be a positive integer');
+                            }
+                        });
+                    }
+                }
+            }
+        },
         is_active: {
             type: DataTypes.BOOLEAN,
             defaultValue: true

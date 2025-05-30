@@ -60,6 +60,19 @@ const createDealValidation = [
         })
         .withMessage('Invalid tiered quantity format'),
 
+    body('bundle_product_ids_json')
+        .optional()
+        .isArray()
+        .withMessage('Bundle product IDs must be an array')
+        .custom((value) => {
+            if (!Array.isArray(value)) return true;
+            return value.every(id => 
+                Number.isInteger(id) && 
+                id > 0
+            );
+        })
+        .withMessage('All bundle product IDs must be positive integers'),
+
     body('is_active')
         .optional()
         .isBoolean()
@@ -139,6 +152,19 @@ const updateDealValidation = [
             );
         })
         .withMessage('Invalid tiered quantity format'),
+
+    body('bundle_product_ids_json')
+        .optional()
+        .isArray()
+        .withMessage('Bundle product IDs must be an array')
+        .custom((value) => {
+            if (!Array.isArray(value)) return true;
+            return value.every(id => 
+                Number.isInteger(id) && 
+                id > 0
+            );
+        })
+        .withMessage('All bundle product IDs must be positive integers'),
 
     body('is_active')
         .optional()
