@@ -291,13 +291,14 @@ module.exports.placeOrder = async (req, res, next) => {
                     }
                 } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
                     // For completed status, get values from referral method
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  //primary true means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  //primary true means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
@@ -324,16 +325,17 @@ module.exports.placeOrder = async (req, res, next) => {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * subTotal 
                         : referralValue;
-                    
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    referral_flag = true;
+                    referralId = referral.id;
                 }
                 else{
                     referralDiscount = 0;
                 }
-                referral_flag = true;
-                referralId = referral.id;
+                // referral_flag = true;
+                // referralId = referral.id;
                 discountType = referralValueType;
             }
             else{
@@ -750,13 +752,14 @@ module.exports.getOrderById = async (req, res) => {
                     // }
                 }
                 else if(referral.referrer_id === userId){
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  // means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  // means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if(referralMethod) {
                         orderObj.referral_code = referral.referral_coupon_code;
                         orderObj.referral_value = referralMethod.referral_value;

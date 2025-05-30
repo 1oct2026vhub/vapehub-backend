@@ -33,6 +33,16 @@ const referralMethodController = require('../domain/referralMethod.controller');
  *         primary:
  *           type: boolean
  *           description: Whether this is the primary referral method
+ *         minimum_purchase:
+ *           type: number
+ *           format: float
+ *           description: Minimum purchase amount required to apply referral discount
+ *           minimum: 0
+ *         maximum_purchase:
+ *           type: number
+ *           format: float
+ *           description: Maximum purchase amount for referral discount to apply
+ *           minimum: 0
  */
 
 /**
