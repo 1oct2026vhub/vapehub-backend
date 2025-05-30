@@ -304,13 +304,13 @@ module.exports.placeOrder = async (req, res, next) => {
                         referralValueType = referralMethod.referral_value_type;
 
                         // Check minimum purchase for fixed referral value type
-                        if (referralValueType === 'fixed' && referralMethod.minimum_purchase && calculatedTotal < referralMethod.minimum_purchase) {
+                        if (referralValueType === 'fixed' && parseFloat(referralMethod.minimum_purchase) && parseFloat(calculatedTotal) < parseFloat(referralMethod.minimum_purchase)) {
                             referralValue = 0;
                             referralValueType = 'percentage';
                         }
 
                         // Check maximum purchase for all referral types
-                        if (referralMethod.maximum_purchase && calculatedTotal > referralMethod.maximum_purchase) {
+                        if (parseFloat(referralMethod.maximum_purchase) && parseFloat(calculatedTotal) > parseFloat(referralMethod.maximum_purchase)) {
                             referralValue = 0;
                             referralValueType = 'percentage';
                         }
