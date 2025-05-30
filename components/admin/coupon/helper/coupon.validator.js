@@ -207,8 +207,8 @@ const validateUpdateCoupon = [
 
   body('usage_limit')
     .optional()
-    .isInt({ min: 1 })
-    .withMessage('Usage limit must be a positive integer')
+    .isInt({ min: 0 })
+    .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
         throw new Error('Usage limit must be 1 when is_single_use is true');
