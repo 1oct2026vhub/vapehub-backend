@@ -223,7 +223,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         [Op.in]: ['pending', 'completed']
                     }
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at', 'minimum_purchase', 'maximum_purchase']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at', 'minimum_purchase', 'maximum_purchase', 'referrer_data']
             });
             if (referral) {
                 let referralValue;
@@ -249,13 +249,14 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                 } else if (referral.status === 'completed' && referral.referrer_id === userId) {
                     // For completed status, get values from referral method
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  //primary true means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  //primary true means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
@@ -304,8 +305,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                         end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
                 }); 
-                console.log("new Date()>>>>", new Date());
-                console.log("coupon>>>>", coupon);
                 if (!coupon) {
                     throw {
                         statusCode: 404,

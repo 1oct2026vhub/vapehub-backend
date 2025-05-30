@@ -161,7 +161,8 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
                         const referral = await Referral.findOne({
                             where: {
-                                order_id: order.id,
+                                // order_id: order.id,
+                                id: order.referral_id,
                                 // referred_user_id: order.user_id,
                                 status: {
                                     [Op.in]: ['pending', 'completed']
@@ -181,14 +182,14 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             });
 
                             // Get the referral method to get discount details
-                            const referralMethod = await sequelize.models.ReferralMethod.findOne({
-                                where: { 
-                                    primary: true, 
-                                    status: 'active',
-                                    refer_type: 'referrer'
-                                }
-                            });
-
+                            // const referralMethod = await sequelize.models.ReferralMethod.findOne({
+                            //     where: { 
+                            //         primary: true, 
+                            //         status: 'active',
+                            //         refer_type: 'referrer'
+                            //     }
+                            // });
+                            const referralMethod = referral.referrer_data;
                             const discountText = referralMethod.referral_value_type === 'percentage' 
                                 ? `${referralMethod.referral_value}%` 
                                 : `£${referralMethod.referral_value}`;

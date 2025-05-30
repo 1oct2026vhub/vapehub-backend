@@ -1,12 +1,16 @@
 const { ReferralMethod } = require('../../../../models');
 const { Op } = require('sequelize');
+const { sequelize } = require('../../../../models');
 
 class ReferralMethodHelper {
-  static async unsetExistingPrimaryByReferType(referType) {
-    return await ReferralMethod.update(
-      { primary: false },
-      { where: { primary: true, refer_type: referType } }
-    );
+  static async unsetExistingPrimaryByReferType(referType, transaction = null) {
+    const options = {
+      where: { primary: true, refer_type: referType }
+    };
+    if (transaction) {
+      options.transaction = transaction;
+    }
+    return await ReferralMethod.update({ primary: false }, options);
   }
 
   static async findById(id, options = {}) {
@@ -28,28 +32,38 @@ class ReferralMethodHelper {
   }
 
   static async update(id, data) {
-    const referralMethod = await this.findById(id);
-    if (!referralMethod) {
-      return null;
-    }
-
-    // If setting as primary, first unset any existing primary for the same refer_type
-    if (data.primary) {
-      await this.unsetExistingPrimaryByReferType(referralMethod.refer_type);
-    } else {
-      // If unsetting primary, check if this is the only primary record for this refer_type
-      const primaryCount = await ReferralMethod.count({ 
-        where: { 
-          primary: true,
-          refer_type: referralMethod.refer_type 
-        } 
-      });
-      if (primaryCount <= 1 && referralMethod.primary) {
-        data.primary = true; // Force primary if it's the only primary record for this refer_type
+    const transaction = await sequelize.transaction();
+    try {
+      const referralMethod = await ReferralMethod.findByPk(id, { transaction });
+      if (!referralMethod) {
+        await transaction.rollback();
+        return null;
       }
-    }
 
-    return await referralMethod.update(data);
+      // If setting as primary, first unset any existing primary for the same refer_type
+      if (data.primary) {
+        await this.unsetExistingPrimaryByReferType(referralMethod.refer_type, transaction);
+      } else {
+        // If unsetting primary, check if this is the only primary record for this refer_type
+        const primaryCount = await ReferralMethod.count({ 
+          where: { 
+            primary: true,
+            refer_type: referralMethod.refer_type 
+          },
+          transaction 
+        });
+        if (primaryCount <= 1 && referralMethod.primary) {
+          data.primary = true; // Force primary if it's the only primary record for this refer_type
+        }
+      }
+
+      const updatedMethod = await ReferralMethod.update(data, { where: { id: id }, transaction });
+      await transaction.commit();
+      return updatedMethod;
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 
   static async delete(id) {

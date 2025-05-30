@@ -204,14 +204,31 @@ module.exports.register = async (req, res, next) => {
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
             });
+            // Get active referral method
+            const activeReferrerMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: true,
+                    refer_type: 'referrer'
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
 
             if(referral_method){   //email referral 
                 await Referral.update({
                     referred_user_id: user.id,
-                    referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
-                    referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
-                    minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
-                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
+                    // referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
+                    // referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                    // minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                    // maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null,
+                    // referrer_data: activeReferrerMethod ? {
+                    //     id: activeReferrerMethod.id,
+                    //     referral_value_type: activeReferrerMethod.referral_value_type,
+                    //     referral_value: activeReferrerMethod.referral_value,
+                    //     minimum_purchase: activeReferrerMethod.minimum_purchase,
+                    //     maximum_purchase: activeReferrerMethod.maximum_purchase,
+                    //     refer_type: activeReferrerMethod.refer_type
+                    // } : null
                 }, {
                     where: {
                         email: email,
@@ -251,7 +268,15 @@ module.exports.register = async (req, res, next) => {
                     referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
                     referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
                     minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
-                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null
+                    maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null,
+                    referrer_data: activeReferrerMethod ? {
+                        id: activeReferrerMethod.id,
+                        referral_value_type: activeReferrerMethod.referral_value_type,
+                        referral_value: activeReferrerMethod.referral_value,
+                        minimum_purchase: activeReferrerMethod.minimum_purchase,
+                        maximum_purchase: activeReferrerMethod.maximum_purchase,
+                        refer_type: activeReferrerMethod.refer_type
+                    } : null
                 });
             }
 

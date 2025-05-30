@@ -1,7 +1,7 @@
 const ReferralMethodHelper = require('../helper/referralMethod.helper');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const logger = require("../../../../library/logger");
-
+const { sequelize } = require('../../../../models');
 
 class ReferralMethodController {
   // Add new referral method
@@ -32,12 +32,13 @@ class ReferralMethodController {
 
   // Edit existing referral method
   async edit(req, res) {
+    const transaction = await sequelize.transaction();
     try {
       const { id } = req.params;
       const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
-
       const referralMethod = await ReferralMethodHelper.findById(id);
       if (!referralMethod) {
+        await transaction.rollback();
         logger.warn('Referral method not found for update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
       }
@@ -50,15 +51,25 @@ class ReferralMethodController {
         refer_type,
         minimum_purchase,
         maximum_purchase
-      });
+      }, { transaction });
+
+      await transaction.commit();
+
+      // Fetch the updated method to return complete data
+      const updatedMethodData = await ReferralMethodHelper.findById(id);
 
       return successResponse(res, {
         success: true,
         message: 'Referral method updated successfully',
-        data: updatedMethod
+        data: updatedMethodData
       }, "Referral method updated successfully");
     } catch (error) {
-      logger.error('Error updating referral method', { id: req.params.id, error: error.message, stack: error.stack });
+      await transaction.rollback();
+      logger.error('Error updating referral method', { 
+        id: req.params.id, 
+        error: error.message, 
+        stack: error.stack 
+      });
       return errorResponse(res, error, error.message);
     }
   }
