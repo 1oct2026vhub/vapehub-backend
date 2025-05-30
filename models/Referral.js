@@ -110,6 +110,11 @@ module.exports = (sequelize, DataTypes) => {
                 min: 0
             },
             comment: 'Maximum purchase amount for referral discount to apply'
+        },
+        referrer_data: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            comment: 'Additional data about the referrer at the time of referral'
         }
     }, {
         sequelize,

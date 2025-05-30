@@ -53,17 +53,18 @@ class ReferralMethodController {
         maximum_purchase
       }, { transaction });
 
-
       await transaction.commit();
+
+      // Fetch the updated method to return complete data
+      const updatedMethodData = await ReferralMethodHelper.findById(id);
 
       return successResponse(res, {
         success: true,
         message: 'Referral method updated successfully',
-        data: updatedMethod
+        data: updatedMethodData
       }, "Referral method updated successfully");
     } catch (error) {
-      // await transaction.rollback();
-      console.log("error>>>>>", error);
+      await transaction.rollback();
       logger.error('Error updating referral method', { 
         id: req.params.id, 
         error: error.message, 
