@@ -262,7 +262,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         referralValueType = referralMethod.referral_value_type;
 
                         // Check minimum purchase only for fixed referral value type
-                        if (referralMethod.referral_value_type === 'fixed' && referralMethod.minimum_purchase && total < referralMethod.minimum_purchase) {
+                        if (referralMethod.referral_value_type === 'fixed' && parseFloat(referralMethod.minimum_purchase) && parseFloat(total) < parseFloat(referralMethod.minimum_purchase)) {
                             throw {
                                 statusCode: 400,
                                 message: `Minimum purchase amount of £${referralMethod.minimum_purchase} required to apply this referral discount.`
@@ -270,7 +270,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         }
 
                         // Check maximum purchase for referrer
-                        if (referralMethod.maximum_purchase && total > referralMethod.maximum_purchase) {
+                        if (parseFloat(referralMethod.maximum_purchase) && parseFloat(total) > parseFloat(referralMethod.maximum_purchase)) {
                             throw {
                                 statusCode: 400,
                                 message: `Order total exceeds the maximum purchase limit of £${referralMethod.maximum_purchase} for this referral discount.`
