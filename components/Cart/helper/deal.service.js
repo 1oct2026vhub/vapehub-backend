@@ -21,7 +21,6 @@ class DealService {
                 required: true
             }]
         });
-        
         return deals;
     }
 
@@ -153,7 +152,184 @@ class DealService {
         };
     }
 
-    // ... rest of the methods ...
+    applyBuyXGetYFree(deal, cartItems) {
+        const eligibleItems = cartItems.filter(item => 
+            deal.products.some(p => p.id === item.product_id)
+        );
+
+        if (eligibleItems.length === 0) {
+            return { discount: 0, items: [] };
+        }
+        
+        let totalDiscount = 0;
+        const itemDetails = [];
+
+        for (const item of eligibleItems) {
+            const unitPrice = item.variant ? item.variant.price : item.product.price;
+            const originalSubtotal = unitPrice * item.quantity;
+            
+            // Calculate complete sets and free items
+            const completeSets = Math.floor(item.quantity / (deal.required_qty + deal.get_qty));
+            const freeItems = completeSets * deal.get_qty;
+            const paidItems = item.quantity - freeItems;
+            
+            // Calculate subtotal and discount
+            const dealSubtotal = paidItems * unitPrice;
+            const itemDiscount = originalSubtotal - dealSubtotal;
+            
+            totalDiscount += itemDiscount;
+            itemDetails.push({
+                cart_item_id: item.id,
+                discount: itemDiscount,
+                deal_details: {
+                    product_id: item.product_id,
+                    name: item.product.name,
+                    qty: item.quantity,
+                    unit_price: unitPrice,
+                    deal_applied_qty: paidItems,
+                    non_deal_qty: freeItems,
+                    subtotal: dealSubtotal,
+                    total_discount: itemDiscount,
+                    applied_deals: [`${deal.name} (${completeSets} sets)`]
+                }
+            });
+        }
+        
+        return {
+            discount: totalDiscount,
+            items: itemDetails
+        };
+    }
+
+    applyBuyMoreSaveMore(deal, cartItems) {
+        const eligibleItems = cartItems.filter(item => 
+            deal.products.some(p => p.id === item.product_id)
+        );
+
+        if (eligibleItems.length === 0) {
+            return { discount: 0, items: [] };
+        }
+        
+        const totalQuantity = eligibleItems.reduce((sum, item) => sum + item.quantity, 0);
+        const regularPrice = eligibleItems.reduce((sum, item) => 
+            sum + (item.variant ? item.variant.price : item.product.price) * item.quantity, 0);
+            
+        const applicableTier = deal.tiered_qty_json
+            .sort((a, b) => b.min - a.min)
+            .find(tier => totalQuantity >= tier.min);
+            
+        if (!applicableTier) {
+            return { discount: 0, items: [] };
+        }
+        
+        const discount = regularPrice * (applicableTier.discount / 100);
+        const discountPerItem = discount / totalQuantity;
+
+        return {
+            discount,
+            items: eligibleItems.map(item => ({
+                cart_item_id: item.id,
+                discount: discountPerItem * item.quantity,
+                deal_details: {
+                    product_id: item.product_id,
+                    name: item.product.name,
+                    qty: item.quantity,
+                    unit_price: item.variant ? item.variant.price : item.product.price,
+                    deal_applied_qty: item.quantity,
+                    non_deal_qty: 0,
+                    subtotal: (item.quantity * (item.variant ? item.variant.price : item.product.price)) - (discountPerItem * item.quantity),
+                    total_discount: discountPerItem * item.quantity,
+                    applied_deals: [`${deal.name} (${applicableTier.discount}% off)`]
+                }
+            }))
+        };
+    }
+
+    applyBundle(deal, cartItems) {
+        const bundleProducts = deal.bundle_product_ids_json;
+        if (!bundleProducts || !Array.isArray(bundleProducts)) {
+            return { discount: 0, items: [] };
+        }
+
+        const bundleItems = cartItems.filter(item => 
+            bundleProducts.includes(item.product_id)
+        );
+        
+        if (bundleItems.length !== bundleProducts.length) {
+            return { discount: 0, items: [] };
+        }
+        
+        const regularPrice = bundleItems.reduce((sum, item) => 
+            sum + (item.variant ? item.variant.price : item.product.price) * item.quantity, 0);
+            
+        const discount = regularPrice - deal.fixed_price;
+        const discountPerItem = discount / bundleItems.length;
+
+        return {
+            discount,
+            items: bundleItems.map(item => ({
+                cart_item_id: item.id,
+                discount: discountPerItem,
+                deal_details: {
+                    product_id: item.product_id,
+                    name: item.product.name,
+                    qty: item.quantity,
+                    unit_price: item.variant ? item.variant.price : item.product.price,
+                    deal_applied_qty: item.quantity,
+                    non_deal_qty: 0,
+                    subtotal: (item.quantity * (item.variant ? item.variant.price : item.product.price)) - discountPerItem,
+                    total_discount: discountPerItem,
+                    applied_deals: [`${deal.name}`]
+                }
+            }))
+        };
+    }
+
+    applyQuantityDiscount(deal, cartItems) {
+        const eligibleItems = cartItems.filter(item => 
+            deal.products.some(p => p.id === item.product_id)
+        );
+
+        if (eligibleItems.length === 0) {
+            return { discount: 0, items: [] };
+        }
+
+        let totalDiscount = 0;
+        const itemDiscounts = [];
+        
+        for (const item of eligibleItems) {
+            const applicableTier = deal.tiered_qty_json
+                .sort((a, b) => b.min - a.min)
+                .find(tier => item.quantity >= tier.min);
+                
+            if (!applicableTier) continue;
+            
+            const itemPrice = item.variant ? item.variant.price : item.product.price;
+            const itemDiscount = itemPrice * item.quantity * (applicableTier.discount / 100);
+            
+            totalDiscount += itemDiscount;
+            itemDiscounts.push({
+                cart_item_id: item.id,
+                discount: itemDiscount,
+                deal_details: {
+                    product_id: item.product_id,
+                    name: item.product.name,
+                    qty: item.quantity,
+                    unit_price: itemPrice,
+                    deal_applied_qty: item.quantity,
+                    non_deal_qty: 0,
+                    subtotal: (item.quantity * itemPrice) - itemDiscount,
+                    total_discount: itemDiscount,
+                    applied_deals: [`${deal.name} (${applicableTier.discount}% off)`]
+                }
+            });
+        }
+        
+        return {
+            discount: totalDiscount,
+            items: itemDiscounts
+        };
+    }
 }
 
 module.exports = new DealService();

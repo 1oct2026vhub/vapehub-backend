@@ -109,6 +109,7 @@ module.exports.listCartItems = async (req, res, next) => {
 
         return successResponse(res, response, 'Cart items retrieved successfully');
     } catch (error) {
+        console.log("error", error);
         return errorResponse(res, error, error.message);
     }
 };
