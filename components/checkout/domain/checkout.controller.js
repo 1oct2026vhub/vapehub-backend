@@ -62,6 +62,17 @@ module.exports.checkout = async (req, res, next) => {
             if (!item.variant) {
                 return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
+            // Validate quantity
+            if (item.quantity !== undefined && item.quantity < 1) {
+                throw { message: `Quantity for ${item.product.name} must be at least 1`, statusCode: 400 };
+            }
+            // Check if cart quantity exceeds variant stock
+            if (item.quantity > item.variant.stock) {
+                throw {
+                    statusCode: 400,
+                    message: `Quantity exceeds available stock for ${item.product.name}. Available stock: ${item.variant.stock}`
+                }
+            }
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity
         }
