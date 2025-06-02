@@ -431,14 +431,14 @@ module.exports.placeOrder = async (req, res, next) => {
                             amount: Math.round(calculatedTotal * 100)
                         },
                         description: 'VapeHub Order',
-                        billingAddressName: billing_address.first_name || 'Card Holder',
+                        billingAddressName: billing_address.first_name,
                         billingAddress: {
-                            address1: billing_address.address_line_1 || '221B Baker Street',
-                            address2: billing_address.address_line_2 || 'Marylebone',
-                            address3: billing_address.region || 'Westminster',
-                            postalCode: billing_address.post_code || 'SW1 1AA',
-                            city: billing_address.city || 'London',
-                            state: billing_address.region || 'Greater London',
+                            address1: billing_address.address_line_1,
+                            address2: billing_address.address_line_2,
+                            address3: billing_address.region,
+                            postalCode: billing_address.post_code,
+                            city: billing_address.city,
+                            state: billing_address.region,
                             countryCode: countryCode
                         },
                         // resultURLs: {   //payment-success
