@@ -2,6 +2,7 @@ const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod } = require("../../../models");
 const logger = require("../../../library/logger");
+const moment = require('moment-timezone');
 
 
 
@@ -98,8 +99,8 @@ module.exports.checkout = async (req, res, next) => {
                 where: {
                     code: couponCode,
                     status: "active",
-                    start_date: { [Op.lte]: new Date() },
-                    end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] },
+                    start_date: { [Op.lte]: moment().tz('Europe/London').format() }, // Coupon has started (UK time)
+                    end_date: { [Op.or]: [{ [Op.gte]: moment().tz('Europe/London').format() }, { [Op.is]: null }] }, // Not expired (UK time)
                 }
             });
 
@@ -225,6 +226,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         let coupon = null;
         let referral_value = null;
         let referral_value_type = null;
+        let discount_amount = 0;
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
@@ -294,10 +296,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                 }
                 if (referralValue && !isNaN(referralValue)) {
-                    referralDiscount = referralValueType === 'percentage' 
-                        ? (referralValue / 100) * total 
-                        : referralValue;
-                    
+                    referralDiscount = referralValueType === 'percentage' ? (referralValue / 100) * total : referralValue;
+                    discount_amount = referralDiscount;
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, total);
                     total = Math.max(0, total - referralDiscount);
@@ -312,8 +312,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                     where: {
                         code: couponCode,
                         status: "active",
-                        start_date: { [Op.lte]: new Date() }, // Coupon has started
-                        end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
+                        start_date: { [Op.lte]: moment().tz('Europe/London').format() }, // Coupon has started (UK time)
+                        end_date: { [Op.or]: [{ [Op.gte]: moment().tz('Europe/London').format() }, { [Op.is]: null }] }, // Not expired (UK time)
                 }
                 }); 
                 if (!coupon) {
@@ -355,11 +355,14 @@ module.exports.applyCoupon = async (req, res, next) => {
                 let discount = 0;
                 let discount_type = '';
                 if (coupon.discount_type === "percentage") {
-                    discount = (coupon.discount_value / 100) * subTotal;
+                    // discount = (coupon.discount_value / 100) * subTotal;
+                    discount = coupon.discount_value;
                     discount_type = 'percentage';
+                    discount_amount = (coupon.discount_value / 100) * subTotal;;
                 } else if (coupon.discount_type === "fixed_amount") {
                     discount = coupon.discount_value;
                     discount_type = 'fixed';
+                    discount_amount = coupon.discount_value;
                 }
 
                 // Apply maximum discount limit if set
@@ -381,6 +384,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100
+        discount_amount = Math.floor(discount_amount * 100) / 100
         const resObj = {
             totalItems,
             shippingCost,
@@ -388,7 +392,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             total,
             coupon,
             referral_value: referral_value,
-            referral_value_type
+            referral_value_type,
+            discount_amount
         }
         successResponse(res, resObj, 'Coupon Applied Successfully');
     } catch (error) {
