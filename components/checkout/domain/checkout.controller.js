@@ -79,28 +79,15 @@ module.exports.checkout = async (req, res, next) => {
         }
         
         total = subTotal
-
-        // Process referral discount if referral coupon code is provided
-        // if (referralCouponCode) {
-        //     const referralResult = await processReferralDiscount(referralCouponCode);
-        //     if (referralResult.referral?.ReferralMethod?.referral_value_type === 'percentage') {
-        //         referralPercentage = referralResult.discount;
-        //         referralDiscount = (referralPercentage / 100) * subTotal;
-        //     } else {
-        //         referralDiscount = referralResult.discount;
-        //     }
-        //     referralMessage = referralResult.message;
-        //     total = Math.max(0, total - referralDiscount);
-        // }
-
         // Process regular coupon if provided
         if (couponCode) {
+            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
             const coupon = await Coupon.findOne({
                 where: {
                     code: couponCode,
                     status: "active",
-                    start_date: { [Op.lte]: moment().tz('Europe/London').format() }, // Coupon has started (UK time)
-                    end_date: { [Op.or]: [{ [Op.gte]: moment().tz('Europe/London').format() }, { [Op.is]: null }] }, // Not expired (UK time)
+                    start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
                 }
             });
 
@@ -129,7 +116,7 @@ module.exports.checkout = async (req, res, next) => {
                             validityMessage = 'You have already used this coupon.';
                         }
                     } else {
-                        validityMessage = 'Coupon usage limit reached';
+                        validityMessage = 'This coupon is no longer available — usage limit exceeded.';
                     }
                 } else {
                     validityMessage = `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`;
@@ -308,21 +295,22 @@ module.exports.applyCoupon = async (req, res, next) => {
             } 
             else {
                 // Check if expired
+                const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
                 coupon = await Coupon.findOne({
                     where: {
                         code: couponCode,
                         status: "active",
-                        start_date: { [Op.lte]: moment().tz('Europe/London').format() }, // Coupon has started (UK time)
-                        end_date: { [Op.or]: [{ [Op.gte]: moment().tz('Europe/London').format() }, { [Op.is]: null }] }, // Not expired (UK time)
+                        start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                        end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
                 }
                 }); 
+
                 if (!coupon) {
                     throw {
                         statusCode: 404,
                         message: 'Invalid or expired coupon code'
                     }
                 }
-
                 const userUsedCoupon = await CouponUsage.findOne({
                     where: { user_id: userId, coupon_id: coupon.id }
                 });
@@ -339,7 +327,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {
                     throw {
                         statusCode: 400,
-                        message: 'Coupon usage limit reached'
+                        message: 'This coupon is no longer available — usage limit exceeded.'
                     }
                 }
 
