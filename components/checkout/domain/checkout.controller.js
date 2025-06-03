@@ -62,6 +62,17 @@ module.exports.checkout = async (req, res, next) => {
             if (!item.variant) {
                 return errorResponse(res, {}, "Variant is missing", 404); // Stop execution immediately
             }
+            // Validate quantity
+            if (item.quantity !== undefined && item.quantity < 1) {
+                throw { message: `Quantity for ${item.product.name} must be at least 1`, statusCode: 400 };
+            }
+            // Check if cart quantity exceeds variant stock
+            if (item.quantity > item.variant.stock) {
+                throw {
+                    statusCode: 400,
+                    message: `Quantity exceeds available stock for ${item.product.name}. Available stock: ${item.variant.stock}`
+                }
+            }
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity
         }
@@ -223,7 +234,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         [Op.in]: ['pending', 'completed']
                     }
                 },
-                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at', 'minimum_purchase', 'maximum_purchase']
+                attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'points_awarded', 'status', 'referral_value', 'referral_value_type', 'referred_user_id', 'created_at', 'updated_at', 'minimum_purchase', 'maximum_purchase', 'referrer_data']
             });
             if (referral) {
                 let referralValue;
@@ -249,19 +260,20 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                 } else if (referral.status === 'completed' && referral.referrer_id === userId) {
                     // For completed status, get values from referral method
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  //primary true means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  //primary true means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
 
                         // Check minimum purchase only for fixed referral value type
-                        if (referralMethod.referral_value_type === 'fixed' && referralMethod.minimum_purchase && total < referralMethod.minimum_purchase) {
+                        if (referralMethod.referral_value_type === 'fixed' && parseFloat(referralMethod.minimum_purchase) && parseFloat(total) < parseFloat(referralMethod.minimum_purchase)) {
                             throw {
                                 statusCode: 400,
                                 message: `Minimum purchase amount of £${referralMethod.minimum_purchase} required to apply this referral discount.`
@@ -269,7 +281,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         }
 
                         // Check maximum purchase for referrer
-                        if (referralMethod.maximum_purchase && total > referralMethod.maximum_purchase) {
+                        if (parseFloat(referralMethod.maximum_purchase) && parseFloat(total) > parseFloat(referralMethod.maximum_purchase)) {
                             throw {
                                 statusCode: 400,
                                 message: `Order total exceeds the maximum purchase limit of £${referralMethod.maximum_purchase} for this referral discount.`
@@ -304,7 +316,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                         end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] }, // Not expired
                 }
                 }); 
-
                 if (!coupon) {
                     throw {
                         statusCode: 404,

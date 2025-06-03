@@ -171,14 +171,16 @@ module.exports.createCart = async (req, res, next) => {
         if (availableStock === 0) {
             return errorResponse(res, {}, `${variant.slug} Out of stock`, 400);
         }
+
         if (quantity > availableStock) {
-            return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
+            return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock. You have ${cartExists.quantity} in your basket.`, 400);
         }
 
         if (cartExists) {
             const addedQuantity = cartExists.quantity + quantity
             if(addedQuantity > availableStock ){
-                throw { message: `Added quantity exceed the limit only ${availableStock} item(s) available in stock`, statusCode: 400 };
+                // throw { message: `Added quantity exceed the limit only ${availableStock} item(s) available in stock`, statusCode: 400 };
+                throw { message: `You cannot add that amount to the basket — we have ${availableStock} in stock and you already have ${cartExists.quantity} in your basket. View basket`, statusCode: 400 };
             }
             // Update existing cart item
             cartExists.quantity = addedQuantity;

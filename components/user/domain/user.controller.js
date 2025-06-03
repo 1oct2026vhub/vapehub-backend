@@ -307,7 +307,7 @@ const referFriend = async (req, res, next) => {
                 primary: true,  //previous is false
                 refer_type: 'referral'  //new
             },
-            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type' ]
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'minimum_purchase', 'maximum_purchase']
         });
 
         // if (!referralMethod) {
@@ -323,11 +323,33 @@ const referFriend = async (req, res, next) => {
                 .toUpperCase();             // Convert to uppercase
             
             const referral_coupon_code =  `${emailHash}${timestamp.slice(-4)}`; // Combine email hash and last 4 chars of timestamp;
+            // Get active referral method
+            const activeReferrerMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: true,
+                    refer_type: 'referrer'
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,
                 referral_code: referral_code,
-                referral_coupon_code: referral_coupon_code
+                referral_coupon_code: referral_coupon_code,
+                status: 'pending',
+                referral_value_type: referralMethod ? referralMethod.referral_value_type : 'percentage',
+                referral_value: referralMethod ? referralMethod.referral_value : '0',
+                minimum_purchase: referralMethod?.refer_type === 'referral' ? referralMethod.minimum_purchase : 0,
+                maximum_purchase: referralMethod?.refer_type === 'referral' ? referralMethod.maximum_purchase : null,
+                referrer_data: activeReferrerMethod ? {
+                    id: activeReferrerMethod.id,
+                    referral_value_type: activeReferrerMethod.referral_value_type,
+                    referral_value: activeReferrerMethod.referral_value,
+                    minimum_purchase: activeReferrerMethod.minimum_purchase,
+                    maximum_purchase: activeReferrerMethod.maximum_purchase,
+                    refer_type: activeReferrerMethod.refer_type
+                } : null
             });
             // Send referral email with coupon code
             const username = email.split('@')[0];
@@ -344,8 +366,18 @@ const referFriend = async (req, res, next) => {
                     token: referral_coupon_code,
                     referralValue: referralMethod ? referralMethod.referral_value : '0',
                     referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
+                    minimumPurchase: referralMethod ? referralMethod.minimum_purchase : '0',
+                    maximumPurchase: referralMethod ? referralMethod.maximum_purchase : null,
                     emailContent1: "Just when you thought your friend hasn't gifted you in a while, well here you have it! You have been invited to shop at VapeHub",
-                    emailContent2: referralMethod ? `and you've got a ${poundsymbol}${referralValue}${referralValueType} discount waiting for you! Use the coupon code below to claim your offer.` : ''
+                    emailContent2: referralMethod ? 
+                        `and you've got a ${poundsymbol}${referralValue}${referralValueType} discount waiting for you!` +
+                        (parseFloat(referralMethod.minimum_purchase) > 0 || parseFloat(referralMethod.maximum_purchase) ? 
+                            ' This coupon can only be applied when your purchase amount is' +
+                            (parseFloat(referralMethod.minimum_purchase) > 0 ? ` at least minimum purchase amount of ${poundsymbol}${referralMethod.minimum_purchase}` : '') +
+                            (parseFloat(referralMethod.minimum_purchase) > 0 && parseFloat(referralMethod.maximum_purchase) ? ' and' : '') +
+                            (parseFloat(referralMethod.maximum_purchase) ? ` up to maximum purchase amount of ${poundsymbol}${referralMethod.maximum_purchase}` : '') +
+                            '.' : '') +
+                        ' Use the coupon code below to claim your offer.' : ''
                 },
                 attachments: ""
             };

@@ -291,25 +291,26 @@ module.exports.placeOrder = async (req, res, next) => {
                     }
                 } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
                     // For completed status, get values from referral method
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  //primary true means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  //primary true means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
 
                         // Check minimum purchase for fixed referral value type
-                        if (referralValueType === 'fixed' && referralMethod.minimum_purchase && calculatedTotal < referralMethod.minimum_purchase) {
+                        if (referralValueType === 'fixed' && parseFloat(referralMethod.minimum_purchase) && parseFloat(calculatedTotal) < parseFloat(referralMethod.minimum_purchase)) {
                             referralValue = 0;
                             referralValueType = 'percentage';
                         }
 
                         // Check maximum purchase for all referral types
-                        if (referralMethod.maximum_purchase && calculatedTotal > referralMethod.maximum_purchase) {
+                        if (parseFloat(referralMethod.maximum_purchase) && parseFloat(calculatedTotal) > parseFloat(referralMethod.maximum_purchase)) {
                             referralValue = 0;
                             referralValueType = 'percentage';
                         }
@@ -324,16 +325,17 @@ module.exports.placeOrder = async (req, res, next) => {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * subTotal 
                         : referralValue;
-                    
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    referral_flag = true;
+                    referralId = referral.id;
                 }
                 else{
                     referralDiscount = 0;
                 }
-                referral_flag = true;
-                referralId = referral.id;
+                // referral_flag = true;
+                // referralId = referral.id;
                 discountType = referralValueType;
             }
             else{
@@ -358,7 +360,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -430,14 +431,14 @@ module.exports.placeOrder = async (req, res, next) => {
                             amount: Math.round(calculatedTotal * 100)
                         },
                         description: 'VapeHub Order',
-                        billingAddressName: billing_address.first_name || 'Card Holder',
+                        billingAddressName: billing_address.first_name,
                         billingAddress: {
-                            address1: billing_address.address_line_1 || '221B Baker Street',
-                            address2: billing_address.address_line_2 || 'Marylebone',
-                            address3: billing_address.region || 'Westminster',
-                            postalCode: billing_address.post_code || 'SW1 1AA',
-                            city: billing_address.city || 'London',
-                            state: billing_address.region || 'Greater London',
+                            address1: billing_address.address_line_1,
+                            address2: billing_address.address_line_2,
+                            address3: billing_address.region,
+                            postalCode: billing_address.post_code,
+                            city: billing_address.city,
+                            state: billing_address.region,
                             countryCode: countryCode
                         },
                         // resultURLs: {   //payment-success
@@ -559,7 +560,6 @@ module.exports.placeOrder = async (req, res, next) => {
             //       },
             // });
     
-            // console.log("Payment Successful:", response.data);
         // }
         // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
@@ -752,13 +752,14 @@ module.exports.getOrderById = async (req, res) => {
                     // }
                 }
                 else if(referral.referrer_id === userId){
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  // means it is referrer person
-                            status: 'active',
-                            refer_type: 'referrer'  //new
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  // means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if(referralMethod) {
                         orderObj.referral_code = referral.referral_coupon_code;
                         orderObj.referral_value = referralMethod.referral_value;
@@ -1279,6 +1280,9 @@ module.exports.cancelOrder = async (req, res) => {
                 id: orderId,
                 user_id: userId
             },
+            include: [
+                { model: User, as: 'user' },
+            ],
             transaction
         });
 
@@ -1319,6 +1323,23 @@ module.exports.cancelOrder = async (req, res) => {
             },
             url: '/my-account/orders'
         });
+
+        // Send cancellation email
+        const emailData = {
+            emailTypes: 'ORDER_CANCELLATION',
+            to: order.email,
+            context: {
+                userName: order.user?.first_name || order.email.split('@')[0],
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                orderDate: order.createdAt.toLocaleDateString(),
+                status: 'cancelled',
+                reason: 'Cancelled via Viva Wallet'
+            }
+        };
+
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
 
         await transaction.commit();
 
@@ -1414,7 +1435,6 @@ module.exports.checkOrderStock = async (req, res) => {
             }, 'Order cancelled due to insufficient stock', 400);
         }
         // const accessToken = await getVivaAccessToken();
-        // console.log(accessToken);  // https://demo.vivapayments.com/api/orders/{orderCode}
         // const response = await axios.patch(
         //     `${process.env.VIVA_API_BASE_3}/api/orders/${order.order_code}`,
         //     {
@@ -1424,12 +1444,10 @@ module.exports.checkOrderStock = async (req, res) => {
         //         }
         //     }
         // );
-        // console.log("response>>>>",response);
         // const transactionData = response.data;
         
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
@@ -1439,7 +1457,6 @@ module.exports.checkOrderStock = async (req, res) => {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        // console.log("orderDetails>>>>>", orderDetails)
         // Check if order state indicates cancellation (StateId 1 or 2)
         if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
             // Update order status to cancelled
@@ -1466,9 +1483,7 @@ module.exports.checkOrderStock = async (req, res) => {
             }, 'Order cancelled due to Viva Wallet state', 400);
         }
         //   const accessToken = await getVivaAccessToken();
-        //   console.log("accessToken>>>>>", accessToken)
         //   orderCode = await createVivaOrder(accessToken,order.total);
-        //   console.log("orderCode>>>>>", orderCode)
 //         var code = resp.data.Key;
 //         const resps = await axios({
 //             method: "PATCH",
@@ -1478,7 +1493,6 @@ module.exports.checkOrderStock = async (req, res) => {
 //               "Content-Type": "application/json"
 //             }
 // });
-// console.log("resps>>>>>", resps)
         await transaction.commit();
 
         return successResponse(res, {
@@ -1562,12 +1576,11 @@ module.exports.orderCode = async (req, res) => {
 
         // if (orderInstance) {
         //     // Update using instance method to trigger hooks
-        //     await orderInstance.update({ status: "delivered" });
+        //     await orderInstance.update({ status: "processing" });
         // }
         const orderCode = req.params.orderCode;
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
@@ -1577,7 +1590,7 @@ module.exports.orderCode = async (req, res) => {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        res.json(orderDetails.data)
+        res.json("sucess")
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
