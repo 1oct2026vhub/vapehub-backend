@@ -29,7 +29,6 @@ class DealService {
         let totalDiscount = 0;
         const appliedDeals = [];
         const itemDiscounts = {};
-
         deals.forEach(deal => {
             const dealResult = this.applyDealLogic(deal, cartItems);
             if (dealResult.discount > 0) {
@@ -50,7 +49,7 @@ class DealService {
                 });
             }
         });
-
+        
         return {
             totalDiscount,
             appliedDeals,
@@ -78,6 +77,7 @@ class DealService {
 
     // Individual deal type implementations
     applyBuyNForFixed(deal, cartItems) {
+        
         const eligibleItems = cartItems.filter(item => 
             deal.products.some(p => p.id === item.product_id)
         );
@@ -106,7 +106,7 @@ class DealService {
             const dealPricePerItem = deal.fixed_price / deal.required_qty;
             const dealSubtotal = (itemsInDealSets * dealPricePerItem) + (remainingQty * unitPrice);
             const itemDiscount = originalSubtotal - dealSubtotal;
-
+          
             return {
                 cart_item_id: item.id,
                 product_id: item.product_id,

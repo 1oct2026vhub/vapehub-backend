@@ -206,9 +206,18 @@ module.exports.placeOrder = async (req, res, next) => {
         const orderItems = [];
         const orderDetails = [];
 
+        // Transform cart items for deals service
+        const transformedCartItems = cartItems.map(item => {
+            const variant = item.product.variants.find(v => v.id === item.variant_id);
+            return {
+                ...item.toJSON(),
+                variant: variant || null
+            };
+        });
+
         // Calculate deals
-        const deals = await dealService.getApplicableDeals(cartItems);
-        const dealResult = dealService.calculateDealDiscounts(cartItems, deals);
+        const deals = await dealService.getApplicableDeals(transformedCartItems);
+        const dealResult = dealService.calculateDealDiscounts(transformedCartItems, deals);
         const dealsDiscount = dealResult.totalDiscount;
         const applicableDeals = dealResult.appliedDeals;
 
@@ -267,7 +276,6 @@ module.exports.placeOrder = async (req, res, next) => {
         let referralDiscount = 0;
         let referralId = null;
         let coupon_count_flag = false;
-
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
