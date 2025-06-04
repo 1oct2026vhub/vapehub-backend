@@ -135,7 +135,7 @@ const validateCreateCoupon = [
 
   body('status')
     .optional()
-    .isIn(['active', 'inactive'])
+    .isIn(['active', 'inactive', 'expired'])
     .withMessage('Invalid status. Must be either active or inactive')
 ];
 
@@ -276,7 +276,7 @@ const validateUpdateCoupon = [
 
   body('status')
     .optional()
-    .isIn(['active', 'inactive'])
+    .isIn(['active', 'inactive', 'expired'])
     .withMessage('Invalid status. Must be either active or inactive')
 ];
 
