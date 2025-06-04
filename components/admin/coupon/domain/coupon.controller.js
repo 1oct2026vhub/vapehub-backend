@@ -123,7 +123,7 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        logger.warn('Coupon not found for update', { couponId: id });
+        logger.warn('Coupon not found for update', { couponId: req.params.id });
         return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
@@ -132,9 +132,12 @@ const couponController = {
         updated_by: req.user.id
       };
 
-      await coupon.update(updateData);
+      await Coupon.update(updateData, { where: { id: req.params.id } });
 
-      return successResponse(res, { coupon }, "Coupon updated successfully");
+      // Fetch the updated coupon data
+      const updatedCoupon = await Coupon.findByPk(req.params.id);
+
+      return successResponse(res, { coupon: updatedCoupon }, "Coupon updated successfully");
     } catch (error) {
       logger.error('Error updating coupon', { 
         error: error.message,
