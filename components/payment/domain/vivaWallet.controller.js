@@ -153,6 +153,14 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     }
                     if (order.coupon_id) {
                         await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
+                        
+                        // Create coupon usage entry
+                        await CouponUsage.create({
+                            user_id: order.user_id,
+                            coupon_id: order.coupon_id,
+                            order_id: order.id,
+                            used_at: new Date()
+                        });
                     }
                     // Clear the user's cart
                     await Cart.destroy({ 
