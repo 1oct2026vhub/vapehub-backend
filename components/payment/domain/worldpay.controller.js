@@ -14,6 +14,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             request_summary: {
                 method: req.method,
                 headers: req.headers,
+                eventData: req.eventDetails,
                 body: req.body
             },
             timestamp: new Date().toISOString()
@@ -188,6 +189,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         });
 
     } catch (error) {
+        console.log(error);
         logger.logError({
             type: 'worldpay_webhook_error',
             message: 'Error processing Worldpay webhook',
