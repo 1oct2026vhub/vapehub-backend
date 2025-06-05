@@ -8,33 +8,33 @@ const crypto = require("crypto");
 
 module.exports.handleWorldpayWebhook = async (req, res) => {
     try {
-        logger.info('Worldpay webhook received', {
-            worldpay_request_method: req.method,
-            headers: req.headers,
-            body: req.body
+        logger.logInfo({
+            type: 'worldpay_webhook_received',
+            message: 'Worldpay webhook received',
+            request_summary: {
+                method: req.method,
+                headers: req.headers,
+                body: req.body
+            },
+            timestamp: new Date().toISOString()
         });
 
         if (req.method === 'POST') {
             const webhookData = req.body;
             // Log webhook event
-            logger.info('Worldpay webhook event details', {
-                event_type: webhookData.eventDetails?.type,
-                transaction_reference: webhookData.eventDetails?.transactionReference,
-                amount: webhookData.eventDetails?.amount?.value,
-                currency: webhookData.eventDetails?.amount?.currencyCode,
-                event_id: webhookData.eventId,
-                event_timestamp: webhookData.eventTimestamp
+            logger.logInfo({
+                type: 'worldpay_webhook_event',
+                message: 'Worldpay webhook event details received',
+                event_summary: {
+                    event_type: webhookData.eventDetails?.type,
+                    transaction_reference: webhookData.eventDetails?.transactionReference,
+                    amount: webhookData.eventDetails?.amount?.value,
+                    currency: webhookData.eventDetails?.amount?.currencyCode,
+                    event_id: webhookData.eventId,
+                    event_timestamp: webhookData.eventTimestamp
+                },
+                timestamp: new Date().toISOString()
             });
-
-            // Verify webhook signature
-            // const signature = req.headers['x-wp-signature'];
-            // if (!verifyWorldpaySignature(signature, webhookData)) {
-            //     logger.warn('Invalid Worldpay webhook signature', {
-            //         signature: signature,
-            //         event_id: webhookData.eventId
-            //     });
-            //     return errorResponse(res, {}, 'Invalid webhook signature', 401);
-            // }
 
             const { eventDetails } = webhookData;
 
@@ -90,18 +90,28 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             });
 
             if (!order) {
-                logger.error('Order not found for Worldpay webhook', {
-                    transaction_reference: eventDetails.transactionReference,
-                    event_id: webhookData.eventId
+                logger.logError({
+                    type: 'worldpay_webhook_order_not_found',
+                    message: 'Order not found for Worldpay webhook',
+                    error_summary: {
+                        transaction_reference: eventDetails.transactionReference,
+                        event_id: webhookData.eventId
+                    },
+                    timestamp: new Date().toISOString()
                 });
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
 
-            logger.info('Processing Worldpay webhook for order', {
-                order_id: order.id,
-                order_code: order.order_code,
-                event_type: eventDetails.type,
-                user_id: order.user_id
+            logger.logInfo({
+                type: 'worldpay_webhook_processing',
+                message: 'Processing Worldpay webhook for order',
+                order_summary: {
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    event_type: eventDetails.type,
+                    user_id: order.user_id
+                },
+                timestamp: new Date().toISOString()
             });
 
             // Handle payment status based on event type
@@ -140,18 +150,28 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     await handleRefundFailed(order, webhookData);
                     break;
                 default:
-                    logger.warn('Unhandled Worldpay payment type', {
-                        event_type: eventDetails.type,
-                        order_id: order.id,
-                        event_id: webhookData.eventId
+                    logger.logInfo({
+                        type: 'worldpay_webhook_unhandled_event',
+                        message: 'Unhandled Worldpay webhook event type',
+                        event_summary: {
+                            event_type: eventDetails.type,
+                            order_id: order.id,
+                            event_id: webhookData.eventId
+                        },
+                        timestamp: new Date().toISOString()
                     });
             }
 
-            logger.info('Worldpay webhook processed successfully', {
-                order_id: order.id,
-                order_code: order.order_code,
-                event_type: eventDetails.type,
-                status: order.status
+            logger.logInfo({
+                type: 'worldpay_webhook_completed',
+                message: 'Worldpay webhook processing completed successfully',
+                completion_summary: {
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    event_type: eventDetails.type,
+                    status: order.status
+                },
+                timestamp: new Date().toISOString()
             });
 
             return successResponse(res, {
@@ -168,10 +188,15 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('Error processing Worldpay webhook', {
-            error: error.message,
-            stack: error.stack,
-            body: req.body
+        logger.logError({
+            type: 'worldpay_webhook_error',
+            message: 'Error processing Worldpay webhook',
+            error_summary: {
+                error: error.message,
+                stack: error.stack,
+                body: req.body
+            },
+            timestamp: new Date().toISOString()
         });
         return errorResponse(res, error, 'Failed to process webhook');
     }
@@ -347,12 +372,12 @@ const handleCancelledPayment = async (order, webhookData) => {
             order_id: order.id,
             user_id: order.user_id,
             status: 'cancel',
-            label: 'Payment Cancelled via Worldpay',
+            label: 'Order Cancelled via Viva Wallet',
             additional_info: JSON.stringify({
                 eventId: webhookData.eventId,
                 eventTimestamp: webhookData.eventTimestamp,
                 eventDate: webhookData.eventDetails.date,
-                transactionReference: webhookData.eventDetails.transactionReference,
+                transactionId: webhookData.eventDetails.transactionReference,
                 downstreamReference: webhookData.eventDetails.downstreamReference,
                 amount: webhookData.eventDetails.amount.value,
                 currency: webhookData.eventDetails.amount.currencyCode,
@@ -384,39 +409,50 @@ const handleCancelledPayment = async (order, webhookData) => {
             }
         }, { transaction });
 
-        // Create cancellation notification
+        // Create notification for cancellation
         await createNotification({
             userId: order.user_id,
-            type: 'payment',
+            type: 'order',
             action: 'cancelled',
             data: {
-                amount: webhookData.eventDetails.amount.value,
-                currency: webhookData.eventDetails.amount.currencyCode,
                 orderId: order.id,
-                relatedId: order.id,
-                reason: 'Payment cancelled by Worldpay',
-                eventId: webhookData.eventId,
-                transactionReference: webhookData.eventDetails.transactionReference
-            }
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                reason: 'Cancelled via Worldpay'
+            },
+            title: 'Order Cancelled',
+            url: '/my-account/orders'
+        });
+
+        // Create admin notification for order cancellation
+        await createNotification({
+            type: 'order',
+            action: 'cancelled',
+            data: {
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                customerEmail: order.user?.email,
+                reason: 'Order cancelled via Worldpay'
+            },
+            title: 'Order Cancellation Alert',
+            url: '/admin/orders',
+            is_admin: true
         });
 
         // Send cancellation email
+        // Send cancellation email
         const emailData = {
-            emailTypes: 'PAYMENT_CANCELLED',
-            to: order.user.email,
+            emailTypes: 'ORDER_CANCELLATION',
+            to: order.email,
             context: {
-                userName: order.user.first_name || order.user.email.split('@')[0],
+                userName: order.user?.first_name || order.email.split('@')[0],
                 orderId: order.id,
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
                 orderDate: order.createdAt.toLocaleDateString(),
                 status: 'cancelled',
-                amount: webhookData.eventDetails.amount.value,
-                currency: webhookData.eventDetails.amount.currencyCode,
-                reason: 'Payment cancelled by Worldpay',
-                eventId: webhookData.eventId,
-                transactionReference: webhookData.eventDetails.transactionReference,
-                eventDate: webhookData.eventDetails.date
+                reason: 'Cancelled via Worldpay'
             }
         };
 
@@ -617,19 +653,29 @@ const handleSentForAuthorization = async (order, webhookData) => {
 const handleAuthorizedPayment = async (order, webhookData) => {
     const transaction = await sequelize.transaction();
     try {
-        logger.info('Processing authorized payment', {
-            order_id: order.id,
-            order_code: order.order_code,
-            amount: webhookData.eventDetails.amount.value,
-            currency: webhookData.eventDetails.amount.currencyCode,
-            event_id: webhookData.eventId
+        logger.logInfo({
+            type: 'worldpay_webhook_authorized_payment',
+            message: 'Processing Worldpay webhook authorized payment',
+            payment_summary: {
+                order_id: order.id,
+                order_code: order.order_code,
+                amount: webhookData.eventDetails.amount.value,
+                currency: webhookData.eventDetails.amount.currencyCode,
+                event_id: webhookData.eventId
+            },
+            timestamp: new Date().toISOString()
         });
 
         // Update order status to processing
         await order.update({ status: 'processing' }, { transaction });
-        logger.info('Order status updated to processing', {
-            order_id: order.id,
-            order_code: order.order_code
+        logger.logInfo({
+            type: 'worldpay_webhook_order_status_update',
+            message: 'Worldpay webhook updated order status to processing',
+            order_summary: {
+                order_id: order.id,
+                order_code: order.order_code
+            },
+            timestamp: new Date().toISOString()
         });
 
         // Create order log for successful payment
@@ -642,7 +688,7 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 eventId: webhookData.eventId,
                 eventTimestamp: webhookData.eventTimestamp,
                 eventDate: webhookData.eventDetails.date,
-                transactionReference: webhookData.eventDetails.transactionReference,
+                transactionId: webhookData.eventDetails.transactionReference,
                 downstreamReference: webhookData.eventDetails.downstreamReference,
                 amount: webhookData.eventDetails.amount.value,
                 currency: webhookData.eventDetails.amount.currencyCode,
@@ -652,9 +698,14 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             })
         }, { transaction });
 
-        logger.info('Processing order items', {
-            order_id: order.id,
-            item_count: order.orderItems.length
+        logger.logInfo({
+            type: 'worldpay_webhook_processing_items',
+            message: 'Processing Worldpay webhook order items',
+            order_summary: {
+                order_id: order.id,
+                item_count: order.orderItems.length
+            },
+            timestamp: new Date().toISOString()
         });
 
         for (const item of order.orderItems) {
@@ -669,10 +720,15 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                         }
                     }
                 );
-                logger.info('Updated variant stock', {
-                    variant_id: item.variant.id,
-                    quantity_reduced: item.quantity,
-                    product_id: item.product_id
+                logger.logInfo({
+                    type: 'worldpay_webhook_variant_stock_update',
+                    message: 'Worldpay webhook updated variant stock',
+                    stock_summary: {
+                        variant_id: item.variant.id,
+                        quantity_reduced: item.quantity,
+                        product_id: item.product_id
+                    },
+                    timestamp: new Date().toISOString()
                 });
             } else {
                 // Update product stock
@@ -685,53 +741,53 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                         }
                     }
                 );
-                logger.info('Updated product stock', {
-                    product_id: item.product_id,
-                    quantity_reduced: item.quantity
+                logger.logInfo({
+                    type: 'worldpay_webhook_product_stock_update',
+                    message: 'Worldpay webhook updated product stock',
+                    stock_summary: {
+                        product_id: item.product_id,
+                        quantity_reduced: item.quantity
+                    },
+                    timestamp: new Date().toISOString()
                 });
             }
         }
 
         if (order.coupon_id) {
-            logger.info('Processing coupon usage', {
-                order_id: order.id,
-                coupon_id: order.coupon_id,
-                user_id: order.user_id
-            });
-
-            // First check if user has already used this coupon
-            const [couponUsage, created] = await CouponUsage.findOrCreate({ 
-                where: { 
-                    user_id: order.user_id,  
-                    coupon_id: order.coupon_id 
-                }, 
-                defaults: { order_id: order.id } 
-            });
-
-            // Only update coupon usage count if this is a new usage
-            if (created) {
-                await Coupon.update(
-                    { usage_count: sequelize.literal("usage_count + 1") }, 
-                    { where: { id: order.coupon_id } }
-                );
-                logger.info('Updated coupon usage count', {
+            logger.logInfo({
+                type: 'worldpay_webhook_coupon_processing',
+                message: 'Processing Worldpay webhook coupon usage',
+                coupon_summary: {
+                    order_id: order.id,
                     coupon_id: order.coupon_id,
-                    usage_created: created
-                });
-            }
+                    user_id: order.user_id
+                },
+                timestamp: new Date().toISOString()
+            });
+
+            await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });       
+            // Create coupon usage entry
+            await CouponUsage.create({user_id: order.user_id, coupon_id: order.coupon_id, order_id: order.id, used_at: new Date()});
         }
 
         // Clear the user's cart
         await Cart.destroy({ 
             where: { user_id: order.user_id }
         });
-        logger.info('Cleared user cart', {
-            user_id: order.user_id
+        logger.logInfo({
+            type: 'worldpay_webhook_cart_clear',
+            message: 'Worldpay webhook cleared user cart',
+            cart_summary: {
+                user_id: order.user_id
+            },
+            timestamp: new Date().toISOString()
         });
 
         const referral = await Referral.findOne({
             where: {
-                order_id: order.id,
+                // order_id: order.id,
+                id: order.referral_id,
+                // referred_user_id: order.user_id,
                 status: {
                     [Op.in]: ['pending', 'completed']
                 }
@@ -739,31 +795,64 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             include: [{
                 model: User,
                 as: 'referrer',
-                attributes: ['id', 'referral_points']
+                attributes: ['id', 'referral_points', 'email']
             }]
         });
         
         if (referral) {
-            logger.info('Processing referral', {
-                referral_id: referral.id,
-                status: referral.status,
-                referrer_id: referral.referrer_id,
-                referred_user_id: referral.referred_user_id
+            logger.logInfo({
+                type: 'worldpay_webhook_referral_processing',
+                message: 'Processing Worldpay webhook referral',
+                referral_summary: {
+                    referral_id: referral.id,
+                    status: referral.status,
+                    referrer_id: referral.referrer_id,
+                    referred_user_id: referral.referred_user_id
+                },
+                timestamp: new Date().toISOString()
             });
         }
 
         if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
-            logger.info('Completing referral', {
-                referral_id: referral.id,
-                referrer_id: referral.referrer_id,
-                referred_user_id: referral.referred_user_id,
-                order_id: order.id
-            });
-
             // Update referral record
             await referral.update({
                 status: 'completed'
             });
+
+            // Get the referral method to get discount details
+            // const referralMethod = await sequelize.models.ReferralMethod.findOne({
+            //     where: { 
+            //         primary: true, 
+            //         status: 'active',
+            //         refer_type: 'referrer'
+            //     }
+            // });
+            const referralMethod = referral.referrer_data;
+            const discountText = referralMethod.referral_value_type === 'percentage' 
+                ? `${referralMethod.referral_value}%` 
+                : `£${referralMethod.referral_value}`;
+
+            // Send email to referrer about their reward
+            const referrerEmail = referral.referrer.email;
+            const username = referrerEmail.split('@')[0];
+
+            const data = {
+                emailTypes: 'REFERRER_REWARD',
+                to: referrerEmail,
+                context: {
+                    userName: username,
+                    referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                    token: referral.referral_coupon_code,
+                    referralValue: referralMethod.referral_value,
+                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                    emailContent1: "Congratulations! Your referral has made their first purchase.",
+                    emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                },
+                referralMethod: referralMethod,
+                attachments: ""
+            };
+            
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
 
             // Create notification for referrer
             await createNotification({
@@ -771,12 +860,11 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 type: 'system',
                 action: 'alert',
                 data: {
-                    message: `You have a new referral code waiting to be claimed`
+                    message: `You have a new referral code ${referral.referral_coupon_code} with ${discountText} discount waiting to be claimed`
                 },
                 title: 'Referral',
                 url: '/my-account/referrals'
             });
-
             // Create notification for admin about successful referral purchase
             await createNotification({
                 type: 'system',
@@ -788,21 +876,8 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 url: '/admin/orders',
                 is_admin: true
             });
-
-            logger.info('Referral completed and notifications sent', {
-                referral_id: referral.id,
-                referrer_id: referral.referrer_id,
-                order_id: order.id
-            });
         }
         else if (referral && referral.status === 'completed' && referral.referrer_id === order.user_id) {
-            logger.info('Processing referral coupon usage', {
-                referral_id: referral.id,
-                referrer_id: referral.referrer_id,
-                order_id: order.id,
-                coupon_code: referral.referral_coupon_code
-            });
-
             // Update referral record
             await referral.update({
                 status: 'applied'
@@ -831,12 +906,6 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 title: 'Referral Coupon Applied',
                 url: `/order-details/${order.id}`
             });
-
-            logger.info('Referral coupon applied and notifications sent', {
-                referral_id: referral.id,
-                referrer_id: referral.referrer_id,
-                order_id: order.id
-            });
         }
 
         // Create successful transaction record
@@ -860,10 +929,15 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             }
         }, { transaction });
 
-        logger.info('Created transaction record', {
-            order_id: order.id,
-            transaction_reference: webhookData.eventDetails.transactionReference,
-            amount: webhookData.eventDetails.amount.value
+        logger.logInfo({
+            type: 'worldpay_webhook_transaction_created',
+            message: 'Worldpay webhook created transaction record',
+            transaction_summary: {
+                order_id: order.id,
+                transaction_reference: webhookData.eventDetails.transactionReference,
+                amount: webhookData.eventDetails.amount.value
+            },
+            timestamp: new Date().toISOString()
         });
 
         // Create success notification
@@ -876,15 +950,44 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 currency: webhookData.eventDetails.amount.currencyCode,
                 orderId: order.id,
                 relatedId: order.id,
-                message: 'Payment completed successfully',
-                eventId: webhookData.eventId,
-                transactionReference: webhookData.eventDetails.transactionReference
-            }
+            },
+            url: '/my-account/orders'
+        });
+        // Create success notification
+        await createNotification({
+            userId: order.user_id,
+            type: 'order',
+            action: 'created',
+            data: {
+                amount: webhookData.eventDetails.amount.value,
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                relatedId: order.id,
+                reason: `Order created via Worldpay`
+            },
+            url: `/order-details/${order.id}`
+        });
+
+        // Create admin notification for new order
+        await createNotification({
+            type: 'order',
+            action: 'created',
+            data: {
+                amount: webhookData.eventDetails.amount.value,
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                customerEmail: order.user.email,
+                relatedId: order.id,
+                reason: `New order placed via Worldpay`
+            },
+            title: 'New Order Placed',
+            url: '/admin/orders',
+            is_admin: true
         });
 
         // Send success email
         const emailData = {
-            emailTypes: 'PAYMENT_SUCCESS',
+            emailTypes: 'ORDER_CONFIRMATION',
             to: order.user.email,
             context: {
                 userName: order.user.first_name || order.user.email.split('@')[0],
@@ -892,35 +995,58 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
                 orderDate: order.createdAt.toLocaleDateString(),
-                status: 'processing',
-                amount: webhookData.eventDetails.amount.value,
-                currency: webhookData.eventDetails.amount.currencyCode,
-                message: 'Payment completed successfully',
-                eventId: webhookData.eventId,
-                transactionReference: webhookData.eventDetails.transactionReference,
-                eventDate: webhookData.eventDetails.date
+                status: order.status,
+                shippingMethod: order.shippingMethod.shipping_method,
+                shippingCost: order.shipping_cost,
+                totalAmount: order.total,
+                discountPrice: order.discount_price || 0,
+                items: order.orderItems.map(item => ({
+                    name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                    quantity: item.quantity,
+                    price: item.unit_price,
+                    total: item.total
+                })),
+                shippingAddress: order.orderShippingAddress,
+                billingAddress: order.orderBillingAddress,
+                paymentMethod: 'Worldpay',
+                transactionId: webhookData.eventDetails.transactionReference
             }
         };
 
         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-        logger.info('Sent success email', {
-            order_id: order.id,
-            user_email: order.user.email
+        logger.logInfo({
+            type: 'worldpay_webhook_email_sent',
+            message: 'Worldpay webhook sent success email',
+            email_summary: {
+                order_id: order.id,
+                user_email: order.user.email
+            },
+            timestamp: new Date().toISOString()
         });
 
         await transaction.commit();
-        logger.info('Payment processing completed successfully', {
-            order_id: order.id,
-            order_code: order.order_code,
-            status: 'processing'
+        logger.logInfo({
+            type: 'worldpay_webhook_processing_completed',
+            message: 'Worldpay webhook payment processing completed successfully',
+            completion_summary: {
+                order_id: order.id,
+                order_code: order.order_code,
+                status: 'processing'
+            },
+            timestamp: new Date().toISOString()
         });
     } catch (error) {
         await transaction.rollback();
-        logger.error('Error processing authorized payment', {
-            error: error.message,
-            stack: error.stack,
-            order_id: order.id,
-            order_code: order.order_code
+        logger.logError({
+            type: 'worldpay_webhook_processing_error',
+            message: 'Error processing Worldpay webhook payment',
+            error_summary: {
+                error: error.message,
+                stack: error.stack,
+                order_id: order.id,
+                order_code: order.order_code
+            },
+            timestamp: new Date().toISOString()
         });
         throw error;
     }
