@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Order, OrderItem, Product, ProductVariant, sequelize } = require("../../../models");
-const logger = require("../../../library/logger");
+const logger = require('../../../utils/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
@@ -8,12 +8,31 @@ const crypto = require("crypto");
 
 module.exports.handleWorldpayWebhook = async (req, res) => {
     try {
+        logger.info('Worldpay webhook received', {
+            worldpay_request_method: req.method,
+            headers: req.headers,
+            body: req.body
+        });
+
         if (req.method === 'POST') {
             const webhookData = req.body;
-            
+            // Log webhook event
+            logger.info('Worldpay webhook event details', {
+                event_type: webhookData.eventDetails?.type,
+                transaction_reference: webhookData.eventDetails?.transactionReference,
+                amount: webhookData.eventDetails?.amount?.value,
+                currency: webhookData.eventDetails?.amount?.currencyCode,
+                event_id: webhookData.eventId,
+                event_timestamp: webhookData.eventTimestamp
+            });
+
             // Verify webhook signature
             // const signature = req.headers['x-wp-signature'];
             // if (!verifyWorldpaySignature(signature, webhookData)) {
+            //     logger.warn('Invalid Worldpay webhook signature', {
+            //         signature: signature,
+            //         event_id: webhookData.eventId
+            //     });
             //     return errorResponse(res, {}, 'Invalid webhook signature', 401);
             // }
 
@@ -71,8 +90,19 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             });
 
             if (!order) {
+                logger.error('Order not found for Worldpay webhook', {
+                    transaction_reference: eventDetails.transactionReference,
+                    event_id: webhookData.eventId
+                });
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
+
+            logger.info('Processing Worldpay webhook for order', {
+                order_id: order.id,
+                order_code: order.order_code,
+                event_type: eventDetails.type,
+                user_id: order.user_id
+            });
 
             // Handle payment status based on event type
             switch (eventDetails.type) {
@@ -110,8 +140,19 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     await handleRefundFailed(order, webhookData);
                     break;
                 default:
-                    logger.warn(`Unhandled payment type: ${eventDetails.type}`);
+                    logger.warn('Unhandled Worldpay payment type', {
+                        event_type: eventDetails.type,
+                        order_id: order.id,
+                        event_id: webhookData.eventId
+                    });
             }
+
+            logger.info('Worldpay webhook processed successfully', {
+                order_id: order.id,
+                order_code: order.order_code,
+                event_type: eventDetails.type,
+                status: order.status
+            });
 
             return successResponse(res, {
                 message: 'Webhook processed successfully',
@@ -127,7 +168,11 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error processing Worldpay webhook:', error);
+        logger.error('Error processing Worldpay webhook', {
+            error: error.message,
+            stack: error.stack,
+            body: req.body
+        });
         return errorResponse(res, error, 'Failed to process webhook');
     }
 };
@@ -572,8 +617,20 @@ const handleSentForAuthorization = async (order, webhookData) => {
 const handleAuthorizedPayment = async (order, webhookData) => {
     const transaction = await sequelize.transaction();
     try {
+        logger.info('Processing authorized payment', {
+            order_id: order.id,
+            order_code: order.order_code,
+            amount: webhookData.eventDetails.amount.value,
+            currency: webhookData.eventDetails.amount.currencyCode,
+            event_id: webhookData.eventId
+        });
+
         // Update order status to processing
         await order.update({ status: 'processing' }, { transaction });
+        logger.info('Order status updated to processing', {
+            order_id: order.id,
+            order_code: order.order_code
+        });
 
         // Create order log for successful payment
         await sequelize.models.OrderLog.create({
@@ -595,6 +652,10 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             })
         }, { transaction });
 
+        logger.info('Processing order items', {
+            order_id: order.id,
+            item_count: order.orderItems.length
+        });
 
         for (const item of order.orderItems) {
             if (item.variant) {
@@ -608,6 +669,11 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                         }
                     }
                 );
+                logger.info('Updated variant stock', {
+                    variant_id: item.variant.id,
+                    quantity_reduced: item.quantity,
+                    product_id: item.product_id
+                });
             } else {
                 // Update product stock
                 await Product.update(
@@ -619,94 +685,159 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                         }
                     }
                 );
+                logger.info('Updated product stock', {
+                    product_id: item.product_id,
+                    quantity_reduced: item.quantity
+                });
             }
         }
+
         if (order.coupon_id) {
+            logger.info('Processing coupon usage', {
+                order_id: order.id,
+                coupon_id: order.coupon_id,
+                user_id: order.user_id
+            });
+
             // First check if user has already used this coupon
-            const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id: order.user_id,  coupon_id: order.coupon_id }, defaults: { order_id: order.id } });
+            const [couponUsage, created] = await CouponUsage.findOrCreate({ 
+                where: { 
+                    user_id: order.user_id,  
+                    coupon_id: order.coupon_id 
+                }, 
+                defaults: { order_id: order.id } 
+            });
+
             // Only update coupon usage count if this is a new usage
             if (created) {
-                await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
+                await Coupon.update(
+                    { usage_count: sequelize.literal("usage_count + 1") }, 
+                    { where: { id: order.coupon_id } }
+                );
+                logger.info('Updated coupon usage count', {
+                    coupon_id: order.coupon_id,
+                    usage_created: created
+                });
             }
         }
+
         // Clear the user's cart
         await Cart.destroy({ 
             where: { user_id: order.user_id }
         });
+        logger.info('Cleared user cart', {
+            user_id: order.user_id
+        });
 
-            const referral = await Referral.findOne({
-                where: {
-                    order_id: order.id,
-                    // referred_user_id: order.user_id,
-                    status: {
-                        [Op.in]: ['pending', 'completed']
-                    }
-                },
-                include: [{
-                    model: User,
-                    as: 'referrer',
-                    attributes: ['id', 'referral_points']
-                }]
+        const referral = await Referral.findOne({
+            where: {
+                order_id: order.id,
+                status: {
+                    [Op.in]: ['pending', 'completed']
+                }
+            },
+            include: [{
+                model: User,
+                as: 'referrer',
+                attributes: ['id', 'referral_points']
+            }]
+        });
+        
+        if (referral) {
+            logger.info('Processing referral', {
+                referral_id: referral.id,
+                status: referral.status,
+                referrer_id: referral.referrer_id,
+                referred_user_id: referral.referred_user_id
             });
-            
-            if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
-                // Update referral record
-                await referral.update({
-                    status: 'completed'
-                });
-                // Create notification for referrer
-                await createNotification({
-                    userId: referral.referrer_id,
-                    type: 'system',
-                    action: 'alert',
-                    data: {
-                        message: `You have a new referral code waiting to be claimed`
-                    },
-                    title: 'Referral',
-                    url: '/my-account/referrals'
-                });
-                // Create notification for admin about successful referral purchase
-                await createNotification({
-                    type: 'system',
-                    action: 'alert',
-                    data: {
-                        message: `Referred user ${order.user.email} has made their first purchase using referral code from ${referral.referrer.email}. Order #${order.order_unique_id}`
-                    },
-                    title: 'Referral Purchase Completed',
-                    url: '/admin/orders',
-                    is_admin: true
-                });
-            }
-            else if (referral && referral.status === 'completed' && referral.referrer_id === order.user_id) {
-                // Update referral record
-                await referral.update({
-                    status: 'applied'
-                });
+        }
 
-                // Create notification for admin about referrer using their coupon
-                await createNotification({
-                    type: 'system',
-                    action: 'alert',
-                    data: {
-                        message: `Referrer ${order.user.email} has used their referral coupon for Order #${order.order_unique_id}`
-                    },
-                    title: 'Referral Coupon Used',
-                    url: '/admin/orders',
-                    is_admin: true
-                });
+        if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
+            logger.info('Completing referral', {
+                referral_id: referral.id,
+                referrer_id: referral.referrer_id,
+                referred_user_id: referral.referred_user_id,
+                order_id: order.id
+            });
 
-                // Create notification for the referrer about using their coupon
-                await createNotification({
-                    userId: order.user_id,
-                    type: 'system',
-                    action: 'alert',
-                    data: {
-                        message: `Your referral coupon has been successfully applied to Order #${order.order_unique_id}`
-                    },
-                    title: 'Referral Coupon Applied',
-                    url: `/order-details/${order.id}`
-                });
-            }
+            // Update referral record
+            await referral.update({
+                status: 'completed'
+            });
+
+            // Create notification for referrer
+            await createNotification({
+                userId: referral.referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `You have a new referral code waiting to be claimed`
+                },
+                title: 'Referral',
+                url: '/my-account/referrals'
+            });
+
+            // Create notification for admin about successful referral purchase
+            await createNotification({
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Referred user ${order.user.email} has made their first purchase using referral code from ${referral.referrer.email}. Order #${order.order_unique_id}`
+                },
+                title: 'Referral Purchase Completed',
+                url: '/admin/orders',
+                is_admin: true
+            });
+
+            logger.info('Referral completed and notifications sent', {
+                referral_id: referral.id,
+                referrer_id: referral.referrer_id,
+                order_id: order.id
+            });
+        }
+        else if (referral && referral.status === 'completed' && referral.referrer_id === order.user_id) {
+            logger.info('Processing referral coupon usage', {
+                referral_id: referral.id,
+                referrer_id: referral.referrer_id,
+                order_id: order.id,
+                coupon_code: referral.referral_coupon_code
+            });
+
+            // Update referral record
+            await referral.update({
+                status: 'applied'
+            });
+
+            // Create notification for admin about referrer using their coupon
+            await createNotification({
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Referrer ${order.user.email} has used their referral coupon for Order #${order.order_unique_id}`
+                },
+                title: 'Referral Coupon Used',
+                url: '/admin/orders',
+                is_admin: true
+            });
+
+            // Create notification for the referrer about using their coupon
+            await createNotification({
+                userId: order.user_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Your referral coupon has been successfully applied to Order #${order.order_unique_id}`
+                },
+                title: 'Referral Coupon Applied',
+                url: `/order-details/${order.id}`
+            });
+
+            logger.info('Referral coupon applied and notifications sent', {
+                referral_id: referral.id,
+                referrer_id: referral.referrer_id,
+                order_id: order.id
+            });
+        }
 
         // Create successful transaction record
         await sequelize.models.Transaction.create({
@@ -729,6 +860,12 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             }
         }, { transaction });
 
+        logger.info('Created transaction record', {
+            order_id: order.id,
+            transaction_reference: webhookData.eventDetails.transactionReference,
+            amount: webhookData.eventDetails.amount.value
+        });
+
         // Create success notification
         await createNotification({
             userId: order.user_id,
@@ -743,38 +880,6 @@ const handleAuthorizedPayment = async (order, webhookData) => {
                 eventId: webhookData.eventId,
                 transactionReference: webhookData.eventDetails.transactionReference
             }
-        });
-
-        // Create success notification
-        await createNotification({
-            userId: order.user_id,
-            type: 'order',
-            action: 'created',
-            data: {
-                amount: Amount,
-                orderId: order.id,
-                orderUniqueId: order.order_unique_id,
-                relatedId: order.id,
-                reason: `Order created via Viva Wallet`
-            },
-            url: `/order-details/${order.id}`
-        });
-
-        // Create admin notification for new order
-        await createNotification({
-            type: 'order',
-            action: 'created',
-            data: {
-                amount: Amount,
-                orderId: order.id,
-                orderUniqueId: order.order_unique_id,
-                customerEmail: order.user.email,
-                relatedId: order.id,
-                reason: `New order placed via Viva Wallet`
-            },
-            title: 'New Order Placed',
-            url: '/admin/orders',
-            is_admin: true
         });
 
         // Send success email
@@ -798,10 +903,25 @@ const handleAuthorizedPayment = async (order, webhookData) => {
         };
 
         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        logger.info('Sent success email', {
+            order_id: order.id,
+            user_email: order.user.email
+        });
 
         await transaction.commit();
+        logger.info('Payment processing completed successfully', {
+            order_id: order.id,
+            order_code: order.order_code,
+            status: 'processing'
+        });
     } catch (error) {
         await transaction.rollback();
+        logger.error('Error processing authorized payment', {
+            error: error.message,
+            stack: error.stack,
+            order_id: order.id,
+            order_code: order.order_code
+        });
         throw error;
     }
 };
