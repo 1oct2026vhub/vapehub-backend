@@ -32,6 +32,30 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
+        logger.logInfo({
+            type: 'worldpay_direct_event_one',
+            message: 'worldpay direct event one from direct request',
+            request_one: {
+                eventId: req.eventId,
+                eventTimestamp: req.eventTimestamp,
+                eventType: req.eventType,
+                eventDetails: req.eventDetails
+            },
+            timestamp: new Date().toISOString()
+        });
+
+        logger.logInfo({
+            type: 'worldpay_direct_event_two',
+            message: 'worldpay direct event two',
+            request_two: {
+                eventId: req.event.eventId,
+                eventTimestamp: req.event.eventTimestamp,
+                eventType: req.event.eventType,
+                eventDetails: req.event.eventDetails
+            },
+            timestamp: new Date().toISOString()
+        });
+
         if (req.method === 'POST') {
             // Parse the raw body if it's a string
             let webhookData;
@@ -64,6 +88,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 webhook_data: webhookData,
                 timestamp: new Date().toISOString()
             });
+            
             
             // Extract webhook data according to Worldpay's structure
             const {
