@@ -8,13 +8,13 @@ const crypto = require("crypto");
 
 module.exports.handleWorldpayWebhook = async (req, res) => {
     try {
+        // Log the incoming webhook
         logger.logInfo({
             type: 'worldpay_webhook_received',
             message: 'Worldpay webhook received',
             request_summary: {
                 method: req.method,
                 headers: req.headers,
-                eventData: req.eventDetails,
                 body: req.body
             },
             timestamp: new Date().toISOString()
@@ -22,27 +22,52 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
 
         if (req.method === 'POST') {
             const webhookData = req.body;
-            // Log webhook event
+            
+            // Extract webhook data according to Worldpay's structure
+            const {
+                eventId,
+                eventTimestamp,
+                eventDetails: {
+                    classification,
+                    downstreamReference,
+                    transactionReference,
+                    type: eventType,
+                    date: eventDate,
+                    amount,
+                    _links,
+                    octReference,
+                    refund,
+                    failureReason
+                } = {}
+            } = webhookData;
+
+            // Log webhook event details
             logger.logInfo({
                 type: 'worldpay_webhook_event',
                 message: 'Worldpay webhook event details received',
                 event_summary: {
-                    event_type: webhookData.eventDetails?.type,
-                    transaction_reference: webhookData.eventDetails?.transactionReference,
-                    amount: webhookData.eventDetails?.amount?.value,
-                    currency: webhookData.eventDetails?.amount?.currencyCode,
-                    event_id: webhookData.eventId,
-                    event_timestamp: webhookData.eventTimestamp
+                    event_id: eventId,
+                    event_timestamp: eventTimestamp,
+                    event_type: eventType,
+                    classification: classification,
+                    transaction_reference: transactionReference,
+                    downstream_reference: downstreamReference,
+                    amount: amount?.value,
+                    currency: amount?.currencyCode,
+                    payment_link: _links?.payment?.href,
+                    oct_reference: octReference,
+                    refund_authorization: refund?.onlineRefundAuthorization,
+                    refusal_code: refund?.refusal?.code,
+                    refusal_description: refund?.refusal?.description,
+                    failure_reason: failureReason
                 },
                 timestamp: new Date().toISOString()
             });
 
-            const { eventDetails } = webhookData;
-
-            // Find the order in our database
+            // Find the order using the transaction reference
             const order = await Order.findOne({
                 where: { 
-                    order_code: eventDetails.transactionReference
+                    order_code: transactionReference
                 },
                 include: [
                     { model: User, as: 'user' },
@@ -95,28 +120,16 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     type: 'worldpay_webhook_order_not_found',
                     message: 'Order not found for Worldpay webhook',
                     error_summary: {
-                        transaction_reference: eventDetails.transactionReference,
-                        event_id: webhookData.eventId
+                        transaction_reference: transactionReference,
+                        event_id: eventId
                     },
                     timestamp: new Date().toISOString()
                 });
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
 
-            logger.logInfo({
-                type: 'worldpay_webhook_processing',
-                message: 'Processing Worldpay webhook for order',
-                order_summary: {
-                    order_id: order.id,
-                    order_code: order.order_code,
-                    event_type: eventDetails.type,
-                    user_id: order.user_id
-                },
-                timestamp: new Date().toISOString()
-            });
-
             // Handle payment status based on event type
-            switch (eventDetails.type) {
+            switch (eventType) {
                 case 'SUCCESS':
                     await handleSuccessfulPayment(order, webhookData);
                     break;
@@ -155,26 +168,15 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                         type: 'worldpay_webhook_unhandled_event',
                         message: 'Unhandled Worldpay webhook event type',
                         event_summary: {
-                            event_type: eventDetails.type,
+                            event_type: eventType,
                             order_id: order.id,
-                            event_id: webhookData.eventId
+                            event_id: eventId
                         },
                         timestamp: new Date().toISOString()
                     });
             }
 
-            logger.logInfo({
-                type: 'worldpay_webhook_completed',
-                message: 'Worldpay webhook processing completed successfully',
-                completion_summary: {
-                    order_id: order.id,
-                    order_code: order.order_code,
-                    event_type: eventDetails.type,
-                    status: order.status
-                },
-                timestamp: new Date().toISOString()
-            });
-
+            // Return success response
             return successResponse(res, {
                 message: 'Webhook processed successfully',
                 orderId: order.id,
