@@ -15,13 +15,55 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             request_summary: {
                 method: req.method,
                 headers: req.headers,
-                body: req.body
+                body: req.body,
+                status_code: res.statusCode,
+                url: req.url,
+                ip: req.ip,
+                protocol: req.protocol,
+                hostname: req.hostname,
+                originalUrl: req.originalUrl,
+                params: req.params,
+                query: req.query,
+                cookies: req.cookies,
+                signedCookies: req.signedCookies,
+                secure: req.secure,
+                xhr: req.xhr
             },
             timestamp: new Date().toISOString()
         });
 
         if (req.method === 'POST') {
-            const webhookData = req.body;
+            // Parse the raw body if it's a string
+            let webhookData;
+            try {
+                if (typeof req.body === 'string') {
+                    webhookData = JSON.parse(req.body);
+                } else if (typeof req.body === 'object') {
+                    webhookData = req.body;
+                } else {
+                    throw new Error('Invalid webhook data format');
+                }
+            } catch (error) {
+                logger.logError({
+                    type: 'worldpay_webhook_parse_error',
+                    message: 'Error parsing webhook data',
+                    error_summary: {
+                        error: error.message,
+                        body: req.body,
+                        content_type: req.headers['content-type']
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                return errorResponse(res, {}, 'Invalid webhook data format', 400);
+            }
+
+            // Log the parsed webhook data
+            logger.logInfo({
+                type: 'worldpay_webhook_parsed',
+                message: 'Parsed Worldpay webhook data',
+                webhook_data: webhookData,
+                timestamp: new Date().toISOString()
+            });
             
             // Extract webhook data according to Worldpay's structure
             const {
@@ -39,7 +81,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     refund,
                     failureReason
                 } = {}
-            } = webhookData;
+            } = webhookData || {};
 
             // Log webhook event details
             logger.logInfo({
@@ -59,7 +101,57 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     refund_authorization: refund?.onlineRefundAuthorization,
                     refusal_code: refund?.refusal?.code,
                     refusal_description: refund?.refusal?.description,
-                    failure_reason: failureReason
+                    failure_reason: failureReason,
+                    status_code: res.statusCode
+                },
+                full_request_data: {
+                    raw_webhook_data: webhookData,
+                    event_details: {
+                        eventId,
+                        eventTimestamp,
+                        eventType,
+                        classification,
+                        downstreamReference,
+                        transactionReference,
+                        eventDate,
+                        amount,
+                        _links,
+                        octReference,
+                        refund,
+                        failureReason
+                    },
+                    request_context: {
+                        method: req.method,
+                        url: req.url,
+                        ip: req.ip,
+                        protocol: req.protocol,
+                        hostname: req.hostname,
+                        headers: req.headers,
+                        params: req.params,
+                        query: req.query,
+                        cookies: req.cookies,
+                        secure: req.secure,
+                        xhr: req.xhr
+                    },
+                    extracted_data: {
+                        payment_info: {
+                            amount: amount?.value,
+                            currency: amount?.currencyCode,
+                            transaction_reference: transactionReference,
+                            downstream_reference: downstreamReference
+                        },
+                        refund_info: refund ? {
+                            authorization: refund.onlineRefundAuthorization,
+                            refusal_code: refund.refusal?.code,
+                            refusal_description: refund.refusal?.description
+                        } : null,
+                        links: _links,
+                        metadata: {
+                            classification,
+                            oct_reference: octReference,
+                            failure_reason: failureReason
+                        }
+                    }
                 },
                 timestamp: new Date().toISOString()
             });
