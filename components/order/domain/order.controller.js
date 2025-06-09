@@ -344,20 +344,50 @@ module.exports.placeOrder = async (req, res, next) => {
                 coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: currentUkTime }, end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] } } });
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
-                    if (!userUsedCoupon || !coupon.is_single_use) {
-                        let discount_type = 0;
-                        if(coupon.discount_type === "percentage"){
-                            discount_type = coupon.discount_type;
+                    const singleUsedCoupon = await CouponUsage.findOne({ where: {coupon_id: coupon.id } });
+                    if (!userUsedCoupon) {
+                        // For single-use coupons, only calculate if it hasn't been used before
+                        if (coupon.is_single_use && !singleUsedCoupon) {
+
+                            let discount_type = 0;
+                            if(coupon.discount_type === "percentage"){
+                                discount_type = coupon.discount_type;
+                            }
+                            else if(coupon.discount_type === "fixed_amount"){
+                                discount_type = "fixed";
+                            }
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            calculatedTotal = Math.max(0, subTotal - discount);
+                            discountType = discount_type;
+                            referralDiscount = discount;
+                            coupon_count_flag = true;
                         }
-                        else if(coupon.discount_type === "fixed_amount"){
-                            discount_type = "fixed";
+                        // For non-single-use coupons, calculate normally
+                        else if (!coupon.is_single_use) {
+
+                            let discount_type = 0;
+                            if(coupon.discount_type === "percentage"){
+                                discount_type = coupon.discount_type;
+                            }
+                            else if(coupon.discount_type === "fixed_amount"){
+                                discount_type = "fixed";
+                            }
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            calculatedTotal = Math.max(0, subTotal - discount);
+                            discountType = discount_type;
+                            referralDiscount = discount;
+                            coupon_count_flag = true;
                         }
-                        discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                        discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                        calculatedTotal = Math.max(0, subTotal - discount);
-                        discountType = discount_type;
-                        referralDiscount = discount;
-                        coupon_count_flag = true;
+                        else {
+                            console.log("Coupon validation failed:", {
+                                coupon_id: coupon.id,
+                                is_single_use: coupon.is_single_use,
+                                // single_used: singleUsedCoupon,
+                                // user_used: userUsedCoupon
+                            });
+                        }
                     }
                 }
             }
