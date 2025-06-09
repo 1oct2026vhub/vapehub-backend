@@ -315,8 +315,18 @@ module.exports.applyCoupon = async (req, res, next) => {
                     where: { user_id: userId, coupon_id: coupon.id }
                 });
 
+                const singleUsedCoupon = await CouponUsage.findOne({
+                    where: {coupon_id: coupon.id }
+                });
+
                 // Check if coupon is single use and has been used by this user
-                if (coupon.is_single_use && userUsedCoupon) {
+                if (coupon.is_single_use && singleUsedCoupon) {
+                    throw {
+                        statusCode: 400,
+                        message: 'Already used this coupon.'
+                    }
+                }
+                if (userUsedCoupon) {
                     throw {
                         statusCode: 400,
                         message: 'You have already used this coupon.'
@@ -324,7 +334,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 }
 
                 // Check usage limit
-                if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {
+                if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {     // !coupon.is_single_use &&
                     throw {
                         statusCode: 400,
                         message: 'This coupon is no longer available — usage limit exceeded.'

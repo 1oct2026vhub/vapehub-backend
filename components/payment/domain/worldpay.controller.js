@@ -16,6 +16,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 method: req.method,
                 headers: req.headers,
                 body: req.body,
+                raw_body: req.rawBody,
                 status_code: res.statusCode,
                 url: req.url,
                 ip: req.ip,
@@ -32,6 +33,20 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
+        // Log raw request data
+        logger.logInfo({
+            type: 'worldpay_raw_request',
+            message: 'Raw Worldpay webhook request data',
+            raw_data: {
+                raw_body: req.rawBody,
+                body: req.body,
+                content_type: req.headers['content-type'],
+                content_length: req.headers['content-length'],
+                correlation_id: req.headers['wp-correlationid']
+            },
+            timestamp: new Date().toISOString()
+        });
+
         logger.logInfo({
             type: 'worldpay_direct_event_one',
             message: 'worldpay direct event one from direct request',
@@ -44,27 +59,37 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
-        logger.logInfo({
-            type: 'worldpay_direct_event_two',
-            message: 'worldpay direct event two',
-            request_two: {
-                eventId: req.event.eventId,
-                eventTimestamp: req.event.eventTimestamp,
-                eventType: req.event.eventType,
-                eventDetails: req.event.eventDetails
-            },
-            timestamp: new Date().toISOString()
-        });
+    
 
         if (req.method === 'POST') {
-            // Parse the raw body if it's a string
             let webhookData;
+            
+            // Try to get the raw body data
+            const rawData = req.rawBody || req.body;
+            
             try {
-                if (typeof req.body === 'string') {
-                    webhookData = JSON.parse(req.body);
-                } else if (typeof req.body === 'object') {
-                    webhookData = req.body;
-                } else {
+                // If rawData is a string, parse it
+                if (typeof rawData === 'string') {
+                    webhookData = JSON.parse(rawData);
+                } 
+                // If rawData is a Buffer, convert to string and parse
+                else if (Buffer.isBuffer(rawData)) {
+                    webhookData = JSON.parse(rawData.toString('utf8'));
+                }
+                // If rawData is already an object, use it directly
+                else if (typeof rawData === 'object' && rawData !== null) {
+                    webhookData = rawData;
+                }
+                // If we have a readable stream, read it
+                else if (typeof rawData.pipe === 'function') {
+                    const chunks = [];
+                    for await (const chunk of rawData) {
+                        chunks.push(chunk);
+                    }
+                    const buffer = Buffer.concat(chunks);
+                    webhookData = JSON.parse(buffer.toString('utf8'));
+                }
+                else {
                     throw new Error('Invalid webhook data format');
                 }
             } catch (error) {
@@ -73,8 +98,9 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     message: 'Error parsing webhook data',
                     error_summary: {
                         error: error.message,
-                        body: req.body,
-                        content_type: req.headers['content-type']
+                        raw_data: rawData,
+                        content_type: req.headers['content-type'],
+                        content_length: req.headers['content-length']
                     },
                     timestamp: new Date().toISOString()
                 });
