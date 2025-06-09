@@ -59,6 +59,13 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             timestamp: new Date().toISOString()
         });
 
+        logger.logInfo({
+            type: 'worldpay_styringify',
+            message: 'worldpay stringify',
+            request_stringing: JSON.stringify(req),
+            timestamp: new Date().toISOString()
+        });
+
     
 
         if (req.method === 'POST') {
@@ -108,12 +115,12 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             }
 
             // Log the parsed webhook data
-            logger.logInfo({
-                type: 'worldpay_webhook_parsed',
-                message: 'Parsed Worldpay webhook data',
-                webhook_data: webhookData,
-                timestamp: new Date().toISOString()
-            });
+            // logger.logInfo({
+            //     type: 'worldpay_webhook_parsed',
+            //     message: 'Parsed Worldpay webhook data',
+            //     webhook_data: webhookData,
+            //     timestamp: new Date().toISOString()
+            // });
             
             
             // Extract webhook data according to Worldpay's structure
@@ -135,77 +142,77 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             } = webhookData || {};
 
             // Log webhook event details
-            logger.logInfo({
-                type: 'worldpay_webhook_event',
-                message: 'Worldpay webhook event details received',
-                event_summary: {
-                    event_id: eventId,
-                    event_timestamp: eventTimestamp,
-                    event_type: eventType,
-                    classification: classification,
-                    transaction_reference: transactionReference,
-                    downstream_reference: downstreamReference,
-                    amount: amount?.value,
-                    currency: amount?.currencyCode,
-                    payment_link: _links?.payment?.href,
-                    oct_reference: octReference,
-                    refund_authorization: refund?.onlineRefundAuthorization,
-                    refusal_code: refund?.refusal?.code,
-                    refusal_description: refund?.refusal?.description,
-                    failure_reason: failureReason,
-                    status_code: res.statusCode
-                },
-                full_request_data: {
-                    raw_webhook_data: webhookData,
-                    event_details: {
-                        eventId,
-                        eventTimestamp,
-                        eventType,
-                        classification,
-                        downstreamReference,
-                        transactionReference,
-                        eventDate,
-                        amount,
-                        _links,
-                        octReference,
-                        refund,
-                        failureReason
-                    },
-                    request_context: {
-                        method: req.method,
-                        url: req.url,
-                        ip: req.ip,
-                        protocol: req.protocol,
-                        hostname: req.hostname,
-                        headers: req.headers,
-                        params: req.params,
-                        query: req.query,
-                        cookies: req.cookies,
-                        secure: req.secure,
-                        xhr: req.xhr
-                    },
-                    extracted_data: {
-                        payment_info: {
-                            amount: amount?.value,
-                            currency: amount?.currencyCode,
-                            transaction_reference: transactionReference,
-                            downstream_reference: downstreamReference
-                        },
-                        refund_info: refund ? {
-                            authorization: refund.onlineRefundAuthorization,
-                            refusal_code: refund.refusal?.code,
-                            refusal_description: refund.refusal?.description
-                        } : null,
-                        links: _links,
-                        metadata: {
-                            classification,
-                            oct_reference: octReference,
-                            failure_reason: failureReason
-                        }
-                    }
-                },
-                timestamp: new Date().toISOString()
-            });
+            // logger.logInfo({
+            //     type: 'worldpay_webhook_event',
+            //     message: 'Worldpay webhook event details received',
+            //     event_summary: {
+            //         event_id: eventId,
+            //         event_timestamp: eventTimestamp,
+            //         event_type: eventType,
+            //         classification: classification,
+            //         transaction_reference: transactionReference,
+            //         downstream_reference: downstreamReference,
+            //         amount: amount?.value,
+            //         currency: amount?.currencyCode,
+            //         payment_link: _links?.payment?.href,
+            //         oct_reference: octReference,
+            //         refund_authorization: refund?.onlineRefundAuthorization,
+            //         refusal_code: refund?.refusal?.code,
+            //         refusal_description: refund?.refusal?.description,
+            //         failure_reason: failureReason,
+            //         status_code: res.statusCode
+            //     },
+            //     full_request_data: {
+            //         raw_webhook_data: webhookData,
+            //         event_details: {
+            //             eventId,
+            //             eventTimestamp,
+            //             eventType,
+            //             classification,
+            //             downstreamReference,
+            //             transactionReference,
+            //             eventDate,
+            //             amount,
+            //             _links,
+            //             octReference,
+            //             refund,
+            //             failureReason
+            //         },
+            //         request_context: {
+            //             method: req.method,
+            //             url: req.url,
+            //             ip: req.ip,
+            //             protocol: req.protocol,
+            //             hostname: req.hostname,
+            //             headers: req.headers,
+            //             params: req.params,
+            //             query: req.query,
+            //             cookies: req.cookies,
+            //             secure: req.secure,
+            //             xhr: req.xhr
+            //         },
+            //         extracted_data: {
+            //             payment_info: {
+            //                 amount: amount?.value,
+            //                 currency: amount?.currencyCode,
+            //                 transaction_reference: transactionReference,
+            //                 downstream_reference: downstreamReference
+            //             },
+            //             refund_info: refund ? {
+            //                 authorization: refund.onlineRefundAuthorization,
+            //                 refusal_code: refund.refusal?.code,
+            //                 refusal_description: refund.refusal?.description
+            //             } : null,
+            //             links: _links,
+            //             metadata: {
+            //                 classification,
+            //                 oct_reference: octReference,
+            //                 failure_reason: failureReason
+            //             }
+            //         }
+            //     },
+            //     timestamp: new Date().toISOString()
+            // });
 
             // Find the order using the transaction reference
             const order = await Order.findOne({
@@ -307,16 +314,16 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     await handleRefundFailed(order, webhookData);
                     break;
                 default:
-                    logger.logInfo({
-                        type: 'worldpay_webhook_unhandled_event',
-                        message: 'Unhandled Worldpay webhook event type',
-                        event_summary: {
-                            event_type: eventType,
-                            order_id: order.id,
-                            event_id: eventId
-                        },
-                        timestamp: new Date().toISOString()
-                    });
+                    // logger.logInfo({
+                    //     type: 'worldpay_webhook_unhandled_event',
+                    //     message: 'Unhandled Worldpay webhook event type',
+                    //     event_summary: {
+                    //         event_type: eventType,
+                    //         order_id: order.id,
+                    //         event_id: eventId
+                    //     },
+                    //     timestamp: new Date().toISOString()
+                    // });
             }
 
             // Return success response
