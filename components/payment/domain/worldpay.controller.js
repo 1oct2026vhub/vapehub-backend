@@ -660,7 +660,7 @@ const handleCancelledPayment = async (order, webhookData) => {
             }
         };
 
-        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
         logger.logInfo({
             type: 'worldpay_webhook_email_sent',
             message: 'Worldpay webhook sent cancellation email',
@@ -860,7 +860,7 @@ const handleExpiredPayment = async (order, webhookData) => {
             }
         };
 
-        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
         logger.logInfo({
             type: 'worldpay_webhook_email_sent',
             message: 'Worldpay webhook sent expiration email',
@@ -1458,7 +1458,7 @@ const handleAuthorizedPayment = async (order, webhookData) => {
             }
         };
 
-        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
         logger.logInfo({
             type: 'worldpay_webhook_email_sent',
             message: 'Worldpay webhook sent success email',
@@ -2130,17 +2130,3 @@ const handleRefundFailed = async (order, webhookData) => {
         throw error;
     }
 };
-
-// const verifyWorldpaySignature = (signature, payload) => {
-//     try {
-//         const secret = process.env.WORLDPAY_WEBHOOK_SECRET;
-//         const computedSignature = crypto
-//             .createHmac('sha256', secret)
-//             .update(JSON.stringify(payload))
-//             .digest('hex');
-//         return signature === computedSignature;
-//     } catch (error) {
-//         logger.error('Error verifying Worldpay signature:', error);
-//         return false;
-//     }
-// }; 
