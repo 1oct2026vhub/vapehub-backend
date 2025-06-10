@@ -14,7 +14,7 @@ const ERROR_MESSAGES = {
     PRODUCT_NOT_FOUND: "Product not found",
     DUPLICATE_SLUG: (slug) => `Slug ${slug} already exists`,
     DUPLICATE_BARCODE: (barcode) => `Barcode ${barcode} already exists`,
-    INVALID_DISCOUNT: "Discount price must be less than regular price",
+    INVALID_DISCOUNT: "Sale price must be less than regular price",
     ATTRIBUTE_TERM_NOT_FOUND: "Attribute term not found",
     ATTRIBUTE_TERM_IN_USE: "Cannot remove attribute term as it is associated with existing product variants",
     ATTRIBUTE_TERM_COMBINATION_EXISTS: "Attribute term combination already exists for this product",
@@ -1841,7 +1841,7 @@ module.exports.downloadVariantSampleExcel = async (req, res, next) => {
             { header: 'Product Slug', key: 'product_slug', width: 30 },
             { header: 'Slug', key: 'slug', width: 30 },
             { header: 'Price', key: 'price', width: 15 },
-            { header: 'Discount Price', key: 'discount_price', width: 15 },
+            { header: 'Sale Price', key: 'discount_price', width: 15 },
             { header: 'Purchase Price', key: 'purchase_price', width: 15 },
             { header: 'Weight', key: 'weight', width: 10 },
             { header: 'Length', key: 'length', width: 10 },
@@ -2169,7 +2169,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
             const { type, value, is_percentage } = updates.discount_price;
             if (typeof value !== 'number' || isNaN(value)) {
                 await transaction.rollback();
-                return errorResponse(res, 'Discount price value must be a valid number', 400);
+                return errorResponse(res, 'Sale price value must be a valid number', 400);
             }
             variants.forEach(variant => {
                 let newDiscountPrice = variant.discount_price;
