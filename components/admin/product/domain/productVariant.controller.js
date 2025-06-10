@@ -431,35 +431,50 @@ const validateVariantAttributes = async (attributes, product_id, transaction) =>
 };
 
 const createVariantRecord = async (variant, product_id, updated_by, transaction) => {
-    if (variant.discount_price && variant.discount_price >= variant.price) {
-        throw new Error(ERROR_MESSAGES.INVALID_DISCOUNT);
-    }
+    // Calculate the price based on regular_price and discount_price
+    const price = variant.discount_price && variant.discount_price < variant.regular_price 
+        ? variant.discount_price 
+        : variant.regular_price;
 
-    // Create base variant data object
-    const variantData = {
+    const variantRecord = await ProductVariant.create({
         product_id,
-        price: variant.price,
-        discount_price: variant.discount_price || null,
-        purchase_price: variant.purchase_price || null,
-        weight: variant.weight || null,
-        length: variant.length || null,
-        width: variant.width || null,
-        height: variant.height || null,
-        description: variant.description || null,
-        barcode: variant.barcode || null,
+        slug: variant.slug,
+        regular_price: variant.regular_price,
+        price,
+        discount_price: variant.discount_price,
+        purchase_price: variant.purchase_price,
         stock: variant.stock || 0,
-        low_stock_threshold: variant.low_stock_threshold || 0,
-        stock_status: variant.stock_status || updateStockStatus(variant.stock || 0, variant.low_stock_threshold || 0),
+        low_stock_threshold: variant.low_stock_threshold,
+        weight: variant.weight,
+        length: variant.length,
+        width: variant.width,
+        height: variant.height,
+        barcode: variant.barcode,
+        description: variant.description,
         status: variant.status || 'active',
         updated_by
-    };
+    }, { transaction });
 
-    // Only add slug if it's provided (not null or undefined)
-    if (variant.slug) {
-        variantData.slug = variant.slug;
-    }
+    return variantRecord;
+};
 
-    return await ProductVariant.create(variantData, { transaction });
+const updateVariantRecord = async (variantId, updateData, updated_by, transaction) => {
+    // Calculate the price based on regular_price and discount_price
+    const price = updateData.discount_price && updateData.discount_price < updateData.regular_price 
+        ? updateData.discount_price 
+        : updateData.regular_price;
+
+    const [updatedCount, [updatedVariant]] = await ProductVariant.update({
+        ...updateData,
+        price,
+        updated_by
+    }, {
+        where: { id: variantId },
+        returning: true,
+        transaction
+    });
+
+    return updatedVariant;
 };
 
 // Refactored main function
@@ -778,10 +793,7 @@ module.exports.updateProductVariant = async (req, res) => {
         }
 
         // Update basic info
-        await existingVariant.update({
-            ...variantData,
-            updated_by
-        }, { transaction });
+        const updatedVariant = await updateVariantRecord(variant_id, variantData, updated_by, transaction);
 
         // Update attributes if provided
         if (Array.isArray(variantData.attributes)) {
@@ -1097,26 +1109,31 @@ module.exports.getProductVariants = async (req, res) => {
 
         const variants = await ProductVariant.findAll({
             where: { product_id },
+            attributes: [
+                'id', 'product_id', 'slug', 'price', 'regular_price', 'discount_price',
+                'purchase_price', 'stock', 'stock_status', 'status', 'barcode',
+                'weight', 'length', 'width', 'height', 'description', 'created_at', 'updated_at', 'low_stock_threshold'
+            ],
             include: [
                 {
                     model: ProductVariantImage,
                     as: 'variantImages',
-                    attributes: ["id", "variant_id", "image_url", "is_primary"] // Only include necessary fields
+                    attributes: ["id", "variant_id", "image_url", "is_primary"]
                 },
                 {
                     model: ProductVariantAttribute,
                     as: 'variantAttributes',
-                    attributes: ["id", "variant_id", "attribute_id", "term_id", "is_visible", "used_in_variation"], // Only include necessary fields
+                    attributes: ["id", "variant_id", "attribute_id", "term_id", "is_visible", "used_in_variation"],
                     include: [
                         {
                             model: AttributeTerm,
                             as: "term",
-                            attributes: ["id", "name", "slug"] // Only include necessary fields
+                            attributes: ["id", "name", "slug"]
                         },
                         {
                             model: Attribute,
                             as: "attribute",
-                            attributes: ["id", "name", "type"] // Only include necessary fields
+                            attributes: ["id", "name", "type"]
                         }
                     ]
                 }
@@ -1292,6 +1309,24 @@ module.exports.listAllVariants = async (req, res) => {
             offset: parsedOffset,
             attributes: {
                 include: [
+                    'id',
+                    'product_id',
+                    'slug',
+                    'regular_price',
+                    'price',
+                    'discount_price',
+                    'purchase_price',
+                    'stock',
+                    'low_stock_threshold',
+                    'weight',
+                    'length',
+                    'width',
+                    'height',
+                    'barcode',
+                    'status',
+                    'description',
+                    'created_at',
+                    'updated_at',
                     [
                         Sequelize.literal(`(
                             SELECT COUNT(*)
@@ -1322,6 +1357,7 @@ module.exports.getVariantById = async (req, res) => {
                 'product_id',
                 'slug',
                 'price',
+                'regular_price',
                 'discount_price',
                 'purchase_price',
                 'stock',
@@ -1556,7 +1592,6 @@ const updateStockStatus = (stock, lowStockThreshold) => {
     if (stock <= lowStockThreshold) return 'low_stock';
     return 'in_stock';
 };
-
 module.exports.bulkUpdateVariants = async (req, res, next) => {
     const transaction = await ProductVariant.sequelize.transaction();   
     try {
@@ -1592,6 +1627,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                 product_slug,
                 slug,
                 price,
+                regular_price,
                 discount_price,
                 purchase_price,
                 weight,
@@ -1625,11 +1661,22 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                     const product = await Product.findOne({ where: { slug: product_slug } });
                     if (!product) throw new Error(`Product with slug ${product_slug} not found`);
 
+                    // Parse prices
+                    const parsedRegularPrice = parseFloat(regular_price) || 0;
+                    const parsedDiscountPrice = parseFloat(discount_price) || null;
+                    
+                    // Calculate price based on regular_price and discount_price
+                    let calculatedPrice = parsedRegularPrice;
+                    if (parsedDiscountPrice !== null && parsedDiscountPrice < parsedRegularPrice) {
+                        calculatedPrice = parsedDiscountPrice;
+                    }
+
                     // Create variant data object
                     const variantData = {
                         slug: slug.trim(),
-                        price: parseFloat(price) || 0,
-                        discount_price: parseFloat(discount_price) || null,
+                        price: calculatedPrice,
+                        regular_price: parsedRegularPrice,
+                        discount_price: parsedDiscountPrice,
                         purchase_price: parseFloat(purchase_price) || 0,
                         weight: parseFloat(weight) || 0,
                         length: parseFloat(length) || 0,
@@ -1840,7 +1887,7 @@ module.exports.downloadVariantSampleExcel = async (req, res, next) => {
             { header: 'ID', key: 'id', width: 10 },
             { header: 'Product Slug', key: 'product_slug', width: 30 },
             { header: 'Slug', key: 'slug', width: 30 },
-            { header: 'Price', key: 'price', width: 15 },
+            { header: 'Regular Price', key: 'regular_price', width: 15 },
             { header: 'Discount Price', key: 'discount_price', width: 15 },
             { header: 'Purchase Price', key: 'purchase_price', width: 15 },
             { header: 'Weight', key: 'weight', width: 10 },
@@ -1861,7 +1908,7 @@ module.exports.downloadVariantSampleExcel = async (req, res, next) => {
             id: '', // Empty for new variant
             product_slug: 'sample-vape-device',
             slug: 'sample-vape-device-black',
-            price: 99.99,
+            regular_price: 99.99,
             discount_price: 89.99,
             purchase_price: 79.99,
             weight: 0.5,
@@ -1881,7 +1928,7 @@ module.exports.downloadVariantSampleExcel = async (req, res, next) => {
             id: '1',
             product_slug: 'premium-e-liquid',
             slug: 'premium-e-liquid-30ml',
-            price: 29.99,
+            regular_price: 29.99,
             discount_price: 24.99,
             purchase_price: 19.99,
             weight: 0.1,
@@ -2109,153 +2156,148 @@ const generateCombinations = (attributes) => {
 
 module.exports.bulkUpdateVariantsDirect = async (req, res) => {
     const { product_id } = req.params;
-    const { updates, variant_ids } = req.body;
-    const transaction = await ProductVariant.sequelize.transaction();
+    const { updates } = req.body;
+
+    const transaction = await sequelize.transaction();
 
     try {
-        // Check if product exists
+        // Validate product exists
         const product = await Product.findByPk(product_id, { transaction });
         if (!product) {
-            await transaction.rollback();
-            return errorResponse(res, { message: 'Product not found' }, 'Product not found', 404);
+            return errorResponse(res, null, 'Product not found', 404);
         }
 
-        // Build where clause for variants
-        const whereClause = { product_id };
-        if (variant_ids && variant_ids.length > 0) {
-            whereClause.id = variant_ids;
-        }
-
-        // Get variants to update
         const variants = await ProductVariant.findAll({
-            where: whereClause,
+            where: { product_id },
             transaction
         });
 
-        if (variants.length === 0) {
-            await transaction.rollback();
-            return errorResponse(res, { message: 'No variants found to update' }, 'No variants found to update', 404);
+        if (!variants.length) {
+            return errorResponse(res, null, 'No variants found for this product', 404);
         }
 
-        // Prepare update data
-        const updateData = {};
+        const updatedVariants = [];
 
-        // Handle price updates
-        if (updates.price) {
-            const { type, value, is_percentage } = updates.price;
-            if (typeof value !== 'number' || isNaN(value)) {
-                await transaction.rollback();
-                return errorResponse(res, { message: 'Price value must be a valid number' }, 'Price value must be a valid number', 400);
-            }
-            variants.forEach(variant => {
-                let newPrice = variant.price;
+        for (const variant of variants) {
+            const updateData = {};
+
+            // Handle price updates with validation
+            if (updates.regular_price) {
+                const { type, value, is_percentage } = updates.regular_price;
+                let newRegularPrice = variant.regular_price;
+
                 if (type === 'set') {
-                    newPrice = parseFloat(value);
+                    newRegularPrice = value;
                 } else if (type === 'increase') {
-                    newPrice = is_percentage ? 
-                        variant.price * (1 + parseFloat(value)/100) : 
-                        parseFloat(variant.price) + parseFloat(value);
+                    newRegularPrice = is_percentage 
+                        ? variant.regular_price * (1 + value / 100)
+                        : variant.regular_price + value;
                 } else if (type === 'decrease') {
-                    newPrice = is_percentage ? 
-                        variant.price * (1 - parseFloat(value)/100) : 
-                        parseFloat(variant.price) - parseFloat(value);
+                    newRegularPrice = is_percentage 
+                        ? variant.regular_price * (1 - value / 100)
+                        : variant.regular_price - value;
                 }
-                updateData.price = Math.max(0, newPrice);
-            });
-        }
 
-        // Handle discount price updates
-        if (updates.discount_price) {
-            const { type, value, is_percentage } = updates.discount_price;
-            if (typeof value !== 'number' || isNaN(value)) {
-                await transaction.rollback();
-                return errorResponse(res, 'Discount price value must be a valid number', 400);
+                if (newRegularPrice < 0) {
+                    throw new Error('Regular price cannot be negative');
+                }
+                updateData.regular_price = newRegularPrice;
             }
-            variants.forEach(variant => {
+
+            if (updates.discount_price) {
+                const { type, value, is_percentage } = updates.discount_price;
                 let newDiscountPrice = variant.discount_price;
-                if (type === 'set') {
-                    newDiscountPrice = parseFloat(value);
-                } else if (type === 'increase') {
-                    newDiscountPrice = is_percentage ? 
-                        variant.discount_price * (1 + parseFloat(value)/100) : 
-                        parseFloat(variant.discount_price) + parseFloat(value);
-                } else if (type === 'decrease') {
-                    newDiscountPrice = is_percentage ? 
-                        variant.discount_price * (1 - parseFloat(value)/100) : 
-                        parseFloat(variant.discount_price) - parseFloat(value);
-                }
-                updateData.discount_price = Math.max(0, newDiscountPrice);
-            });
-        }
 
-        // Handle purchase price updates
-        if (updates.purchase_price) {
-            const { type, value, is_percentage } = updates.purchase_price;
-            if (typeof value !== 'number' || isNaN(value)) {
-                await transaction.rollback();
-                return errorResponse(res, 'Purchase price value must be a valid number', 400);
+                if (type === 'set') {
+                    newDiscountPrice = value;
+                } else if (type === 'increase') {
+                    newDiscountPrice = is_percentage 
+                        ? variant.discount_price * (1 + value / 100)
+                        : variant.discount_price + value;
+                } else if (type === 'decrease') {
+                    newDiscountPrice = is_percentage 
+                        ? variant.discount_price * (1 - value / 100)
+                        : variant.discount_price - value;
+                }
+
+                if (newDiscountPrice < 0) {
+                    throw new Error('Discount price cannot be negative');
+                }
+                updateData.discount_price = newDiscountPrice;
             }
-            variants.forEach(variant => {
+
+            // Calculate final price
+            const regularPrice = updateData.regular_price || variant.regular_price;
+            const discountPrice = updateData.discount_price || variant.discount_price;
+            
+            if (discountPrice && discountPrice >= regularPrice) {
+                throw new Error('Discount price must be less than regular price');
+            }
+            
+            updateData.price = discountPrice && discountPrice < regularPrice 
+                ? discountPrice 
+                : regularPrice;
+
+            // Handle purchase price with validation
+            if (updates.purchase_price) {
+                const { type, value, is_percentage } = updates.purchase_price;
                 let newPurchasePrice = variant.purchase_price;
+
                 if (type === 'set') {
-                    newPurchasePrice = parseFloat(value);
+                    newPurchasePrice = value;
                 } else if (type === 'increase') {
-                    newPurchasePrice = is_percentage ? 
-                        variant.purchase_price * (1 + parseFloat(value)/100) : 
-                        parseFloat(variant.purchase_price) + parseFloat(value);
+                    newPurchasePrice = is_percentage 
+                        ? variant.purchase_price * (1 + value / 100)
+                        : variant.purchase_price + value;
                 } else if (type === 'decrease') {
-                    newPurchasePrice = is_percentage ? 
-                        variant.purchase_price * (1 - parseFloat(value)/100) : 
-                        parseFloat(variant.purchase_price) - parseFloat(value);
+                    newPurchasePrice = is_percentage 
+                        ? variant.purchase_price * (1 - value / 100)
+                        : variant.purchase_price - value;
                 }
-                updateData.purchase_price = Math.max(0, newPurchasePrice);
+
+                if (newPurchasePrice < 0) {
+                    throw new Error('Purchase price cannot be negative');
+                }
+                if (newPurchasePrice >= updateData.price) {
+                    throw new Error('Purchase price must be less than selling price');
+                }
+                updateData.purchase_price = newPurchasePrice;
+            }
+
+            // Handle numeric field updates with validation
+            const numericFields = ['weight', 'length', 'width', 'height', 'stock', 'low_stock_threshold'];
+            numericFields.forEach(field => {
+                if (updates[field] !== undefined) {
+                    if (typeof updates[field] !== 'number' || updates[field] < 0) {
+                        throw new Error(`${field} must be a non-negative number`);
+                    }
+                    updateData[field] = updates[field];
+                }
             });
-        }
 
-        // Handle direct value updates
-        const directFields = [
-            'weight', 'length', 'width', 'height', 
-            'stock', 'low_stock_threshold'
-        ];
-
-        directFields.forEach(field => {
-            if (updates[field] !== undefined) {
-                if (typeof updates[field] !== 'number' || isNaN(updates[field])) {
-                    throw new Error(`${field} must be a valid number`);
+            // Handle status updates with validation
+            if (updates.status !== undefined) {
+                const validStatuses = ['active', 'inactive', 'draft'];
+                if (!validStatuses.includes(updates.status)) {
+                    throw new Error('Invalid status value');
                 }
-                updateData[field] = parseFloat(updates[field]);
+                updateData.status = updates.status;
             }
-        });
 
-        // Handle stock_status and status updates
-        if (updates.stock_status) {
-            if (!['in_stock', 'out_of_stock', 'low_stock'].includes(updates.stock_status)) {
-                await transaction.rollback();
-                return errorResponse(res, { message: 'Invalid stock status value' }, 'Invalid stock status value', 400);
+            if (updates.stock_status !== undefined) {
+                const validStockStatuses = ['in_stock', 'out_of_stock', 'low_stock'];
+                if (!validStockStatuses.includes(updates.stock_status)) {
+                    throw new Error('Invalid stock status value');
+                }
+                updateData.stock_status = updates.stock_status;
             }
-            updateData.stock_status = updates.stock_status;
-        }
-        else if (updates.stock || updates.low_stock_threshold) {
-            updateData.stock_status = updateStockStatus(parseInt(updates.stock) || 0, parseInt(updates.low_stock_threshold) || 0);
-        }
 
-        if (updates.status) {
-            if (!['active', 'inactive'].includes(updates.status)) {
-                await transaction.rollback();
-                return errorResponse(res, { message: 'Invalid status value' }, 'Invalid status value', 400);
-            }
-            updateData.status = updates.status;
+            const updatedVariant = await updateVariantRecord(variant.id, updateData, req.user.id, transaction);
+            updatedVariants.push(updatedVariant);
         }
 
-        // Update variants
-        await ProductVariant.update(updateData, {
-            where: whereClause,
-            transaction
-        });
-
-        // Fetch updated variants
-        const updatedVariants = await ProductVariant.findAll({
-            where: whereClause,
+        const productUpdatedVariants = await ProductVariant.findAll({
+            where: { product_id },
             include: [
                 {
                     model: ProductVariantAttribute,
@@ -2278,12 +2320,10 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         });
 
         await transaction.commit();
-
-        return successResponse(res, updatedVariants, 'Variants updated successfully');
-
+        return successResponse(res, productUpdatedVariants, 'Variants updated successfully');
     } catch (error) {
         await transaction.rollback();
-        console.error('Error updating variants:', error);
+        logger.error('Error updating variants:', error);
         return errorResponse(res, error, error.message);
     }
 };

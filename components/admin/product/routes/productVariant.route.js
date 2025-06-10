@@ -14,14 +14,18 @@
  *         slug:
  *           type: string
  *           description: Unique identifier for the variant
+ *         regular_price:
+ *           type: number
+ *           format: float
+ *           description: Regular price of the variant (base price)
  *         price:
  *           type: number
  *           format: float
- *           description: Regular price of the variant
+ *           description: Current selling price (automatically set to the lower of regular_price or discount_price)
  *         discount_price:
  *           type: number
  *           format: float
- *           description: Discounted price of the variant
+ *           description: Discounted price of the variant (if set, must be less than regular_price)
  *         purchase_price:
  *           type: number
  *           format: float
@@ -279,20 +283,20 @@ router.get('/:variant_id',
  *                   type: object
  *                   required:
  *                     - slug
- *                     - price
+ *                     - regular_price
  *                     - attributes
  *                   properties:
  *                     slug:
  *                       type: string
  *                       description: Unique identifier for the variant
- *                     price:
+ *                     regular_price:
  *                       type: number
  *                       format: decimal
- *                       description: Regular price of the variant
+ *                       description: Regular price of the variant (base price)
  *                     discount_price:
  *                       type: number
  *                       format: decimal
- *                       description: Discounted price (must be less than regular price)
+ *                       description: Discounted price (must be less than regular_price)
  *                     purchase_price:
  *                       type: number
  *                       format: decimal
@@ -561,20 +565,20 @@ router.get('/product/:product_id/attributes',
  *                   type: object
  *                   required:
  *                     - slug
- *                     - price
+ *                     - regular_price
  *                     - attributes
  *                   properties:
  *                     slug:
  *                       type: string
  *                       description: Unique identifier for the variant
- *                     price:
+ *                     regular_price:
  *                       type: number
  *                       format: decimal
- *                       description: Regular price of the variant
+ *                       description: Regular price of the variant (base price)
  *                     discount_price:
  *                       type: number
  *                       format: decimal
- *                       description: Discounted price (must be less than regular price)
+ *                       description: Discounted price (must be less than regular_price)
  *                     purchase_price:
  *                       type: number
  *                       format: decimal
@@ -737,14 +741,14 @@ router.post('/product/:product_id/variants',
  *               slug:
  *                 type: string
  *                 description: Unique identifier for the variant
- *               price:
+ *               regular_price:
  *                 type: number
  *                 format: decimal
- *                 description: Regular price of the variant
+ *                 description: Regular price of the variant (base price)
  *               discount_price:
  *                 type: number
  *                 format: decimal
- *                 description: Discounted price (must be less than regular price)
+ *                 description: Discounted price (must be less than regular_price)
  *               purchase_price:
  *                 type: number
  *                 format: decimal
@@ -1664,13 +1668,13 @@ router.post('/product/:product_id/generate',
  *               updates:
  *                 type: object
  *                 properties:
- *                   price:
+ *                   regular_price:
  *                     type: object
  *                     properties:
  *                       type:
  *                         type: string
  *                         enum: [set, increase, decrease]
- *                         description: Type of price update
+ *                         description: Type of regular price update
  *                       value:
  *                         type: number
  *                         description: Value to set, increase, or decrease by
