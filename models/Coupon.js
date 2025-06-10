@@ -42,18 +42,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       validate: {
         notEmpty: true,
-        min: 0,
-        max: {
-          args: [100],
-          msg: "Percentage discount cannot be more than 100%",
-          // Custom validator to only apply max 100 rule for percentage type
-          validator: function(value) {
-            if (this.discount_type === 'percentage' && value > 100) {
-              throw new Error('Percentage discount cannot be more than 100%');
-            }
-            return true;
-          }
-        }
+        min: 0
       }
     },
     minimum_purchase: {
