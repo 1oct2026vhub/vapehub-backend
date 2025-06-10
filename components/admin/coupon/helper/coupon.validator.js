@@ -71,7 +71,7 @@ const validateCreateCoupon = [
     .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -79,10 +79,10 @@ const validateCreateCoupon = [
   body('is_single_use')
     .optional()
     .isBoolean()
-    .withMessage('is_single_use must be a boolean')
+    .withMessage('Single use must be a boolean')
     .custom((value, { req }) => {
       if (value && req.body.usage_limit > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -212,7 +212,7 @@ const validateUpdateCoupon = [
     .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -220,10 +220,10 @@ const validateUpdateCoupon = [
   body('is_single_use')
     .optional()
     .isBoolean()
-    .withMessage('is_single_use must be a boolean')
+    .withMessage('Single use must be a boolean')
     .custom((value, { req }) => {
       if (value && req.body.usage_limit > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
