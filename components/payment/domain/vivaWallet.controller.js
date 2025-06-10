@@ -784,6 +784,105 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         })
                     });
 
+                    // Check for existing transaction
+                    const existingTransaction = await sequelize.models.Transaction.findOne({
+                        where: {
+                            referenceNumber: OrderCode.toString()
+                        }
+                    });
+
+                    if (existingTransaction) {
+                        // Update existing transaction
+                        await existingTransaction.update({
+                            status: 'CANCELLED',
+                            amount: EventData.Amount,
+                            currency: EventData.CurrencyCode,
+                            notes: 'Order cancelled',
+                            metadata: {
+                                StatusId: EventData.StatusId,
+                                TransactionId: EventData.TransactionId,
+                                cardNumber: EventData.CardNumber,
+                                cardType: EventData.CardTypeId,
+                                BankId: EventData.BankId,
+                                cardExpirationDate: EventData.CardExpirationDate,
+                                cardIssuingBank: EventData.CardIssuingBank,
+                                cardCountryCode: EventData.CardCountryCode,
+                                CurrencyCode: EventData.CurrencyCode,
+                                transactionTypeId: EventData.TransactionTypeId,
+                                transactionReferenceNumber: EventData.ReferenceNumber,
+                                totalInstallments: EventData.TotalInstallments,
+                                currentInstallment: EventData.CurrentInstallment,
+                                conversionRate: EventData.ConversionRate,
+                                originalAmount: EventData.OriginalAmount,
+                                originalCurrencyCode: EventData.OriginalCurrencyCode,
+                                cardUniqueReference: EventData.CardUniqueReference,
+                                digitalWalletId: EventData.DigitalWalletId,
+                                loyaltyTriggered: EventData.LoyaltyTriggered,
+                                tags: EventData.Tags
+                            }
+                        });
+
+                        logger.logInfo({
+                            type: 'viva_webhook_transaction_updated',
+                            message: 'Viva Wallet webhook updated existing transaction to cancelled',
+                            transaction_summary: {
+                                order_id: order.id,
+                                transaction_id: existingTransaction.id,
+                                transaction_reference: OrderCode.toString(),
+                                amount: EventData.Amount,
+                                currency: EventData.CurrencyCode
+                            },
+                            timestamp: new Date().toISOString()
+                        });
+                    } else {
+                        // Create new transaction record
+                        await sequelize.models.Transaction.create({
+                            userId: order.user_id,
+                            orderId: order.id,
+                            paymentMethod: 'vivaWallet',
+                            transactionType: 'PURCHASE',
+                            amount: EventData.Amount,
+                            currency: EventData.CurrencyCode,
+                            status: 'CANCELLED',
+                            referenceNumber: OrderCode.toString(),
+                            notes: 'Order cancelled',
+                            metadata: {
+                                StatusId: EventData.StatusId,
+                                TransactionId: EventData.TransactionId,
+                                cardNumber: EventData.CardNumber,
+                                cardType: EventData.CardTypeId,
+                                BankId: EventData.BankId,
+                                cardExpirationDate: EventData.CardExpirationDate,
+                                cardIssuingBank: EventData.CardIssuingBank,
+                                cardCountryCode: EventData.CardCountryCode,
+                                CurrencyCode: EventData.CurrencyCode,
+                                transactionTypeId: EventData.TransactionTypeId,
+                                transactionReferenceNumber: EventData.ReferenceNumber,
+                                totalInstallments: EventData.TotalInstallments,
+                                currentInstallment: EventData.CurrentInstallment,
+                                conversionRate: EventData.ConversionRate,
+                                originalAmount: EventData.OriginalAmount,
+                                originalCurrencyCode: EventData.OriginalCurrencyCode,
+                                cardUniqueReference: EventData.CardUniqueReference,
+                                digitalWalletId: EventData.DigitalWalletId,
+                                loyaltyTriggered: EventData.LoyaltyTriggered,
+                                tags: EventData.Tags
+                            }
+                        });
+
+                        logger.logInfo({
+                            type: 'viva_webhook_transaction_created',
+                            message: 'Viva Wallet webhook created cancelled transaction',
+                            transaction_summary: {
+                                order_id: order.id,
+                                transaction_reference: OrderCode.toString(),
+                                amount: EventData.Amount,
+                                currency: EventData.CurrencyCode
+                            },
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+
                     // Create notification for cancellation
                     await createNotification({
                         userId: order.user_id,

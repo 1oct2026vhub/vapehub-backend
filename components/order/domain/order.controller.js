@@ -473,14 +473,15 @@ module.exports.placeOrder = async (req, res, next) => {
                             state: billing_address.region,
                             countryCode: countryCode
                         },
-                        // resultURLs: {   //payment-success
-                        //     successURL: `${process.env.FRONTEND_URL}/payment/success`,
-                        //     pendingURL: `${process.env.FRONTEND_URL}/payment/pending`,
-                        //     failureURL: `${process.env.FRONTEND_URL}/payment/failure`,
-                        //     errorURL: `${process.env.FRONTEND_URL}/payment/error`,
-                        //     cancelURL: `${process.env.FRONTEND_URL}/payment/cancel`,
-                        //     expiryURL: `${process.env.FRONTEND_URL}/payment/expiry`
-                        // 
+                        resultURLs: {
+                            successURL: `${process.env.FRONTEND_URL}/payment-success?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
+                            // pendingURL: `${process.env.FRONTEND_URL}/payment/pending`,
+                            failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
+                            errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
+                            cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
+                            expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`
+                        },
+                        
                     }
                 });
 
