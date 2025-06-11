@@ -76,11 +76,9 @@ const createNotification = async ({ userId, type, action, data, title, url, is_a
         const notification = await Notification.create(notificationData);
 
         // Log the notification creation
-        logger.info(`Notification created for user ${userId}: ${message}`);
 
         return notification;
     } catch (error) {
-        logger.error('Error creating notification:', error);
         throw error;
     }
 };
@@ -105,11 +103,8 @@ const createBulkNotifications = async (notifications) => {
 
         // Create notifications in bulk
         const createdNotifications = await Notification.bulkCreate(formattedNotifications);
-        
-        logger.info(`Created ${notifications.length} notifications in bulk`);
         return createdNotifications;
     } catch (error) {
-        logger.error('Error creating bulk notifications:', error);
         throw error;
     }
 };
@@ -136,7 +131,6 @@ const markNotificationAsRead = async (notificationId, userId) => {
         await notification.markAsRead();
         return notification;
     } catch (error) {
-        logger.error('Error marking notification as read:', error);
         throw error;
     }
 };
@@ -159,7 +153,6 @@ const markAllNotificationsAsRead = async (userId) => {
         );
         return result[0];
     } catch (error) {
-        logger.error('Error marking all notifications as read:', error);
         throw error;
     }
 };

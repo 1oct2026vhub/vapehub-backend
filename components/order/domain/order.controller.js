@@ -546,55 +546,9 @@ module.exports.placeOrder = async (req, res, next) => {
                     }, { transaction });
                 }
             } catch (error) {
-                logger.error('Error updating referral with order:', error);
-                // Continue with order creation even if referral update fails
+                console.log("error in place order function while updating referral with order");
             }
         }
-        
-        // else{
-            // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
-            // const ACCOUNT_ID = process.env.ACCOUNT_ID; //"364806707";  // Your Worldpay Account ID
-            // const API_KEY = process.env.API_KEY; //"D072A3884FA9DE021EF37D36F07F1338C007F7386F58DF4A1A7DBCF1415328638D22C901";
-            
-            // const paymentData = {
-            //     transactionReference: `TXN-${Date.now()}`,
-            //     merchant: { entity: "default" },
-            //     instruction: {
-            //         method: 'card',
-            //         paymentInstrument: {
-            //           type: 'plain',
-            //           cardHolderName: 'Sherlock Holmes',
-            //           cardNumber: '4000000000001091',
-            //           expiryDate: {month: 5, year: 2035},
-            //           billingAddress: {
-            //             address1: '221B Baker Street',
-            //             address2: 'Marylebone',
-            //             address3: 'Westminster',
-            //             postalCode: 'SW1 1AA',
-            //             city: 'London',
-            //             state: 'Greater London',
-            //             countryCode: 'GB'
-            //           },
-            //           cvc: '123'
-            //         },
-            //         narrative: {line1: 'trading name'},
-            //         value: {
-            //           currency: 'GBP',
-            //           amount: 42
-            //         }
-            //     }
-            // };
-    
-            // const response = await axios.post(PAYMENT_URL, paymentData, {
-            //     headers: {
-            //         'Content-Type': 'application/json',
-            //         'WP-Api-Version': '2024-06-01',
-            //         Authorization: `Basic ${Buffer.from(`${ACCOUNT_ID}:${API_KEY}`).toString("base64")}`
-            //       },
-            // });
-    
-        // }
-        // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
         return successResponse(res, {
             message: "Order placed successfully",
@@ -756,12 +710,6 @@ module.exports.getOrderById = async (req, res) => {
         if (!order) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
-        // Update order status if needed
-        // if (order.status === 'cancel') {
-        //     order.status = 'cancelled';
-        // } else if (order.status === 'fail') {
-        //     order.status = 'failed';
-        // }
         // Process referral discount if order has a referral_id
         let orderObj = {}
         if(order.referral_id){
@@ -1122,19 +1070,7 @@ module.exports.checkOrderStock = async (req, res) => {
                 message: 'Order cancelled due to Viva Wallet state'
             }, 'Order cancelled due to Viva Wallet state', 400);
         }
-        //   const accessToken = await getVivaAccessToken();
-        //   orderCode = await createVivaOrder(accessToken,order.total);
-//         var code = resp.data.Key;
-//         const resps = await axios({
-//             method: "PATCH",
-//             url: `https://demo.vivapayments.com/api/orders/${7282214013015238}`,
-//             headers: {
-//               "Authorization": "Basic " + credentials,
-//               "Content-Type": "application/json"
-//             }
-// });
         await transaction.commit();
-
         return successResponse(res, {
             order_id: order.id,
             order_code: order.order_code, //order.order_code,

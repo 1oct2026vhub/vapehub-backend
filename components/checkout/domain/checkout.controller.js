@@ -150,7 +150,6 @@ module.exports.checkout = async (req, res, next) => {
         }
         successResponse(res, resObj, 'Success');
     } catch (error) {
-        logger.error(error)
         return errorResponse(res, error, error.message);
     }
 }
@@ -397,7 +396,6 @@ module.exports.applyCoupon = async (req, res, next) => {
         }
         successResponse(res, resObj, 'Coupon Applied Successfully');
     } catch (error) {
-        logger.error(error)
         return errorResponse(res, error, error.message);
     }
 }
