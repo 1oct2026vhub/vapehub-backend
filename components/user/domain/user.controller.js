@@ -750,22 +750,6 @@ const getReferralStats = async (req, res) => {
             }
         };
 
-        // Log successful response
-        logger.logInfo({
-            type: 'referral_stats_response',
-            user_id: userId,
-            response_summary: {
-                total_referrals: response.total_referrals,
-                pending_referrals: response.pending_referrals,
-                has_referrer: !!response.referrer,
-                active_methods_count: response.referral_methods.length,
-                referrer: referrer ? referrer : null,
-                recent_referrals_count: response.recent_referrals.data.length,
-                pagination: response.recent_referrals.pagination
-            },
-            timestamp: new Date().toISOString()
-        });
-
         successResponse(res, response, 'Referral statistics retrieved successfully');
     } catch (error) {
         // Log error
