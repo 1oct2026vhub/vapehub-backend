@@ -822,18 +822,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             }
                         });
 
-                        logger.logInfo({
-                            type: 'viva_webhook_transaction_updated',
-                            message: 'Viva Wallet webhook updated existing transaction to cancelled',
-                            transaction_summary: {
-                                order_id: order.id,
-                                transaction_id: existingTransaction.id,
-                                transaction_reference: OrderCode.toString(),
-                                amount: EventData.Amount,
-                                currency: EventData.CurrencyCode
-                            },
-                            timestamp: new Date().toISOString()
-                        });
                     } else {
                         // Create new transaction record
                         await sequelize.models.Transaction.create({
@@ -870,17 +858,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             }
                         });
 
-                        logger.logInfo({
-                            type: 'viva_webhook_transaction_created',
-                            message: 'Viva Wallet webhook created cancelled transaction',
-                            transaction_summary: {
-                                order_id: order.id,
-                                transaction_reference: OrderCode.toString(),
-                                amount: EventData.Amount,
-                                currency: EventData.CurrencyCode
-                            },
-                            timestamp: new Date().toISOString()
-                        });
                     }
 
                     // Create notification for cancellation
