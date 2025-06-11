@@ -31,6 +31,7 @@ const createNotification = async ({ userId, type, action, data, title, url, is_a
                 refunded: `Refund of £${data.amount || 'N/A'} has been processed`,
                 pending: `Payment of £${data.amount || 'N/A'} is pending`,
                 cancelled: `Payment of £${data.amount || 'N/A'} has been cancelled`,
+                expired: `Payment of £${data.amount || 'N/A'} has expired`,
                 new_referral: `You have a new referral code waiting to be claimed`
             },
             system: {
@@ -59,7 +60,6 @@ const createNotification = async ({ userId, type, action, data, title, url, is_a
         }
         // Get the appropriate message based on type and action
         const message = messages[type]?.[action] || 'Notification';
-        console.log("is_admin", is_admin);
         // Create notification data based on model structure
         const notificationData = {
             user_id: userId,
