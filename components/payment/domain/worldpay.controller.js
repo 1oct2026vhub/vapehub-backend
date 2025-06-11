@@ -9,7 +9,7 @@ const crypto = require("crypto");
 
 const convertAmountToDecimal = (amount, currencyCode) => {
     // Convert amount from pence/cents to pounds/dollars
-    const decimalAmount = (amount / 100).toFixed(2);
+    const decimalAmount = Math.floor((amount || 0) * 100) / 100;
     return {
         value: parseFloat(decimalAmount),
         currencyCode: currencyCode
@@ -240,9 +240,9 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 //     await handleSentForAuthorization(order, webhookData);
                 //     break;
                 
-                // case 'authorized':
-                //     await handleAuthorizedPayment(order, webhookData);
-                //     break;
+                case 'authorized':
+                    await handleAuthorizedPayment(order, webhookData);
+                    break;
                 // case 'sentForSettlement':
                 //     await handleSentForSettlement(order, webhookData);
                 //     break;
@@ -313,32 +313,81 @@ const handleCancelledPayment = async (order, webhookData) => {
     try {
         // Convert amount from pence to pounds
         const convertedAmount = convertAmountToDecimal(
-            webhookData.eventDetails.amount.value,
+            order.total,
             webhookData.eventDetails.amount.currencyCode
         );
 
         // Update order status to cancelled
         await order.update({ status: 'cancel' });   //, { transaction }
 
-        // Create order log for cancelled payment
-        await sequelize.models.OrderLog.create({
-            order_id: order.id,
-            user_id: order.user_id,
-            status: 'cancelled',
-            label: 'Payment Cancelled via Worldpay',
-            additional_info: JSON.stringify({
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                transactionId: webhookData.eventDetails.transactionReference,
-                downstreamReference: webhookData.eventDetails.downstreamReference,
-                amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
-            })
+        // Check for existing order log
+        const existingOrderLog = await sequelize.models.OrderLog.findOne({
+            where: {
+                order_id: order.id,
+                user_id: order.user_id
+            }
         });
+
+        if (existingOrderLog) {
+            // Update existing order log
+            await existingOrderLog.update({
+                status: 'cancelled',
+                label: 'Payment Cancelled via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionId: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_updated',
+                message: 'Worldpay webhook updated existing order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    orderlog_id: existingOrderLog.id,
+                    status: 'cancelled'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new order log
+            await sequelize.models.OrderLog.create({
+                order_id: order.id,
+                user_id: order.user_id,
+                status: 'cancelled',
+                label: 'Payment Cancelled via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionId: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_created',
+                message: 'Worldpay webhook created new order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    status: 'cancelled'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         // Check for existing transaction
         const existingTransaction = await sequelize.models.Transaction.findOne({
@@ -513,7 +562,7 @@ const handleExpiredPayment = async (order, webhookData) => {
     try {
         // Convert amount from pence to pounds
         const convertedAmount = convertAmountToDecimal(
-            webhookData.eventDetails.amount.value,
+            order.total,
             webhookData.eventDetails.amount.currencyCode
         );
 
@@ -715,48 +764,147 @@ const handleSentForAuthorization = async (order, webhookData) => {
         // Update order status to pending
         await order.update({ status: 'pending' }, { transaction });
 
-        // Create order log for authorization request
-        await sequelize.models.OrderLog.create({
-            order_id: order.id,
-            user_id: order.user_id,
-            status: 'pending',
-            label: 'Payment Authorization Requested via Worldpay',
-            additional_info: JSON.stringify({
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                transactionReference: webhookData.eventDetails.transactionReference,
-                downstreamReference: webhookData.eventDetails.downstreamReference,
+        // Check for existing order log
+        const existingOrderLog = await sequelize.models.OrderLog.findOne({
+            where: {
+                order_id: order.id,
+                user_id: order.user_id
+            }
+        });
+
+        if (existingOrderLog) {
+            // Update existing order log
+            await existingOrderLog.update({
+                status: 'pending',
+                label: 'Payment Sent for Settlement via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionReference: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: webhookData.eventDetails.amount.value,
+                    currency: webhookData.eventDetails.amount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_updated',
+                message: 'Worldpay webhook updated existing order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    orderlog_id: existingOrderLog.id,
+                    status: 'pending'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new order log
+            await sequelize.models.OrderLog.create({
+                order_id: order.id,
+                user_id: order.user_id,
+                status: 'pending',
+                label: 'Payment Sent for Settlement via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionReference: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: webhookData.eventDetails.amount.value,
+                    currency: webhookData.eventDetails.amount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_created',
+                message: 'Worldpay webhook created new order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    status: 'pending'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // Check for existing transaction
+        const existingTransaction = await sequelize.models.Transaction.findOne({
+            where: {
+                orderId: order.id,
+                userId: order.user_id
+            }
+        });
+
+        if (existingTransaction) {
+            // Update existing transaction
+            await existingTransaction.update({
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
                 amount: webhookData.eventDetails.amount.value,
                 currency: webhookData.eventDetails.amount.currencyCode,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links.payment.href
-            })
-        }, { transaction });
+                status: 'SETTLING',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment sent for settlement',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                }
+            });
 
-        // Create authorization transaction record
-        await sequelize.models.Transaction.create({
-            userId: order.user_id,
-            orderId: order.id,
-            paymentMethod: 'worldpay',
-            transactionType: 'PURCHASE',
-            amount: webhookData.eventDetails.amount.value,
-            currency: webhookData.eventDetails.amount.currencyCode,
-            status: 'PENDING',
-            referenceNumber: webhookData.eventDetails.transactionReference,
-            notes: 'Payment authorization requested',
-            metadata: {
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links.payment.href
-            }
-        }, { transaction });
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_updated',
+                message: 'Worldpay webhook updated existing transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    transaction_id: existingTransaction.id,
+                    status: 'SETTLING'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new transaction record
+            await sequelize.models.Transaction.create({
+                userId: order.user_id,
+                orderId: order.id,
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
+                amount: webhookData.eventDetails.amount.value,
+                currency: webhookData.eventDetails.amount.currencyCode,
+                status: 'SETTLING',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment sent for settlement',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                }
+            });
 
-        // Create authorization notification
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_created',
+                message: 'Worldpay webhook created new transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    status: 'SETTLING'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // Create settlement notification
         await createNotification({
             userId: order.user_id,
             type: 'payment',
@@ -813,30 +961,9 @@ const handleSentForAuthorization = async (order, webhookData) => {
 
 const handleSentForSettlement = async (order, webhookData) => {
     try {
-        // Check if transaction already exists
-        // const existingTransaction = await sequelize.models.Transaction.findOne({
-        //     where: {
-        //         referenceNumber: webhookData.eventDetails.transactionReference
-        //     }
-        // });
-
-        // if (existingTransaction) {
-        //     logger.logInfo({
-        //         type: 'worldpay_webhook_duplicate_transaction',
-        //         message: 'Duplicate webhook received for existing transaction',
-        //         transaction_summary: {
-        //             order_id: order.id,
-        //             transaction_reference: webhookData.eventDetails.transactionReference,
-        //             existing_transaction_id: existingTransaction.id
-        //         },
-        //         timestamp: new Date().toISOString()
-        //     });
-        //     return webhookData.eventDetails.transactionReference;
-        // }
-
         // Convert amount from pence to pounds
         const convertedAmount = convertAmountToDecimal(
-            webhookData.eventDetails.amount.value,
+            order.total,
             webhookData.eventDetails.amount.currencyCode
         );
 
@@ -853,24 +980,73 @@ const handleSentForSettlement = async (order, webhookData) => {
         });
 
         // Create order log for successful payment
-        await sequelize.models.OrderLog.create({
-            order_id: order.id,
-            user_id: order.user_id,
-            status: 'processing',
-            label: 'Payment Successful via Worldpay',
-            additional_info: JSON.stringify({
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                transactionId: webhookData.eventDetails.transactionReference,
-                downstreamReference: webhookData.eventDetails.downstreamReference,
-                amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
-            })
+        const existingOrderLog = await sequelize.models.OrderLog.findOne({
+            where: {
+                order_id: order.id,
+                user_id: order.user_id
+            }
         });
+
+        if (existingOrderLog) {
+            // Update existing order log
+            await existingOrderLog.update({
+                status: 'processing',
+                label: 'Payment Successful via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionId: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_updated',
+                message: 'Worldpay webhook updated existing order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    orderlog_id: existingOrderLog.id,
+                    status: 'processing'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new order log
+            await sequelize.models.OrderLog.create({
+                order_id: order.id,
+                user_id: order.user_id,
+                status: 'processing',
+                label: 'Payment Successful via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionId: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                })
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_created',
+                message: 'Worldpay webhook created new order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    status: 'processing'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         logger.logInfo({
             type: 'worldpay_webhook_processing_items',
@@ -1138,38 +1314,76 @@ const handleSentForSettlement = async (order, webhookData) => {
             });
         }
 
-        // Create successful transaction record
-        await sequelize.models.Transaction.create({
-            userId: order.user_id,
-            orderId: order.id,
-            paymentMethod: 'worldpay',
-            transactionType: 'PURCHASE',
-            amount: convertedAmount.value,
-            currency: convertedAmount.currencyCode,
-            status: 'COMPLETED',
-            referenceNumber: webhookData.eventDetails.transactionReference,
-            notes: 'Payment completed successfully',
-            metadata: {
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
+        // Check for existing transaction
+        const existingTransaction = await sequelize.models.Transaction.findOne({
+            where: {
+                orderId: order.id,
+                userId: order.user_id
             }
         });
 
-        logger.logInfo({
-            type: 'worldpay_webhook_transaction_created',
-            message: 'Worldpay webhook created transaction record',
-            transaction_summary: {
-                order_id: order.id,
-                transaction_reference: webhookData.eventDetails.transactionReference,
+        if (existingTransaction) {
+            // Update existing transaction
+            await existingTransaction.update({
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
                 amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode
-            },
-            timestamp: new Date().toISOString()
-        });
+                currency: convertedAmount.currencyCode,
+                status: 'COMPLETED',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment completed successfully',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                }
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_updated',
+                message: 'Worldpay webhook updated existing transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    transaction_id: existingTransaction.id,
+                    status: 'COMPLETED'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new transaction record
+            await sequelize.models.Transaction.create({
+                userId: order.user_id,
+                orderId: order.id,
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
+                amount: convertedAmount.value,
+                currency: convertedAmount.currencyCode,
+                status: 'COMPLETED',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment completed successfully',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                }
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_created',
+                message: 'Worldpay webhook created new transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    status: 'COMPLETED'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         // Create success notification
         await createNotification({
@@ -1307,103 +1521,181 @@ const handleSentForSettlement = async (order, webhookData) => {
     }
 };
 
-// const handleSentForSettlement = async (order, webhookData) => {
-//     const transaction = await sequelize.transaction();
-//     try {
-//         // Update order status to settling
-//         await order.update({ status: 'settling' }, { transaction });
+const handleAuthorizedPayment = async (order, webhookData) => {
+    try {
+        const convertedAmount = convertAmountToDecimal(
+            order.total,
+            webhookData.eventDetails.amount.currencyCode
+        );
+        // Update order status to settling
+        await order.update({ status: 'pending' });
 
-//         // Create order log for settlement request
-//         await sequelize.models.OrderLog.create({
-//             order_id: order.id,
-//             user_id: order.user_id,
-//             status: 'settling',
-//             label: 'Payment Sent for Settlement via Worldpay',
-//             additional_info: JSON.stringify({
-//                 eventId: webhookData.eventId,
-//                 eventTimestamp: webhookData.eventTimestamp,
-//                 eventDate: webhookData.eventDetails.date,
-//                 transactionReference: webhookData.eventDetails.transactionReference,
-//                 downstreamReference: webhookData.eventDetails.downstreamReference,
-//                 amount: webhookData.eventDetails.amount.value,
-//                 currency: webhookData.eventDetails.amount.currencyCode,
-//                 type: webhookData.eventDetails.type,
-//                 classification: webhookData.eventDetails.classification,
-//                 paymentLink: webhookData.eventDetails._links.payment.href
-//             })
-//         }, { transaction });
+        // Check for existing order log
+        const existingOrderLog = await sequelize.models.OrderLog.findOne({
+            where: {
+                order_id: order.id,
+                user_id: order.user_id
+            }
+        });
 
-//         // Create settlement transaction record
-//         await sequelize.models.Transaction.create({
-//             userId: order.user_id,
-//             orderId: order.id,
-//             paymentMethod: 'worldpay',
-//             transactionType: 'SETTLEMENT',
-//             amount: webhookData.eventDetails.amount.value,
-//             currency: webhookData.eventDetails.amount.currencyCode,
-//             status: 'SETTLING',
-//             referenceNumber: webhookData.eventDetails.transactionReference,
-//             notes: 'Payment sent for settlement',
-//             metadata: {
-//                 eventId: webhookData.eventId,
-//                 eventTimestamp: webhookData.eventTimestamp,
-//                 eventDate: webhookData.eventDetails.date,
-//                 type: webhookData.eventDetails.type,
-//                 classification: webhookData.eventDetails.classification,
-//                 paymentLink: webhookData.eventDetails._links.payment.href
-//             }
-//         }, { transaction });
+        if (existingOrderLog) {
+            // Update existing order log
+            await existingOrderLog.update({
+                status: 'pending',
+                label: 'Payment Sent for Settlement via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionReference: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                })
+            });
 
-//         // Create settlement notification
-//         await createNotification({
-//             userId: order.user_id,
-//             type: 'payment',
-//             action: 'settlement_initiated',
-//             data: {
-//                 amount: webhookData.eventDetails.amount.value,
-//                 currency: webhookData.eventDetails.amount.currencyCode,
-//                 orderId: order.id,
-//                 relatedId: order.id,
-//                 message: 'Payment sent for settlement',
-//                 eventId: webhookData.eventId,
-//                 transactionReference: webhookData.eventDetails.transactionReference
-//             }
-//         });
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_updated',
+                message: 'Worldpay webhook updated existing order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    orderlog_id: existingOrderLog.id,
+                    status: 'pending'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new order log
+            await sequelize.models.OrderLog.create({
+                order_id: order.id,
+                user_id: order.user_id,
+                status: 'pending',
+                label: 'Payment Sent for Settlement via Worldpay',
+                additional_info: JSON.stringify({
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    transactionReference: webhookData.eventDetails.transactionReference,
+                    downstreamReference: webhookData.eventDetails.downstreamReference,
+                    amount: convertedAmount.value,
+                    currency: convertedAmount.currencyCode,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                })
+            });
 
-//         // Send settlement email
-//         const emailData = {
-//             emailTypes: 'PAYMENT_SETTLEMENT',
-//             to: order.user.email,
-//             context: {
-//                 userName: order.user.first_name || order.user.email.split('@')[0],
-//                 orderId: order.id,
-//                 orderUniqueId: order.order_unique_id,
-//                 orderCode: order.order_code,
-//                 orderDate: order.createdAt.toLocaleDateString(),
-//                 status: 'settling',
-//                 amount: webhookData.eventDetails.amount.value,
-//                 currency: webhookData.eventDetails.amount.currencyCode,
-//                 message: 'Payment sent for settlement',
-//                 eventId: webhookData.eventId,
-//                 transactionReference: webhookData.eventDetails.transactionReference,
-//                 eventDate: webhookData.eventDetails.date
-//             }
-//         };
+            logger.logInfo({
+                type: 'worldpay_webhook_orderlog_created',
+                message: 'Worldpay webhook created new order log',
+                orderlog_summary: {
+                    order_id: order.id,
+                    status: 'pending'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
-//         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        // Check for existing transaction
+        const existingTransaction = await sequelize.models.Transaction.findOne({
+            where: {
+                orderId: order.id,
+                userId: order.user_id
+            }
+        });
 
-//         await transaction.commit();
-//     } catch (error) {
-//         await transaction.rollback();
-//         throw error;
-//     }
-// };
+        if (existingTransaction) {
+            // Update existing transaction
+            await existingTransaction.update({
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
+                amount: convertedAmount.value,
+                currency: convertedAmount.currencyCode,
+                status: 'PENDING',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment sent for settlement',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                }
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_updated',
+                message: 'Worldpay webhook updated existing transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    transaction_id: existingTransaction.id,
+                    status: 'PENDING'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            // Create new transaction record
+            await sequelize.models.Transaction.create({
+                userId: order.user_id,
+                orderId: order.id,
+                paymentMethod: 'worldpay',
+                transactionType: 'PURCHASE',
+                amount: convertedAmount.value,
+                currency: convertedAmount.currencyCode,
+                status: 'PENDING',
+                referenceNumber: webhookData.eventDetails.transactionReference,
+                notes: 'Payment sent for settlement',
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links.payment.href
+                }
+            });
+
+            logger.logInfo({
+                type: 'worldpay_webhook_transaction_created',
+                message: 'Worldpay webhook created new transaction',
+                transaction_summary: {
+                    order_id: order.id,
+                    status: 'PENDING'
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // Create settlement notification
+        await createNotification({
+            userId: order.user_id,
+            type: 'payment',
+            action: 'settlement_initiated',
+            data: {
+                amount: convertedAmount.value,
+                currency: convertedAmount.currencyCode,
+                orderId: order.id,
+                relatedId: order.id,
+                message: 'Payment sent for settlement',
+                eventId: webhookData.eventId,
+                transactionReference: webhookData.eventDetails.transactionReference
+            }
+        });
+
+    } catch (error) {
+        throw error;
+    }
+};
 
 const handlePaymentError = async (order, webhookData) => {
     try {
         // Convert amount from pence to pounds
         const convertedAmount = convertAmountToDecimal(
-            webhookData.eventDetails.amount.value,
+            order.total,
             webhookData.eventDetails.amount.currencyCode
         );
 
