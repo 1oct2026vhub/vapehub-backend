@@ -341,7 +341,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 }
 
                 // Check minimum purchase requirement
-                if (coupon.minimum_purchase && subTotal < coupon.minimum_purchase) {
+                if (parseFloat(coupon.minimum_purchase) && parseFloat(subTotal) < parseFloat(coupon.minimum_purchase)) {
                     throw {
                         statusCode: 400,
                         message: `Coupon requires a minimum purchase of £${coupon.minimum_purchase}.`
