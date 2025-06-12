@@ -97,7 +97,7 @@ module.exports.getBrandBySlug = async (req, res, next) => {
                 statusCode: 400,
             };
         }
-        req.query.brands = `${brand.id}`;
+        req.query.brand = `${brand.id}`;
         req.query.source = 'brand';
         const {additionalData, products, attributes, category_items, price_ranges, pagination } = await fetchProducts(req.query);
 
@@ -110,7 +110,6 @@ module.exports.getBrandBySlug = async (req, res, next) => {
             pagination 
         }, "Success");
     } catch (error) {
-        console.log("🚀 ~ module.exports.getBrandBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }
