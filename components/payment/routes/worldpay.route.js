@@ -58,4 +58,134 @@ const worldpayController = require("../domain/worldpay.controller");
  */
 router.post("/webhook", worldpayController.handleWorldpayWebhook);
 
+/**
+ * @swagger
+ * /api/payment/worldpay/payment-success:
+ *   post:
+ *     summary: Handle successful Worldpay payment
+ *     description: Processes a successful payment from Worldpay and updates order status
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - orderCode
+ *               - currency
+ *               - amount
+ *             properties:
+ *               orderCode:
+ *                 type: string
+ *                 description: The order code from Worldpay
+ *               currency:
+ *                 type: string
+ *                 description: The payment currency (e.g., GBP)
+ *               amount:
+ *                 type: number
+ *                 description: The payment amount
+ *     responses:
+ *       200:
+ *         description: Payment processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Payment processed successfully
+ *                 orderId:
+ *                   type: integer
+ *                   example: 123
+ *                 orderCode:
+ *                   type: string
+ *                   example: "WP123456789"
+ *                 status:
+ *                   type: string
+ *                   example: "processing"
+ *       400:
+ *         description: Bad Request - Invalid payment data
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/payment-success", worldpayController.handleWorldpayPaymentSuccess);
+
+/**
+ * @swagger
+ * /api/payment/worldpay/payment-cancel:
+ *   post:
+ *     summary: Handle cancelled Worldpay payment
+ *     description: Processes a cancelled payment from Worldpay and updates order status
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - orderCode
+ *               - currency
+ *               - amount
+ *             properties:
+ *               orderCode:
+ *                 type: string
+ *                 description: The order code from Worldpay
+ *               currency:
+ *                 type: string
+ *                 description: The payment currency (e.g., GBP)
+ *               amount:
+ *                 type: number
+ *                 description: The payment amount
+ *     responses:
+ *       200:
+ *         description: Payment cancellation processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Payment cancelled
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order_code:
+ *                       type: string
+ *                       example: "WP123456789"
+ *                     payment_method:
+ *                       type: string
+ *                       example: "Worldpay"
+ *                     order_details:
+ *                       type: object
+ *                       properties:
+ *                         order_id:
+ *                           type: integer
+ *                           example: 123
+ *                         order_unique_id:
+ *                           type: string
+ *                           example: "ORD-123-456"
+ *                         order_code:
+ *                           type: string
+ *                           example: "WP123456789"
+ *                         status:
+ *                           type: string
+ *                           example: "cancel"
+ *                         amount:
+ *                           type: number
+ *                           example: 99.99
+ *       400:
+ *         description: Bad Request - Invalid payment data
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/payment-cancel", worldpayController.handleWorldpayPaymentCancel);
+    
 module.exports = router; 
