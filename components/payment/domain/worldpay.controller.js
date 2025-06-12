@@ -2677,7 +2677,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             }
         };
 
-        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
         return successResponse(res, {
             message: "payment successfull",
             data: {
@@ -2943,7 +2943,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             }
         };
 
-        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
         logger.logInfo({
             type: 'worldpay_webhook_email_sent',
             message: 'Worldpay webhook sent cancellation email',
