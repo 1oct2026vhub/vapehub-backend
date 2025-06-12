@@ -232,7 +232,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                     referralValue = parseFloat(referral.referral_value);
                     referralValueType = referralValue!=0 ? referral.referral_value_type : '';
                     // Check minimum purchase for fixed referral value
-                    if (referralValueType === 'fixed' && parseFloat(referral.minimum_purchase) && parseFloat(total) < parseFloat(referral.minimum_purchase)) {
+                    if (parseFloat(referral.minimum_purchase) && parseFloat(total) < parseFloat(referral.minimum_purchase)) {   //referralValueType === 'fixed' && 
                         throw {
                             statusCode: 400,
                             message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
@@ -261,7 +261,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         referralValueType = referralMethod.referral_value_type;
 
                         // Check minimum purchase only for fixed referral value type
-                        if (referralMethod.referral_value_type === 'fixed' && parseFloat(referralMethod.minimum_purchase) && parseFloat(total) < parseFloat(referralMethod.minimum_purchase)) {
+                        if (parseFloat(referralMethod.minimum_purchase) && parseFloat(total) < parseFloat(referralMethod.minimum_purchase)) {  //referralMethod.referral_value_type === 'fixed' && 
                             throw {
                                 statusCode: 400,
                                 message: `Minimum purchase amount of £${referralMethod.minimum_purchase} required to apply this referral discount.`
