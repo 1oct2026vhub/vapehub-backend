@@ -300,4 +300,36 @@ router.get(
     referralMethodController.list
 );
 
+/**
+ * @swagger
+ * /api/admin/referral-method/{id}:
+ *   get:
+ *     summary: Get a referral method by ID
+ *     tags:
+ *       - ADMIN - Referral Method
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the referral method to retrieve
+ *     responses:
+ *       200:
+ *         description: Referral method details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReferralMethod'
+ *       401:
+ *         description: Unauthorized access
+ *       404:
+ *         description: Referral method not found
+ */
+router.get(
+    "/:id",
+    [authMiddleware(true), validateRequest(validationRules.referralMethodIDValidation)],
+    referralMethodController.getById
+);
+
 module.exports = router; 
