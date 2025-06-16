@@ -108,9 +108,18 @@ const getReviews = async (req, res, next) => {
             limit: parseInt(limit),
             offset: offset
         });
-
+        const averageRating = await Review.findOne({
+            where,
+            attributes: [
+                [sequelize.fn('AVG', sequelize.col('rating')), 'average_rating'],
+                [sequelize.fn('COUNT', sequelize.col('id')), 'total_reviews']
+            ],
+            raw: true
+        });
         return successResponse(res, {
             rows: reviews.rows,
+            average_rating: parseFloat(averageRating?.average_rating || 0).toFixed(1),
+            total_reviews: parseInt(averageRating?.total_reviews || 0),
             pagination: {
                 total: reviews.count,
                 currentPage: parseInt(page),

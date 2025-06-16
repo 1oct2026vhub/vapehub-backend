@@ -17,6 +17,13 @@ module.exports = (sequelize, DataTypes) => {
         onUpdate: 'CASCADE' 
       });
 
+      this.belongsTo(models.PaymentMethod, {
+        foreignKey: 'payment_method_id',
+        as: 'paymentMethod',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
+      });
+
       this.belongsTo(models.Coupon, { 
         foreignKey: 'coupon_id', 
         as: 'coupon',
@@ -381,6 +388,14 @@ module.exports = (sequelize, DataTypes) => {
       // validate: {
       //   is: /^ORD-[A-Z0-9]{8}$/i
       // }
+    },
+    payment_method_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'PaymentMethods',
+        key: 'id'
+      }
     },
     order_code: {
       type: DataTypes.STRING,

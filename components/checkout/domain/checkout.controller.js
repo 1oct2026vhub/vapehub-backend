@@ -304,8 +304,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
                         end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
                 }
-                }); 
-
+                });
                 if (!coupon) {
                     throw {
                         statusCode: 404,

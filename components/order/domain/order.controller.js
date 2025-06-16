@@ -178,6 +178,16 @@ module.exports.placeOrder = async (req, res, next) => {
         const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
         const payMethod = payment_method.method;
 
+        // Get payment method ID from PaymentMethod model
+        const paymentMethodRecord = await PaymentMethod.findOne({
+            where: { payment_method: payMethod },
+            transaction
+        });
+
+        if (!paymentMethodRecord) {
+            throw new Error(`Payment method ${payMethod} not found`);
+        }
+
         let wallet_check = {};
 
         // Fetch Cart Items
@@ -518,7 +528,8 @@ module.exports.placeOrder = async (req, res, next) => {
             sub_total: subTotal,
             discount_price: referralDiscount,
             discount_type: discountType,
-            referral_id: referralId
+            referral_id: referralId,
+            payment_method_id: paymentMethodRecord.id
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
         // if (coupon && coupon_count_flag) {
@@ -703,6 +714,11 @@ module.exports.getOrderById = async (req, res) => {
                     model: Coupon,
                     as: 'coupon',
                     attributes: ['code', 'discount_type', 'discount_value']
+                },
+                {
+                    model: PaymentMethod,
+                    as: 'paymentMethod',
+                    attributes: ['id', 'payment_method', 'status']
                 }
             ]
         });
