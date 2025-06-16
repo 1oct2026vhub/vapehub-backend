@@ -181,6 +181,27 @@ class ReferralMethodController {
       return errorResponse(res, error, error.message);
     }
   }
+
+  // Get referral method by ID
+  async getById(req, res) {
+    try {
+      const { id } = req.params;
+      const referralMethod = await ReferralMethodHelper.findById(id);
+      
+      if (!referralMethod) {
+        logger.warn('Referral method not found', { id });
+        return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
+      }
+
+      return successResponse(res, {
+        success: true,
+        data: referralMethod
+      }, "Referral method retrieved successfully");
+    } catch (error) {
+      logger.error('Error retrieving referral method', { id: req.params.id, error: error.message, stack: error.stack });
+      return errorResponse(res, error, error.message);
+    }
+  }
 }
 
 module.exports = new ReferralMethodController(); 
