@@ -15,16 +15,13 @@ const authUrl = 'https://api.trustpilot.com/v1/oauth/oauth-business-users-for-ap
 
 const createReview = async (req, res, next) => {
     try {
-        const { Review} = require("../../../models");   //, Media, User, Order, Product, sequelize 
-
         const { order_id, product_id, company_name, rating, comment } = req.body;
         const user_id = req.user.id;
         // Check if user has already reviewed this product in this order
         const existingReview = await Review.findOne({
             where: {
                 user_id,
-                order_id,
-                product_id
+                order_id
             }
         });
 
