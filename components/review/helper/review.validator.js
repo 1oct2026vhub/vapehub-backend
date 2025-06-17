@@ -121,6 +121,12 @@ const getReviewsByCompanyNameValidation = [
         .withMessage('is_visible must be a boolean')
 ];
 
+const getReviewsByOrderIdValidation = [
+    param('order_id')
+        .isInt()
+        .withMessage('Order ID must be an integer')
+];
+
 module.exports = {
     createReviewValidation,
     getReviewsValidation,
@@ -128,5 +134,6 @@ module.exports = {
     updateReviewValidation,
     deleteReviewValidation,
     getReviewsByProductIdValidation,
-    getReviewsByCompanyNameValidation
+    getReviewsByCompanyNameValidation,
+    getReviewsByOrderIdValidation
 }; 
