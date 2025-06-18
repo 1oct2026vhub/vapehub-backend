@@ -663,7 +663,7 @@ const getReferralStats = async (req, res) => {
 
         // Get active referral methods
         const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active'},
+            where: { status: 'active', primary: true},
             order: [['primary', 'DESC'], ['created_at', 'DESC']],
             attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary']
         });
