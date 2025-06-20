@@ -38,7 +38,6 @@ async function createShipStationOrder(order) {
     const orderResponse = await sendOrderToShipStation(shipStationOrder);
     // Extract orderId from response
     const orderId = orderResponse.orderId;
-    console.log('orderId', orderId);
     // Map order data to label creation params (customize as needed)
     const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
     const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
