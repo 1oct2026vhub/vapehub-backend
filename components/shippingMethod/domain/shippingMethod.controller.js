@@ -2,7 +2,7 @@ const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Coupon, CouponUsage, User, Product, ProductVariant, Cart, ShippingMethod } = require("../../../models");
 const logger = require("../../../library/logger");
-
+const axios = require('axios');
 /**
  * Get all shipping methods
  * @param {Object} req - Express request object
