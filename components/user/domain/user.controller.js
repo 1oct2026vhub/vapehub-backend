@@ -363,7 +363,7 @@ const referFriend = async (req, res, next) => {
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    token: referral_coupon_code,
+                    token: referralMethod ? referral_coupon_code : null,
                     referralValue: referralMethod ? referralMethod.referral_value : '0',
                     referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
                     minimumPurchase: referralMethod ? referralMethod.minimum_purchase : '0',

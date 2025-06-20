@@ -989,9 +989,73 @@ module.exports.checkOrderStock = async (req, res) => {
             }],
             transaction
         });
+        
         if (!order) {
             await transaction.rollback();
             return errorResponse(res, {}, 'Order not found', 404);
+        }
+        // Check if coupon has expired
+        if (order.coupon_id) {
+            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+            let coupon = await Coupon.findOne({
+                where: {
+                    id: order.coupon_id,
+                    status: "active",
+                    start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                }
+            });
+            if (!coupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 404,
+                    message: 'Invalid or expired coupon code'
+                }
+            }
+            const userUsedCoupon = await CouponUsage.findOne({
+                where: { user_id: userId, coupon_id: coupon.id }
+            });
+
+            const singleUsedCoupon = await CouponUsage.findOne({
+                where: {coupon_id: coupon.id }
+            });
+
+            // Check if coupon is single use and has been used by this user
+            if (coupon.is_single_use && singleUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'Already used discount coupon.'
+                }
+            }
+            if (userUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'You have already used discount coupon.'
+                }
+            }
+            if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {     // !coupon.is_single_use &&
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'This coupon is no longer available — usage limit exceeded.'
+                }
+            }
+            async function orderStatusUpdate(){
+                // Update order status to cancelled
+                await order.update({ 
+                    status: 'cancel'
+                });
+
+                // Create order log for cancellation
+                await sequelize.models.OrderLog.create({
+                    order_id: order.id,
+                    user_id: userId,
+                    status: 'cancel',
+                    label: 'Order Cancelled - Coupon Expired'
+                });
+            }
         }
 
         let hasInsufficientStock = false;
@@ -1033,22 +1097,10 @@ module.exports.checkOrderStock = async (req, res) => {
 
             return errorResponse(res, {
                 order_id: order.id,
-                // order_code: order.order_code,
                 status: order.status,
                 stock_issues: stockIssues
             }, 'Order cancelled due to insufficient stock', 400);
         }
-        // const accessToken = await getVivaAccessToken();
-        // const response = await axios.patch(
-        //     `${process.env.VIVA_API_BASE_3}/api/orders/${order.order_code}`,
-        //     {
-        //         headers: {
-        //             'Authorization': `Bearer ${accessToken}`,
-        //             'Content-Type': 'application/json'
-        //         }
-        //     }
-        // );
-        // const transactionData = response.data;
         
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
@@ -1056,7 +1108,6 @@ module.exports.checkOrderStock = async (req, res) => {
         const orderDetails = await axios({
                     method: "GET",
                     url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
-                    
                     headers: {
                       "Authorization": "Basic " + credentials,
                     }
@@ -1089,7 +1140,7 @@ module.exports.checkOrderStock = async (req, res) => {
         await transaction.commit();
         return successResponse(res, {
             order_id: order.id,
-            order_code: order.order_code, //order.order_code,
+            order_code: order.order_code,
             status: order.status,
             message: 'All items are in stock'
         }, 'Stock check successful');
