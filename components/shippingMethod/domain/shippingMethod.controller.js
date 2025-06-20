@@ -150,3 +150,40 @@ module.exports.shippingMethod = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+module.exports.getShipStationCarriers = async (req, res, next) => {
+    const apiKey = process.env.SHIPSTATION_API_KEY;
+    const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+    console.log(apiKey, apiSecret)
+    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+    const response = await axios.get('https://ssapi.shipstation.com/carriers', {
+        headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return successResponse(res, response.data, 'Carriers retrieved successfully');
+}
+
+module.exports.getShipStationCarrierServices = async (req, res) => {
+    try {
+        const carrierCode = req.query.carrierCode;
+        if (!carrierCode) {
+            return res.status(400).json({ success: false, message: 'carrierCode is required' });
+        }
+        const apiKey = process.env.SHIPSTATION_API_KEY;
+        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+        const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        return successResponse(res, response.data, 'Carrier services retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
