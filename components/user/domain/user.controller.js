@@ -363,7 +363,7 @@ const referFriend = async (req, res, next) => {
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    token: referral_coupon_code,
+                    token: referralMethod ? referral_coupon_code : null,
                     referralValue: referralMethod ? referralMethod.referral_value : '0',
                     referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
                     minimumPurchase: referralMethod ? referralMethod.minimum_purchase : '0',
@@ -663,7 +663,7 @@ const getReferralStats = async (req, res) => {
 
         // Get active referral methods
         const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active'},
+            where: { status: 'active', primary: true},
             order: [['primary', 'DESC'], ['created_at', 'DESC']],
             attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary']
         });

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+        }
+
+        .header {
+            background-color: #2e8b57;
+            padding: 15px;
+            text-align: center;
+            color: white;
+        }
+
+        .logo {
+            max-width: 200px;
+            height: auto;
+            margin: 10px 0;
+        }
+
+        .content {
+            padding: 30px 20px;
+        }
+
+        .refund-details {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #28a745;
+            color: white;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .refund-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .refund-amount {
+            font-size: 24px;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .transaction-details {
+            background: #f2f2f2;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        .transaction-details h4 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .transaction-details p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+        
+        <div class="content">
+            <h2>Refund Confirmation</h2>
+            <p>Hello {{userName}},</p>
+            <p>We're writing to confirm that your refund has been processed successfully. The refund amount will be credited back to your original payment method.</p>
+            
+            <div class="refund-details">
+                <h3>Refund Summary</h3>
+                <p><strong>Order Number:</strong> #{{orderCode}}</p>
+                <p><strong>Order ID:</strong> {{orderUniqueId}}</p>
+                <p><strong>Order Date:</strong> {{orderDate}}</p>
+                <p><strong>Refund Status:</strong> <span class="status-badge">{{status}}</span></p>
+                
+                <div class="refund-info">
+                    <h4>Refund Amount</h4>
+                    <div class="refund-amount">{{refundCurrency}} {{refundAmount}}</div>
+                    <p><small>This amount will be credited back to your original payment method within 3-5 business days.</small></p>
+                </div>
+            </div>
+
+            <div class="transaction-details">
+                <h4>Transaction Details</h4>
+                <p><strong>Transaction ID:</strong> {{transactionId}}</p>
+                <p><strong>Reversal ID:</strong> {{reversalId}}</p>
+                <p><strong>Refund Reason:</strong> {{reversalReason}}</p>
+                <p><strong>Processed Date:</strong> {{currentDate}}</p>
+            </div>
+
+            <div class="refund-info">
+                <h3>What happens next?</h3>
+                <ul>
+                    <li>The refund will be processed within 3-5 business days</li>
+                    <li>You'll receive a credit to your original payment method</li>
+                    <li>If you have any questions, please contact our customer service team</li>
+                </ul>
+            </div>
+
+            <p>Thank you for your patience. If you have any questions about this refund, please don't hesitate to contact us.</p>
+        </div>
+        
+        <div class="footer">
+            <p>Need help with your refund? Our customer service team is here to assist you.</p>
+            <p>Email: support@vapehub.com | Phone: +44 123 456 7890</p>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html> 
