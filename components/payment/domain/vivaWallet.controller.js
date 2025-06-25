@@ -185,7 +185,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         });
                         
                         const ReferralUser = await Referral.findOne({
-                            where: {id: order.user_id},
+                            where: {referred_user_id: order.user_id},
                             include: [{
                                 model: User,
                                 as: 'referrer',
