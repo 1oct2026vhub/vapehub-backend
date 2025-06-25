@@ -33,4 +33,6 @@ router.use("/footer", require("./footer/routes/footer.route"))
 router.use("/review", require("./review/routes/review.route"))
 router.use("/seo", require("./seo/routes/seo.route"))
 router.use("/shipStation", require("./shipStation/routes/shipStation.route"))
+router.use("/shipStationWebhook", require("./shipStationWebhook/routes/shipStationWebhook.route"))
+
 module.exports = router;

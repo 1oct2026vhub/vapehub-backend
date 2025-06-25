@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel } = require('../domain/shipStation.controller');
+const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, 
+    getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, 
+    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks } = require('../domain/shipStation.controller');
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 
 /**
@@ -1852,6 +1854,77 @@ router.post('/orders/:orderId/mark-shipped', authenticateJWT, markShipStationOrd
  */
 router.post('/shipments/void-label', authenticateJWT, voidShipStationLabel);
 
+/**
+ * @swagger
+ * /api/shipStation/webhooks-list:
+ *   get:
+ *     summary: Get ShipStation webhooks
+ *     description: Retrieve a list of all registered webhooks for the ShipStation account
+ *     tags:
+ *       - ShipStation
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of webhooks retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Webhooks retrieved successfully"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       IsLabelAPIHook:
+ *                         type: boolean
+ *                         description: Whether this is a label API hook
+ *                       WebHookID:
+ *                         type: integer
+ *                         description: Unique identifier for the webhook
+ *                       SellerID:
+ *                         type: integer
+ *                         description: Seller ID associated with the webhook
+ *                       StoreID:
+ *                         type: integer
+ *                         description: Store ID associated with the webhook
+ *                       HookType:
+ *                         type: string
+ *                         description: Type of webhook (e.g., ITEM_ORDER_NOTIFY, SHIP_NOTIFY)
+ *                       MessageFormat:
+ *                         type: string
+ *                         description: Format of the webhook message (e.g., Json)
+ *                       Url:
+ *                         type: string
+ *                         description: URL where webhook notifications are sent
+ *                       Name:
+ *                         type: string
+ *                         description: Name of the webhook
+ *                       Active:
+ *                         type: boolean
+ *                         description: Whether the webhook is active
+ *       500:
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to retrieve webhooks from ShipStation"
+ */
+router.get("/webhooks-list", authenticateJWT, getShipStationWebhooks);
 
 
 module.exports = router; 

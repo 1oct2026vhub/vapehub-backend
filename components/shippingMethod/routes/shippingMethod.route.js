@@ -271,6 +271,4 @@ router.get("/carriers", authenticateJWT, shippingMethodController.getShipStation
  */
 router.get("/carrier-services", authenticateJWT, shippingMethodController.getShipStationCarrierServices);
 
-
-
 module.exports = router

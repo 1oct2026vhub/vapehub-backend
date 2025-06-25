@@ -1,76 +1,105 @@
+const axios = require('axios');
 const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
+const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 
 async function createShipStationOrder(order) {
-    const shipStationOrder = {
-        orderNumber: order.order_unique_id,
-        orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
-        orderStatus: 'awaiting_shipment',
-        customerUsername: order.user?.email,
-        customerEmail: order.user?.email,
-        billTo: order.orderBillingAddress ? {
-            name: order.orderBillingAddress.name,
-            street1: order.orderBillingAddress.street,
-            city: order.orderBillingAddress.town,
-            state: order.orderBillingAddress.region,
-            postalCode: order.orderBillingAddress.post_code,
-            country: order.orderBillingAddress.country,
-            phone: order.orderBillingAddress.phone,
-        } : undefined,
-        shipTo: order.orderShippingAddress ? {
-            name: order.orderShippingAddress.name,
-            street1: order.orderShippingAddress.street,
-            city: order.orderShippingAddress.town,
-            state: order.orderShippingAddress.region,
-            postalCode: order.orderShippingAddress.post_code,
-            country: order.orderShippingAddress.country,
-            phone: order.orderShippingAddress.phone,
-        } : undefined,
-        items: order.orderItems ? order.orderItems.map(item => ({
-            sku: item.variant ? item.variant.slug : item.product.id,
-            name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-        })) : [],
-        amountPaid: order.total,
-        paymentMethod: 'VivaWallet',
-    };
-    // Create order in ShipStation
-    const orderResponse = await sendOrderToShipStation(shipStationOrder);
-    // Extract orderId from response
-    const orderId = orderResponse.orderId;
-    // Map order data to label creation params (customize as needed)
-    const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
-    const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
-    const packageCode = 'package'; // Example default
-    const confirmation = null;
-    const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-    // Calculate total weight (example: sum of item weights, fallback to 1 pound)
-    let totalWeight = 1;
-    if (order.orderItems && order.orderItems.length > 0) {
-        totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+    try {
+        // Validate required order data
+        if (!order || !order.order_unique_id) {
+            throw new Error('Invalid order data: missing order or order_unique_id');
+        }
+
+        if (!order.user || !order.user.email) {
+            throw new Error('Invalid order data: missing user or user email');
+        }
+
+        const shipStationOrder = {
+            orderNumber: order.order_unique_id,
+            orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
+            orderStatus: 'awaiting_shipment',
+            customerUsername: order.user?.email,
+            customerEmail: order.user?.email,
+            billTo: order.orderBillingAddress ? {
+                name: order.orderBillingAddress.name,
+                street1: order.orderBillingAddress.street,
+                city: order.orderBillingAddress.town,
+                state: order.orderBillingAddress.region,
+                postalCode: order.orderBillingAddress.post_code,
+                country: "GB",
+                phone: order.orderBillingAddress.phone,
+            } : undefined,
+            shipTo: order.orderShippingAddress ? {
+                name: order.orderShippingAddress.name,
+                street1: order.orderShippingAddress.street,
+                city: order.orderShippingAddress.town,
+                state: order.orderShippingAddress.region,
+                postalCode: order.orderShippingAddress.post_code,
+                country: "GB",
+                phone: order.orderShippingAddress.phone,
+            } : undefined,
+            items: order.orderItems ? order.orderItems.map(item => ({
+                sku: item.variant ? item.variant.slug : item.product.id,
+                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                quantity: item.quantity,
+                unitPrice: item.unit_price,
+            })) : [],
+            amountPaid: order.total,
+            paymentMethod: 'VivaWallet',
+        };
+        console.log(shipStationOrder);
+        // Create order in ShipStation
+        const orderResponse = await sendOrderToShipStation(shipStationOrder);
+        
+        // Extract orderId from response
+        const orderId = orderResponse.orderId;
+        
+        if (!orderId) {
+            throw new Error('ShipStation order created but no orderId returned in response');
+        }
+
+        // Map order data to label creation params (customize as needed)
+        const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
+        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
+        const packageCode = 'package'; // Example default
+        const confirmation = null;
+        const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        
+        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
+        let totalWeight = 1;
+        if (order.orderItems && order.orderItems.length > 0) {
+            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+        }
+        
+        const weight = { value: totalWeight, units: 'pounds' };
+        const dimensions = null;
+        const insuranceOptions = null;
+        const internationalOptions = null;
+        const advancedOptions = null;
+        const testLabel = true;
+
+        // Create label (commented out for now)
+        const labelResponse = await createLabelForOrder({
+            orderId,
+            carrierCode,
+            serviceCode,
+            packageCode,
+            confirmation,
+            shipDate,
+            weight,
+            dimensions,
+            insuranceOptions,
+            internationalOptions,
+            advancedOptions,
+            testLabel
+        });
+
+
+        return { orderResponse };   //, labelResponse
+
+    } catch (error) {
+        // Re-throw the error so calling code can handle it
+        throw new Error(`Failed to create ShipStation order for order ${order?.order_unique_id}: ${error.message}`);
     }
-    const weight = { value: totalWeight, units: 'pounds' };
-    const dimensions = null;
-    const insuranceOptions = null;
-    const internationalOptions = null;
-    const advancedOptions = null;
-    const testLabel = true;
-    // Create label
-    const labelResponse = await createLabelForOrder({
-        orderId,
-        carrierCode,
-        serviceCode,
-        packageCode,
-        confirmation,
-        shipDate,
-        weight,
-        dimensions,
-        insuranceOptions,
-        internationalOptions,
-        advancedOptions,
-        testLabel
-    });
-    return { orderResponse, labelResponse };
 }
 
 async function getShipStationProductById(req, res) {
@@ -550,4 +579,43 @@ async function voidShipStationLabel(req, res) {
     }
 }
 
-module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel }; 
+/**
+ * Get ShipStation webhooks
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+async function getShipStationWebhooks(req, res){
+    try {
+        const apiKey = process.env.SHIPSTATION_API_KEY;
+        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        
+        if (!apiKey || !apiSecret) {
+            logger.error('ShipStation API credentials not configured');
+            return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
+        }
+
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log(response);
+        return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
+    } catch (error) {
+        console.error('Error retrieving ShipStation webhooks:', error);
+        if (error.response?.status === 401) {
+            return errorResponse(res, {}, 'Unauthorized - Invalid ShipStation API credentials', 401);
+        }
+
+        if (error.response?.status === 403) {
+            return errorResponse(res, {}, 'Forbidden - Insufficient permissions to access webhooks', 403);
+        }
+
+        return errorResponse(res, error, 'Failed to retrieve webhooks from ShipStation');
+    }
+}
+module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks }; 

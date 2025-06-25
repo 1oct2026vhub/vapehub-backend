@@ -6,7 +6,8 @@ async function sendOrderToShipStation(shipStationOrder) {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
+        console.log("apiKey>>>>", apiKey);
+        console.log("apiSecret>>>>", apiSecret);
         const response = await axios.post(
             'https://ssapi.shipstation.com/orders/createorder',
             shipStationOrder,
@@ -19,12 +20,8 @@ async function sendOrderToShipStation(shipStationOrder) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error sending order to ShipStation:', {
-            error: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            orderData: shipStationOrder
-        });
+        // console.log("error>>>>", error);
+        console.error("Details:", JSON.stringify(error.response.data.ModelState, null, 2));
         throw new Error(`Failed to send order to ShipStation: ${error.message}`);
     }
 }
@@ -210,12 +207,6 @@ async function deleteOrderById(orderId) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error deleting order from ShipStation:', {
-            error: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            orderId
-        });
         throw new Error(`Failed to delete order ${orderId} from ShipStation: ${error.message}`);
     }
 }
