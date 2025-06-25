@@ -166,9 +166,9 @@ class ReferralMethodHelper {
           refer_type: referralMethod.refer_type 
         } 
       });
-      if (primaryCount <= 1 && referralMethod.primary) {
-        return null; // Don't allow unsetting if it's the only primary record for this refer_type
-      }
+      // if (primaryCount <= 1 && referralMethod.primary) {
+      //   return null; // Don't allow unsetting if it's the only primary record for this refer_type
+      // }
     }
 
     return await referralMethod.update({ primary });

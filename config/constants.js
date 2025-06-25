@@ -7,6 +7,7 @@ module.exports = {
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
+        REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
     },
     emailTypeData: {
         REGISTER: {
@@ -43,6 +44,11 @@ module.exports = {
             from: process.env.EMAIL_FROM,
             subject: 'Account Deletion Confirmation',
             folderName: 'account_deletion'
+        },
+        REFUND_CONFIRMATION: {
+            folderName: 'refund_confirmation',
+            subject: 'Refund Confirmation',
+            from: process.env.EMAIL_NO_REPLY_SENDER
         },
     },
     orderStatus: {
