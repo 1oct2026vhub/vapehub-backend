@@ -392,6 +392,19 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
+        
+        // Send welcome email after successful verification
+        const username = user?.first_name ?? user.email.split('@')[0];
+        const welcomeEmailData = {
+            emailTypes: constants.emailTypes.WELCOME,
+            to: user.email,
+            context: {
+                userName: username,
+            },
+            attachments: ""
+        };
+        await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
+        
         // update referral record if referrer exists
         // let referral_code = null;
         // let referrer = null;
