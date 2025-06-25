@@ -403,6 +403,7 @@ module.exports.verifyEmail = async (req, res, next) => {
             },
             attachments: ""
         };
+        console.log(username);
         await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
         
         // update referral record if referrer exists
