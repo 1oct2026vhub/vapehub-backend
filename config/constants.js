@@ -8,6 +8,7 @@ module.exports = {
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
+        WELCOME: 'WELCOME',
     },
     emailTypeData: {
         REGISTER: {
@@ -48,6 +49,11 @@ module.exports = {
         REFUND_CONFIRMATION: {
             folderName: 'refund_confirmation',
             subject: 'Refund Confirmation',
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        WELCOME: {
+            folderName: 'welcome',
+            subject: 'Welcome to VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
     },
