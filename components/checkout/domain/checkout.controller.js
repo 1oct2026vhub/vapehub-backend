@@ -295,6 +295,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 referral_value_type = referralValueType;
             } 
             else {
+
                 // Check if expired
                 const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
                 coupon = await Coupon.findOne({
@@ -309,6 +310,12 @@ module.exports.applyCoupon = async (req, res, next) => {
                     throw {
                         statusCode: 404,
                         message: 'Invalid or expired coupon code'
+                    }
+                }
+                if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
+                    throw {
+                        statusCode: 400,
+                        message: 'This coupon is not valid for you.'
                     }
                 }
                 const userUsedCoupon = await CouponUsage.findOne({
