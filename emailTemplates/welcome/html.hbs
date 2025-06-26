@@ -263,6 +263,43 @@
                 <a href="{{FRONTEND_URL}}/shop" class="cta-button">Start Shopping Now</a>
             </div>
 
+            <!-- Coupon Section -->
+            <div class="coupon-section" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); padding: 30px; margin: 30px 0; border-radius: 15px; text-align: center; color: white; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -10px; right: -10px; width: 20px; height: 20px; background: white; border-radius: 50%;"></div>
+                <div style="position: absolute; bottom: -10px; left: -10px; width: 20px; height: 20px; background: white; border-radius: 50%;"></div>
+                
+                <div style="position: relative; z-index: 1;">
+                    <h3 style="margin-bottom: 15px; font-size: 24px;">🎉 Welcome Gift!</h3>
+                    <p style="margin-bottom: 20px; font-size: 16px; opacity: 0.9;">As a special welcome gift, we've created a personalized coupon just for you!</p>
+                    
+                    <div style="background: rgba(255, 255, 255, 0.2); padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed rgba(255, 255, 255, 0.5);">
+                        <div style="font-size: 32px; font-weight: bold; letter-spacing: 3px; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">{{couponCode}}</div>
+                        <div style="font-size: 14px; opacity: 0.9;">Your Exclusive Coupon Code</div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0;">
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 20px; font-weight: bold;">{{discountValue}}</div>
+                            <div style="font-size: 12px; opacity: 0.8;">Discount</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 20px; font-weight: bold;">{{minimumPurchase}}</div>
+                            <div style="font-size: 12px; opacity: 0.8;">Min. Purchase</div>
+                        </div>
+                        {{!-- <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 20px; font-weight: bold;">{{maximumDiscount}}</div>
+                            <div style="font-size: 12px; opacity: 0.8;">Max. Discount</div>
+                        </div> --}}
+                    </div>
+                    
+                    <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <div style="font-size: 12px; opacity: 0.8;">One-time use only • Cannot be combined with other offers</div>
+                    </div>
+                    
+                    <a href="{{FRONTEND_URL}}/shop" style="display: inline-block; padding: 12px 30px; background: white; color: #ff6b6b; text-decoration: none; border-radius: 25px; font-weight: 600; font-size: 14px; margin-top: 15px; transition: all 0.3s ease;">Use Coupon Now</a>
+                </div>
+            </div>
+
             <div class="social-links">
                 <a href="#" class="social-link">📘</a>
                 <a href="#" class="social-link">📷</a>
