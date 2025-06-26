@@ -9,6 +9,7 @@ class ReferralMethodController {
     try {
       const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
 
+      // Check if referral_value is 0 and set primary to 0 and status to inactive
       const referralMethod = await ReferralMethodHelper.create({
         referral_value_type,
         referral_value,
@@ -42,12 +43,17 @@ class ReferralMethodController {
         logger.warn('Referral method not found for update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
       }
-
+      let finalStatus = status;
+      let finalPrimary = primary;
+      if (referral_value == 0) {
+        finalPrimary = 0;
+        finalStatus = 'inactive';
+      }
       const updatedMethod = await ReferralMethodHelper.update(id, {
         referral_value_type,
         referral_value,
-        status,
-        primary,
+        status: finalStatus,
+        primary: finalPrimary,
         refer_type,
         minimum_purchase,
         maximum_purchase
@@ -64,6 +70,7 @@ class ReferralMethodController {
         data: updatedMethodData
       }, "Referral method updated successfully");
     } catch (error) {
+      console.log(error);
       await transaction.rollback();
       logger.error('Error updating referral method', { 
         id: req.params.id, 
