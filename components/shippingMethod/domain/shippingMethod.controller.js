@@ -2,12 +2,8 @@ const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Coupon, CouponUsage, User, Product, ProductVariant, Cart, ShippingMethod } = require("../../../models");
 const logger = require("../../../library/logger");
-<<<<<<< HEAD
 const { calculateShippingCost, getAvailableShippingMethods, calculateFinalTotal } = require("../helper/shippingMethod.helper");
 const { validationResult } = require("express-validator");
-=======
-const axios = require('axios');
->>>>>>> 171e0fe54ea8ef29b6856523f111d5bcf1918560
 
 /**
  * Get all shipping methods
@@ -159,7 +155,6 @@ module.exports.shippingMethod = async (req, res, next) => {
         logger.error(error);
         return errorResponse(res, error, error.message);
     }
-<<<<<<< HEAD
 };
 
 /**
@@ -198,45 +193,3 @@ module.exports.getAvailableShippingMethods = async (req, res) => {
         res.status(500).json({ message: "Error getting available shipping methods" });
     }
 };
-=======
-}
-
-module.exports.getShipStationCarriers = async (req, res, next) => {
-    const apiKey = process.env.SHIPSTATION_API_KEY;
-    const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-    console.log(apiKey, apiSecret)
-    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-    const response = await axios.get('https://ssapi.shipstation.com/carriers', {
-        headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-        }
-    });
-    return successResponse(res, response.data, 'Carriers retrieved successfully');
-}
-
-module.exports.getShipStationCarrierServices = async (req, res) => {
-    try {
-        const carrierCode = req.query.carrierCode;
-        if (!carrierCode) {
-            return res.status(400).json({ success: false, message: 'carrierCode is required' });
-        }
-        const apiKey = process.env.SHIPSTATION_API_KEY;
-        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-        const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        return successResponse(res, response.data, 'Carrier services retrieved successfully');
-    } catch (error) {
-        return errorResponse(res, error, error.message);
-    }
-}
-
-
->>>>>>> 171e0fe54ea8ef29b6856523f111d5bcf1918560
