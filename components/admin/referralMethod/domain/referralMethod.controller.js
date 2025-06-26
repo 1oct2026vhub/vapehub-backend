@@ -10,7 +10,6 @@ class ReferralMethodController {
       const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
 
       // Check if referral_value is 0 and set primary to 0 and status to inactive
-      console.log(referral_value,finalStatus, finalPrimary);
       const referralMethod = await ReferralMethodHelper.create({
         referral_value_type,
         referral_value,
