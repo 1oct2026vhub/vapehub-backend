@@ -37,16 +37,22 @@ module.exports.getBanners = async (req, res) => {
         // Get total count for pagination
         const total = await BannerImage.count({
             where: whereClause,
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
+        // Handle deleted filter
+        if (deleted === 'true') {
+            whereClause.deletedAt = { [Op.ne]: null };
+        } else {
+            whereClause.deletedAt = null;
+        }
         // Get banners with pagination
         const banners = await BannerImage.findAll({
             where: whereClause,
             order: [[sort_by, order.toUpperCase()]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !deleted // If deleted is true, include soft-deleted items
+            paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
         return successResponse(res, {
@@ -56,6 +62,7 @@ module.exports.getBanners = async (req, res) => {
             results: banners
         }, 'Banners retrieved successfully');
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };

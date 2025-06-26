@@ -23,6 +23,14 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty: true
       }
     },
+    refer_type: {
+      type: DataTypes.ENUM('referrer', 'referral'),
+      allowNull: false,
+      defaultValue: 'referrer',
+      validate: {
+        isIn: [['referrer', 'referral']]
+      }
+    },
     status: {
       type: DataTypes.ENUM('active', 'inactive'),
       defaultValue: 'active',
@@ -35,6 +43,23 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       allowNull: false
+    },
+    minimum_purchase: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0,
+      validate: {
+        min: 0
+      },
+      comment: 'Minimum purchase amount required to apply referral discount'
+    },
+    maximum_purchase: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      },
+      comment: 'Maximum purchase amount for referral discount to apply'
     }
   }, {
     sequelize,

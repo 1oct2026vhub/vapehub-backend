@@ -7,6 +7,7 @@ const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const { Op } = require('sequelize');
 const { Order, Transaction } = require('../../../models');
+const logger = require('../../../utils/logger');
 
 const userProfile = async (req, res, next) => {
     try {
@@ -284,18 +285,34 @@ const referFriend = async (req, res, next) => {
             return errorResponse(res, {}, 'Invalid referral code' , 400);
         }
 
-        // Get the primary active referral method
+        // Check if this email has already been referred
+        const existingReferral = await Referral.findOne({
+            where: { 
+                email: email,
+                referrer_id: referrer_id,
+                status: {
+                    [Op.in]: ['pending', 'completed']
+                }
+            }
+        });
+
+        if (existingReferral) {
+            return errorResponse(res, {}, 'You have already referred this email address' , 400);
+        }
+
+        // Get the referral method
         const referralMethod = await ReferralMethod.findOne({
             where: { 
                 status: 'active',
-                primary: false
+                primary: true,  //previous is false
+                refer_type: 'referral'  //new
             },
-            attributes: ['id', 'referral_value_type', 'referral_value']
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'minimum_purchase', 'maximum_purchase']
         });
 
-        if (!referralMethod) {
-            return errorResponse(res, {}, 'No active referral method found' , 400);
-        }
+        // if (!referralMethod) {
+        //     return errorResponse(res, {}, 'No active referral method found' , 400);
+        // }
 
         try {
             // Generate unique 8-letter referral coupon code using email and timestamp
@@ -306,24 +323,61 @@ const referFriend = async (req, res, next) => {
                 .toUpperCase();             // Convert to uppercase
             
             const referral_coupon_code =  `${emailHash}${timestamp.slice(-4)}`; // Combine email hash and last 4 chars of timestamp;
+            // Get active referral method
+            const activeReferrerMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    primary: true,
+                    refer_type: 'referrer'
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,
                 referral_code: referral_code,
-                referral_coupon_code: referral_coupon_code
+                referral_coupon_code: referral_coupon_code,
+                status: 'pending',
+                referral_value_type: referralMethod ? referralMethod.referral_value_type : 'percentage',
+                referral_value: referralMethod ? referralMethod.referral_value : '0',
+                minimum_purchase: referralMethod?.refer_type === 'referral' ? referralMethod.minimum_purchase : 0,
+                maximum_purchase: referralMethod?.refer_type === 'referral' ? referralMethod.maximum_purchase : null,
+                referrer_data: activeReferrerMethod ? {
+                    id: activeReferrerMethod.id,
+                    referral_value_type: activeReferrerMethod.referral_value_type,
+                    referral_value: activeReferrerMethod.referral_value,
+                    minimum_purchase: activeReferrerMethod.minimum_purchase,
+                    maximum_purchase: activeReferrerMethod.maximum_purchase,
+                    refer_type: activeReferrerMethod.refer_type
+                } : null
             });
             // Send referral email with coupon code
             const username = email.split('@')[0];
             const referralLink = `${process.env.FRONTEND_URL}/?referral_code=${referral_code}`;
+            const referralValue = referralMethod ? referralMethod.referral_value : '0';
+            const referralValueType = referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '';
+            const poundsymbol = referralMethod ? referralMethod.referral_value_type === 'fixed' ? '£' : '' : '';
             const data = {
                 emailTypes: constants.emailTypes.REFER_A_FRIEND,
                 to: email,
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    token: referral_coupon_code,
-                    referralValue: referralMethod.referral_value,
-                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : ''
+                    token: referralMethod ? referral_coupon_code : null,
+                    referralValue: referralMethod ? referralMethod.referral_value : '0',
+                    referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
+                    minimumPurchase: referralMethod ? referralMethod.minimum_purchase : '0',
+                    maximumPurchase: referralMethod ? referralMethod.maximum_purchase : null,
+                    emailContent1: "Just when you thought your friend hasn't gifted you in a while, well here you have it! You have been invited to shop at VapeHub",
+                    emailContent2: referralMethod ? 
+                        `and you've got a ${poundsymbol}${referralValue}${referralValueType} discount waiting for you!` +
+                        (parseFloat(referralMethod.minimum_purchase) > 0 || parseFloat(referralMethod.maximum_purchase) ? 
+                            ' This coupon can only be applied when your purchase amount is' +
+                            (parseFloat(referralMethod.minimum_purchase) > 0 ? ` at least minimum purchase amount of ${poundsymbol}${referralMethod.minimum_purchase}` : '') +
+                            (parseFloat(referralMethod.minimum_purchase) > 0 && parseFloat(referralMethod.maximum_purchase) ? ' and' : '') +
+                            (parseFloat(referralMethod.maximum_purchase) ? ` up to maximum purchase amount of ${poundsymbol}${referralMethod.maximum_purchase}` : '') +
+                            '.' : '') +
+                        ' Use the coupon code below to claim your offer.' : ''
                 },
                 attachments: ""
             };
@@ -345,8 +399,8 @@ const referFriend = async (req, res, next) => {
                 message: "Referral invitation sent successfully",
                 referral_coupon_code: referral_coupon_code,
                 referral_method: {
-                    value_type: referralMethod.referral_value_type,
-                    value: referralMethod.referral_value
+                    value_type: referralMethod ? referralMethod.referral_value_type : '',
+                    value: referralMethod ? referralMethod.referral_value : ''
                 }
             }, 'Success');
         } catch (emailError) {
@@ -572,12 +626,17 @@ const deleteAccount = async (req, res) => {
 const getReferralStats = async (req, res) => {
     try {
         const userId = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
         // Get total referrals count
         const referrer = await Referral.findOne({
             where: {
                 referred_user_id: userId
             }
         });
+
         // Get total referrals count
         const totalReferrals = await Referral.count({
             where: {
@@ -585,6 +644,7 @@ const getReferralStats = async (req, res) => {
                 status: 'completed'
             }
         });
+
         // Get pending referrals count
         const pendingReferrals = await Referral.count({
             where: {
@@ -592,6 +652,7 @@ const getReferralStats = async (req, res) => {
                 status: 'pending'
             }
         });
+
         // Get total points earned
         const totalPoints = await Referral.sum('points_awarded', {
             where: {
@@ -602,12 +663,26 @@ const getReferralStats = async (req, res) => {
 
         // Get active referral methods
         const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active' },
+            where: { status: 'active', primary: true},
             order: [['primary', 'DESC'], ['created_at', 'DESC']],
-            attributes: ['id', 'referral_value_type', 'referral_value', 'status', 'primary']
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary']
         });
 
-        // Get recent referrals with user details
+        // Separate referral methods based on refer_type
+        const referralMethod = referralMethods.find(method => method.refer_type === 'referral');
+        const referrerMethod = referralMethods.find(method => method.refer_type === 'referrer');
+
+        // Get total count of recent referrals for pagination
+        const totalRecentReferrals = await Referral.count({
+            where: {
+                referrer_id: userId,
+                status: {
+                    [Op.in]: ['completed', 'applied']
+                }
+            }
+        });
+
+        // Get recent referrals with user details (paginated)
         const recentReferrals = await Referral.findAll({
             where: {
                 referrer_id: userId,
@@ -621,7 +696,8 @@ const getReferralStats = async (req, res) => {
                 attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
             }],
             order: [['created_at', 'DESC']],
-            limit: 10
+            limit,
+            offset
         });
 
         const response = {
@@ -630,29 +706,53 @@ const getReferralStats = async (req, res) => {
             referred_coupon_code: referrer ? referrer.referral_coupon_code : null,
             referrer: referrer ? referrer : null,
             referral_methods: referralMethods,
-            recent_referrals: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
-                id: referral.id,
-                referrer_id: referral.referrer_id,
-                referred_user_id: referral.referred_user_id,
-                referral_code: referral.referral_code,
-                referral_coupon_code: referral.referral_coupon_code,
-                status: referral.status,
-                points_awarded: referral.points_awarded,
-                referral_value_type: referral.referral_value_type,
-                referral_value: referral.referral_value,
-                created_at: referral.created_at,
-                referred_user: referral.referredUser ? {
-                    id: referral.referredUser.id,
-                    name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
-                    email: referral.referredUser.email,
-                    phone: referral.referredUser.phone
-                } : null
-            })) : []
+            referred_user_method: referralMethod ? {
+                id: referralMethod.id,
+                referral_value_type: referralMethod.referral_value_type,
+                referral_value: referralMethod.referral_value,
+                refer_type: referralMethod.refer_type,
+                status: referralMethod.status,
+                primary: referralMethod.primary
+            } : null,
+            referrer_user_method: referrerMethod ? {
+                id: referrerMethod.id,
+                referral_value_type: referrerMethod.referral_value_type,
+                referral_value: referrerMethod.referral_value,
+                refer_type: referrerMethod.refer_type,
+                status: referrerMethod.status,
+                primary: referrerMethod.primary
+            } : null,
+            recent_referrals: {
+                data: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
+                    id: referral.id,
+                    referrer_id: referral.referrer_id,
+                    referred_user_id: referral.referred_user_id,
+                    referral_code: referral.referral_code,
+                    referral_coupon_code: referral.referral_coupon_code,
+                    status: referral.status,
+                    points_awarded: referral.points_awarded,
+                    referral_value_type: referral.referral_value_type,
+                    referral_value: referral.referral_value,
+                    created_at: referral.created_at,
+                    referred_user: referral.referredUser ? {
+                        id: referral.referredUser.id,
+                        name: `${referral.referredUser.first_name} ${referral.referredUser.last_name}`,
+                        email: referral.referredUser.email,
+                        phone: referral.referredUser.phone
+                    } : null
+                })) : [],
+                pagination: {
+                    total: totalRecentReferrals,
+                    page,
+                    limit,
+                    total_pages: Math.ceil(totalRecentReferrals / limit)
+                }
+            }
         };
 
         successResponse(res, response, 'Referral statistics retrieved successfully');
     } catch (error) {
-        console.error('Error fetching referral stats:', error);
+        // Log error
         errorResponse(res, error, 'Failed to fetch referral statistics');
     }
 };

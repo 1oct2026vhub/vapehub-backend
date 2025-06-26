@@ -1,4 +1,5 @@
 const { Sequelize, Op } = require("sequelize");
+const moment = require('moment-timezone');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
 const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod} = require("../../../models");
@@ -177,6 +178,16 @@ module.exports.placeOrder = async (req, res, next) => {
         const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
         const payMethod = payment_method.method;
 
+        // Get payment method ID from PaymentMethod model
+        const paymentMethodRecord = await PaymentMethod.findOne({
+            where: { payment_method: payMethod },
+            transaction
+        });
+
+        if (!paymentMethodRecord) {
+            throw new Error(`Payment method ${payMethod} not found`);
+        }
+
         let wallet_check = {};
 
         // Fetch Cart Items
@@ -260,6 +271,7 @@ module.exports.placeOrder = async (req, res, next) => {
         let referral_flag = false;
         let referralId = null;
         let discountType = null;
+        let coupon_count_flag = false;
         if (couponCode) {
             const referral = await Referral.findOne({
                 where: {
@@ -275,56 +287,121 @@ module.exports.placeOrder = async (req, res, next) => {
                 let referralValueType;
                 if (referral.status === 'pending'  && referral.referred_user_id === user_id) {
                     referralValue = parseFloat(referral.referral_value);
-                    referralValueType = referral.referral_value_type;
+                    referralValueType = referralValue!=0 ? referral.referral_value_type : 'percentage';
+
+                    // Check minimum purchase for fixed referral value type
+                    if (parseFloat(referral.minimum_purchase) && parseFloat(calculatedTotal) < parseFloat(referral.minimum_purchase)) {     //referralValueType === 'fixed' && 
+                        referralValue = 0;
+                        referralValueType = 'percentage';
+                    }
+
+                    // Check maximum purchase for all referral types
+                    if (parseFloat(referral.maximum_purchase) && parseFloat(calculatedTotal) > parseFloat(referral.maximum_purchase)) {
+                        referralValue = 0;
+                        referralValueType = 'percentage';
+                    }
                 } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
                     // For completed status, get values from referral method
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,  //primary true means it is referrer person
-                            status: 'active'
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  //primary true means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
                         referralValueType = referralMethod.referral_value_type;
+
+                        // Check minimum purchase for fixed referral value type
+                        if (parseFloat(referralMethod.minimum_purchase) && parseFloat(calculatedTotal) < parseFloat(referralMethod.minimum_purchase)) {    //referralValueType === 'fixed' && 
+                            referralValue = 0;
+                            referralValueType = 'percentage';
+                        }
+
+                        // Check maximum purchase for all referral types
+                        if (parseFloat(referralMethod.maximum_purchase) && parseFloat(calculatedTotal) > parseFloat(referralMethod.maximum_purchase)) {
+                            referralValue = 0;
+                            referralValueType = 'percentage';
+                        }
+                    }
+                    else{
+                        referralValue = 0;
+                        referralValueType = 'percentage';
                     }
                 }
 
-                if (!isNaN(referralValue)) {
+                if (referralValue && !isNaN(referralValue)) {
                     referralDiscount = referralValueType === 'percentage' 
                         ? (referralValue / 100) * subTotal 
                         : referralValue;
-                    
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, subTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    referral_flag = true;
+                    referralId = referral.id;
                 }
-                referral_flag = true;
-                referralId = referral.id;
+                else{
+                    referralDiscount = 0;
+                }
+                // referral_flag = true;
+                // referralId = referral.id;
                 discountType = referralValueType;
             }
             else{
-                coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: new Date() }, end_date: { [Op.or]: [{ [Op.gte]: new Date() }, { [Op.is]: null }] } } });
+                const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+                coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: currentUkTime }, end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] } } });
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
+                    const singleUsedCoupon = await CouponUsage.findOne({ where: {coupon_id: coupon.id } });
                     if (!userUsedCoupon) {
-                        let discount_type = 0;
-                        if(coupon.discount_type === "percentage"){
-                            discount_type = coupon.discount_type;
+                        // For single-use coupons, only calculate if it hasn't been used before
+                        if (coupon.is_single_use && !singleUsedCoupon) {
+
+                            let discount_type = 0;
+                            if(coupon.discount_type === "percentage"){
+                                discount_type = coupon.discount_type;
+                            }
+                            else if(coupon.discount_type === "fixed_amount"){
+                                discount_type = "fixed";
+                            }
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            calculatedTotal = Math.max(0, subTotal - discount);
+                            discountType = discount_type;
+                            referralDiscount = discount;
+                            coupon_count_flag = true;
                         }
-                        else if(coupon.discount_type === "fixed_amount"){
-                            discount_type = "fixed";
+                        // For non-single-use coupons, calculate normally
+                        else if (!coupon.is_single_use) {
+
+                            let discount_type = 0;
+                            if(coupon.discount_type === "percentage"){
+                                discount_type = coupon.discount_type;
+                            }
+                            else if(coupon.discount_type === "fixed_amount"){
+                                discount_type = "fixed";
+                            }
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            calculatedTotal = Math.max(0, subTotal - discount);
+                            discountType = discount_type;
+                            referralDiscount = discount;
+                            coupon_count_flag = true;
                         }
-                        discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                        discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                        calculatedTotal = Math.max(0, subTotal - discount);
-                        discountType = discount_type;
-                        referralDiscount = discount;
+                        else {
+                            console.log("Coupon validation failed:", {
+                                coupon_id: coupon.id,
+                                is_single_use: coupon.is_single_use,
+                                // single_used: singleUsedCoupon,
+                                // user_used: userUsedCoupon
+                            });
+                        }
                     }
                 }
             }
         }
-        
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -360,30 +437,72 @@ module.exports.placeOrder = async (req, res, next) => {
         }
         else if(payMethod === "Worldpay"){
             const generateTransactionReference = () => {
-                const timestamp = Date.now();
-                const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-                return `WP${timestamp}${random}`;
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let result = '';
+                for (let i = 0; i < 16; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
             };
             orderCode = generateTransactionReference();
+            
+            const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
+            const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
 
-            worldpayResponse = await axios.post(`${process.env.WORLDPAY_URL}/payment_pages`, {
+            // Validate and format country code
+            let countryCode = (billing_address.country || 'GB').toUpperCase();
+            if (countryCode.length !== 2) {
+                countryCode = 'GB'; // Default to GB if invalid
+            }
+            
+            try {
+                worldpayResponse = await axios({
+                    method: 'POST',
+                    url: `${process.env.WORLDPAY_URL}/payment_pages`,   //${process.env.WORLDPAY_URL}
                     headers: {
                         'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
                         'User-Agent': 'string',
-                        Authorization: 'Basic ' + Buffer.from('<username>:<password>').toString('base64')
+                        'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`
                     },
-                    body: JSON.stringify({
+                    data: {
                         transactionReference: orderCode,
-                        merchant: {entity: 'default'},
-                        narrative: {
-                        line1: 'VapeHub'
-                    },
-                    value: {
-                        currency: 'GBP',
-                        amount: calculatedTotal * 100
+                        merchant: {entity: process.env.WORLDPAY_MERCHANT_ID},    //process.env.WORLDPAY_ENTITY
+                        narrative: {line1: 'VapeHub Order'},
+                        value: {
+                            currency: 'GBP',
+                            amount: Math.round(calculatedTotal * 100)
+                        },
+                        description: 'VapeHub Order',
+                        billingAddressName: billing_address.first_name,
+                        billingAddress: {
+                            address1: billing_address.address_line_1,
+                            address2: billing_address.address_line_2,
+                            address3: billing_address.region,
+                            postalCode: billing_address.post_code,
+                            city: billing_address.city,
+                            state: billing_address.region,
+                            countryCode: countryCode
+                        },
+                        resultURLs: {
+                            successURL: `${process.env.FRONTEND_URL}/payment-success?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,    //&orderId=${order.id}
+                            // pendingURL: `${process.env.FRONTEND_URL}/payment/pending`,
+                            failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,    //&orderId=${order.id}
+                            errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,    //&orderId=${order.id}
+                            cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,    //&orderId=${order.id}
+                            expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`    //&orderId=${order.id}
+                        },
+                        
                     }
-                })
-            });
+                });
+
+                if (!worldpayResponse.data) {
+                    throw new Error('No response data from Worldpay');
+                }
+
+            } catch (error) {
+                console.error("Worldpay Error:", error.response?.data || error.message);
+                throw new Error(error.response?.data?.message || 'Failed to process payment with Worldpay');
+            }
         }
         // Generate random digit (0-9) and random alphabet (A-Z)
         const randomDigit = Math.floor(Math.random() * 10);
@@ -393,7 +512,7 @@ module.exports.placeOrder = async (req, res, next) => {
         // Create Order
         const order = await Order.create({
             user_id,
-            coupon_id: coupon && !userUsedCoupon ? coupon.id : null,
+            coupon_id: coupon && coupon_count_flag ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
             // shipping_address_id: 0,
@@ -409,18 +528,18 @@ module.exports.placeOrder = async (req, res, next) => {
             sub_total: subTotal,
             discount_price: referralDiscount,
             discount_type: discountType,
-            referral_id: referralId
+            referral_id: referralId,
+            payment_method_id: paymentMethodRecord.id
         }, { transaction });
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
-
-        if (coupon) {
+        // if (coupon && coupon_count_flag) {
             // First check if user has already used this coupon
-            const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
+            // const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
             // Only update coupon usage count if this is a new usage
-            if (created) {
-                await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
-            }
-        }
+            // if (!userUsedCoupon || !coupon.is_single_use) {
+                // await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
+            // }
+        // }
         if(couponCode && referral_flag){
             try {
                 // First find the referral to ensure it exists and is not locked
@@ -438,63 +557,15 @@ module.exports.placeOrder = async (req, res, next) => {
                     }, { transaction });
                 }
             } catch (error) {
-                logger.error('Error updating referral with order:', error);
-                // Continue with order creation even if referral update fails
+                console.log("error in place order function while updating referral with order");
             }
         }
-        
-        // else{
-            // const PAYMENT_URL = process.env.PAYMENT_URL; //"https://try.access.worldpay.com/api/payments";
-            // const ACCOUNT_ID = process.env.ACCOUNT_ID; //"364806707";  // Your Worldpay Account ID
-            // const API_KEY = process.env.API_KEY; //"D072A3884FA9DE021EF37D36F07F1338C007F7386F58DF4A1A7DBCF1415328638D22C901";
-            
-            // const paymentData = {
-            //     transactionReference: `TXN-${Date.now()}`,
-            //     merchant: { entity: "default" },
-            //     instruction: {
-            //         method: 'card',
-            //         paymentInstrument: {
-            //           type: 'plain',
-            //           cardHolderName: 'Sherlock Holmes',
-            //           cardNumber: '4000000000001091',
-            //           expiryDate: {month: 5, year: 2035},
-            //           billingAddress: {
-            //             address1: '221B Baker Street',
-            //             address2: 'Marylebone',
-            //             address3: 'Westminster',
-            //             postalCode: 'SW1 1AA',
-            //             city: 'London',
-            //             state: 'Greater London',
-            //             countryCode: 'GB'
-            //           },
-            //           cvc: '123'
-            //         },
-            //         narrative: {line1: 'trading name'},
-            //         value: {
-            //           currency: 'GBP',
-            //           amount: 42
-            //         }
-            //     }
-            // };
-    
-            // const response = await axios.post(PAYMENT_URL, paymentData, {
-            //     headers: {
-            //         'Content-Type': 'application/json',
-            //         'WP-Api-Version': '2024-06-01',
-            //         Authorization: `Basic ${Buffer.from(`${ACCOUNT_ID}:${API_KEY}`).toString("base64")}`
-            //       },
-            // });
-    
-            // console.log("Payment Successful:", response.data);
-        // }
-        // await Cart.destroy({ where: { user_id }, transaction });
         await transaction.commit();
-
         return successResponse(res, {
             message: "Order placed successfully",
             data: {
                 order_code: order.order_code,
-                worldpay_response: payMethod === "Worldpay" ? worldpayResponse : null,
+                worldpay_url: payMethod === "Worldpay" ? worldpayResponse.data.url : null,
                 order_details: {
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
@@ -538,6 +609,7 @@ module.exports.getOrderById = async (req, res) => {
     try {
         const userId = req.user.id; // Get user ID from authenticated token
         const orderId = req.params.id;
+
         // Get user data
         const user = await User.findOne({
             where: { id: userId },
@@ -642,6 +714,11 @@ module.exports.getOrderById = async (req, res) => {
                     model: Coupon,
                     as: 'coupon',
                     attributes: ['code', 'discount_type', 'discount_value']
+                },
+                {
+                    model: PaymentMethod,
+                    as: 'paymentMethod',
+                    attributes: ['id', 'payment_method', 'status']
                 }
             ]
         });
@@ -649,15 +726,8 @@ module.exports.getOrderById = async (req, res) => {
         if (!order) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
-
-        // Update order status if needed
-        // if (order.status === 'cancel') {
-        //     order.status = 'cancelled';
-        // } else if (order.status === 'fail') {
-        //     order.status = 'failed';
-        // }
-        
         // Process referral discount if order has a referral_id
+        let orderObj = {}
         if(order.referral_id){
             const referral = await Referral.findOne({
                 where: {
@@ -667,35 +737,37 @@ module.exports.getOrderById = async (req, res) => {
             
             if(referral) {
                 if(referral.referred_user_id === userId){
-                    order.referral_code = referral.referral_coupon_code;
-                    order.referral_value = referral.referral_value;
-                    order.referral_value_type = referral.referral_value_type;
-                    
+                    orderObj.referral_code = referral.referral_coupon_code;
+                    orderObj.referral_value = referral.referral_value;
+                    orderObj.referral_value_type = referral.referral_value_type;
+                    orderObj.referral_discount = order.discount_price;
                     // Calculate discount price if value type is percentage
-                    if (referral.referral_value_type === 'percentage' && referral.referral_value) {
-                        order.referral_discount = (parseFloat(referral.referral_value) / 100) * order.sub_total;
-                    } else if (referral.referral_value) {
-                        order.referral_discount = parseFloat(referral.referral_value);
-                    }
+                    // if (referral.referral_value_type === 'percentage' && referral.referral_value) {
+                    //     orderObj.referral_discount = (parseFloat(referral.referral_value) / 100) * order.sub_total;
+                    // } else if (referral.referral_value) {
+                    //     orderObj.referral_discount = parseFloat(referral.referral_value);
+                    // }
                 }
                 else if(referral.referrer_id === userId){
-                    const referralMethod = await ReferralMethod.findOne({
-                        where: {
-                            primary: true,
-                            status: 'active'
-                        }
-                    });
+                    // const referralMethod = await ReferralMethod.findOne({
+                    //     where: {
+                    //         primary: true,  // means it is referrer person
+                    //         status: 'active',
+                    //         refer_type: 'referrer'  //new
+                    //     }
+                    // });
+                    const referralMethod = referral.referrer_data;
                     if(referralMethod) {
-                        order.referral_code = referral.referral_coupon_code;
-                        order.referral_value = referralMethod.referral_value;
-                        order.referral_value_type = referralMethod.referral_value_type;
-                        
+                        orderObj.referral_code = referral.referral_coupon_code;
+                        orderObj.referral_value = referralMethod.referral_value;
+                        orderObj.referral_value_type = referralMethod.referral_value_type;
+                        orderObj.referral_discount = order.discount_price;
                         // Calculate discount price if value type is percentage
-                        if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
-                            order.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.sub_total;
-                        } else if (referralMethod.referral_value) {
-                            order.referral_discount = parseFloat(referralMethod.referral_value);
-                        }
+                        // if (referralMethod.referral_value_type === 'percentage' && referralMethod.referral_value) {
+                        //     orderObj.referral_discount = (parseFloat(referralMethod.referral_value) / 100) * order.sub_total;
+                        // } else if (referralMethod.referral_value) {
+                        //     orderObj.referral_discount = parseFloat(referralMethod.referral_value);
+                        // }
                     }
                 }
             }
@@ -705,34 +777,34 @@ module.exports.getOrderById = async (req, res) => {
             const coupon = order.coupon;
             
             // Set coupon data
-            order.coupon_code = coupon.code;
-            order.coupon_value = coupon.discount_value;
-            order.coupon_type = coupon.discount_type;
-            
+            orderObj.coupon_code = coupon.code;
+            orderObj.coupon_value = coupon.discount_value;
+            orderObj.coupon_type = coupon.discount_type;
+            orderObj.coupon_discount = order.discount_price;
             // Calculate discount amount based on coupon type
-            if (coupon.discount_type === 'percentage' && coupon.discount_value) {
-                // Use sub_total if available, otherwise use total
-                const baseAmount = order.sub_total;
-                order.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
-            } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
-                order.coupon_discount = parseFloat(coupon.discount_value);
-            }
+            // if (coupon.discount_type === 'percentage' && coupon.discount_value) {
+            //     // Use sub_total if available, otherwise use total
+            //     const baseAmount = order.sub_total;
+            //     orderObj.coupon_discount = (parseFloat(coupon.discount_value) / 100) * baseAmount;
+            // } else if (coupon.discount_type === 'fixed_amount' && coupon.discount_value) {
+            //     orderObj.coupon_discount = parseFloat(coupon.discount_value);
+            // }
         }
-
+        let orderCouponObject = {}
          if(order.referral_id){
-            order.referral = {
-                coupon_code: order.referral_code,
-                coupon_value: order.referral_value,
-                coupon_type: order.referral_value_type,
-                coupon_discount: order.referral_discount || 0
+            orderCouponObject.referral = {
+                coupon_code: orderObj.referral_code,
+                coupon_value: orderObj.referral_value,
+                coupon_type: orderObj.referral_value_type,
+                coupon_discount: Math.floor((orderObj.referral_discount || 0) * 100) / 100
             }
          }
          if(order.coupon){
-            order.referral = {
-                coupon_code: order.coupon_code,
-                coupon_value: order.coupon_value,
-                coupon_type: order.coupon_type,
-                coupon_discount: order.coupon_discount || 0
+            orderCouponObject.referral = {
+                coupon_code: orderObj.coupon_code,
+                coupon_value: orderObj.coupon_value,
+                coupon_type: orderObj.coupon_type,
+                coupon_discount: Math.floor((orderObj.coupon_discount || 0) * 100) / 100
             }
          }
         
@@ -755,7 +827,7 @@ module.exports.getOrderById = async (req, res) => {
                 receive_promotions: user.receive_promotions
             },
             order: order,
-            referral: order.referral,
+            referral: orderCouponObject.referral,
         }, 'Order fetched successfully', 200);
 
     } catch (error) {
@@ -784,399 +856,6 @@ module.exports.getVivaWalletPaymentDetails = async (req, res) => {
         if (!transactionData || Object.keys(transactionData).length === 0) {
             return errorResponse(res, {}, 'No transaction data found', 404);
         }
-        
-        // Handle successful payment (statusId: F)
-        // let referenceNumber = parseInt(transactionData.orderCode).toString();   // `REF${parseInt(transactionData.orderCode).toString()}`;
-        // if (transactionData.statusId === "F" && transactionData.orderCode) {
-        //     // Find the order by orderCode
-        //     const order = await Order.findOne({
-        //         where: { user_id: userId, order_code: transactionData.orderCode },
-        //         include: [
-        //             { model: User, as: 'user' },
-        //             { 
-        //                 model: OrderItem, 
-        //                 as: 'orderItems',
-        //                 include: [
-        //                     {
-        //                         model: Product,
-        //                         as: 'product',
-        //                         attributes: ['id', 'name', 'price']
-        //                     },
-        //                     {
-        //                         model: ProductVariant,
-        //                         as: 'variant',
-        //                         attributes: ['id', 'slug', 'price', 'stock']
-        //                     }
-        //                 ]
-        //             },
-        //             {
-        //                 model: UserAddress,
-        //                 as: 'shippingAddress',
-        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-        //             },
-        //             {
-        //                 model: UserAddress,
-        //                 as: 'billingAddress',
-        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-        //             },
-        //             {
-        //                 model: OrderAddress,
-        //                 as: 'orderShippingAddress',
-        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-        //             },
-        //             {
-        //                 model: OrderAddress,
-        //                 as: 'orderBillingAddress',
-        //                 attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-        //             },
-        //             {
-        //                 model: ShippingMethod,
-        //                 as: 'shippingMethod',
-        //                 attributes: ['id', 'shipping_method', 'shipping_cost']
-        //             }
-        //         ]
-        //     });
-
-        //     if (order) {
-        //         // Update order status to processing
-        //         await order.update({ status: 'processing' });
-        //         // Create order log for successful payment
-        //         await sequelize.models.OrderLog.create({
-        //             order_id: order.id,
-        //             user_id: order.user_id,
-        //             status: 'processing',
-        //             label: 'Payment Successful via Viva Wallet'
-        //         });
-                
-        //         // Reduce stock for each order item
-        //         for (const item of order.orderItems) {
-        //             if (item.variant) {
-        //                 // Update variant stock
-        //                 await ProductVariant.update(
-        //                     { stock: sequelize.literal(`stock - ${item.quantity}`) },
-        //                     { 
-        //                         where: { 
-        //                             id: item.variant.id,
-        //                             stock: { [Op.gte]: item.quantity }
-        //                         }
-        //                     }
-        //                 );
-        //             } else {
-        //                 // Update product stock
-        //                 await Product.update(
-        //                     { stock_quantity: sequelize.literal(`stock_quantity - ${item.quantity}`) },
-        //                     { 
-        //                         where: { 
-        //                             id: item.product_id,
-        //                             stock_quantity: { [Op.gte]: item.quantity }
-        //                         }
-        //                     }
-        //                 );
-        //             }
-        //         }
-                
-        //         // Clear the user's cart
-        //         await Cart.destroy({ 
-        //             where: { user_id: order.user_id }
-        //         });
-                
-        //         // Send order confirmation email
-        //         const emailData = {
-        //             emailTypes: 'ORDER_CONFIRMATION',
-        //             to: order.user.email,
-        //             context: {
-        //                 userName: order.user.first_name || order.user.email.split('@')[0],
-        //                 orderId: order.id,
-        //                 orderUniqueId: order.order_unique_id,
-        //                 orderCode: order.order_code,
-        //                 orderDate: order.createdAt.toLocaleDateString(),
-        //                 status: order.status,
-        //                 shippingMethod: order.shippingMethod.shipping_method,
-        //                 shippingCost: order.shipping_cost,
-        //                 totalAmount: order.total,
-        //                 items: order.orderItems.map(item => ({
-        //                     name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-        //                     quantity: item.quantity,
-        //                     price: item.unit_price,
-        //                     total: item.total
-        //                 })),
-        //                 shippingAddress: order.orderShippingAddress,
-        //                 billingAddress: order.orderBillingAddress,
-        //                 paymentMethod: 'VivaWallet',
-        //                 transactionId: transactionId
-        //             }
-        //         };
-
-        //         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-        //         // Create transaction record
-        //         await Transaction.create({
-        //             userId: userId,
-        //             orderId: order.id,
-        //             paymentMethod: 'vivaWallet',    
-        //             transactionType: 'PURCHASE',
-        //             amount: transactionData.amount,
-        //             currency: transactionData.currencyCode,
-        //             status: 'COMPLETED',
-        //             referenceNumber: referenceNumber,
-        //             notes: transactionData.customerTrns,
-        //             metadata: {
-        //                 bankId: transactionData.bankId,
-        //                 cardNumber: transactionData.cardNumber,
-        //                 cardType: transactionData.cardTypeId,
-        //                 cardExpirationDate: transactionData.cardExpirationDate,
-        //                 cardIssuingBank: transactionData.cardIssuingBank,
-        //                 cardCountryCode: transactionData.cardCountryCode,
-        //                 sourceCode: transactionData.sourceCode,
-        //                 transactionTypeId: transactionData.transactionTypeId,
-        //                 switching: transactionData.switching,
-        //                 recurringSupport: transactionData.recurringSupport,
-        //                 totalInstallments: transactionData.totalInstallments,
-        //                 currentInstallment: transactionData.currentInstallment,
-        //                 conversionRate: transactionData.conversionRate,
-        //                 originalAmount: transactionData.originalAmount,
-        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
-        //                 cardUniqueReference: transactionData.cardUniqueReference,
-        //                 digitalWalletId: transactionData.digitalWalletId,
-        //                 loyaltyTransactions: transactionData.loyaltyTransactions
-        //             }
-        //         });
-
-        //         // Create success notification
-        //         await createNotification({
-        //             userId: userId,
-        //             type: 'payment',
-        //             action: 'success',
-        //             data: {
-        //                 amount: transactionData.amount,
-        //                 orderId: order.id,
-        //                 relatedId: order.id
-        //             }
-        //         });
-        //     }
-        // }
-
-        // // Handle failed payment (statusId: E)
-        // if (transactionData.statusId === "E") {
-        //     // Find and destroy the order
-        //     const order = await Order.findOne({
-        //         where: {user_id: userId, order_code: transactionData.orderCode }
-        //     });
-        //     if (order) {
-        //         await order.update({ status: 'fail' });
-        //         // await order.destroy();
-        //         // await order.destroy();
-        //         // Create failed transaction record
-        //         await Transaction.create({
-        //             userId: userId,
-        //             orderId: order.id,
-        //             paymentMethod: 'vivaWallet',
-        //             transactionType: 'PURCHASE',
-        //             amount: transactionData.amount,
-        //             currency: transactionData.currencyCode,
-        //             status: 'FAILED',
-        //             // referenceNumber: referenceNumber,
-        //             notes: transactionData.customerTrns,
-        //             metadata: {
-        //                 bankId: transactionData.bankId,
-        //                 cardNumber: transactionData.cardNumber,
-        //                 cardType: transactionData.cardTypeId,
-        //                 cardExpirationDate: transactionData.cardExpirationDate,
-        //                 cardIssuingBank: transactionData.cardIssuingBank,
-        //                 cardCountryCode: transactionData.cardCountryCode,
-        //                 sourceCode: transactionData.sourceCode,
-        //                 transactionTypeId: transactionData.transactionTypeId,
-        //                 switching: transactionData.switching,
-        //                 recurringSupport: transactionData.recurringSupport,
-        //                 totalInstallments: transactionData.totalInstallments,
-        //                 currentInstallment: transactionData.currentInstallment,
-        //                 conversionRate: transactionData.conversionRate,
-        //                 originalAmount: transactionData.originalAmount,
-        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
-        //                 cardUniqueReference: transactionData.cardUniqueReference,
-        //                 digitalWalletId: transactionData.digitalWalletId,
-        //                 loyaltyTransactions: transactionData.loyaltyTransactions
-        //             }
-        //         });
-
-        //         // Create failed notification
-        //         await createNotification({
-        //             userId: userId,
-        //             type: 'payment',
-        //             action: 'failed',
-        //             data: {
-        //                 amount: transactionData.amount,
-        //                 orderId: order.id,
-        //                 relatedId: order.id
-        //             }
-        //         });
-        //     }
-        // }
-
-        // // Handle refund payment (statusId: R)
-        // if (transactionData.statusId === "R") {
-        //     const order = await Order.findOne({
-        //         where: {user_id: userId, order_code: transactionData.orderCode }
-        //     });
-        //     if (order) {
-        //         await order.update({ status: 'refunded' });
-                
-        //         // Create refund transaction record
-        //         await Transaction.create({
-        //             userId: userId,
-        //             orderId: order.id,
-        //             paymentMethod: 'vivaWallet',
-        //             transactionType: 'REFUND',
-        //             amount: transactionData.amount,
-        //             currency: transactionData.currencyCode,
-        //             status: 'COMPLETED',
-        //             referenceNumber: referenceNumber,
-        //             notes: transactionData.customerTrns,
-        //             metadata: {
-        //                 bankId: transactionData.bankId,
-        //                 cardNumber: transactionData.cardNumber,
-        //                 cardType: transactionData.cardTypeId,
-        //                 cardExpirationDate: transactionData.cardExpirationDate,
-        //                 cardIssuingBank: transactionData.cardIssuingBank,
-        //                 cardCountryCode: transactionData.cardCountryCode,
-        //                 sourceCode: transactionData.sourceCode,
-        //                 transactionTypeId: transactionData.transactionTypeId,
-        //                 switching: transactionData.switching,
-        //                 recurringSupport: transactionData.recurringSupport,
-        //                 totalInstallments: transactionData.totalInstallments,
-        //                 currentInstallment: transactionData.currentInstallment,
-        //                 conversionRate: transactionData.conversionRate,
-        //                 originalAmount: transactionData.originalAmount,
-        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
-        //                 cardUniqueReference: transactionData.cardUniqueReference,
-        //                 digitalWalletId: transactionData.digitalWalletId,
-        //                 loyaltyTransactions: transactionData.loyaltyTransactions
-        //             }
-        //         });
-
-        //         // Create refund notification
-        //         await createNotification({
-        //             userId: userId,
-        //             type: 'payment',
-        //             action: 'refunded',
-        //             data: {
-        //                 amount: transactionData.amount,
-        //                 orderId: order.id,
-        //                 relatedId: order.id
-        //             }
-        //         });
-        //     }
-        // }
-
-        // // Handle pending payment (statusId: A)
-        // if (transactionData.statusId === "A") {
-        //     const order = await Order.findOne({
-        //         where: {user_id: userId, order_code: transactionData.orderCode }
-        //     });
-        //     if (order) {
-        //         await order.update({ status: 'pending' });
-                
-        //         // Create pending transaction record
-        //         await Transaction.create({
-        //             userId: userId,
-        //             orderId: order.id,
-        //             paymentMethod: 'vivaWallet',
-        //             transactionType: 'PURCHASE',
-        //             amount: transactionData.amount,
-        //             currency: transactionData.currencyCode,
-        //             status: 'PENDING',
-        //             referenceNumber: referenceNumber,
-        //             notes: transactionData.customerTrns,
-        //             metadata: {
-        //                 bankId: transactionData.bankId,
-        //                 cardNumber: transactionData.cardNumber,
-        //                 cardType: transactionData.cardTypeId,
-        //                 cardExpirationDate: transactionData.cardExpirationDate,
-        //                 cardIssuingBank: transactionData.cardIssuingBank,
-        //                 cardCountryCode: transactionData.cardCountryCode,
-        //                 sourceCode: transactionData.sourceCode,
-        //                 transactionTypeId: transactionData.transactionTypeId,
-        //                 switching: transactionData.switching,
-        //                 recurringSupport: transactionData.recurringSupport,
-        //                 totalInstallments: transactionData.totalInstallments,
-        //                 currentInstallment: transactionData.currentInstallment,
-        //                 conversionRate: transactionData.conversionRate,
-        //                 originalAmount: transactionData.originalAmount,
-        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
-        //                 cardUniqueReference: transactionData.cardUniqueReference,
-        //                 digitalWalletId: transactionData.digitalWalletId,
-        //                 loyaltyTransactions: transactionData.loyaltyTransactions
-        //             }
-        //         });
-
-        //         // Create pending notification
-        //         await createNotification({
-        //             userId: userId,
-        //             type: 'payment',
-        //             action: 'pending',
-        //             data: {
-        //                 amount: transactionData.amount,
-        //                 orderId: order.id,
-        //                 relatedId: order.id
-        //             }
-        //         });
-        //     }
-        // }
-
-        // // Handle cancel payment (statusId: X)
-        // if (transactionData.statusId === "X") {
-        //     const order = await Order.findOne({
-        //         where: {user_id: userId, order_code: transactionData.orderCode }
-        //     });
-        //     if (order) {
-        //         await order.update({ status: 'cancel' });
-                
-        //         // Create cancel transaction record
-        //         await Transaction.create({
-        //             userId: userId,
-        //             orderId: order.id,
-        //             paymentMethod: 'vivaWallet',
-        //             transactionType: 'PURCHASE',
-        //             amount: transactionData.amount,
-        //             currency: transactionData.currencyCode,
-        //             status: 'CANCELLED',
-        //             referenceNumber: referenceNumber,
-        //             notes: transactionData.customerTrns,
-        //             metadata: {
-        //                 bankId: transactionData.bankId,
-        //                 cardNumber: transactionData.cardNumber,
-        //                 cardType: transactionData.cardTypeId,
-        //                 cardExpirationDate: transactionData.cardExpirationDate,
-        //                 cardIssuingBank: transactionData.cardIssuingBank,
-        //                 cardCountryCode: transactionData.cardCountryCode,
-        //                 sourceCode: transactionData.sourceCode,
-        //                 transactionTypeId: transactionData.transactionTypeId,
-        //                 switching: transactionData.switching,
-        //                 recurringSupport: transactionData.recurringSupport,
-        //                 totalInstallments: transactionData.totalInstallments,
-        //                 currentInstallment: transactionData.currentInstallment,
-        //                 conversionRate: transactionData.conversionRate,
-        //                 originalAmount: transactionData.originalAmount,
-        //                 originalCurrencyCode: transactionData.originalCurrencyCode,
-        //                 cardUniqueReference: transactionData.cardUniqueReference,
-        //                 digitalWalletId: transactionData.digitalWalletId,
-        //                 loyaltyTransactions: transactionData.loyaltyTransactions
-        //             }
-        //         });
-
-        //         // Create cancel notification
-        //         await createNotification({
-        //             userId: userId,
-        //             type: 'payment',
-        //             action: 'cancelled',
-        //             data: {
-        //                 amount: transactionData.amount,
-        //                 orderId: order.id,
-        //                 relatedId: order.id
-        //             }
-        //         });
-        //     }
-        // }
 
         // Format the response data
         const paymentDetails = {payment_method: 'vivaWallet', ...transactionData};
@@ -1205,6 +884,9 @@ module.exports.cancelOrder = async (req, res) => {
                 id: orderId,
                 user_id: userId
             },
+            include: [
+                { model: User, as: 'user' },
+            ],
             transaction
         });
 
@@ -1245,6 +927,23 @@ module.exports.cancelOrder = async (req, res) => {
             },
             url: '/my-account/orders'
         });
+
+        // Send cancellation email
+        const emailData = {
+            emailTypes: 'ORDER_CANCELLATION',
+            to: order.email,
+            context: {
+                userName: order.user?.first_name || order.email.split('@')[0],
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                orderDate: order.createdAt.toLocaleDateString(),
+                status: 'cancelled',
+                reason: 'Cancelled via Viva Wallet'
+            }
+        };
+
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
 
         await transaction.commit();
 
@@ -1290,9 +989,73 @@ module.exports.checkOrderStock = async (req, res) => {
             }],
             transaction
         });
+        
         if (!order) {
             await transaction.rollback();
             return errorResponse(res, {}, 'Order not found', 404);
+        }
+        // Check if coupon has expired
+        if (order.coupon_id) {
+            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+            let coupon = await Coupon.findOne({
+                where: {
+                    id: order.coupon_id,
+                    status: "active",
+                    start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                }
+            });
+            if (!coupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 404,
+                    message: 'Invalid or expired coupon code'
+                }
+            }
+            const userUsedCoupon = await CouponUsage.findOne({
+                where: { user_id: userId, coupon_id: coupon.id }
+            });
+
+            const singleUsedCoupon = await CouponUsage.findOne({
+                where: {coupon_id: coupon.id }
+            });
+
+            // Check if coupon is single use and has been used by this user
+            if (coupon.is_single_use && singleUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'Already used discount coupon.'
+                }
+            }
+            if (userUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'You have already used discount coupon.'
+                }
+            }
+            if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {     // !coupon.is_single_use &&
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'This coupon is no longer available — usage limit exceeded.'
+                }
+            }
+            async function orderStatusUpdate(){
+                // Update order status to cancelled
+                await order.update({ 
+                    status: 'cancel'
+                });
+
+                // Create order log for cancellation
+                await sequelize.models.OrderLog.create({
+                    order_id: order.id,
+                    user_id: userId,
+                    status: 'cancel',
+                    label: 'Order Cancelled - Coupon Expired'
+                });
+            }
         }
 
         let hasInsufficientStock = false;
@@ -1334,38 +1097,21 @@ module.exports.checkOrderStock = async (req, res) => {
 
             return errorResponse(res, {
                 order_id: order.id,
-                // order_code: order.order_code,
                 status: order.status,
                 stock_issues: stockIssues
             }, 'Order cancelled due to insufficient stock', 400);
         }
-        // const accessToken = await getVivaAccessToken();
-        // console.log(accessToken);  // https://demo.vivapayments.com/api/orders/{orderCode}
-        // const response = await axios.patch(
-        //     `${process.env.VIVA_API_BASE_3}/api/orders/${order.order_code}`,
-        //     {
-        //         headers: {
-        //             'Authorization': `Bearer ${accessToken}`,
-        //             'Content-Type': 'application/json'
-        //         }
-        //     }
-        // );
-        // console.log("response>>>>",response);
-        // const transactionData = response.data;
         
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
                     url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
-                    
                     headers: {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        // console.log("orderDetails>>>>>", orderDetails)
         // Check if order state indicates cancellation (StateId 1 or 2)
         if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
             // Update order status to cancelled
@@ -1391,25 +1137,10 @@ module.exports.checkOrderStock = async (req, res) => {
                 message: 'Order cancelled due to Viva Wallet state'
             }, 'Order cancelled due to Viva Wallet state', 400);
         }
-        //   const accessToken = await getVivaAccessToken();
-        //   console.log("accessToken>>>>>", accessToken)
-        //   orderCode = await createVivaOrder(accessToken,order.total);
-        //   console.log("orderCode>>>>>", orderCode)
-//         var code = resp.data.Key;
-//         const resps = await axios({
-//             method: "PATCH",
-//             url: `https://demo.vivapayments.com/api/orders/${7282214013015238}`,
-//             headers: {
-//               "Authorization": "Basic " + credentials,
-//               "Content-Type": "application/json"
-//             }
-// });
-// console.log("resps>>>>>", resps)
         await transaction.commit();
-
         return successResponse(res, {
             order_id: order.id,
-            order_code: order.order_code, //order.order_code,
+            order_code: order.order_code,
             status: order.status,
             message: 'All items are in stock'
         }, 'Stock check successful');
@@ -1482,10 +1213,17 @@ module.exports.checkOrderStock = async (req, res) => {
 
 module.exports.orderCode = async (req, res) => {
     try {
+        // const orderInstance = await Order.findOne({
+        //     where: { id: req.params.orderCode }
+        // });
+
+        // if (orderInstance) {
+        //     // Update using instance method to trigger hooks
+        //     await orderInstance.update({ status: "processing" });
+        // }
         const orderCode = req.params.orderCode;
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        // console.log("order.order_code>>>>>", order.order_code, typeof order.order_code, )  
         var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
         const orderDetails = await axios({
                     method: "GET",
@@ -1495,7 +1233,7 @@ module.exports.orderCode = async (req, res) => {
                       "Authorization": "Basic " + credentials,
                     }
         });
-        res.json(orderDetails.data)
+        res.json("sucess")
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');

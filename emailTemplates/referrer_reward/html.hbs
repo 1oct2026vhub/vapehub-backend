@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Referral Reward is Ready! </title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2e8b57;
+            padding: 15px;
+            text-align: center;
+            color: white;
+        }
+        .content {
+            padding: 20px;
+            background-color: #ffffff;
+        }
+        .coupon-box {
+            background-color: #f8f9fa;
+            border: 2px dashed #007bff;
+            padding: 15px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .coupon-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            letter-spacing: 2px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+        .referal-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+        {{!-- <div class="header">
+            <h1>Congratulations! 🎉</h1>
+        </div> --}}
+        <div class="content">
+            <p>Dear {{userName}},</p>
+            
+            <p>{{emailContent1}}</p>
+            
+            <div class="coupon-box">
+                <p>Your Reward:</p>
+                <p class="coupon-code">{{token}}</p>
+                <p>{{emailContent2}}</p>
+            </div>
+
+            <p>Don't forget to use your reward before it expires!</p>
+
+            <div style="text-align: center;">
+                <div class="referal-code">{{token}}</div>
+            </div>
+
+            <p>Thank you for being a valued customer and helping us grow our community!</p>
+
+            <p>Best regards,<br>The VapeHub Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+            <p>If you have any questions, feel free to contact us.</p>
+        </div>
+    </div>
+</body>
+</html> 

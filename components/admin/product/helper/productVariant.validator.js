@@ -44,11 +44,11 @@ const commonValidations = {
                 if (value === null) return true;
                 if (typeof value === 'number' && value >= 0) {
                     if (value !== 0 && req.body.price && req.body.price !== 0 && value >= req.body.price) {
-                        throw new Error('Discount price must be less than regular price');
+                        throw new Error('Sale price must be less than regular price');
                     }
                     return true;
                 }
-                throw new Error('Discount price must be a positive number');
+                throw new Error('Sale price must be a positive number');
             }),
         body('purchase_price')
             .optional()
@@ -319,11 +319,11 @@ const createProductVariantsValidator = [
     body('variants.*.discount_price')
         .optional()
         .isFloat({ min: 0 })
-        .withMessage('Discount price must be a positive number')
+        .withMessage('Sale price must be a positive number')
         .custom((value, { req, path }) => {
             const variantIndex = parseInt(path.split('[')[1]);
             if (value >= req.body.variants[variantIndex].price) {
-                throw new Error('Discount price must be less than regular price');
+                throw new Error('Sale price must be less than regular price');
             }
             return true;
         }),
@@ -525,13 +525,13 @@ const bulkUpdateVariantsDirectValidator = [
     body('updates.discount_price')
         .optional()
         .isObject()
-        .withMessage('Discount price update must be an object')
+        .withMessage('Sale price update must be an object')
         .custom((value) => {
             if (!['set', 'increase', 'decrease'].includes(value.type)) {
-                throw new Error('Discount price update type must be set, increase, or decrease');
+                throw new Error('Sale price update type must be set, increase, or decrease');
             }
             if (typeof value.value !== 'number' || value.value < 0) {
-                throw new Error('Discount price value must be a positive number');
+                throw new Error('Sale price value must be a positive number');
             }
             if (typeof value.is_percentage !== 'boolean') {
                 throw new Error('is_percentage must be a boolean');

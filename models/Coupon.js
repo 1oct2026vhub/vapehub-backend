@@ -1,5 +1,7 @@
 'use strict';
-const { Model } = require('sequelize');
+const { Model, Op } = require('sequelize');
+const cron = require('node-cron');
+const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
   class Coupon extends Model {
@@ -8,6 +10,31 @@ module.exports = (sequelize, DataTypes) => {
       Coupon.belongsTo(models.User, {  foreignKey: 'created_by',  as: 'creator'  });
       
       Coupon.belongsTo(models.User, {  foreignKey: 'updated_by',  as: 'updater'   });
+    }
+
+    // Static method to update expired coupons
+    static async updateExpiredCoupons() {
+      try {
+        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+        
+        const result = await this.update(
+          { status: 'expired' },
+          {
+            where: {
+              status: 'active',
+              end_date: { 
+                [Op.and]: [
+                  { [Op.lt]: currentUkTime }
+                ]
+              }
+            }
+          }
+        );
+        // Log performance metrics
+        console.log(`Coupon expiration check completed. Updated ${result[0]} coupons. Current UK time: ${currentUkTime.format()}. subtract: ${moment(currentUkTime).subtract(1, 'minute').format()}`);
+      } catch (error) {
+        console.error('Error updating expired coupons:', error);
+      }
     }
   }
 
@@ -42,18 +69,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       validate: {
         notEmpty: true,
-        min: 0,
-        max: {
-          args: [100],
-          msg: "Percentage discount cannot be more than 100%",
-          // Custom validator to only apply max 100 rule for percentage type
-          validator: function(value) {
-            if (this.discount_type === 'percentage' && value > 100) {
-              throw new Error('Percentage discount cannot be more than 100%');
-            }
-            return true;
-          }
-        }
+        min: 0
       }
     },
     minimum_purchase: {
@@ -74,7 +90,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
       validate: {
-        min: 1
+        min: 0
       }
     },
     usage_count: {
@@ -123,6 +139,10 @@ module.exports = (sequelize, DataTypes) => {
     updated_by: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     sequelize,
@@ -130,6 +150,7 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'coupons',
     underscored: true,
     timestamps: true,
+    paranoid: true, // Enable soft deletes
     hooks: {
       beforeValidate: async (coupon) => {
         // Convert empty strings to null
@@ -150,6 +171,11 @@ module.exports = (sequelize, DataTypes) => {
         }
       }
     }
+  });
+
+  // Schedule the cron job to run at midnight (12 AM) every day
+  cron.schedule('0 0 * * *', async () => {
+    await Coupon.updateExpiredCoupons();
   });
 
   return Coupon;

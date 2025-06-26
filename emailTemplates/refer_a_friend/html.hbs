@@ -83,11 +83,13 @@
       {{!-- <p>Hello {{userName}},</p> --}}
       <p>
         Hi there!
-        Just when you thought your friend hasn't gifted you in a while, well here you have it!
-        You have been invited to shop at VapeHub and you've got a {{referralValue}}{{referralValueType}} discount waiting for you! Use the coupon code below to claim your offer.
+        {{emailContent1}}
+        {{emailContent2}}
       </p>
 
+      {{#if token}}
       <div class="referal-code">{{token}}</div>
+      {{/if}}
       <a href="{{referralLink}}" target="_blank" class="button">Shop Now</a>
 
       <p>Thank you for being part of our community!</p>

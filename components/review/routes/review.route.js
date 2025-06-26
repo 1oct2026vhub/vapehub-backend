@@ -288,4 +288,36 @@ router.get('/company/:company_name',
   reviewController.getReviewsByCompanyName
 );
 
+/**
+ * @swagger
+ * /api/review/order/{order_id}:
+ *   get:
+ *     summary: Get review by order ID
+ *     description: Retrieve a review for a specific order and authenticated user
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: order_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Order ID
+ *     responses:
+ *       200:
+ *         description: Review details
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Review not found
+ */
+router.get('/order/:order_id',
+  authenticateJWT,
+  validateRequest(reviewValidator.getReviewsByOrderIdValidation),
+  reviewController.getReviewsByOrderId
+);
+
 module.exports = router; 

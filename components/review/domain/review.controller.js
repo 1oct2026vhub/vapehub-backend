@@ -15,25 +15,22 @@ const authUrl = 'https://api.trustpilot.com/v1/oauth/oauth-business-users-for-ap
 
 const createReview = async (req, res, next) => {
     try {
-        const { Review} = require("../../../models");   //, Media, User, Order, Product, sequelize 
-
         const { order_id, product_id, company_name, rating, comment } = req.body;
         const user_id = req.user.id;
         // Check if user has already reviewed this product in this order
-        const existingReview = await Review.findOne({
-            where: {
-                user_id,
-                order_id,
-                product_id
-            }
-        });
+        // const existingReview = await Review.findOne({
+        //     where: {
+        //         user_id,
+        //         order_id
+        //     }
+        // });
 
-        if (existingReview) {
-            throw {
-                message: "You have already reviewed this product for this order",
-                statusCode: 400
-            };
-        }
+        // if (existingReview) {
+        //     throw {
+        //         message: "You have already reviewed this product for this order",
+        //         statusCode: 400
+        //     };
+        // }
 
         // Create review
         const review = await Review.create({
@@ -108,9 +105,18 @@ const getReviews = async (req, res, next) => {
             limit: parseInt(limit),
             offset: offset
         });
-
+        const averageRating = await Review.findOne({
+            where,
+            attributes: [
+                [sequelize.fn('AVG', sequelize.col('rating')), 'average_rating'],
+                [sequelize.fn('COUNT', sequelize.col('id')), 'total_reviews']
+            ],
+            raw: true
+        });
         return successResponse(res, {
             rows: reviews.rows,
+            average_rating: parseFloat(averageRating?.average_rating || 0).toFixed(1),
+            total_reviews: parseInt(averageRating?.total_reviews || 0),
             pagination: {
                 total: reviews.count,
                 currentPage: parseInt(page),
@@ -440,6 +446,60 @@ const getReviewsByCompanyName = async (req, res, next) => {
     }
 };
 
+const getReviewsByOrderId = async (req, res, next) => {
+    try {
+        const { order_id } = req.params;
+        let is_visible = true;
+        const user_id = req.user.id;
+
+        // Validate order_id
+        if (!order_id) {
+            throw {
+                message: "Order ID is required",
+                statusCode: 400
+            };
+        }
+
+        // Build where clause
+        const where = {
+            order_id,
+            user_id,
+            is_visible
+        };
+
+        // Get review
+        const review = await Review.findAll({
+            where,
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'first_name', 'last_name', 'profile_pic_url']
+                },
+                {
+                    model: Order,
+                    as: 'order',
+                    attributes: ['id', 'order_unique_id']
+                },
+                {
+                    model: Product,
+                    as: 'product',
+                    attributes: ['id', 'name', 'slug']
+                },
+                {
+                    model: Media,
+                    as: 'media',
+                    attributes: ['id', 'media_url', 'media_type']
+                }
+            ]
+        });
+
+        return successResponse(res, review, "Review fetched successfully");
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+};
+
 module.exports = {
     createReview,
     getReviews,
@@ -447,5 +507,6 @@ module.exports = {
     updateReview,
     deleteReview,
     getReviewsByProductId,
-    getReviewsByCompanyName
+    getReviewsByCompanyName,
+    getReviewsByOrderId
 }; 

@@ -633,7 +633,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 }
             ]
         });
-
         if (!product) {
             throw new Error('Product not found');
         }
@@ -696,7 +695,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 );
             });
         });
-
         // Get available terms for other attributes
         const availableTermsMap = new Map();
         filteredVariants.forEach(variant => {
@@ -827,7 +825,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         }));
                     });
             });
-            
             // Convert Set to array and parse JSON strings
             const terms = Array.from(allTermsForAttribute).map(term => JSON.parse(term));
             
@@ -847,12 +844,14 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             return null;
         }).filter(Boolean);
 
+        // console.log("description>>>>",product.variants[0].description);
         const response = {
             product: {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
-                description: product.description,
+                description: product.variants && product.variants.length > 0 ? product.variants[0].description : product.description,
+                // description: filteredVariants && filteredVariants.length > 0 ? filteredVariants[0].description : product.description,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: product.Category ? {
@@ -885,6 +884,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         return successResponse(res, response, 'Variants filtered successfully');
     } catch (error) {
+        console.log("error>>>>",error);
         logger.error(error);
         return errorResponse(res, error, error.message);
     }

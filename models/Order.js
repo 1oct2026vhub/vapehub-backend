@@ -17,6 +17,13 @@ module.exports = (sequelize, DataTypes) => {
         onUpdate: 'CASCADE' 
       });
 
+      this.belongsTo(models.PaymentMethod, {
+        foreignKey: 'payment_method_id',
+        as: 'paymentMethod',
+        onDelete: 'RESTRICT',
+        onUpdate: 'CASCADE'
+      });
+
       this.belongsTo(models.Coupon, { 
         foreignKey: 'coupon_id', 
         as: 'coupon',
@@ -120,49 +127,192 @@ module.exports = (sequelize, DataTypes) => {
         if (instance.changed('status')) {
           const newStatus = instance.status;
           
+          // Check stock levels when order status changes to processing
+          if (newStatus === 'processing') {
+            try {
+              // Get order items with variants
+              const orderItems = await sequelize.models.OrderItem.findAll({
+                where: { order_id: instance.id },
+                include: [{
+                  model: sequelize.models.ProductVariant,
+                  as: 'variant',
+                  attributes: ['id', 'stock', 'low_stock_threshold', 'stock_status', 'barcode', 'slug'],
+                  include: [{
+                    model: sequelize.models.Product,
+                    as: 'product',
+                    attributes: ['id', 'name', 'slug']
+                  }]
+                }]
+              });
+
+              // Check stock levels and create notifications
+              for (const item of orderItems) {
+                if (item.variant) {
+                  const variant = item.variant;
+                  const remainingStock = variant.stock - item.quantity;
+
+                  // Check for out of stock after this order
+                  if (remainingStock <= 0) {
+                    await sequelize.models.Notification.create({
+                      type: 'system',
+                      action: 'alert',
+                      title: 'Product Out of Stock',
+                      message: `Product "${variant.product.name}" (${variant.barcode}) - Variant: ${variant.slug} will be out of stock after processing order #${instance.order_unique_id}`,
+                      related_id: variant.product.id,
+                      url: `/admin/products/${variant.product.slug}?variant=${variant.slug}`,
+                      is_admin: true,
+                      data: {
+                        productId: variant.product.id,
+                        productSlug: variant.product.slug,
+                        variantId: variant.id,
+                        variantSlug: variant.slug,
+                        orderId: instance.id,
+                        remainingStock: 0
+                      }
+                    });
+                  }
+                  // Check for low stock threshold
+                  if (remainingStock <= variant.low_stock_threshold) {
+                    await sequelize.models.Notification.create({
+                      type: 'system',
+                      action: 'alert',
+                      title: 'Low Stock Alert',
+                      message: `Product "${variant.product.name}" (${variant.barcode}) - Variant: ${variant.slug} will have low stock (${remainingStock} units) after processing order #${instance.order_unique_id}`,
+                      related_id: variant.product.id,
+                      url: `/admin/products/${variant.product.slug}?variant=${variant.slug}`,
+                      is_admin: true,
+                      data: {
+                        productId: variant.product.id,
+                        productSlug: variant.product.slug,
+                        variantId: variant.id,
+                        variantSlug: variant.slug,
+                        orderId: instance.id,
+                        remainingStock: remainingStock,
+                        threshold: variant.low_stock_threshold
+                      }
+                    });
+                  }
+                }
+              }
+            } catch (stockError) {
+              logger.error('Error checking stock levels:', stockError);
+              // Continue with the order status update even if stock check fails
+            }
+          }
+
           // Send Trustpilot invitation for both delivered and completed statuses
           if (newStatus === 'delivered' || newStatus === 'completed') {
-            // Fetch the complete order with all necessary associations
-            const order = await Order.findOne({
-              where: { id: instance.id },
-              include: [
-                {
+            try {
+              
+              // 1. First get basic order with user
+              const order = await Order.findOne({
+                where: { id: instance.id },
+                include: [{
                   model: sequelize.models.User,
                   as: 'user',
                   attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                  model: sequelize.models.OrderItem,
-                  as: 'orderItems',
-                  include: [
-                    {
-                      model: sequelize.models.Product,
-                      as: 'product',
-                      attributes: ['name']
-                    },
-                    {
-                      model: sequelize.models.ProductVariant,
-                      as: 'variant',
-                      attributes: ['slug', 'price']
-                    }
-                  ]
-                }
-              ]
-            });
+                }]
+              });
+              if (!order) return;
 
-            if (order && order.user) {
-              // Format product details for Trustpilot
-              const productDetails = order.orderItems.map(item => ({
-                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-                price: item.variant ? item.variant.price : item.unit_price,
-                quantity: item.quantity
+              // 2. Get order items with products
+              const orderItems = await sequelize.models.OrderItem.findAll({
+                where: { order_id: instance.id },
+                include: [{
+                  model: sequelize.models.Product,
+                  as: 'product',
+                  attributes: ['id', 'name', 'slug'],
+                  include: [{
+                    model: sequelize.models.ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['image_url', 'is_primary'],
+                    required: false
+                  }]
+                }]
+              });
+
+              
+              // 3. Get variants for these items
+              const orderItemsWithVariants = await Promise.all(orderItems.map(async (item) => {
+                try {
+                  if (item.variant_id) {
+                    const variant = await sequelize.models.ProductVariant.findOne({
+                      where: { id: item.variant_id },
+                      include: [{
+                        model: sequelize.models.ProductVariantImage,
+                        as: 'variantImages',
+                        attributes: ['image_url','is_primary'],
+                        required: false
+                      }],
+                      raw: false
+                    });
+                    if (variant) {
+                      const variantData = variant.toJSON();
+                      return { ...item.toJSON(), variant: variantData };
+                    }
+                  }
+                  return item.toJSON();
+                } catch (error) {
+                  return item.toJSON();
+                }
               }));
 
-              // Add product details to the order instance
-              order.productDetails = productDetails;
+              // 4. Get product images
+              const orderItemsWithImages = await Promise.all(orderItemsWithVariants.map(async (item) => {
+                try {
+                  const productImages = await sequelize.models.ProductImage.findAll({
+                    where: { product_id: item.product_id },
+                    attributes: ['image_url', 'is_primary'],
+                    required: false,
+                    raw: false
+                  });
+                  return { 
+                    ...item, 
+                    productImages: productImages.map(img => img.toJSON())
+                  };
+                } catch (error) {
+                  console.error("Error getting product images:", error);
+                  return { ...item, productImages: [] };
+                }
+              }));
 
-              await reviewHelper.sendInvitation(order, order.user);
-              logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+              // Attach the enhanced order items to the order
+              order.orderItems = orderItemsWithImages;
+
+              if (order && order.user) {
+                // Format product details for Trustpilot
+                const productDetails = order.orderItems.map(item => {
+                  try {
+                    const detail = {
+                      name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                      price: item.variant ? item.variant.price : item.unit_price,
+                      quantity: item.quantity
+                    };
+                    return detail;
+                  } catch (error) {
+                    return {
+                      name: item.product?.name || "Unknown Product",
+                      price: item.unit_price || 0,
+                      quantity: item.quantity || 1
+                    };
+                  }
+                });
+
+                // Add product details to the order instance
+                order.productDetails = productDetails;
+
+                await reviewHelper.sendInvitation(order, order.user);
+                logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+              } else {
+                console.log("Order or user missing:", { 
+                  hasOrder: !!order, 
+                  hasUser: !!order?.user 
+                });
+              }
+            } catch (trustpilotError) {
+              // Log the error but don't throw it
+              logger.error('Error sending Trustpilot invitation:', trustpilotError);
+              // Continue with the order status update even if Trustpilot invitation fails
             }
           }
         }
@@ -238,6 +388,14 @@ module.exports = (sequelize, DataTypes) => {
       // validate: {
       //   is: /^ORD-[A-Z0-9]{8}$/i
       // }
+    },
+    payment_method_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'PaymentMethods',
+        key: 'id'
+      }
     },
     order_code: {
       type: DataTypes.STRING,

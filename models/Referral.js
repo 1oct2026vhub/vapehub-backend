@@ -93,6 +93,28 @@ module.exports = (sequelize, DataTypes) => {
         referral_value: {
             type: DataTypes.STRING,
             allowNull: true
+        },
+        minimum_purchase: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            defaultValue: 0,
+            validate: {
+                min: 0
+            },
+            comment: 'Minimum purchase amount required to apply referral discount'
+        },
+        maximum_purchase: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            validate: {
+                min: 0
+            },
+            comment: 'Maximum purchase amount for referral discount to apply'
+        },
+        referrer_data: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            comment: 'Additional data about the referrer at the time of referral'
         }
     }, {
         sequelize,

@@ -168,6 +168,12 @@
                             <td colspan="2" class="total-label">Shipping Cost</td>
                             <td class="shipping-cost">£{{shippingCost}}</td>
                         </tr>
+                        {{#if discountPrice}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Coupon Discount</td>
+                            <td class="discount-price">-£{{discountPrice}}</td>
+                        </tr>
+                        {{/if}}
                         <tr class="total-row">
                             <td colspan="2" class="total-label">Total Amount</td>
                             <td class="total-price">£{{totalAmount}}</td>

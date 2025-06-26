@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const logger = require('../logger')
+const utilsLogger = require('../../utils/logger');
 const { newEmail } = require('../mailsInDev')
 const constants = require('../../config/constants')
 const { errorResponse } = require("../../utils/responseUtils")
@@ -65,6 +66,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
+
             data.text = Handlebars.compile(text)({ 
                 ...context, 
                 host: process.env.HOST_URL, 
@@ -77,6 +79,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 FRONTEND_URL: process.env.FRONTEND_URL, 
                 currentYear: new Date().getFullYear()
             });
+
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);
