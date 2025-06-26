@@ -60,10 +60,9 @@ module.exports.shippingMethod = async (req, res, next) => {
         });
 
         if (cart.length === 0) {
-            throw {
-                statusCode: 404,
-                message: 'Cart is empty'
-            }
+            const error = new Error('Cart is empty');
+            error.statusCode = 404;
+            throw error;
         }
 
         const shippingMethod = await ShippingMethod.findOne({

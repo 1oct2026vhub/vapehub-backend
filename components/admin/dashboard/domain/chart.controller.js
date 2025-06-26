@@ -47,18 +47,18 @@ const getDateRange = (period, startDate, endDate) => {
 };
 
 // Helper function to format date for grouping
-const getDateFormat = (period) => {
+const getDateFormat = (period, tableAlias = 'Order') => {
     switch (period) {
         case 'daily':
-            return sequelize.fn('DATE', sequelize.col('createdAt'));
+            return sequelize.fn('DATE', sequelize.col(`${tableAlias}.createdAt`));
         case 'weekly':
-            return sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%u');
+            return sequelize.fn('DATE_FORMAT', sequelize.col(`${tableAlias}.createdAt`), '%Y-%u');
         case 'monthly':
-            return sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y-%m');
+            return sequelize.fn('DATE_FORMAT', sequelize.col(`${tableAlias}.createdAt`), '%Y-%m');
         case 'yearly':
-            return sequelize.fn('DATE_FORMAT', sequelize.col('createdAt'), '%Y');
+            return sequelize.fn('DATE_FORMAT', sequelize.col(`${tableAlias}.createdAt`), '%Y');
         default:
-            return sequelize.fn('DATE', sequelize.col('createdAt'));
+            return sequelize.fn('DATE', sequelize.col(`${tableAlias}.createdAt`));
     }
 };
 
@@ -110,62 +110,87 @@ module.exports.getSalesChart = async (req, res) => {
         const period = req.query.period || 'daily';
         const productId = req.query.productId;
         const { start, end } = getDateRange(period, req.query.startDate, req.query.endDate);
-        const dateFormat = getDateFormat(period);
 
         const whereClause = {
             createdAt: {
                 [Op.between]: [start, end]
             }
         };
-        if (productId) {
-            whereClause['$orderItems.productId$'] = productId;
-        }
+
+        // Build product filter condition
+        const productFilter = productId && productId !== '' ? {
+            id: {
+                [Op.in]: sequelize.literal(`(
+                    SELECT DISTINCT order_id 
+                    FROM order_items 
+                    WHERE product_id = ${parseInt(productId)}
+                )`)
+            }
+        } : {};
 
         // Chart data
         const salesData = await Order.findAll({
             attributes: [
-                [dateFormat, 'date'],
-                [sequelize.fn('COUNT', sequelize.col('id')), 'ordersCount'],
-                [sequelize.fn('SUM', sequelize.col('total')), 'totalSales']
+                [getDateFormat(period, 'Order'), 'date'],
+                [sequelize.fn('COUNT', sequelize.col('Order.id')), 'ordersCount'],
+                [sequelize.fn('SUM', sequelize.col('Order.total')), 'totalSales']
             ],
-            include: productId ? [{
-                model: sequelize.models.OrderItem,
-                as: 'orderItems',
-                attributes: [],
-                include: [{
-                    model: Product,
-                    attributes: ['id', 'name'],
-                    required: true
-                }]
-            }] : [],
-            where: whereClause,
-            group: [dateFormat],
-            order: [[dateFormat, 'ASC']]
+            where: {
+                ...whereClause,
+                ...productFilter
+            },
+            group: [getDateFormat(period, 'Order')],
+            order: [[getDateFormat(period, 'Order'), 'ASC']],
+            raw: true
         });
 
         // Summary data
         const [grossSales, ordersPlaced, itemsPurchased, refundedOrders, shippingCharged, couponsUsed] = await Promise.all([
             // Gross sales
-            Order.sum('total', { where: whereClause }),
+            Order.sum('total', { 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
+            }),
             // Orders placed
-            Order.count({ where: whereClause }),
-            // Items purchased
+            Order.count({ 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
+            }),
+            // Items purchased - use a simpler approach to avoid GROUP BY issues
             sequelize.models.OrderItem.sum('quantity', {
-                include: [{
-                    model: Order,
-                    as: 'order',
-                    where: whereClause
-                }],
-                where: productId ? { product_id: productId } : undefined
+                where: {
+                    order_id: {
+                        [Op.in]: sequelize.literal(`(SELECT id FROM orders WHERE createdAt BETWEEN '${start.toISOString()}' AND '${end.toISOString()}')`)
+                    },
+                    ...(productId && productId !== '' ? { product_id: parseInt(productId) } : {})
+                }
             }),
             // Refunded orders (sum of total for refunded orders)
             Order.sum('total', {
-                where: { ...whereClause, status: 'refunded' }
+                where: { 
+                    ...whereClause, 
+                    status: 'refunded',
+                    ...productFilter
+                }
             }),
             // Shipping charged
-            Order.sum('shipping_cost', { where: whereClause }),
+            Order.sum('shipping_cost', { 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
+            }),
             // Coupons used (sum of discount_price)
-            Order.sum('discount_price', { where: whereClause })
+            Order.sum('discount_price', { 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
+            })
         ]);
 
         // Calculate averages
@@ -190,18 +215,19 @@ module.exports.getSalesChart = async (req, res) => {
         };
 
         const formattedData = salesData.map(item => {
-            const date = item.getDataValue('date');
+            const date = item.date;
             return {
                 date: date,
                 dateRange: getDateRangeString(date, period),
-                ordersCount: parseInt(item.getDataValue('ordersCount')),
-                totalSales: parseFloat(item.getDataValue('totalSales') || 0)
+                ordersCount: parseInt(item.ordersCount),
+                totalSales: parseFloat(item.totalSales || 0)
             };
         });
 
         logger.info('Sales chart data retrieved successfully');
         return successResponse(res, { summary, chart: formattedData }, 'Sales chart data retrieved successfully');
     } catch (error) {
+        console.log(error);
         logger.error('Error fetching sales chart data:', {
             error: error.message,
             stack: error.stack
@@ -214,11 +240,10 @@ module.exports.getUserGrowthChart = async (req, res) => {
     try {
         const period = req.query.period || 'daily';
         const { start, end } = getDateRange(period, req.query.startDate, req.query.endDate);
-        const dateFormat = getDateFormat(period);
 
         const userData = await User.findAll({
             attributes: [
-                [dateFormat, 'date'],
+                [getDateFormat(period, 'User'), 'date'],
                 [sequelize.fn('COUNT', sequelize.literal('CASE WHEN roles.is_admin_panel = true THEN 1 END')), 'adminUsersCount'],
                 [sequelize.fn('COUNT', sequelize.literal('CASE WHEN roles.is_admin_panel = false THEN 1 END')), 'customerUsersCount']
             ],
@@ -232,17 +257,17 @@ module.exports.getUserGrowthChart = async (req, res) => {
                     [Op.between]: [start, end]
                 }
             },
-            group: [dateFormat],
-            order: [[dateFormat, 'ASC']]
+            group: [getDateFormat(period, 'User')],
+            order: [[getDateFormat(period, 'User'), 'ASC']]
         });
 
         const formattedData = userData.map(item => {
-            const date = item.getDataValue('date');
+            const date = item.date;
             return {
                 date: date,
                 dateRange: getDateRangeString(date, period),
-                admin: parseInt(item.getDataValue('adminUsersCount') || 0),
-                customer: parseInt(item.getDataValue('customerUsersCount') || 0)
+                admin: parseInt(item.adminUsersCount || 0),
+                customer: parseInt(item.customerUsersCount || 0)
             };
         });
 
@@ -262,7 +287,6 @@ module.exports.getTransactionChart = async (req, res) => {
         const period = req.query.period || 'daily';
         const productId = req.query.productId;
         const { start, end } = getDateRange(period, req.query.startDate, req.query.endDate);
-        const dateFormat = getDateFormat(period);
 
         const whereClause = {
             createdAt: {
@@ -271,44 +295,39 @@ module.exports.getTransactionChart = async (req, res) => {
             status: 'COMPLETED'
         };
 
-        // Add product filter if productId is provided
-        if (productId) {
-            whereClause['$order.orderItems.productId$'] = productId;
-        }
+        // Build product filter condition
+        const productFilter = productId && productId !== '' ? {
+            orderId: {
+                [Op.in]: sequelize.literal(`(
+                    SELECT DISTINCT order_id 
+                    FROM order_items 
+                    WHERE product_id = ${parseInt(productId)}
+                )`)
+            }
+        } : {};
 
         const transactionData = await Transaction.findAll({
             attributes: [
-                [dateFormat, 'date'],
-                [sequelize.fn('COUNT', sequelize.col('id')), 'transactionCount'],
-                [sequelize.fn('SUM', sequelize.col('amount')), 'totalRevenue']
+                [getDateFormat(period, 'Transaction'), 'date'],
+                [sequelize.fn('COUNT', sequelize.col('Transaction.id')), 'transactionCount'],
+                [sequelize.fn('SUM', sequelize.col('Transaction.amount')), 'totalRevenue']
             ],
-            include: productId ? [{
-                model: Order,
-                as: 'order',
-                attributes: [],
-                include: [{
-                    model: sequelize.models.OrderItem,
-                    as: 'orderItems',
-                    attributes: [],
-                    include: [{
-                        model: Product,
-                        attributes: ['id', 'name'],
-                        required: true
-                    }]
-                }]
-            }] : [],
-            where: whereClause,
-            group: [dateFormat],
-            order: [[dateFormat, 'ASC']]
+            where: {
+                ...whereClause,
+                ...productFilter
+            },
+            group: [getDateFormat(period, 'Transaction')],
+            order: [[getDateFormat(period, 'Transaction'), 'ASC']],
+            raw: true
         });
 
         const formattedData = transactionData.map(item => {
-            const date = item.getDataValue('date');
+            const date = item.date;
             return {
                 date: date,
                 dateRange: getDateRangeString(date, period),
-                transactionCount: parseInt(item.getDataValue('transactionCount')),
-                totalRevenue: parseFloat(item.getDataValue('totalRevenue') || 0)
+                transactionCount: parseInt(item.transactionCount),
+                totalRevenue: parseFloat(item.totalRevenue || 0)
             };
         });
 
