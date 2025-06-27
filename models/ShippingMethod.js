@@ -36,32 +36,6 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 0.0,
             },
-            min_order_total: {
-                type: DataTypes.DECIMAL(10, 2),
-                allowNull: true,
-                defaultValue: 0.0,
-                comment: 'Minimum order total required for this shipping method'
-            },
-            max_order_total: {
-                type: DataTypes.DECIMAL(10, 2),
-                allowNull: true,
-                comment: 'Maximum order total for this shipping method'
-            },
-            free_shipping_threshold: {
-                type: DataTypes.DECIMAL(10, 2),
-                allowNull: true,
-                comment: 'Order total threshold for free shipping'
-            },
-            shipping_rules: {
-                type: DataTypes.JSON,
-                allowNull: true,
-                comment: 'JSON array of shipping cost rules based on order total ranges'
-            },
-            is_active: {
-                type: DataTypes.BOOLEAN,
-                allowNull: false,
-                defaultValue: true
-            },
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,
             updated_by: {
