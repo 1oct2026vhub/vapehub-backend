@@ -1,8 +1,10 @@
 'use strict';
-const { Model } = require('sequelize');
+const { Model, DataTypes, Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
 const logger = require('../library/logger');
 const reviewHelper = require('../components/review/helper/review.helper');
+const cron = require('node-cron');
+const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
   class Order extends Model {
@@ -370,6 +372,177 @@ module.exports = (sequelize, DataTypes) => {
         };
       });
     }
+
+    // Static method to send Trustpilot invitations for orders delivered 7 days ago
+    static async sendTrustpilotInvitationsForDeliveredOrders() {
+      try {
+        const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
+        const sixDaysAgo = moment().subtract(6, 'days').startOf('day');
+        // Find orders that were delivered/completed between 7-8 days ago
+        const orders = await Order.findAll({
+          where: {
+            status: {
+              [Op.in]: ['delivered', 'completed']
+            },
+            updatedAt: {
+              [Op.between]: [sevenDaysAgo.toDate(), sixDaysAgo.toDate()]
+            }
+          },
+          include: [{
+            model: sequelize.models.User,
+            as: 'user',
+            attributes: ['id', 'first_name', 'last_name', 'email']
+          }],
+          attributes: ['id', 'order_unique_id', 'status', 'updatedAt', 'user_id']
+        });
+
+        if (orders.length === 0) {
+          return;
+        }
+
+        // Process orders in batches to handle large numbers efficiently
+        const BATCH_SIZE = 10; // Process 10 orders at a time
+        const batches = [];
+        
+        for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+          batches.push(orders.slice(i, i + BATCH_SIZE));
+        }
+
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+
+        // Process batches sequentially but orders within each batch in parallel
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+          const batch = batches[batchIndex];
+
+          // Process orders in current batch in parallel
+          const batchPromises = batch.map(async (order) => {
+            try {
+              if (!order.user) {
+                return { success: false, reason: 'no_user' };
+              }
+
+              // Get order items with products
+              const orderItems = await sequelize.models.OrderItem.findAll({
+                where: { order_id: order.id },
+                include: [{
+                  model: sequelize.models.Product,
+                  as: 'product',
+                  attributes: ['id', 'name', 'slug'],
+                  include: [{
+                    model: sequelize.models.ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['image_url', 'is_primary'],
+                    required: false
+                  }]
+                }]
+              });
+
+              // Get variants for these items
+              const orderItemsWithVariants = await Promise.all(orderItems.map(async (item) => {
+                try {
+                  if (item.variant_id) {
+                    const variant = await sequelize.models.ProductVariant.findOne({
+                      where: { id: item.variant_id },
+                      include: [{
+                        model: sequelize.models.ProductVariantImage,
+                        as: 'variantImages',
+                        attributes: ['image_url','is_primary'],
+                        required: false
+                      }],
+                      raw: false
+                    });
+                    if (variant) {
+                      const variantData = variant.toJSON();
+                      return { ...item.toJSON(), variant: variantData };
+                    }
+                  }
+                  return item.toJSON();
+                } catch (error) {
+                  return item.toJSON();
+                }
+              }));
+
+              // Get product images
+              const orderItemsWithImages = await Promise.all(orderItemsWithVariants.map(async (item) => {
+                try {
+                  const productImages = await sequelize.models.ProductImage.findAll({
+                    where: { product_id: item.product_id },
+                    attributes: ['image_url', 'is_primary'],
+                    required: false,
+                    raw: false
+                  });
+                  return { 
+                    ...item, 
+                    productImages: productImages.map(img => img.toJSON())
+                  };
+                } catch (error) {
+                  console.error("Error getting product images:", error);
+                  return { ...item, productImages: [] };
+                }
+              }));
+
+              // Attach the enhanced order items to the order
+              order.orderItems = orderItemsWithImages;
+
+              // Format product details for Trustpilot
+              const productDetails = order.orderItems.map(item => {
+                try {
+                  const detail = {
+                    name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+                    price: item.variant ? item.variant.price : item.unit_price,
+                    quantity: item.quantity
+                  };
+                  return detail;
+                } catch (error) {
+                  return {
+                    name: item.product?.name || "Unknown Product",
+                    price: item.unit_price || 0,
+                    quantity: item.quantity || 1
+                  };
+                }
+              });
+
+              // Add product details to the order instance
+              order.productDetails = productDetails;
+              // Send Trustpilot invitation
+              await reviewHelper.sendInvitation(order, order.user);
+
+              return { success: true, orderId: order.order_unique_id };
+
+            } catch (orderError) {
+              return { success: false, orderId: order.order_unique_id, error: orderError.message };
+            }
+          });
+
+          // Wait for all orders in current batch to complete
+          const batchResults = await Promise.allSettled(batchPromises);
+          
+          // Process batch results
+          batchResults.forEach((result, index) => {
+            processedCount++;
+            if (result.status === 'fulfilled') {
+              if (result.value.success) {
+                successCount++;
+              } else {
+                errorCount++;
+              }
+            } else {
+              errorCount++;
+            }
+          });
+
+          // Add a small delay between batches to prevent overwhelming the system
+          if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+          }
+        }
+
+      } catch (error) {
+        console.log("error", error);
+      }
+    }
   }
 
   Order.init({
@@ -663,6 +836,17 @@ module.exports = (sequelize, DataTypes) => {
         await Order.handleStatusChange(instance);
       }
     }
+  });
+
+  // Schedule cron job to send Trustpilot invitations daily at 8 AM
+  cron.schedule('0 8 * * *', async () => {
+    try {
+      await Order.sendTrustpilotInvitationsForDeliveredOrders();
+    } catch (error) {
+      console.log(error);
+    }
+  }, {
+    timezone: process.env.UK_TIMEZONE || 'Europe/London'
   });
 
   return Order;
