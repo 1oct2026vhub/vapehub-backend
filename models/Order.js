@@ -838,8 +838,8 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  // Schedule cron job to send Trustpilot invitations daily at 8 AM
-  cron.schedule('0 8 * * *', async () => {
+  // Schedule cron job to send Trustpilot invitations daily at 12 AM (midnight)
+  cron.schedule('0 0 * * *', async () => {
     try {
       await Order.sendTrustpilotInvitationsForDeliveredOrders();
     } catch (error) {
