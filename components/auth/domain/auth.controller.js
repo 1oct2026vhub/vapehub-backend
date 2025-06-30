@@ -169,7 +169,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                    // primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
                     refer_type: 'referral'  //new
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -178,7 +178,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferrerMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,
+                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -283,7 +283,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferrersMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,
+                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
