@@ -34,12 +34,12 @@ const createReview = async (req, res, next) => {
 
         // Create review
         const review = await Review.create({
-            user_id,
-            order_id,
-            product_id,
-            company_name,
-            rating,
-            comment,
+            user_id : user_id || null,
+            order_id : order_id || null,
+            product_id : product_id || null,
+            company_name : company_name,
+            rating : rating,
+            comment : comment,
             is_visible: true
         });
 
