@@ -31,6 +31,9 @@ const reviewValidator = require('../helper/review.validator');
  *                 type: integer
  *               company_name:
  *                 type: string
+ *               user_name:
+ *                 type: string
+ *                 description: Name of the user leaving the review
  *               rating:
  *                 type: integer
  *                 minimum: 1
