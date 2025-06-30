@@ -1,20 +1,35 @@
 const ReferralMethodHelper = require('../helper/referralMethod.helper');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const logger = require("../../../../library/logger");
-const { sequelize } = require('../../../../models');
+const { ReferralMethod, sequelize } = require('../../../../models');
 
 class ReferralMethodController {
   // Add new referral method
   async add(req, res) {
     try {
-      const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
+      const { referral_value_type, referral_value, status, refer_type, minimum_purchase, maximum_purchase } = req.body;
 
-      // Check if referral_value is 0 and set primary to 0 and status to inactive
-      const referralMethod = await ReferralMethodHelper.create({
+      // Check if a referral method with the same refer_type and status active already exists
+      const existingReferralMethod = await ReferralMethod.findOne({
+        where: {
+          refer_type: refer_type
+        }
+      });
+
+      if (existingReferralMethod) {
+        return errorResponse(res, { 
+          message: `An referral method for ${refer_type} already exists. Please update the existing one.` 
+        }, `Referral method for ${refer_type} already exists`, 400);
+      }
+
+      let finalStatus = status;
+      if (referral_value == 0) {
+        finalStatus = 'inactive';
+      }
+      const referralMethod = await ReferralMethod.create({
         referral_value_type,
         referral_value,
-        status,
-        primary,
+        status: finalStatus,
         refer_type,
         minimum_purchase,
         maximum_purchase
@@ -36,33 +51,33 @@ class ReferralMethodController {
     const transaction = await sequelize.transaction();
     try {
       const { id } = req.params;
-      const { referral_value_type, referral_value, status, primary, refer_type, minimum_purchase, maximum_purchase } = req.body;
-      const referralMethod = await ReferralMethodHelper.findById(id);
+      const { referral_value_type, referral_value, status, refer_type, minimum_purchase, maximum_purchase } = req.body;
+      const referralMethod = await ReferralMethod.findByPk(id);
       if (!referralMethod) {
         await transaction.rollback();
         logger.warn('Referral method not found for update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
       }
       let finalStatus = status;
-      let finalPrimary = primary;
       if (referral_value == 0) {
-        finalPrimary = 0;
         finalStatus = 'inactive';
       }
-      const updatedMethod = await ReferralMethodHelper.update(id, {
+      const updatedMethod = await ReferralMethod.update({
         referral_value_type,
         referral_value,
         status: finalStatus,
-        primary: finalPrimary,
         refer_type,
         minimum_purchase,
         maximum_purchase
-      }, { transaction });
+      }, { 
+        where: { id },
+        transaction 
+      });
 
       await transaction.commit();
 
       // Fetch the updated method to return complete data
-      const updatedMethodData = await ReferralMethodHelper.findById(id);
+      const updatedMethodData = await ReferralMethod.findByPk(id);
 
       return successResponse(res, {
         success: true,
@@ -85,7 +100,7 @@ class ReferralMethodController {
   async delete(req, res) {
     try {
       const { id } = req.params;
-      const result = await ReferralMethodHelper.delete(id);
+      const result = await ReferralMethod.destroy({ where: { id } });
       
       if (!result) {
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
@@ -107,13 +122,13 @@ class ReferralMethodController {
       const { id } = req.params;
       const { primary } = req.body;
 
-      const referralMethod = await ReferralMethodHelper.findById(id);
+      const referralMethod = await ReferralMethod.findByPk(id);
       if (!referralMethod) {
         logger.warn('Referral method not found for primary status update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
       }
 
-      const updatedMethod = await ReferralMethodHelper.updatePrimary(id, primary);
+      const updatedMethod = await ReferralMethod.update(id, { primary }, { transaction });
       return successResponse(res, {
         success: true,
         message: 'Primary status updated successfully',
@@ -131,7 +146,7 @@ class ReferralMethodController {
       const { id } = req.params;
       const { status } = req.body;
 
-      const updatedMethod = await ReferralMethodHelper.updateStatus(id, status);
+      const updatedMethod = await ReferralMethod.update({ status }, { where: { id } });
       if (!updatedMethod) {
         logger.warn('Referral method not found for status update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
@@ -152,12 +167,8 @@ class ReferralMethodController {
   async list(req, res) {
     try {
       const {
-        page = 1,
-        limit = 10,
-        sort_by = 'created_at',
-        order = 'DESC',
         status,
-        primary,
+        // primary,
         search
       } = req.query;
 
@@ -165,23 +176,16 @@ class ReferralMethodController {
       if (status) {
         where.status = status;
       }
-      if (primary !== undefined) {
-        where.primary = primary === 'true';
-      }
 
-      const options = {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        sort_by,
-        order,
-        search
-      };
+      // Since there are only 2 rows, fetch all without pagination
+      const referralMethods = await ReferralMethod.findAll({ 
+        where,
+        order: [['created_at', 'DESC']]
+      });
 
-      const result = await ReferralMethodHelper.search(where, options);
       return successResponse(res, {
         success: true,
-        data: result.data,
-        pagination: result.pagination
+        data: referralMethods
       }, "Referral methods retrieved successfully");
     } catch (error) {
       logger.error('Error listing referral methods', { error: error.message, stack: error.stack });
@@ -193,7 +197,7 @@ class ReferralMethodController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const referralMethod = await ReferralMethodHelper.findById(id);
+      const referralMethod = await ReferralMethod.findByPk(id);
       
       if (!referralMethod) {
         logger.warn('Referral method not found', { id });
