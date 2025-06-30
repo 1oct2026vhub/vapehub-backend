@@ -26,6 +26,9 @@ class ReferralMethodController {
       if (referral_value == 0) {
         finalStatus = 'inactive';
       }
+      else if (referral_value > 0) {
+        finalStatus = 'active';
+      }
       const referralMethod = await ReferralMethod.create({
         referral_value_type,
         referral_value,
@@ -61,6 +64,9 @@ class ReferralMethodController {
       let finalStatus = status;
       if (referral_value == 0) {
         finalStatus = 'inactive';
+      }
+      else if (referral_value > 0) {
+        finalStatus = 'active';
       }
       const updatedMethod = await ReferralMethod.update({
         referral_value_type,
