@@ -2535,7 +2535,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
         const inactiveReferralMethod = await ReferralMethod.findOne({
             where: { 
                 status: 'active',
-                primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                // primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
                 refer_type: 'referral'  //new
             },
             attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
