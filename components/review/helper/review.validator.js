@@ -1,12 +1,12 @@
 const { body, query, param } = require('express-validator');
 
 const createReviewValidation = [
-    body('order_id')
-        .isInt()
-        .withMessage('Order ID must be an integer'),
-    body('product_id')
-        .isInt()
-        .withMessage('Product ID must be an integer'),
+    // body('order_id')
+    //     .isInt()
+    //     .withMessage('Order ID must be an integer'),
+    // body('product_id')
+    //     .isInt()
+    //     .withMessage('Product ID must be an integer'),
     body('media_id')
         .optional()
         .isInt()
