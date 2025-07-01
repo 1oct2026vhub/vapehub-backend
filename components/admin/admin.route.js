@@ -31,6 +31,7 @@ router.use('/footer', require('./footer/routes/footer.route'));
 router.use('/menus', require('./menu/routes/menu.route'));
 router.use('/seo', require('./seo/routes/seo.route'));
 router.use('/faqs', require('./faq/routes/faq.route'));
+router.use('/deals', require('./deals/routes/deals.route'));
 router.use('/referral-method', require('./referralMethod/routes/referralMethod.route'));
 router.use('/coupons', require('./coupon/routes/coupon.route'));
 router.use('/flash-news', require('./flashNews/routes/flashNews.route'));

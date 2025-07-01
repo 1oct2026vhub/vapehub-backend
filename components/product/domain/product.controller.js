@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute } = require("../../../models");;
+const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
@@ -81,6 +81,34 @@ module.exports.getProductByid = async (req, res, next) => {
             {
                 model: ProductImage,
                 as: 'ProductImages'
+            },
+            {
+                model: Deal,
+                as: 'deals',
+                through: { 
+                    model: DealProduct,
+                    attributes: [] // Exclude DealProduct table data from response
+                },
+                where: {
+                    is_active: true,
+                    is_deleted: false,
+                    valid_from: { [Op.lte]: new Date() },
+                    valid_to: { [Op.gte]: new Date() }
+                },
+                required: false,
+                attributes: [
+                    'id', 
+                    'name', 
+                    'slug', 
+                    'deal_type', 
+                    'required_qty', 
+                    'get_qty', 
+                    'fixed_price', 
+                    'discount_percent', 
+                    'tiered_qty_json',
+                    'valid_from',
+                    'valid_to'
+                ]
             }
         ];
         const product = await Product.findOne({
@@ -630,6 +658,34 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     model: ProductImage,
                     as: 'ProductImages',
                     attributes: ['id', 'product_id', 'image_url', 'is_primary']
+                },
+                {
+                    model: Deal,
+                    as: 'deals',
+                    through: { 
+                        model: DealProduct,
+                        attributes: [] // Exclude DealProduct table data from response
+                    },
+                    where: {
+                        is_active: true,
+                        is_deleted: false,
+                        valid_from: { [Op.lte]: new Date() },
+                        valid_to: { [Op.gte]: new Date() }
+                    },
+                    required: false,
+                    attributes: [
+                        'id', 
+                        'name', 
+                        'slug', 
+                        'deal_type', 
+                        'required_qty', 
+                        'get_qty', 
+                        'fixed_price', 
+                        'discount_percent', 
+                        'tiered_qty_json',
+                        'valid_from',
+                        'valid_to'
+                    ]
                 }
             ]
         });
@@ -851,7 +907,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 name: product.name,
                 slug: product.slug,
                 description: product.variants && product.variants.length > 0 ? product.variants[0].description : product.description,
-                // description: filteredVariants && filteredVariants.length > 0 ? filteredVariants[0].description : product.description,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: product.Category ? {
@@ -870,7 +925,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     is_primary: primaryProductImage.is_primary
                 } : null,
                 all_images: productImages,
-                attribute_terms: Array.from(attributeTermsMap.values())
+                attribute_terms: Array.from(attributeTermsMap.values()),
+                deals: product.deals
             },
             variants: variants.map(variant => ({
                 ...variant,

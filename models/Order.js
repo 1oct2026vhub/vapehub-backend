@@ -203,120 +203,120 @@ module.exports = (sequelize, DataTypes) => {
           }
 
           // Send Trustpilot invitation for both delivered and completed statuses
-          if (newStatus === 'delivered' || newStatus === 'completed') {
-            try {
+          // if (newStatus === 'delivered' || newStatus === 'completed') {
+          //   try {
               
-              // 1. First get basic order with user
-              const order = await Order.findOne({
-                where: { id: instance.id },
-                include: [{
-                  model: sequelize.models.User,
-                  as: 'user',
-                  attributes: ['id', 'first_name', 'last_name', 'email']
-                }]
-              });
-              if (!order) return;
+          //     // 1. First get basic order with user
+          //     const order = await Order.findOne({
+          //       where: { id: instance.id },
+          //       include: [{
+          //         model: sequelize.models.User,
+          //         as: 'user',
+          //         attributes: ['id', 'first_name', 'last_name', 'email']
+          //       }]
+          //     });
+          //     if (!order) return;
 
-              // 2. Get order items with products
-              const orderItems = await sequelize.models.OrderItem.findAll({
-                where: { order_id: instance.id },
-                include: [{
-                  model: sequelize.models.Product,
-                  as: 'product',
-                  attributes: ['id', 'name', 'slug'],
-                  include: [{
-                    model: sequelize.models.ProductImage,
-                    as: 'ProductImages',
-                    attributes: ['image_url', 'is_primary'],
-                    required: false
-                  }]
-                }]
-              });
+          //     // 2. Get order items with products
+          //     const orderItems = await sequelize.models.OrderItem.findAll({
+          //       where: { order_id: instance.id },
+          //       include: [{
+          //         model: sequelize.models.Product,
+          //         as: 'product',
+          //         attributes: ['id', 'name', 'slug'],
+          //         include: [{
+          //           model: sequelize.models.ProductImage,
+          //           as: 'ProductImages',
+          //           attributes: ['image_url', 'is_primary'],
+          //           required: false
+          //         }]
+          //       }]
+          //     });
 
               
-              // 3. Get variants for these items
-              const orderItemsWithVariants = await Promise.all(orderItems.map(async (item) => {
-                try {
-                  if (item.variant_id) {
-                    const variant = await sequelize.models.ProductVariant.findOne({
-                      where: { id: item.variant_id },
-                      include: [{
-                        model: sequelize.models.ProductVariantImage,
-                        as: 'variantImages',
-                        attributes: ['image_url','is_primary'],
-                        required: false
-                      }],
-                      raw: false
-                    });
-                    if (variant) {
-                      const variantData = variant.toJSON();
-                      return { ...item.toJSON(), variant: variantData };
-                    }
-                  }
-                  return item.toJSON();
-                } catch (error) {
-                  return item.toJSON();
-                }
-              }));
+          //     // 3. Get variants for these items
+          //     const orderItemsWithVariants = await Promise.all(orderItems.map(async (item) => {
+          //       try {
+          //         if (item.variant_id) {
+          //           const variant = await sequelize.models.ProductVariant.findOne({
+          //             where: { id: item.variant_id },
+          //             include: [{
+          //               model: sequelize.models.ProductVariantImage,
+          //               as: 'variantImages',
+          //               attributes: ['image_url','is_primary'],
+          //               required: false
+          //             }],
+          //             raw: false
+          //           });
+          //           if (variant) {
+          //             const variantData = variant.toJSON();
+          //             return { ...item.toJSON(), variant: variantData };
+          //           }
+          //         }
+          //         return item.toJSON();
+          //       } catch (error) {
+          //         return item.toJSON();
+          //       }
+          //     }));
 
-              // 4. Get product images
-              const orderItemsWithImages = await Promise.all(orderItemsWithVariants.map(async (item) => {
-                try {
-                  const productImages = await sequelize.models.ProductImage.findAll({
-                    where: { product_id: item.product_id },
-                    attributes: ['image_url', 'is_primary'],
-                    required: false,
-                    raw: false
-                  });
-                  return { 
-                    ...item, 
-                    productImages: productImages.map(img => img.toJSON())
-                  };
-                } catch (error) {
-                  console.error("Error getting product images:", error);
-                  return { ...item, productImages: [] };
-                }
-              }));
+          //     // 4. Get product images
+          //     const orderItemsWithImages = await Promise.all(orderItemsWithVariants.map(async (item) => {
+          //       try {
+          //         const productImages = await sequelize.models.ProductImage.findAll({
+          //           where: { product_id: item.product_id },
+          //           attributes: ['image_url', 'is_primary'],
+          //           required: false,
+          //           raw: false
+          //         });
+          //         return { 
+          //           ...item, 
+          //           productImages: productImages.map(img => img.toJSON())
+          //         };
+          //       } catch (error) {
+          //         console.error("Error getting product images:", error);
+          //         return { ...item, productImages: [] };
+          //       }
+          //     }));
 
-              // Attach the enhanced order items to the order
-              order.orderItems = orderItemsWithImages;
+          //     // Attach the enhanced order items to the order
+          //     order.orderItems = orderItemsWithImages;
 
-              if (order && order.user) {
-                // Format product details for Trustpilot
-                const productDetails = order.orderItems.map(item => {
-                  try {
-                    const detail = {
-                      name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
-                      price: item.variant ? item.variant.price : item.unit_price,
-                      quantity: item.quantity
-                    };
-                    return detail;
-                  } catch (error) {
-                    return {
-                      name: item.product?.name || "Unknown Product",
-                      price: item.unit_price || 0,
-                      quantity: item.quantity || 1
-                    };
-                  }
-                });
+          //     if (order && order.user) {
+          //       // Format product details for Trustpilot
+          //       const productDetails = order.orderItems.map(item => {
+          //         try {
+          //           const detail = {
+          //             name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+          //             price: item.variant ? item.variant.price : item.unit_price,
+          //             quantity: item.quantity
+          //           };
+          //           return detail;
+          //         } catch (error) {
+          //           return {
+          //             name: item.product?.name || "Unknown Product",
+          //             price: item.unit_price || 0,
+          //             quantity: item.quantity || 1
+          //           };
+          //         }
+          //       });
 
-                // Add product details to the order instance
-                order.productDetails = productDetails;
+          //       // Add product details to the order instance
+          //       order.productDetails = productDetails;
 
-                await reviewHelper.sendInvitation(order, order.user);
-                logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
-              } else {
-                console.log("Order or user missing:", { 
-                  hasOrder: !!order, 
-                  hasUser: !!order?.user 
-                });
-              }
-            } catch (trustpilotError) {
-              // Log the error but don't throw it
-              logger.error('Error sending Trustpilot invitation:', trustpilotError);
-              // Continue with the order status update even if Trustpilot invitation fails
-            }
-          }
+          //       await reviewHelper.sendInvitation(order, order.user);
+          //       logger.info(`Review invitation sent for order ${order.order_unique_id} with status ${newStatus}`);
+          //     } else {
+          //       console.log("Order or user missing:", { 
+          //         hasOrder: !!order, 
+          //         hasUser: !!order?.user 
+          //       });
+          //     }
+          //   } catch (trustpilotError) {
+          //     // Log the error but don't throw it
+          //     logger.error('Error sending Trustpilot invitation:', trustpilotError);
+          //     // Continue with the order status update even if Trustpilot invitation fails
+          //   }
+          // }
         }
       } catch (error) {
         logger.error('Error handling order status update:', error);
@@ -376,8 +376,8 @@ module.exports = (sequelize, DataTypes) => {
     // Static method to send Trustpilot invitations for orders delivered 7 days ago
     static async sendTrustpilotInvitationsForDeliveredOrders() {
       try {
-        const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
         const sixDaysAgo = moment().subtract(6, 'days').startOf('day');
+        const fiveDaysAgo = moment().subtract(5, 'days').startOf('day');
         // Find orders that were delivered/completed between 7-8 days ago
         const orders = await Order.findAll({
           where: {
@@ -385,7 +385,7 @@ module.exports = (sequelize, DataTypes) => {
               [Op.in]: ['delivered', 'completed']
             },
             updatedAt: {
-              [Op.between]: [sevenDaysAgo.toDate(), sixDaysAgo.toDate()]
+              [Op.between]: [sixDaysAgo.toDate(), fiveDaysAgo.toDate()]
             }
           },
           include: [{
@@ -683,6 +683,17 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 0
     },
+    deals_discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0,
+      comment: 'Total discount amount from deals'
+    },
+    applicable_deals: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: 'JSON array of applied deals with their details'
+    },
     discount_type: {
       type: DataTypes.ENUM('percentage', 'fixed', 'referral'),
       allowNull: true
@@ -839,7 +850,7 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   // Schedule cron job to send Trustpilot invitations daily at 12 AM (midnight)
-  cron.schedule('0 0 * * *', async () => {
+  cron.schedule('30 0 * * *', async () => {
     try {
       await Order.sendTrustpilotInvitationsForDeliveredOrders();
     } catch (error) {
