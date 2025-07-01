@@ -683,6 +683,17 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 0
     },
+    deals_discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0,
+      comment: 'Total discount amount from deals'
+    },
+    applicable_deals: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: 'JSON array of applied deals with their details'
+    },
     discount_type: {
       type: DataTypes.ENUM('percentage', 'fixed', 'referral'),
       allowNull: true
