@@ -253,10 +253,8 @@ module.exports.applyCoupon = async (req, res, next) => {
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
         dealsDiscount = dealResult.totalDiscount;
         applicableDeals = dealResult.appliedDeals;
-
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
-        
         let coupon = null;
         let referral_value = null;
         let referral_value_type = null;

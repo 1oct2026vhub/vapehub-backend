@@ -36,5 +36,6 @@ router.use('/referral-method', require('./referralMethod/routes/referralMethod.r
 router.use('/coupons', require('./coupon/routes/coupon.route'));
 router.use('/flash-news', require('./flashNews/routes/flashNews.route'));
 router.use('/review', require('./review/routes/review.route'));
+router.use('/inventory', require('./inventory/routes/inventory.route'));
 
 module.exports = router;
