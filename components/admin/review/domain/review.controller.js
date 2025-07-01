@@ -12,7 +12,6 @@ module.exports = {
         limit,
         order: [['created_at', 'DESC']]
       });
-
       res.json({
         total: count,
         page,
