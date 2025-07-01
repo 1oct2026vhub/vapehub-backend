@@ -1,12 +1,12 @@
 const { body, query, param } = require('express-validator');
 
 const createReviewValidation = [
-    body('order_id')
-        .isInt()
-        .withMessage('Order ID must be an integer'),
-    body('product_id')
-        .isInt()
-        .withMessage('Product ID must be an integer'),
+    // body('order_id')
+    //     .isInt()
+    //     .withMessage('Order ID must be an integer'),
+    // body('product_id')
+    //     .isInt()
+    //     .withMessage('Product ID must be an integer'),
     body('media_id')
         .optional()
         .isInt()
@@ -121,6 +121,12 @@ const getReviewsByCompanyNameValidation = [
         .withMessage('is_visible must be a boolean')
 ];
 
+const getReviewsByOrderIdValidation = [
+    param('order_id')
+        .isInt()
+        .withMessage('Order ID must be an integer')
+];
+
 module.exports = {
     createReviewValidation,
     getReviewsValidation,
@@ -128,5 +134,6 @@ module.exports = {
     updateReviewValidation,
     deleteReviewValidation,
     getReviewsByProductIdValidation,
-    getReviewsByCompanyNameValidation
+    getReviewsByCompanyNameValidation,
+    getReviewsByOrderIdValidation
 }; 

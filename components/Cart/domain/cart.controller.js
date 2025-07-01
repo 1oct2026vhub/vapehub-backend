@@ -222,10 +222,15 @@ module.exports.updateCart = async (req, res, next) => {
 
         // Check stock if quantity is updated
         if (quantity) {
+            let addedQuantity = quantity - cartItem.quantity
+            let totalQuantity = cartItem.quantity + addedQuantity
             const availableStock = cartItem.variant ? cartItem.variant.stock : cartItem.product.stock_quantity || 0;
-            if (quantity > availableStock) {
-                return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
+            if(totalQuantity > availableStock ){
+                throw { message: `You cannot add that amount to the basket — we have ${availableStock} in stock and you already have ${cartItem.quantity} in your basket. View basket`, statusCode: 400 };
             }
+            // if (quantity > availableStock) {
+            //     return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock`, 400);
+            // }
         }
 
         cartItem.quantity = quantity || cartItem.quantity;

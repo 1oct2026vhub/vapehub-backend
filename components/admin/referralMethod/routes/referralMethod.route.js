@@ -30,9 +30,6 @@ const referralMethodController = require('../domain/referralMethod.controller');
  *           type: string
  *           enum: [active, inactive]
  *           description: Status of the referral method
- *         primary:
- *           type: boolean
- *           description: Whether this is the primary referral method
  *         minimum_purchase:
  *           type: number
  *           format: float
@@ -225,20 +222,10 @@ router.patch(
  * @swagger
  * /api/admin/referral-method:
  *   get:
- *     summary: List all referral methods with filtering, sorting, and pagination
+ *     summary: List all referral methods with filtering
  *     tags:
  *       - ADMIN - Referral Method
  *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *         description: Page number for pagination (default - 1)
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *         description: Number of records per page (default - 10)
  *       - in: query
  *         name: status
  *         schema:
@@ -246,51 +233,28 @@ router.patch(
  *           enum: [active, inactive]
  *         description: Filter by status
  *       - in: query
- *         name: primary
- *         schema:
- *           type: string
- *           enum: [true, false]
- *         description: Filter by primary status
- *       - in: query
  *         name: search
  *         schema:
  *           type: string
  *         description: Search in referral value and type
- *       - in: query
- *         name: sort_by
- *         schema:
- *           type: string
- *           enum: [id, referral_value_type, referral_value, status, primary, created_at, updated_at]
- *         description: Sort by field (default - created_at)
- *       - in: query
- *         name: order
- *         schema:
- *           type: string
- *           enum: [ASC, DESC]
- *         description: Order of sorting (default - DESC)
  *     responses:
  *       200:
- *         description: List of referral methods
+ *         description: List of all referral methods
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
  *                 data:
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/ReferralMethod'
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     total:
- *                       type: integer
- *                     page:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     total_pages:
- *                       type: integer
+ *                 message:
+ *                   type: string
+ *                   example: "Referral methods retrieved successfully"
  *       401:
  *         description: Unauthorized access
  */
@@ -298,6 +262,38 @@ router.get(
     "/",
     [authMiddleware(true), validateRequest(validationRules.referralMethodListValidationRules)],
     referralMethodController.list
+);
+
+/**
+ * @swagger
+ * /api/admin/referral-method/{id}:
+ *   get:
+ *     summary: Get a referral method by ID
+ *     tags:
+ *       - ADMIN - Referral Method
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the referral method to retrieve
+ *     responses:
+ *       200:
+ *         description: Referral method details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReferralMethod'
+ *       401:
+ *         description: Unauthorized access
+ *       404:
+ *         description: Referral method not found
+ */
+router.get(
+    "/:id",
+    [authMiddleware(true), validateRequest(validationRules.referralMethodIDValidation)],
+    referralMethodController.getById
 );
 
 module.exports = router; 

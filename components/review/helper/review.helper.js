@@ -111,7 +111,7 @@ async function sendInvitation(order, user) {
         // Get business unit ID
         const businessUnitId = await findBusinessUnitId(accessToken);
         // Get the default template ID
-        const templateId = await getDefaultTemplateId(accessToken);
+        // const templateId = await getDefaultTemplateId(accessToken);
         const invitationData = {
             replyTo: process.env.TRUSTPILOT_REPLYTO_EMAIL, // "mahesh@ateamsoftsolutions.com",//process.env.REPLY_TO_EMAIL || "support@vapehub.co.uk",
             locale: 'en-US',
@@ -125,13 +125,13 @@ async function sendInvitation(order, user) {
             phoneNumber: user.phone || "",
             type: "email",
             serviceReviewInvitation: {
-                templateId: templateId,
+                templateId: '529c0abfefb96008b894ad02',// templateId, //'67a23a94ac165ffb735a5d56'
                 preferredSendTime: new Date().toISOString(),
                 redirectUri: `${process.env.FRONTEND_URL}/order-details/${order.id}`,
                 tags: ['order', order.status]
             },
             productReviewInvitation: {
-                templateId: templateId,
+                templateId: '529c0abfefb96008b894ad02',   // templateId, //'67a23a94ac165ffb735a5d56'
                 preferredSendTime: new Date().toISOString(),
                 redirectUri: `${process.env.FRONTEND_URL}/order-details/${order.id}`,
                 products: order.orderItems ? order.orderItems.map(item => {

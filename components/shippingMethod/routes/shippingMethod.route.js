@@ -2,7 +2,7 @@ const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const shippingMethodController = require("../domain/shippingMethod.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
-const {shippingMethodValidator} = require("../helper/shippingMethod.validator")
+const { shippingMethodValidation } = require("../helper/shippingMethod.validator");
 
 /**
  * @swagger
@@ -52,6 +52,54 @@ const {shippingMethodValidator} = require("../helper/shippingMethod.validator")
  *         description: Internal Server Error
  */
 router.get("/", authenticateJWT, shippingMethodController.getAllShippingMethods);
+
+/**
+ * @swagger
+ * /api/shipping-method/available:
+ *   get:
+ *     summary: Get available shipping methods for cart
+ *     description: Retrieve a list of available shipping methods based on cart total
+ *     tags:
+ *       - Shipping Method
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Available shipping methods retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subTotal:
+ *                       type: number
+ *                       example: 100.00
+ *                     shippingMethods:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           shipping_method:
+ *                             type: string
+ *                             example: "Standard Delivery"
+ *                           calculated_cost:
+ *                             type: number
+ *                             example: 5.00
+ *       404:
+ *         description: Cart not found
+ *       500:
+ *         description: Internal Server Error
+ */
+router.get("/available", authenticateJWT, shippingMethodController.getAvailableShippingMethods);
 
 /**
  * @swagger
@@ -157,8 +205,6 @@ router.get("/", authenticateJWT, shippingMethodController.getAllShippingMethods)
  *                   type: string
  *                   example: "Internal server error"
  */
+router.post("/", authenticateJWT, validateRequest(shippingMethodValidation), shippingMethodController.shippingMethod);
 
-router.post("/", authenticateJWT, validateRequest(shippingMethodValidator), shippingMethodController.shippingMethod)
-
-
-module.exports = router
+module.exports = router;

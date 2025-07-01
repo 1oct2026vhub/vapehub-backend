@@ -222,7 +222,6 @@ const fetchProducts = async (query, status = 'published') => {
       is_new,
       source
     } = query;
-
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
@@ -300,7 +299,6 @@ const fetchProducts = async (query, status = 'published') => {
       }),
       status: status
     };
-
     // Create a separate variant where clause without the price range filter
     let priceRangeVariantWhereClause = "";
     if (variantFilters.id) {
@@ -478,7 +476,6 @@ const fetchProducts = async (query, status = 'published') => {
       }
       return false;
     });
-
     // Build base product filter conditions for SQL queries
     let productFilterConditions = [];
     let productFilterParams = {};
@@ -920,7 +917,6 @@ const fetchProducts = async (query, status = 'published') => {
         slug: availableProducts[0].Brand.slug
       });
     }
-
     return {
       additionalData,
       products: availableProducts,

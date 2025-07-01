@@ -19,15 +19,15 @@ class ReferralMethodHelper {
 
   static async create(data) {
     // If setting as primary, first unset any existing primary for the same refer_type
-    if (data.primary) {
-      await this.unsetExistingPrimaryByReferType(data.refer_type);
-    } else {
-      // If not setting as primary, check if this will be the first record for this refer_type
-      const count = await ReferralMethod.count({ where: { refer_type: data.refer_type } });
-      if (count === 0) {
-        data.primary = true; // Force primary for first record of this refer_type
-      }
-    }
+    // if (data.primary) {
+    //   await this.unsetExistingPrimaryByReferType(data.refer_type);
+    // } else {
+    //   // If not setting as primary, check if this will be the first record for this refer_type
+    //   const count = await ReferralMethod.count({ where: { refer_type: data.refer_type } });
+    //   if (count === 0) {
+    //     data.primary = true; // Force primary for first record of this refer_type
+    //   }
+    // }
     return await ReferralMethod.create(data);
   }
 
@@ -166,9 +166,9 @@ class ReferralMethodHelper {
           refer_type: referralMethod.refer_type 
         } 
       });
-      if (primaryCount <= 1 && referralMethod.primary) {
-        return null; // Don't allow unsetting if it's the only primary record for this refer_type
-      }
+      // if (primaryCount <= 1 && referralMethod.primary) {
+      //   return null; // Don't allow unsetting if it's the only primary record for this refer_type
+      // }
     }
 
     return await referralMethod.update({ primary });

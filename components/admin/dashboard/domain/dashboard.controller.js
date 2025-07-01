@@ -251,3 +251,116 @@ module.exports.getDashboardStats = async (req, res, next) => {
     }
 }
 
+/**
+ * Get sales statistics overview (total sales, orders, new users) for today, week, and month, with percentage changes.
+ * Excludes visitors/views.
+ */
+module.exports.getSalesStatsOverview = async (req, res, next) => {
+    try {
+        const { Op } = require('sequelize');
+        const { getDashboardDateRanges } = require('../../../../utils/dateUtils');
+        const { Transaction, Order, User } = require('../../../../models');
+        const dashboardHelper = require('../helper/dashboard.helper');
+        
+        // Date ranges
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        // Week: Monday to Sunday
+        const weekDay = todayStart.getDay() === 0 ? 6 : todayStart.getDay() - 1;
+        const weekStart = new Date(todayStart);
+        weekStart.setDate(todayStart.getDate() - weekDay);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 7);
+        // Previous week
+        const prevWeekStart = new Date(weekStart);
+        prevWeekStart.setDate(weekStart.getDate() - 7);
+        const prevWeekEnd = new Date(weekStart);
+        // Month
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        // Previous month
+        const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Yesterday
+        const yesterdayStart = new Date(todayStart);
+        yesterdayStart.setDate(todayStart.getDate() - 1);
+        const yesterdayEnd = todayStart;
+
+        // Helper for % change
+        function percentChange(current, previous) {
+            if (!previous || previous === 0) return current === 0 ? 0 : 100;
+            return ((current - previous) / previous * 100).toFixed(2);
+        }
+
+        // --- Today ---
+        const [todaySales, yesterdaySales, todayOrders, yesterdayOrders, todayUsers, yesterdayUsers] = await Promise.all([
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Order.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
+            Order.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } }),
+            User.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
+            User.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } })
+        ]);
+
+        // --- Week ---
+        const [weekSales, prevWeekSales, weekOrders, prevWeekOrders, weekUsers, prevWeekUsers] = await Promise.all([
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Order.count({ where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd } } }),
+            Order.count({ where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd } } }),
+            User.count({ where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd } } }),
+            User.count({ where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd } } })
+        ]);
+
+        // --- Month ---
+        const [monthSales, prevMonthSales, monthOrders, prevMonthOrders, monthUsers, prevMonthUsers] = await Promise.all([
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Order.count({ where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart } } }),
+            Order.count({ where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd } } }),
+            User.count({ where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart } } }),
+            User.count({ where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd } } })
+        ]);
+
+        const response = {
+            today: {
+                dateRange: `${todayStart.toISOString()} - ${todayEnd.toISOString()}`,
+                totalSales: dashboardHelper.formatCurrency(todaySales || 0),
+                totalOrders: todayOrders || 0,
+                newUsers: todayUsers || 0,
+                percentChange: {
+                    totalSales: percentChange(todaySales || 0, yesterdaySales || 0),
+                    totalOrders: percentChange(todayOrders || 0, yesterdayOrders || 0),
+                    newUsers: percentChange(todayUsers || 0, yesterdayUsers || 0)
+                }
+            },
+            week: {
+                dateRange: `${weekStart.toISOString()} - ${weekEnd.toISOString()}`,
+                totalSales: dashboardHelper.formatCurrency(weekSales || 0),
+                totalOrders: weekOrders || 0,
+                newUsers: weekUsers || 0,
+                percentChange: {
+                    totalSales: percentChange(weekSales || 0, prevWeekSales || 0),
+                    totalOrders: percentChange(weekOrders || 0, prevWeekOrders || 0),
+                    newUsers: percentChange(weekUsers || 0, prevWeekUsers || 0)
+                }
+            },
+            month: {
+                dateRange: `${monthStart.toISOString()} - ${nextMonthStart.toISOString()}`,
+                totalSales: dashboardHelper.formatCurrency(monthSales || 0),
+                totalOrders: monthOrders || 0,
+                newUsers: monthUsers || 0,
+                percentChange: {
+                    totalSales: percentChange(monthSales || 0, prevMonthSales || 0),
+                    totalOrders: percentChange(monthOrders || 0, prevMonthOrders || 0),
+                    newUsers: percentChange(monthUsers || 0, prevMonthUsers || 0)
+                }
+            }
+        };
+        return successResponse(res, response, 'Sales statistics overview retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, 'Error fetching sales statistics overview');
+    }
+};
+
