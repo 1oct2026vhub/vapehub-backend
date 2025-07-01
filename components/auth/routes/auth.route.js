@@ -22,12 +22,12 @@ const authController = require('../domain/auth.controller')
  *               email:
  *                 type: string
  *                 description: The email of the user.
- *                 example: user31@example.com
+ *                 example: see@vapeuser.com
  *               password:
  *                 type: string
  *                 description: The password of the user.
  *                 minLength: 8
- *                 example: Password@123
+ *                 example: Best123$
  *               resendVerificationEmail:
  *                 type: boolean
  *                 description: resend verificatin email.
