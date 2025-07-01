@@ -277,7 +277,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 } : null
             });
         }
-        
         // Calculate final total after deals
         let calculatedTotal = subTotal - dealsDiscount;
         let coupon = null;
@@ -374,7 +373,7 @@ module.exports.placeOrder = async (req, res, next) => {
                             }
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                            calculatedTotal = Math.max(0, subTotal - discount);
+                            calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
@@ -391,7 +390,7 @@ module.exports.placeOrder = async (req, res, next) => {
                             }
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                            calculatedTotal = Math.max(0, subTotal - discount);
+                            calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
