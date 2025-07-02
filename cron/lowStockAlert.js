@@ -28,20 +28,23 @@ cron.schedule('0 * * * *', async () => {
         low_stock_threshold: v.low_stock_threshold
       }));
 
+    // Only send email if there are low stock items
     if (lowStockList.length > 0) {
       const data = {
         emailTypes: constants.emailTypes.INVENTORY_LOW_STOCK,
-        to: 'admin@example.com',
+        to: process.env.ADMIN_EMAIL || 'admin@example.com',
         context: {
             lowStockList: lowStockList,
+            totalLowStockCount: lowStockList.length,
             // FRONTEND_URL: process.env.FRONTEND_URL
         },
         attachments: ""
-    };
+      };
       await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-    } else {
-      console.log('No low stock variants found');
     }
+    //  else {
+    //   console.log('No low stock variants found - no email sent');
+    // }
   } catch (error) {
     console.error('Error in low stock cron:', error);
   }
