@@ -635,4 +635,179 @@ router.get('/products', [authMiddleware(true), ...getProductsValidation()], inve
  */
 router.get('/stock-central', [authMiddleware(true)], inventoryController.getStockCentral);
 
+/**
+ * @swagger
+ * /api/admin/inventory/products-sold-28days:
+ *   get:
+ *     summary: Get each product's sold quantity for the last 28 days (admin)
+ *     tags: [Admin - Inventory]
+ *     responses:
+ *       200:
+ *         description: Products sold quantity in last 28 days retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       soldLast28Days:
+ *                         type: integer
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/products-sold-28days', [authMiddleware(true)], inventoryController.getProductsSoldLast28Days);
+
+/**
+ * @swagger
+ * /api/admin/inventory/product-sales-analytics:
+ *   get:
+ *     summary: Advanced product sales analytics (filter, group, compare, export, etc.)
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for sales analytics
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for sales analytics
+ *       - in: query
+ *         name: category_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by category
+ *       - in: query
+ *         name: brand_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by brand
+ *       - in: query
+ *         name: supplier_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by supplier (if available)
+ *       - in: query
+ *         name: variant
+ *         schema:
+ *           type: boolean
+ *         description: Include product variants (true/false)
+ *       - in: query
+ *         name: top
+ *         schema:
+ *           type: integer
+ *         description: Return only the top N products
+ *       - in: query
+ *         name: group_by
+ *         schema:
+ *           type: string
+ *           enum: [day, week, month]
+ *         description: Group sales by day, week, or month
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [sold, revenue, name]
+ *           default: sold
+ *         description: Sort by sold quantity, revenue, or name
+ *       - in: query
+ *         name: sort_order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of items per page
+ *       - in: query
+ *         name: compare
+ *         schema:
+ *           type: boolean
+ *         description: Compare with previous period (true/false)
+ *       - in: query
+ *         name: export
+ *         schema:
+ *           type: string
+ *           enum: [csv, excel]
+ *         description: Export as CSV or Excel (not implemented yet)
+ *     responses:
+ *       200:
+ *         description: Advanced product sales analytics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           sku:
+ *                             type: string
+ *                           barcode:
+ *                             type: string
+ *                           image:
+ *                             type: string
+ *                           category_id:
+ *                             type: integer
+ *                           brand_id:
+ *                             type: integer
+ *                           sold:
+ *                             type: integer
+ *                           revenue:
+ *                             type: number
+ *                           currentStock:
+ *                             type: integer
+ *                           lowStockThreshold:
+ *                             type: integer
+ *                           trend:
+ *                             type: string
+ *                             description: Percentage change compared to previous period
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       501:
+ *         description: Export not implemented yet
+ *       500:
+ *         description: Server error
+ */
+router.get('/product-sales-analytics', [authMiddleware(true)], inventoryController.getAdvancedProductSalesAnalytics);
+
 module.exports = router; 
