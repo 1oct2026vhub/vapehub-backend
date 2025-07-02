@@ -618,4 +618,44 @@ async function getShipStationWebhooks(req, res){
         return errorResponse(res, error, 'Failed to retrieve webhooks from ShipStation');
     }
 }
-module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks }; 
+
+async function getShipStationCarriers(req, res, next) {
+    const apiKey = process.env.SHIPSTATION_API_KEY;
+    const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+    console.log(apiKey, apiSecret)
+    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+    const response = await axios.get('https://ssapi.shipstation.com/carriers', {
+        headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return successResponse(res, response.data, 'Carriers retrieved successfully');
+}
+
+async function getShipStationCarrierServices(req, res) {
+    try {
+        const carrierCode = req.query.carrierCode;
+        if (!carrierCode) {
+            return res.status(400).json({ success: false, message: 'carrierCode is required' });
+        }
+        const apiKey = process.env.SHIPSTATION_API_KEY;
+        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+        const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        return successResponse(res, response.data, 'Carrier services retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, 
+    deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices
+ }; 

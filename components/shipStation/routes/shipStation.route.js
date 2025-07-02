@@ -1854,6 +1854,118 @@ router.post('/orders/:orderId/mark-shipped', authenticateJWT, markShipStationOrd
  */
 router.post('/shipments/void-label', authenticateJWT, voidShipStationLabel);
 
+
+/**
+ * @swagger
+ * /api/shipping-method/carriers:
+ *   get:
+ *     summary: Get ShipStation carriers
+ *     description: Retrieve a list of all carriers connected to ShipStation
+ *     tags:
+ *       - Shipping Method
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of carriers retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   code:
+ *                     type: string
+ *                   accountNumber:
+ *                     type: string
+ *                   requiresFundedAccount:
+ *                     type: boolean
+ *                   balance:
+ *                     type: number
+ *                   nickname:
+ *                     type: string
+ *                   shippingProviderId:
+ *                     type: integer
+ *                   primary:
+ *                     type: boolean
+ *       500:
+ *         description: Internal Server Error
+ */
+router.get("/carriers", authenticateJWT, shippingMethodController.getShipStationCarriers);
+
+/**
+ * @swagger
+ * /api/shipping-method/carrier-services:
+ *   get:
+ *     summary: Get ShipStation carrier services
+ *     description: Retrieve a list of all available shipping services for a given carrier from ShipStation
+ *     tags:
+ *       - Shipping Method
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: carrierCode
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The code of the carrier (e.g., fedex, ups, stamps_com)
+ *     responses:
+ *       200:
+ *         description: List of carrier services retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       carrierCode:
+ *                         type: string
+ *                       code:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       domestic:
+ *                         type: boolean
+ *                       international:
+ *                         type: boolean
+ *       400:
+ *         description: carrierCode is required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ */
+router.get("/carrier-services", authenticateJWT, shippingMethodController.getShipStationCarrierServices);
+
+
 /**
  * @swagger
  * /api/shipStation/webhooks-list:
