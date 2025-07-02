@@ -46,5 +46,5 @@ cron.schedule('0 * * * *', async () => {
     console.error('Error in low stock cron:', error);
   }
 }, {
-  timezone: 'Europe/London'
+  timezone: process.env.UK_TIMEZONE || 'Europe/London'
 }); 
