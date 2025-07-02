@@ -94,6 +94,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: true
     },
+    verified_by: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: 'Indicates if the review was verified by an admin or system'
+    },
     created_at: {
       allowNull: false,
       type: DataTypes.DATE,

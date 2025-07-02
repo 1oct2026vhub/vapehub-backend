@@ -79,7 +79,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 FRONTEND_URL: process.env.FRONTEND_URL, 
                 currentYear: new Date().getFullYear()
             });
-
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);

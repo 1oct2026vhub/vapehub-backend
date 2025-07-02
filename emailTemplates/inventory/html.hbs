@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+      .email-container {
+        max-width: 600px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #2e8b57 0%, #3cb371 100%);
+        padding: 30px 20px;
+        text-align: center;
+        color: white;
+        position: relative;
+      }
+      .header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="2" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="40" r="1.5" fill="rgba(255,255,255,0.1)"/><circle cx="40" cy="80" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+        opacity: 0.3;
+      }
+      .logo {
+        max-width: 180px;
+        height: auto;
+        margin: 10px 0;
+        position: relative;
+        z-index: 1;
+      }
+      .alert-icon {
+        font-size: 48px;
+        margin: 10px 0;
+        position: relative;
+        z-index: 1;
+      }
+      .content {
+        padding: 40px 30px;
+        text-align: center;
+      }
+      h2 {
+        color: #2d3748;
+        margin-bottom: 12px;
+      }
+      p {
+        color: #4a5568;
+        margin-bottom: 24px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+      }
+      th, td {
+        padding: 12px 10px;
+        text-align: left;
+      }
+      th {
+        background: #f1f5f9;
+        color: #2d3748;
+        font-weight: 600;
+        border-bottom: 2px solid #e2e8f0;
+      }
+      tr:nth-child(even) {
+        background: #f9fafb;
+      }
+      tr:nth-child(odd) {
+        background: #fff;
+      }
+      td {
+        color: #374151;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .footer {
+        background: #2c3e50;
+        color: white;
+        padding: 30px 20px;
+        text-align: center;
+      }
+      .footer-content {
+        max-width: 400px;
+        margin: 0 auto;
+      }
+      .footer-links {
+        margin: 20px 0;
+      }
+      .footer-link {
+        color: #bdc3c7;
+        text-decoration: none;
+        margin: 0 10px;
+        font-size: 14px;
+      }
+      .footer-link:hover {
+        color: white;
+      }
+      .footer-text {
+        color: #95a5a6;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      @media (max-width: 600px) {
+        .email-container {
+          margin: 10px;
+          border-radius: 10px;
+        }
+        .content {
+          padding: 30px 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <a href="{{FRONTEND_URL}}">
+          <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
+        </a>
+        <div class="alert-icon">⚠️</div>
+      </div>
+      <div class="content">
+        <h2>Low Stock Alert</h2>
+        <p>The following product variants are low in stock. Please review and restock as soon as possible:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Variant</th>
+              <th>Stock</th>
+              <th>Threshold</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each lowStockList}}
+            <tr>
+              <td>{{this.productName}}</td>
+              <td>{{this.variantName}}</td>
+              <td>{{this.stock}}</td>
+              <td>{{this.low_stock_threshold}}</td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+      <div class="footer">
+        <div class="footer-content">
+          <div class="footer-links">
+            <a href="{{FRONTEND_URL}}/about" class="footer-link">About Us</a>
+            <a href="{{FRONTEND_URL}}/contact" class="footer-link">Contact</a>
+            <a href="{{FRONTEND_URL}}/help" class="footer-link">Help Center</a>
+            <a href="{{FRONTEND_URL}}/privacy" class="footer-link">Privacy Policy</a>
+          </div>
+          <div class="footer-text">
+            <p>Thank you for using VapeHub's inventory system.</p>
+            <p>If you have any questions, feel free to reach out to our support team at support@vapehub.com</p>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html> 

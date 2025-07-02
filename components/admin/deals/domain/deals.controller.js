@@ -106,12 +106,35 @@ module.exports.listDeals = async (req, res, next) => {
             status, 
             type, 
             validNow,
+            deleted,
             page = 1,
             limit = 10
         } = req.query;
 
         const offset = (page - 1) * limit;
         let whereCondition = {};
+        let queryOptions = {
+            where: whereCondition,
+            include: [
+                {
+                    model: Product,
+                    as: 'products',
+                    attributes: ['id', 'name', 'slug'],
+                    required: false
+                }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        };
+
+        // Handle deleted filter
+        if (deleted === 'true') {
+            queryOptions.paranoid = false; // Include soft-deleted records
+            whereCondition.deletedAt = { [Op.ne]: null }; // Only deleted records
+        } else if (deleted === 'false') {
+            whereCondition.deletedAt = null; // Only non-deleted records
+        }
 
         if (status !== undefined) {
             whereCondition.is_active = status === 'true';
@@ -127,20 +150,7 @@ module.exports.listDeals = async (req, res, next) => {
             whereCondition.valid_to = { [Op.gte]: now };
         }
 
-        const { count, rows: deals } = await Deal.findAndCountAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: Product,
-                    as: 'products',
-                    attributes: ['id', 'name', 'slug'],
-                    required: false
-                }
-            ],
-            order: [['createdAt', 'DESC']],
-            limit: parseInt(limit),
-            offset: parseInt(offset)
-        });
+        const { count, rows: deals } = await Deal.findAndCountAll(queryOptions);
 
         const response = {
             deals,
@@ -390,6 +400,53 @@ module.exports.addProductToDeals = async (req, res) => {
             message: 'Failed to add product to deals',
             error: error.message
         });
+    }
+};
+
+module.exports.removeProductsFromDeal = async (req, res, next) => {
+    const transaction = await Deal.sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { product_ids } = req.body;
+
+        // Find the deal
+        const deal = await Deal.findByPk(id, { transaction });
+        if (!deal) {
+            await transaction.rollback();
+            const error = new Error('Deal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Remove the specified products from the deal
+        await DealProduct.destroy({
+            where: {
+                deal_id: id,
+                product_id: {
+                    [Op.in]: product_ids
+                }
+            },
+            transaction
+        });
+
+        // Fetch updated deal with remaining products
+        const updatedDeal = await Deal.findByPk(id, {
+            include: [
+                {
+                    model: Product,
+                    as: 'products',
+                    attributes: ['id', 'name', 'slug'],
+                    required: false
+                }
+            ],
+            transaction
+        });
+
+        await transaction.commit();
+        successResponse(res, updatedDeal, 'Products removed from deal successfully');
+    } catch (error) {
+        await transaction.rollback();
+        return errorResponse(res, error, error.message);
     }
 };
 

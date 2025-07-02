@@ -35,7 +35,10 @@ module.exports = {
 
   async create(req, res) {
     try {
-      const review = await Review.create(req.body);
+      const review = await Review.create({
+        ...req.body,
+        verified_by: true // Set default to 1 (true)
+      });
       res.status(201).json(review);
     } catch (err) {
       res.status(400).json({ error: err.message });
