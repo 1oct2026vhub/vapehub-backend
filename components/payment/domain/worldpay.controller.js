@@ -252,9 +252,9 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 // case 'refused':
                 //     await handlePaymentRefused(order, webhookData);
                 //     break;
-                // case 'sentForRefund':
-                //     await handleSentForRefund(order, webhookData);
-                //     break;
+                case 'sentForRefund':
+                    await handleSentForRefund(order, webhookData);
+                    break;
                 // case 'refundFailed':
                 //     await handleRefundFailed(order, webhookData);
                 //     break;
@@ -1994,15 +1994,15 @@ const handleSentForRefund = async (order, webhookData) => {
             webhookData.eventDetails.amount.currencyCode
         );
 
-        // Update order status to refunding
+        // Update order status to refunded
         await order.update({ status: 'refunded' });
 
-        // Create order log for refund initiation
+        // Create order log for refund processing
         await sequelize.models.OrderLog.create({
             order_id: order.id,
             user_id: order.user_id,
-            status: 'refunding',
-            label: 'Refund Initiated via Worldpay',
+            status: 'refunded',
+            label: 'Refund Processed via Worldpay',
             additional_info: JSON.stringify({
                 eventId: webhookData.eventId,
                 eventTimestamp: webhookData.eventTimestamp,
@@ -2019,6 +2019,105 @@ const handleSentForRefund = async (order, webhookData) => {
             })
         });
 
+        // Restore stock for refunded items
+        for (const item of order.orderItems) {
+            if (item.variant) {
+                // Restore variant stock
+                await ProductVariant.update(
+                    { stock: sequelize.literal(`stock + ${item.quantity}`) },
+                    { 
+                        where: { 
+                            id: item.variant.id
+                        }
+                    }
+                );
+                logger.logInfo({
+                    type: 'worldpay_refund_variant_stock_restored',
+                    message: 'Worldpay refund restored variant stock',
+                    stock_summary: {
+                        variant_id: item.variant.id,
+                        quantity_restored: item.quantity,
+                        product_id: item.product_id
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                // Restore product stock
+                await Product.update(
+                    { stock_quantity: sequelize.literal(`stock_quantity + ${item.quantity}`) },
+                    { 
+                        where: { 
+                            id: item.product_id
+                        }
+                    }
+                );
+                logger.logInfo({
+                    type: 'worldpay_refund_product_stock_restored',
+                    message: 'Worldpay refund restored product stock',
+                    stock_summary: {
+                        product_id: item.product_id,
+                        quantity_restored: item.quantity
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        // Handle coupon usage reversal if applicable
+        if (order.coupon_id) {
+            try {
+                // Check if coupon usage exists for this order
+                const existingCouponUsage = await CouponUsage.findOne({
+                    where: {
+                        user_id: order.user_id,
+                        coupon_id: order.coupon_id,
+                        order_id: order.id
+                    }
+                });
+
+                if (existingCouponUsage) {
+                    // Decrease coupon usage count
+                    await Coupon.update(
+                        { usage_count: sequelize.literal("usage_count - 1") }, 
+                        { where: { id: order.coupon_id } }
+                    );
+                    
+                    // Remove coupon usage entry
+                    await CouponUsage.destroy({
+                        where: {
+                            user_id: order.user_id,
+                            coupon_id: order.coupon_id,
+                            order_id: order.id
+                        }
+                    });
+
+                    logger.logInfo({
+                        type: 'worldpay_refund_coupon_reversed',
+                        message: 'Worldpay refund reversed coupon usage',
+                        coupon_summary: {
+                            order_id: order.id,
+                            coupon_id: order.coupon_id,
+                            user_id: order.user_id
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (error) {
+                logger.logError({
+                    type: 'worldpay_refund_coupon_reversal_error',
+                    message: 'Error reversing coupon usage during refund',
+                    error_summary: {
+                        error: error.message,
+                        order_id: order.id,
+                        coupon_id: order.coupon_id,
+                        user_id: order.user_id
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                // Don't throw the error, just log it and continue
+            }
+        }
+
         // Create refund transaction record
         await sequelize.models.Transaction.create({
             userId: order.user_id,
@@ -2027,9 +2126,9 @@ const handleSentForRefund = async (order, webhookData) => {
             transactionType: 'REFUND',
             amount: convertedAmount.value,
             currency: convertedAmount.currencyCode,
-            status: 'REFUNDING',
-            referenceNumber: webhookData.eventDetails.transactionReference,
-            notes: 'Refund initiated',
+            status: 'REFUNDED',
+            referenceNumber: `${webhookData.eventDetails.transactionReference}_REFUND_${webhookData.eventDetails.octReference || Date.now()}`,
+            notes: 'Refund processed successfully',
             metadata: {
                 eventId: webhookData.eventId,
                 eventTimestamp: webhookData.eventTimestamp,
@@ -2046,26 +2145,26 @@ const handleSentForRefund = async (order, webhookData) => {
         await createNotification({
             userId: order.user_id,
             type: 'payment',
-            action: 'refund_initiated',
+            action: 'refunded',
             data: {
                 amount: convertedAmount.value,
                 currency: convertedAmount.currencyCode,
                 orderId: order.id,
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
-                reason: 'Refund has been initiated',
+                reason: 'Refund has been processed successfully',
                 eventId: webhookData.eventId,
                 transactionReference: webhookData.eventDetails.transactionReference,
                 refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization
             },
-            title: 'Refund Initiated',
+            title: 'Payment Refunded',
             url: '/my-account/orders'
         });
 
-        // Create admin notification for refund initiation
+        // Create admin notification for refund
         await createNotification({
             type: 'payment',
-            action: 'refund_initiated',
+            action: 'refunded',
             data: {
                 amount: convertedAmount.value,
                 currency: convertedAmount.currencyCode,
@@ -2073,58 +2172,60 @@ const handleSentForRefund = async (order, webhookData) => {
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
                 customerEmail: order.user?.email,
-                reason: 'Refund has been initiated',
+                reason: 'Refund has been processed successfully',
                 eventId: webhookData.eventId,
                 transactionReference: webhookData.eventDetails.transactionReference,
                 refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization
             },
-            title: 'Refund Initiated',
+            title: 'Payment Refunded',
             url: '/admin/orders',
             is_admin: true
         });
 
-        // Send refund email
-        // const emailData = {
-        //     emailTypes: 'REFUND_INITIATED',
-        //     to: order.user.email,
-        //     context: {
-        //         userName: order.user.first_name || order.user.email.split('@')[0],
-        //         orderId: order.id,
-        //         orderUniqueId: order.order_unique_id,
-        //         orderCode: order.order_code,
-        //         orderDate: order.createdAt.toLocaleDateString(),
-        //         status: 'refunding',
-        //         amount: webhookData.eventDetails.amount.value,
-        //         currency: webhookData.eventDetails.amount.currencyCode,
-        //         message: 'Refund has been initiated',
-        //         eventId: webhookData.eventId,
-        //         transactionReference: webhookData.eventDetails.transactionReference,
-        //         refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization,
-        //         eventDate: webhookData.eventDetails.date,
-        //         supportEmail: process.env.SUPPORT_EMAIL || 'support@example.com'
-        //     }
-        // };
+        // Send refund confirmation email
+        const emailData = {
+            emailTypes: 'REFUND_CONFIRMATION',
+            to: order.user.email,
+            context: {
+                userName: order.user.first_name || order.user.email.split('@')[0],
+                orderId: order.id,
+                orderUniqueId: order.order_unique_id,
+                orderCode: order.order_code,
+                orderDate: order.createdAt.toLocaleDateString(),
+                status: 'refunded',
+                refundAmount: convertedAmount.value,
+                refundCurrency: convertedAmount.currencyCode,
+                transactionId: webhookData.eventDetails.transactionReference,
+                refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization,
+                octReference: webhookData.eventDetails.octReference,
+                reason: 'Refund processed successfully via Worldpay',
+                currentDate: new Date().toLocaleDateString()
+            }
+        };
 
-        // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
 
         logger.logInfo({
-            type: 'worldpay_refund_initiated',
-            message: 'Refund initiated successfully',
+            type: 'worldpay_refund_processed',
+            message: 'Refund processed successfully',
             event_summary: {
                 order_id: order.id,
                 order_code: order.order_code,
                 event_id: webhookData.eventId,
                 amount: convertedAmount.value,
                 currency: convertedAmount.currencyCode,
-                refund_authorization: webhookData.eventDetails.refund.onlineRefundAuthorization
+                refund_authorization: webhookData.eventDetails.refund.onlineRefundAuthorization,
+                oct_reference: webhookData.eventDetails.octReference
             },
             timestamp: new Date().toISOString()
         });
 
+        return webhookData.eventDetails.transactionReference;
+
     } catch (error) {
         logger.logError({
-            type: 'worldpay_refund_initiation_error',
-            message: 'Error processing refund initiation',
+            type: 'worldpay_refund_processing_error',
+            message: 'Error processing refund',
             error_summary: {
                 error: error.message,
                 stack: error.stack,
@@ -2423,21 +2524,78 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             }]
         });
         
-        if (referral) {
-            logger.logInfo({
-                type: 'worldpay_webhook_referral_processing',
-                message: 'Processing Worldpay webhook referral',
-                referral_summary: {
-                    referral_id: referral.id,
-                    status: referral.status,
-                    referrer_id: referral.referrer_id,
-                    referred_user_id: referral.referred_user_id
-                },
-                timestamp: new Date().toISOString()
+        const ReferralUser = await Referral.findOne({
+            where: {referred_user_id: order.user_id},
+            include: [{
+                model: User,
+                as: 'referrer',
+                attributes: ['id', 'referral_points', 'email']
+            }]
+        });
+        const inactiveReferralMethod = await ReferralMethod.findOne({
+            where: { 
+                status: 'active',
+                // primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                refer_type: 'referral'  //new
+            },
+            attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+        });
+        
+        if(!inactiveReferralMethod && ReferralUser && ReferralUser.status === 'pending' && ReferralUser.referred_user_id === order.user_id){
+            await ReferralUser.update({
+                status: 'completed'
             });
-        }
+            const referrerUserMethod = ReferralUser.referrer_data;
+            const discountText = referrerUserMethod.referral_value_type === 'percentage' 
+                ? `${referrerUserMethod.referral_value}%` 
+                : `£${referrerUserMethod.referral_value}`;
 
-        if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
+            // Send email to referrer about their reward
+            const referrerEmail = ReferralUser.referrer.email;
+            const username = referrerEmail.split('@')[0];
+
+            const data = {
+                emailTypes: 'REFERRER_REWARD',
+                to: referrerEmail,
+                context: {
+                    userName: username,
+                    referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                    token: ReferralUser.referral_coupon_code,
+                    referralValue: referrerUserMethod.referral_value,
+                    referralValueType: referrerUserMethod.referral_value_type === 'percentage' ? '%' : '',
+                    emailContent1: "Congratulations! Your referral has made their first purchase.",
+                    emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                },
+                referralMethod: referrerUserMethod,
+                attachments: ""
+            };
+            
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+            // Create notification for referrer
+            await createNotification({
+                userId: ReferralUser.referrer_id,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `You have a new referral code ${ReferralUser.referral_coupon_code} with ${discountText} discount waiting to be claimed`
+                },
+                title: 'Referral',
+                url: '/my-account/referrals'
+            });
+            // Create notification for admin about successful referral purchase
+            await createNotification({
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Referred user ${order.user.email} has made their first purchase using referral code from ${ReferralUser.referrer.email}. Order #${order.order_unique_id}`
+                },
+                title: 'Referral Purchase Completed',
+                url: '/admin/orders',
+                is_admin: true
+            });
+
+        }
+        else if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
             // Update referral record
             await referral.update({
                 status: 'completed'

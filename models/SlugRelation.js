@@ -33,11 +33,11 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     entity_type: {
-      type: DataTypes.ENUM('brand', 'blog', 'blog_category', 'category', 'product', 'product_variant', 'attribute', 'attribute_term'),
+      type: DataTypes.ENUM('brand', 'blog', 'blog_category', 'category', 'product', 'product_variant', 'attribute', 'attribute_term', 'deal'),
       allowNull: false,
       validate: {
         notEmpty: true,
-        isIn: [['brand', 'blog', 'blog_category', 'category', 'product', 'product_variant', 'attribute', 'attribute_term']]
+        isIn: [['brand', 'blog', 'blog_category', 'category', 'product', 'product_variant', 'attribute', 'attribute_term', 'deal']]
       }
     },
     entity_id: {

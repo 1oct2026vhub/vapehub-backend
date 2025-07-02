@@ -1,9 +1,8 @@
 const express = require("express");
-const { body, param, check } = require("express-validator");
 const shippingMethodController = require("../domain/shippingMethod.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { authMiddleware } = require("../../../../library/middleware");
-
+const shippingMethodValidators = require("../helper/shippingMethod.validator");
 
 const router = express.Router();
 
@@ -39,7 +38,34 @@ const router = express.Router();
  *                 description: Detailed description of the shipping method
  *               shipping_cost:
  *                 type: number
- *                 description: Cost of shipping in the base currency
+ *                 description: Base cost of shipping in the base currency
+ *               min_order_total:
+ *                 type: number
+ *                 description: Minimum order total required for this shipping method
+ *               max_order_total:
+ *                 type: number
+ *                 description: Maximum order total for this shipping method
+ *               free_shipping_threshold:
+ *                 type: number
+ *                 description: Order total threshold for free shipping
+ *               shipping_rules:
+ *                 type: array
+ *                 description: Array of shipping cost rules based on order total ranges
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     min_total:
+ *                       type: number
+ *                       description: Minimum order total for this rule
+ *                     max_total:
+ *                       type: number
+ *                       description: Maximum order total for this rule
+ *                     shipping_cost:
+ *                       type: number
+ *                       description: Shipping cost for this order total range
+ *               is_active:
+ *                 type: boolean
+ *                 description: Whether the shipping method is active
  *               api_key:
  *                 type: string
  *               api_secret:
@@ -53,13 +79,7 @@ const router = express.Router();
 router.post(
     "/",
     authMiddleware(true),
-    validateRequest([
-        check("shipping_method").notEmpty().withMessage("Shipping method is required"),
-        check("description").optional().isString(),
-        check("shipping_cost").isFloat({ min: 0 }).withMessage("Shipping cost must be a positive number"),
-        check("api_key").optional().isString(),
-        check("api_secret").optional().isString(),
-    ]),
+    validateRequest(shippingMethodValidators.create),
     shippingMethodController.createShippingMethod
 );
 
@@ -97,7 +117,7 @@ router.get("/", shippingMethodController.getAllShippingMethods);
  */
 router.get(
     "/:id",
-    validateRequest([param("id").isInt().withMessage("Invalid ID")]),
+    validateRequest(shippingMethodValidators.getById),
     shippingMethodController.getShippingMethodById
 );
 
@@ -131,7 +151,34 @@ router.get(
  *                 description: Detailed description of the shipping method
  *               shipping_cost:
  *                 type: number
- *                 description: Cost of shipping in the base currency
+ *                 description: Base cost of shipping in the base currency
+ *               min_order_total:
+ *                 type: number
+ *                 description: Minimum order total required for this shipping method
+ *               max_order_total:
+ *                 type: number
+ *                 description: Maximum order total for this shipping method
+ *               free_shipping_threshold:
+ *                 type: number
+ *                 description: Order total threshold for free shipping
+ *               shipping_rules:
+ *                 type: array
+ *                 description: Array of shipping cost rules based on order total ranges
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     min_total:
+ *                       type: number
+ *                       description: Minimum order total for this rule
+ *                     max_total:
+ *                       type: number
+ *                       description: Maximum order total for this rule
+ *                     shipping_cost:
+ *                       type: number
+ *                       description: Shipping cost for this order total range
+ *               is_active:
+ *                 type: boolean
+ *                 description: Whether the shipping method is active
  *               api_key:
  *                 type: string
  *               api_secret:
@@ -145,15 +192,7 @@ router.get(
 router.put(
     "/:id",
     authMiddleware(true),
-    validateRequest([
-        param("id").isInt().withMessage("Invalid ID"),
-        check("shipping_method").optional().isString(),
-        check("description").optional().isString(),
-        check("shipping_cost").optional().isFloat({ min: 0 }).withMessage("Shipping cost must be a positive number"),
-        check("api_key").optional().isString(),
-        check("api_secret").optional().isString(),
-        check("updated_by").optional().isInt(),
-    ]),
+    validateRequest(shippingMethodValidators.update),
     shippingMethodController.updateShippingMethod
 );
 
@@ -181,14 +220,13 @@ router.put(
 router.delete(
     "/:id",
     authMiddleware(true),
-    validateRequest([param("id").isInt().withMessage("Invalid ID")]),
+    validateRequest(shippingMethodValidators.delete),
     shippingMethodController.deleteShippingMethod
 );
 
-
 /**
  * @swagger
- * /api/admin/shipping-methods/{id}:
+ * /api/admin/shipping-methods/{id}/restore:
  *   patch:
  *     summary: Restore a deleted shipping method
  *     description: Restores a shipping method that was previously soft-deleted. Requires authentication.
@@ -208,48 +246,48 @@ router.delete(
  *     responses:
  *       200:
  *         description: Successfully restored the shipping method
- *         
  *       400:
  *         description: Shipping method is already active
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Shipping method is already active or was never deleted"
  *       401:
  *         description: Unauthorized (Invalid or missing token)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Unauthorized: Missing or invalid Bearer token"
  *       404:
  *         description: Shipping method not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Shipping method not found"
  *       500:
  *         description: Internal server error
+ */
+router.patch(
+    "/:id/restore",
+    authMiddleware(true),
+    validateRequest(shippingMethodValidators.restore),
+    shippingMethodController.restoreShippingMethod
+);
+
+/**
+ * @swagger
+ * /api/admin/shipping-methods/calculate:
+ *   post:
+ *     summary: Calculate shipping costs for an order
+ *     description: Calculate available shipping methods and their costs based on order total
+ *     tags:
+ *       - ADMIN - Shipping Methods
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - order_total
+ *             properties:
+ *               order_total:
+ *                 type: number
+ *                 description: Total amount of the order
+ *                 example: 35.00
+ *     responses:
+ *       200:
+ *         description: Shipping costs calculated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -257,15 +295,34 @@ router.delete(
  *               properties:
  *                 success:
  *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Unexpected server error. Please try again later."
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       shipping_method:
+ *                         type: string
+ *                         example: "Standard Delivery"
+ *                       calculated_cost:
+ *                         type: number
+ *                         example: 3.99
+ *                       description:
+ *                         type: string
+ *                         example: "3-5 business days delivery"
+ *       400:
+ *         description: Bad Request - Invalid order total
+ *       500:
+ *         description: Internal Server Error
  */
-
-
-
-router.patch("/:id", authMiddleware(true), validateRequest([param("id").isInt().withMessage("Invalid ID")]),  shippingMethodController.restoreShippingMethod);
-
+router.post(
+    "/calculate",
+    authMiddleware(true),
+    validateRequest(shippingMethodValidators.calculate),
+    shippingMethodController.calculateShippingCost
+);
 
 module.exports = router;

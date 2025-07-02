@@ -10,6 +10,37 @@ module.exports = (sequelize, DataTypes) => {
       Coupon.belongsTo(models.User, {  foreignKey: 'created_by',  as: 'creator'  });
       
       Coupon.belongsTo(models.User, {  foreignKey: 'updated_by',  as: 'updater'   });
+
+      // Association for coupon_user (specific user assigned to this coupon)
+      Coupon.belongsTo(models.User, { foreignKey: 'coupon_user', as: 'assignedUser' });
+
+      // Dynamic associations based on entity_type
+      Coupon.belongsTo(models.Product, { 
+        foreignKey: 'entity_id', 
+        as: 'product',
+        constraints: false,
+        scope: {
+          entity_type: 'product'
+        }
+      });
+
+      Coupon.belongsTo(models.Brand, { 
+        foreignKey: 'entity_id', 
+        as: 'brand',
+        constraints: false,
+        scope: {
+          entity_type: 'brand'
+        }
+      });
+
+      Coupon.belongsTo(models.Category, { 
+        foreignKey: 'entity_id', 
+        as: 'category',
+        constraints: false,
+        scope: {
+          entity_type: 'category'
+        }
+      });
     }
 
     // Static method to update expired coupons
@@ -132,6 +163,25 @@ module.exports = (sequelize, DataTypes) => {
         isIn: [['active', 'inactive', 'expired']]
       }
     },
+    entity_type: {
+      type: DataTypes.ENUM('product', 'brand', 'category'),
+      allowNull: true,
+      validate: {
+        isIn: [['product', 'brand', 'category']]
+      }
+    },
+    entity_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true
+    },
+    coupon_user: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
     created_by: {
       type: DataTypes.INTEGER,
       allowNull: true
@@ -173,9 +223,11 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  // Schedule the cron job to run at midnight (12 AM) every day
-  cron.schedule('0 0 * * *', async () => {
+  // Schedule the cron job to run at midnight (12:15 AM) every day
+  cron.schedule('15 0 * * *', async () => {
     await Coupon.updateExpiredCoupons();
+  }, {
+    timezone: process.env.UK_TIMEZONE || 'Europe/London'
   });
 
   return Coupon;

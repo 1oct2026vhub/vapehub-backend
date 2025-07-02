@@ -821,215 +821,215 @@ router.delete('/delete-account', authenticateJWT, userController.deleteAccount);
  */
 router.get("/referral-stats", authenticateJWT, userController.getReferralStats);
 
-/**
- * @swagger
- * /api/users/referral-methods:
- *   get:
- *     summary: Get all referral methods
- *     description: Retrieve all referral methods with their details
- *     tags: [User]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Referral methods retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                         example: 1
- *                       referral_value_type:
- *                         type: string
- *                         enum: [percentage, fixed]
- *                         example: percentage
- *                       referral_value:
- *                         type: number
- *                         example: 10
- *                       status:
- *                         type: string
- *                         enum: [active, inactive]
- *                         example: active
- *                       primary:
- *                         type: boolean
- *                         example: true
- *                       created_at:
- *                         type: string
- *                         format: date-time
- *                       updated_at:
- *                         type: string
- *                         format: date-time
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Internal server error
- */
-router.get('/referral-methods', authenticateJWT, userController.getReferralMethods);
+// /**
+//  * @swagger
+//  * /api/users/referral-methods:
+//  *   get:
+//  *     summary: Get all referral methods
+//  *     description: Retrieve all referral methods with their details
+//  *     tags: [User]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     responses:
+//  *       200:
+//  *         description: Referral methods retrieved successfully
+//  *         content:
+//  *           application/json:
+//  *             schema:
+//  *               type: object
+//  *               properties:
+//  *                 success:
+//  *                   type: boolean
+//  *                   example: true
+//  *                 data:
+//  *                   type: array
+//  *                   items:
+//  *                     type: object
+//  *                     properties:
+//  *                       id:
+//  *                         type: integer
+//  *                         example: 1
+//  *                       referral_value_type:
+//  *                         type: string
+//  *                         enum: [percentage, fixed]
+//  *                         example: percentage
+//  *                       referral_value:
+//  *                         type: number
+//  *                         example: 10
+//  *                       status:
+//  *                         type: string
+//  *                         enum: [active, inactive]
+//  *                         example: active
+//  *                       primary:
+//  *                         type: boolean
+//  *                         example: true
+//  *                       created_at:
+//  *                         type: string
+//  *                         format: date-time
+//  *                       updated_at:
+//  *                         type: string
+//  *                         format: date-time
+//  *       401:
+//  *         description: Unauthorized
+//  *       500:
+//  *         description: Internal server error
+//  */
+// router.get('/referral-methods', authenticateJWT, userController.getReferralMethods);
 
-/**
- * @swagger
- * /api/users/referral-methods:
- *   post:
- *     summary: Create a new referral method
- *     description: Create a new referral method with specified value type and value
- *     tags: [User]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - referral_value_type
- *               - referral_value
- *             properties:
- *               referral_value_type:
- *                 type: string
- *                 enum: [percentage, fixed]
- *                 description: Type of referral value (percentage or fixed amount)
- *                 example: percentage
- *               referral_value:
- *                 type: number
- *                 description: Value of the referral (percentage or fixed amount)
- *                 example: 10
- *               status:
- *                 type: string
- *                 enum: [active, inactive]
- *                 description: Status of the referral method
- *                 example: active
- *               primary:
- *                 type: boolean
- *                 description: Whether this is the primary referral method
- *                 example: true
- *     responses:
- *       201:
- *         description: Referral method created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: integer
- *                       example: 1
- *                     referral_value_type:
- *                       type: string
- *                       example: percentage
- *                     referral_value:
- *                       type: number
- *                       example: 10
- *                     status:
- *                       type: string
- *                       example: active
- *                     primary:
- *                       type: boolean
- *                       example: true
- *       400:
- *         description: Invalid input data
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Internal server error
- */
-router.post('/referral-methods', authenticateJWT, userController.createReferralMethod);
+// /**
+//  * @swagger
+//  * /api/users/referral-methods:
+//  *   post:
+//  *     summary: Create a new referral method
+//  *     description: Create a new referral method with specified value type and value
+//  *     tags: [User]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *             required:
+//  *               - referral_value_type
+//  *               - referral_value
+//  *             properties:
+//  *               referral_value_type:
+//  *                 type: string
+//  *                 enum: [percentage, fixed]
+//  *                 description: Type of referral value (percentage or fixed amount)
+//  *                 example: percentage
+//  *               referral_value:
+//  *                 type: number
+//  *                 description: Value of the referral (percentage or fixed amount)
+//  *                 example: 10
+//  *               status:
+//  *                 type: string
+//  *                 enum: [active, inactive]
+//  *                 description: Status of the referral method
+//  *                 example: active
+//  *               primary:
+//  *                 type: boolean
+//  *                 description: Whether this is the primary referral method
+//  *                 example: true
+//  *     responses:
+//  *       201:
+//  *         description: Referral method created successfully
+//  *         content:
+//  *           application/json:
+//  *             schema:
+//  *               type: object
+//  *               properties:
+//  *                 success:
+//  *                   type: boolean
+//  *                   example: true
+//  *                 data:
+//  *                   type: object
+//  *                   properties:
+//  *                     id:
+//  *                       type: integer
+//  *                       example: 1
+//  *                     referral_value_type:
+//  *                       type: string
+//  *                       example: percentage
+//  *                     referral_value:
+//  *                       type: number
+//  *                       example: 10
+//  *                     status:
+//  *                       type: string
+//  *                       example: active
+//  *                     primary:
+//  *                       type: boolean
+//  *                       example: true
+//  *       400:
+//  *         description: Invalid input data
+//  *       401:
+//  *         description: Unauthorized
+//  *       500:
+//  *         description: Internal server error
+//  */
+// router.post('/referral-methods', authenticateJWT, userController.createReferralMethod);
 
-/**
- * @swagger
- * /api/users/referral-methods/{id}:
- *   put:
- *     summary: Update a referral method
- *     description: Update an existing referral method by ID
- *     tags: [User]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID of the referral method to update
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               referral_value_type:
- *                 type: string
- *                 enum: [percentage, fixed]
- *                 description: Type of referral value (percentage or fixed amount)
- *                 example: percentage
- *               referral_value:
- *                 type: number
- *                 description: Value of the referral (percentage or fixed amount)
- *                 example: 10
- *               status:
- *                 type: string
- *                 enum: [active, inactive]
- *                 description: Status of the referral method
- *                 example: active
- *               primary:
- *                 type: boolean
- *                 description: Whether this is the primary referral method
- *                 example: true
- *     responses:
- *       200:
- *         description: Referral method updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: integer
- *                       example: 1
- *                     referral_value_type:
- *                       type: string
- *                       example: percentage
- *                     referral_value:
- *                       type: number
- *                       example: 10
- *                     status:
- *                       type: string
- *                       example: active
- *                     primary:
- *                       type: boolean
- *                       example: true
- *       400:
- *         description: Invalid input data
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Referral method not found
- *       500:
- *         description: Internal server error
- */
-router.put('/referral-methods/:id', authenticateJWT, userController.updateReferralMethod);
+// /**
+//  * @swagger
+//  * /api/users/referral-methods/{id}:
+//  *   put:
+//  *     summary: Update a referral method
+//  *     description: Update an existing referral method by ID
+//  *     tags: [User]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - in: path
+//  *         name: id
+//  *         required: true
+//  *         schema:
+//  *           type: integer
+//  *         description: ID of the referral method to update
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *             properties:
+//  *               referral_value_type:
+//  *                 type: string
+//  *                 enum: [percentage, fixed]
+//  *                 description: Type of referral value (percentage or fixed amount)
+//  *                 example: percentage
+//  *               referral_value:
+//  *                 type: number
+//  *                 description: Value of the referral (percentage or fixed amount)
+//  *                 example: 10
+//  *               status:
+//  *                 type: string
+//  *                 enum: [active, inactive]
+//  *                 description: Status of the referral method
+//  *                 example: active
+//  *               primary:
+//  *                 type: boolean
+//  *                 description: Whether this is the primary referral method
+//  *                 example: true
+//  *     responses:
+//  *       200:
+//  *         description: Referral method updated successfully
+//  *         content:
+//  *           application/json:
+//  *             schema:
+//  *               type: object
+//  *               properties:
+//  *                 success:
+//  *                   type: boolean
+//  *                   example: true
+//  *                 data:
+//  *                   type: object
+//  *                   properties:
+//  *                     id:
+//  *                       type: integer
+//  *                       example: 1
+//  *                     referral_value_type:
+//  *                       type: string
+//  *                       example: percentage
+//  *                     referral_value:
+//  *                       type: number
+//  *                       example: 10
+//  *                     status:
+//  *                       type: string
+//  *                       example: active
+//  *                     primary:
+//  *                       type: boolean
+//  *                       example: true
+//  *       400:
+//  *         description: Invalid input data
+//  *       401:
+//  *         description: Unauthorized
+//  *       404:
+//  *         description: Referral method not found
+//  *       500:
+//  *         description: Internal server error
+//  */
+// router.put('/referral-methods/:id', authenticateJWT, userController.updateReferralMethod);
 
 module.exports = router;

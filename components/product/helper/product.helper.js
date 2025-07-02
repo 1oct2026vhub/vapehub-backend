@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order } = require("../../../models");;
+const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct } = require("../../../models");;
 const { Sequelize, Op } = require("sequelize");
 
 async function getTrendingProducts(limit = 10) {
@@ -129,6 +129,34 @@ const fetchProducts2 = async (query) => {
         model: Flavor, as: 'Flavors', through: {
           model: ProductFlavor,
         }
+      },
+      {
+        model: Deal,
+        as: 'deals',
+        through: { 
+          model: DealProduct,
+          attributes: []
+        },
+        where: {
+          is_active: true,
+          is_deleted: false,
+          valid_from: { [Op.lte]: new Date() },
+          valid_to: { [Op.gte]: new Date() }
+        },
+        required: false,
+        attributes: [
+          'id', 
+          'name', 
+          'slug', 
+          'deal_type', 
+          'required_qty', 
+          'get_qty', 
+          'fixed_price', 
+          'discount_percent', 
+          'tiered_qty_json',
+          'valid_from',
+          'valid_to'
+        ]
       }
     ];
 
@@ -378,6 +406,34 @@ const fetchProducts = async (query, status = 'published') => {
         model: ProductImage,
         as: 'ProductImages',
         attributes: ['id', 'product_id', 'image_url', 'is_primary']
+      },
+      {
+        model: Deal,
+        as: 'deals',
+        through: { 
+          model: DealProduct,
+          attributes: []
+        },
+        where: {
+          is_active: true,
+          is_deleted: false,
+          valid_from: { [Op.lte]: new Date() },
+          valid_to: { [Op.gte]: new Date() }
+        },
+        required: false,
+        attributes: [
+          'id', 
+          'name', 
+          'slug', 
+          'deal_type', 
+          'required_qty', 
+          'get_qty', 
+          'fixed_price', 
+          'discount_percent', 
+          'tiered_qty_json',
+          'valid_from',
+          'valid_to'
+        ]
       }
     ];
 

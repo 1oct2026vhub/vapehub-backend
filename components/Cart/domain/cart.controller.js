@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { User, Cart, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, sequelize } = require("../../../models");
 const Sequelize = require("sequelize");
 const { Op } = Sequelize
+const dealService = require('../helper/deal.service');
 
 const includeClause = [
     {
@@ -54,16 +55,65 @@ module.exports.listCartItems = async (req, res, next) => {
             where: { user_id },
             include: includeClause
         });
+        
         if (carts.length === 0) {
             return successResponse(res, [], 'Cart is empty');
         }
 
-        return successResponse(res, carts, 'Cart items retrieved successfully');
+        // Get applicable deals and calculate discounts
+        const deals = await dealService.getApplicableDeals(carts);
+        const { totalDiscount, appliedDeals, itemDiscounts } = dealService.calculateDealDiscounts(carts, deals);
+
+        // Calculate totals and add subtotals to each item
+        const items = carts.map(item => {
+            const price = item.variant ? item.variant.price : item.product.price;
+            const subtotal = price * item.quantity;
+            const itemDiscount = itemDiscounts[item.id] || 0;
+            const total = subtotal - itemDiscount;
+
+            return {
+                ...item.toJSON(),
+                subtotal,
+                discount: itemDiscount,
+                total,
+                applied_deals: appliedDeals.filter(deal => 
+                    deal.items.some(dealItem => dealItem.cart_item_id === item.id)
+                ).map(deal => ({
+                    deal_id: deal.deal_id,
+                    deal_name: deal.deal_name,
+                    discount_amount: deal.items.find(dealItem => dealItem.cart_item_id === item.id)?.discount || 0
+                }))
+            };
+        });
+
+        const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+        const total = subtotal - totalDiscount;
+
+        const response = {
+            items,
+            deals: appliedDeals.map(deal => ({
+                deal_id: deal.deal_id,
+                deal_name: deal.deal_name,
+                discount_amount: deal.discount_amount,
+                items: deal.items.map(item => ({
+                    cart_item_id: item.cart_item_id,
+                    discount: item.discount
+                }))
+            })),
+            summary: {
+                subtotal,
+                total_discount: totalDiscount,
+                total
+            }
+        };
+
+        return successResponse(res, response, 'Cart items retrieved successfully');
     } catch (error) {
+        console.log("error", error);
         return errorResponse(res, error, error.message);
     }
+};
 
-}
 // Get Cart by ID
 module.exports.getCartById = async (req, res, next) => {
     try {

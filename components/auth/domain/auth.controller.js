@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role, Referral, ReferralMethod } = require("../../../models");
+const { User, Role, Referral, ReferralMethod, Coupon } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -140,6 +140,7 @@ module.exports.register = async (req, res, next) => {
             roleId,
             referred_by: referrer ? referrer.id : null
         });
+        const username = user?.first_name ?? user.email.split('@')[0];
 
         // Create notifications for all admin users
         await createNotification({
@@ -168,7 +169,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                    // primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
                     refer_type: 'referral'  //new
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -177,7 +178,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferrerMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,
+                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -236,8 +237,15 @@ module.exports.register = async (req, res, next) => {
                     } : null
                 });
             }
-
-
+            
+            // Delete any existing referral data for this email where referred_user_id is null
+            // This ensures only the current referrer-referred pair can use the coupon
+            await Referral.destroy({
+                where: {
+                    email: email,
+                    referred_user_id: null
+                }
+            });
             // Create notification for admin about referral registration
             await createNotification({
                 user_id: null,
@@ -251,8 +259,71 @@ module.exports.register = async (req, res, next) => {
                 is_admin: true
             });
         }
+        else{
+            // Create a random coupon code for the new user
+            const generateCouponCode = () => {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
+                let result = '';
+                for (let i = 0; i < 8; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
+            };
 
-        const username = user?.first_name ?? user.email.split('@')[0];
+            // Generate unique coupon code
+            let couponCode;
+            let isUnique = false;
+            while (!isUnique) {
+                couponCode = generateCouponCode();
+                const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
+                if (!existingCoupon) {
+                    isUnique = true;
+                }
+            }
+            const activeReferrersMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    // primary: true,
+                    refer_type: 'referrer'
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
+            // Create coupon for the new user
+            await Coupon.create({
+                code: couponCode,
+                description: `Welcome coupon for ${username}`,
+                discount_type: 'percentage',
+                discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
+                minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
+                // maximum_discount: 25.00, // Maximum discount of $25
+                usage_limit: 1, // Single use coupon
+                usage_count: 0,
+                is_single_use: true,
+                start_date: new Date(),
+                end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Valid for 30 days
+                status: 'active',
+                coupon_user: user.id, // Assign to the specific user
+                created_by: null // System created
+            });
+
+            // Send welcome email after successful verification
+            const welcomeEmailData = {
+                emailTypes: constants.emailTypes.WELCOME,
+                to: user.email,
+                context: {
+                    userName: username,
+                    couponCode: couponCode,
+                    discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
+                    minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
+                    // maximumDiscount: '$25'
+                },
+                attachments: ""
+            };
+            console.log(username);  
+            await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
+        
+        }
+
 
         const data = {
             emailTypes: constants.emailTypes.REGISTER,
@@ -392,6 +463,7 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
+        
         // update referral record if referrer exists
         // let referral_code = null;
         // let referrer = null;

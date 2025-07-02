@@ -31,9 +31,9 @@ const referralMethodValidationRules = [
     .optional()
     .isIn(['active', 'inactive']).withMessage("Status must be either active or inactive"),
 
-  body("primary")
-    .optional()
-    .isBoolean().withMessage("Primary must be a boolean value")
+  // body("primary")
+  //   .optional()
+  //   .isBoolean().withMessage("Primary must be a boolean value")
 ];
 
 const referralMethodUpdateValidationRules = [
@@ -67,9 +67,9 @@ const referralMethodUpdateValidationRules = [
     .optional()
     .isIn(['active', 'inactive']).withMessage("Status must be either active or inactive"),
 
-  body("primary")
-    .optional()
-    .isBoolean().withMessage("Primary must be a boolean value")
+  // body("primary")
+  //   .optional()
+  //   .isBoolean().withMessage("Primary must be a boolean value")
 ];
 
 const referralMethodListValidationRules = [
@@ -77,9 +77,9 @@ const referralMethodListValidationRules = [
     .optional()
     .isIn(['active', 'inactive']).withMessage("Status must be either active or inactive"),
 
-  query("primary")
-    .optional()
-    .isIn(['true', 'false']).withMessage("Primary must be either true or false"),
+  // query("primary")
+  //   .optional()
+  //   .isIn(['true', 'false']).withMessage("Primary must be either true or false"),
 
   query("refer_type")
     .optional()
@@ -95,7 +95,7 @@ const referralMethodListValidationRules = [
 
   query("sort_by")
     .optional()
-    .isIn(['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary', 'created_at', 'updated_at'])
+    .isIn(['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'created_at', 'updated_at'])
     .withMessage("Invalid sort field"),
 
   query("order")

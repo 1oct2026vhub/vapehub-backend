@@ -10,6 +10,7 @@ const axios = require("axios");
 const sendEmail = require('../../../library/sendEmail');
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
+const dealService = require('../../Cart/helper/deal.service');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 
 module.exports.getOrders = async (req, res) => {
@@ -216,7 +217,22 @@ module.exports.placeOrder = async (req, res, next) => {
         let subTotal = 0;
         const orderItems = [];
         const orderDetails = [];
-        // const stockUpdates = [];
+
+        // Transform cart items for deals service
+        const transformedCartItems = cartItems.map(item => {
+            const variant = item.product.variants.find(v => v.id === item.variant_id);
+            return {
+                ...item.toJSON(),
+                variant: variant || null
+            };
+        });
+
+        // Calculate deals
+        const deals = await dealService.getApplicableDeals(transformedCartItems);
+        const dealResult = dealService.calculateDealDiscounts(transformedCartItems, deals);
+        const dealsDiscount = dealResult.totalDiscount;
+        const applicableDeals = dealResult.appliedDeals;
+
         for (const item of cartItems) {
             const { product, variant_id, quantity } = item;
             if (!product) throw new Error(`Product ${product.name} not found.`);
@@ -227,21 +243,29 @@ module.exports.placeOrder = async (req, res, next) => {
             if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
             
             const unitPrice = variant ? variant.price : product.price;
-            subTotal += unitPrice * quantity;
+            const itemTotal = unitPrice * quantity;
+            subTotal += itemTotal;
+
+            // Get item-level deal discount
+            const itemDealDiscount = dealResult.itemDiscounts[item.id] || 0;
+            const finalItemTotal = itemTotal - itemDealDiscount;
+
             orderItems.push({
                 product_id: item.product_id,
                 variant_id: variant_id || null,
                 unit: quantity,
                 unit_price: unitPrice,
                 quantity,
-                total: unitPrice * quantity
+                total: finalItemTotal,
+                discount_price: itemDealDiscount
             });
 
             orderDetails.push({
                 product_name: product.name,
                 variant_name: variant ? variant.name : null,
                 quantity,
-                total: unitPrice * quantity,
+                total: finalItemTotal,
+                discount: itemDealDiscount,
                 variant: variant ? {
                     variant_id: variant.id,
                     slug: variant.slug,
@@ -253,26 +277,17 @@ module.exports.placeOrder = async (req, res, next) => {
                     description: variant.description
                 } : null
             });
-            
-            // stockUpdates.push({ model: variant ? ProductVariant : Product, updateData: variant ? { stock: sequelize.literal(`stock - ${quantity}`) } : { stock_quantity: sequelize.literal(`stock_quantity - ${quantity}`) }, whereClause: variant ? { id: variant.id, stock: { [Op.gte]: quantity } } : { id: product.id, stock_quantity: { [Op.gte]: quantity } } });
         }
-
-        // Update Stock in Batch
-        // for (const { model, updateData, whereClause } of stockUpdates) {
-        //     const [updatedStock] = await model.update(updateData, { where: whereClause, transaction });
-        //     if (updatedStock === 0) throw new Error("Stock update failed.");
-        // }
-        
-        // Apply Coupon
-        let calculatedTotal = subTotal;
+        // Calculate final total after deals
+        let calculatedTotal = subTotal - dealsDiscount;
         let coupon = null;
-        let userUsedCoupon = {};
-        let referralDiscount = 0;
         let discount = 0;
         let referral_flag = false;
-        let referralId = null;
         let discountType = null;
+        let referralDiscount = 0;
+        let referralId = null;
         let coupon_count_flag = false;
+        // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
                 where: {
@@ -302,14 +317,6 @@ module.exports.placeOrder = async (req, res, next) => {
                         referralValueType = 'percentage';
                     }
                 } else if (referral.status === 'completed' && referral.referrer_id === user_id) {
-                    // For completed status, get values from referral method
-                    // const referralMethod = await ReferralMethod.findOne({
-                    //     where: {
-                    //         primary: true,  //primary true means it is referrer person
-                    //         status: 'active',
-                    //         refer_type: 'referrer'  //new
-                    //     }
-                    // });
                     const referralMethod = referral.referrer_data;
                     if (referralMethod) {
                         referralValue = parseFloat(referralMethod.referral_value);
@@ -335,10 +342,10 @@ module.exports.placeOrder = async (req, res, next) => {
 
                 if (referralValue && !isNaN(referralValue)) {
                     referralDiscount = referralValueType === 'percentage' 
-                        ? (referralValue / 100) * subTotal 
+                        ? (referralValue / 100) * calculatedTotal 
                         : referralValue;
                     // Ensure discount doesn't exceed subtotal
-                    referralDiscount = Math.min(referralDiscount, subTotal);
+                    referralDiscount = Math.min(referralDiscount, calculatedTotal);
                     calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
                     referral_flag = true;
                     referralId = referral.id;
@@ -346,8 +353,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 else{
                     referralDiscount = 0;
                 }
-                // referral_flag = true;
-                // referralId = referral.id;
                 discountType = referralValueType;
             }
             else{
@@ -369,7 +374,7 @@ module.exports.placeOrder = async (req, res, next) => {
                             }
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                            calculatedTotal = Math.max(0, subTotal - discount);
+                            calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
@@ -386,7 +391,7 @@ module.exports.placeOrder = async (req, res, next) => {
                             }
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
-                            calculatedTotal = Math.max(0, subTotal - discount);
+                            calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
@@ -403,6 +408,7 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
+
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -424,7 +430,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 if (!orderCode || orderCode === 0) {
                     throw new Error("Failed to generate Viva Wallet order code");
                 }
-                
                 
                 wallet_check.orderCode = orderCode;
             } catch (error) {
@@ -459,7 +464,7 @@ module.exports.placeOrder = async (req, res, next) => {
             try {
                 worldpayResponse = await axios({
                     method: 'POST',
-                    url: `${process.env.WORLDPAY_URL}/payment_pages`,   //${process.env.WORLDPAY_URL}
+                    url: `${process.env.WORLDPAY_URL}/payment_pages`,
                     headers: {
                         'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
                         'User-Agent': 'string',
@@ -467,7 +472,7 @@ module.exports.placeOrder = async (req, res, next) => {
                     },
                     data: {
                         transactionReference: orderCode,
-                        merchant: {entity: process.env.WORLDPAY_MERCHANT_ID},    //process.env.WORLDPAY_ENTITY
+                        merchant: {entity: process.env.WORLDPAY_MERCHANT_ID},
                         narrative: {line1: 'VapeHub Order'},
                         value: {
                             currency: 'GBP',
@@ -510,14 +515,13 @@ module.exports.placeOrder = async (req, res, next) => {
         const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // 65 is ASCII for 'A'
         
         const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
-        // Create Order
+
+        // Create Order with deal information
         const order = await Order.create({
             user_id,
             coupon_id: coupon && coupon_count_flag ? coupon.id : null,
             total: calculatedTotal,
             status: "pending",
-            // shipping_address_id: 0,
-            // billing_address_id: 0,
             order_shipping_address_id: shippingAddrs.id,
             order_billing_address_id: billingAddrs.id,
             shipping_method_id,
@@ -527,20 +531,16 @@ module.exports.placeOrder = async (req, res, next) => {
             email: email,
             phone: phone,
             sub_total: subTotal,
+            deals_discount: dealsDiscount,
+            applicable_deals: applicableDeals,
             discount_price: referralDiscount,
             discount_type: discountType,
             referral_id: referralId,
             payment_method_id: paymentMethodRecord.id
         }, { transaction });
+
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
-        // if (coupon && coupon_count_flag) {
-            // First check if user has already used this coupon
-            // const [couponUsage, created] = await CouponUsage.findOrCreate({ where: { user_id,  coupon_id: coupon.id }, defaults: { order_id: order.id }, transaction });
-            // Only update coupon usage count if this is a new usage
-            // if (!userUsedCoupon || !coupon.is_single_use) {
-                // await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: coupon.id }, transaction });
-            // }
-        // }
+
         if(couponCode && referral_flag){
             try {
                 // First find the referral to ensure it exists and is not locked
@@ -578,7 +578,8 @@ module.exports.placeOrder = async (req, res, next) => {
                     pricing: {
                         subtotal: subTotal,
                         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
-                        coupon_discount: coupon ? discount : 0,         //(subTotal - calculatedTotal)
+                        deals_discount: dealsDiscount,
+                        coupon_discount: coupon ? discount : 0,
                         referral_discount: referralDiscount,
                         total: calculatedTotal
                     },
@@ -627,7 +628,8 @@ module.exports.getOrderById = async (req, res) => {
             },
             attributes: [
                 'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 
-                'createdAt', 'email', 'phone', 'referral_id', 'sub_total', 'discount_type'
+                'createdAt', 'email', 'phone', 'referral_id', 'sub_total', 'discount_type',
+                'deals_discount', 'applicable_deals'
             ],
             include: [
                 {
@@ -791,6 +793,7 @@ module.exports.getOrderById = async (req, res) => {
             //     orderObj.coupon_discount = parseFloat(coupon.discount_value);
             // }
         }
+
         let orderCouponObject = {}
          if(order.referral_id){
             orderCouponObject.referral = {
@@ -809,7 +812,7 @@ module.exports.getOrderById = async (req, res) => {
             }
          }
         
-        // Add primary image URL to each order item
+        // Add primary image URL and deal information to each order item
         order.orderItems.forEach(item => {
             if (item.product && item.product.ProductImages && item.product.ProductImages.length > 0) {
                 item.product.primary_image_url = item.product.ProductImages[0].image_url;
@@ -817,7 +820,25 @@ module.exports.getOrderById = async (req, res) => {
             if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
                 item.variant.primary_image_url = item.variant.variantImages[0].image_url;
             }
+
+            // Add deal information to each item
+            if (order.applicable_deals) {
+                const itemDeals = order.applicable_deals.filter(deal => 
+                    deal.items.some(dealItem => dealItem.cart_item_id === item.id)
+                );
+                
+                if (itemDeals.length > 0) {
+                    item.deals = itemDeals.map(deal => ({
+                        deal_id: deal.deal_id,
+                        deal_name: deal.deal_name,
+                        discount_amount: deal.discount_amount,
+                        original_price: item.unit_price * item.quantity,
+                        discounted_price: item.total
+                    }));
+                }
+            }
         });
+
         successResponse(res, {
             user: {
                 id: user.id,
@@ -827,7 +848,13 @@ module.exports.getOrderById = async (req, res) => {
                 phone: user.phone,
                 receive_promotions: user.receive_promotions
             },
-            order: order,
+            order: {
+                ...order.toJSON(),
+                deals_summary: {
+                    total_deals_discount: order.deals_discount,
+                    applicable_deals: order.applicable_deals
+                }
+            },
             referral: orderCouponObject.referral,
         }, 'Order fetched successfully', 200);
 
@@ -990,9 +1017,73 @@ module.exports.checkOrderStock = async (req, res) => {
             }],
             transaction
         });
+        
         if (!order) {
             await transaction.rollback();
             return errorResponse(res, {}, 'Order not found', 404);
+        }
+        // Check if coupon has expired
+        if (order.coupon_id) {
+            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+            let coupon = await Coupon.findOne({
+                where: {
+                    id: order.coupon_id,
+                    status: "active",
+                    start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                }
+            });
+            if (!coupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 404,
+                    message: 'Invalid or expired coupon code'
+                }
+            }
+            const userUsedCoupon = await CouponUsage.findOne({
+                where: { user_id: userId, coupon_id: coupon.id }
+            });
+
+            const singleUsedCoupon = await CouponUsage.findOne({
+                where: {coupon_id: coupon.id }
+            });
+
+            // Check if coupon is single use and has been used by this user
+            if (coupon.is_single_use && singleUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'Already used discount coupon.'
+                }
+            }
+            if (userUsedCoupon) {
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'You have already used discount coupon.'
+                }
+            }
+            if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {     // !coupon.is_single_use &&
+                orderStatusUpdate()
+                throw {
+                    statusCode: 400,
+                    message: 'This coupon is no longer available — usage limit exceeded.'
+                }
+            }
+            async function orderStatusUpdate(){
+                // Update order status to cancelled
+                await order.update({ 
+                    status: 'cancel'
+                });
+
+                // Create order log for cancellation
+                await sequelize.models.OrderLog.create({
+                    order_id: order.id,
+                    user_id: userId,
+                    status: 'cancel',
+                    label: 'Order Cancelled - Coupon Expired'
+                });
+            }
         }
 
         let hasInsufficientStock = false;
@@ -1034,22 +1125,10 @@ module.exports.checkOrderStock = async (req, res) => {
 
             return errorResponse(res, {
                 order_id: order.id,
-                // order_code: order.order_code,
                 status: order.status,
                 stock_issues: stockIssues
             }, 'Order cancelled due to insufficient stock', 400);
         }
-        // const accessToken = await getVivaAccessToken();
-        // const response = await axios.patch(
-        //     `${process.env.VIVA_API_BASE_3}/api/orders/${order.order_code}`,
-        //     {
-        //         headers: {
-        //             'Authorization': `Bearer ${accessToken}`,
-        //             'Content-Type': 'application/json'
-        //         }
-        //     }
-        // );
-        // const transactionData = response.data;
         
         var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
         var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
@@ -1057,7 +1136,6 @@ module.exports.checkOrderStock = async (req, res) => {
         const orderDetails = await axios({
                     method: "GET",
                     url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
-                    
                     headers: {
                       "Authorization": "Basic " + credentials,
                     }
@@ -1090,7 +1168,7 @@ module.exports.checkOrderStock = async (req, res) => {
         await transaction.commit();
         return successResponse(res, {
             order_id: order.id,
-            order_code: order.order_code, //order.order_code,
+            order_code: order.order_code,
             status: order.status,
             message: 'All items are in stock'
         }, 'Stock check successful');
