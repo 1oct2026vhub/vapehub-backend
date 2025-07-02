@@ -1,4 +1,4 @@
-const { ProductVariant, StockMovement, StockReservation, Product, User } = require('../../../../models');
+const { ProductVariant, StockMovement, StockReservation, Product, User, ProductVariantImage, OrderItem, Order } = require('../../../../models');
 const { Op, Sequelize } = require('sequelize');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const logger = require("../../../../library/logger");
@@ -625,6 +625,108 @@ module.exports = {
       return successResponse(res, products, "Products retrieved successfully");
     } catch (error) {
       logger.error(`Error getting products: ${error.message}`);
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Stock Central: Get detailed inventory table for admin
+  async getStockCentral(req, res) {
+    try {
+      const { page = 1, limit = 20, search, stock_status } = req.query;
+      const offset = (page - 1) * limit;
+      const whereClause = {};
+      const now = new Date();
+      const last28Days = new Date(now);
+      last28Days.setDate(now.getDate() - 28);
+
+      // Search and stock status filters
+      if (search) {
+        whereClause[Op.or] = [
+          { barcode: { [Op.like]: `%${search}%` } },
+          { slug: { [Op.like]: `%${search}%` } }
+        ];
+      }
+      if (stock_status === 'in_stock') whereClause.stock = { [Op.gt]: 0 };
+      if (stock_status === 'out_of_stock') whereClause.stock = 0;
+
+      // Fetch paginated variants with product and primary image
+      const { count, rows: variants } = await ProductVariant.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: Product,
+            as: 'product',
+            attributes: ['id', 'name']
+          },
+          {
+            model: ProductVariantImage,
+            as: 'variantImages',
+            where: { is_primary: true },
+            required: false,
+            attributes: ['image_url']
+          }
+        ],
+        offset,
+        limit: parseInt(limit),
+        order: [['created_at', 'DESC']]
+      });
+
+      // For each variant, calculate stock on hold, sales, and stock will last
+      const data = await Promise.all(variants.map(async (variant) => {
+        // Stock on Hold (active reservations)
+        const stockOnHold = await StockReservation.sum('quantity', {
+          where: {
+            variant_id: variant.id,
+            expires_at: { [Op.gt]: now }
+          }
+        }) || 0;
+
+        // Get order IDs for completed/delivered orders in last 28 days
+        const orderIds = await Order.findAll({
+          attributes: ['id'],
+          where: {
+            status: { [Op.in]: ['completed', 'delivered'] },
+            updatedAt: { [Op.gte]: last28Days }
+          },
+          raw: true
+        }).then(orders => orders.map(o => o.id));
+
+        // Sales last 28 days
+        const salesLast28Days = orderIds.length > 0
+          ? await OrderItem.sum('quantity', {
+              where: {
+                variant_id: variant.id,
+                order_id: { [Op.in]: orderIds }
+              }
+            }) : 0;
+
+        // Stock will last (days)
+        const avgDailySales = salesLast28Days / 28;
+        const stockWillLast = avgDailySales > 0 ? (variant.stock / avgDailySales).toFixed(1) : '-';
+
+        return {
+          id: variant.id,
+          productName: variant.product?.name,
+          productImage: variant.variantImages?.[0]?.image_url || null,
+          currentStock: variant.stock,
+          stockOnHold,
+          reservedStock: stockOnHold, // If you have a different logic, adjust here
+          salesLast28Days,
+          stockWillLast
+        };
+      }));
+
+      return successResponse(res, {
+        items: data,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          totalPages: Math.ceil(count / limit),
+          limit: parseInt(limit)
+        }
+      }, "Stock central data retrieved successfully");
+    } catch (error) {
+      logger.error(`Error getting stock central: ${error.message}`);
       return errorResponse(res, error, error.message);
     }
   }
