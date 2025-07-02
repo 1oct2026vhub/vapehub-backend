@@ -561,4 +561,78 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  */
 router.get('/products', [authMiddleware(true), ...getProductsValidation()], inventoryController.getProducts);
 
+/**
+ * @swagger
+ * /api/admin/inventory/stock-central:
+ *   get:
+ *     summary: Get Stock Central table with detailed inventory info (admin)
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by barcode or slug
+ *       - in: query
+ *         name: stock_status
+ *         schema:
+ *           type: string
+ *           enum: [in_stock, out_of_stock]
+ *         description: Filter by stock status
+ *     responses:
+ *       200:
+ *         description: Stock central data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           productName:
+ *                             type: string
+ *                           productImage:
+ *                             type: string
+ *                             nullable: true
+ *                           currentStock:
+ *                             type: integer
+ *                           stockOnHold:
+ *                             type: integer
+ *                           reservedStock:
+ *                             type: integer
+ *                           salesLast28Days:
+ *                             type: integer
+ *                           stockWillLast:
+ *                             type: string
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/stock-central', [authMiddleware(true)], inventoryController.getStockCentral);
+
 module.exports = router; 

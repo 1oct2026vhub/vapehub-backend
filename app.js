@@ -105,4 +105,6 @@ app.use("/api", require('./components/router'));
 app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/logs", express.static(path.join(__dirname, "public/logs")));
 
+require('./cron/lowStockAlert');
+
 module.exports = app;

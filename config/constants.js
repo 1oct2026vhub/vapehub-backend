@@ -9,6 +9,7 @@ module.exports = {
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
         WELCOME: 'WELCOME',
+        INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
     },
     emailTypeData: {
         REGISTER: {
@@ -55,6 +56,11 @@ module.exports = {
             folderName: 'welcome',
             subject: 'Welcome to VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        INVENTORY_LOW_STOCK: {
+            folderName: 'inventory',
+            subject: 'Low Stock Alert: Product Variants',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },
     orderStatus: {
