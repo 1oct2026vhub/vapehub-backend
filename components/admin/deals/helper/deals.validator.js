@@ -208,6 +208,11 @@ const listDealsValidation = [
         .isBoolean()
         .withMessage('validNow must be a boolean'),
 
+    query('deleted')
+        .optional()
+        .isBoolean()
+        .withMessage('Deleted must be a boolean'),
+
     query('page')
         .optional()
         .isInt({ min: 1 })
@@ -277,6 +282,23 @@ const addProductToDealsValidation = [
         })
 ];
 
+const removeProductsFromDealValidation = [
+    param('id')
+        .isInt({ min: 1 })
+        .withMessage('Invalid deal ID'),
+    body('product_ids')
+        .isArray()
+        .withMessage('product_ids must be an array')
+        .notEmpty()
+        .withMessage('At least one product ID is required')
+        .custom((value) => {
+            if (!value.every(id => Number.isInteger(id) && id > 0)) {
+                throw new Error('All product IDs must be positive integers');
+            }
+            return true;
+        })
+];
+
 module.exports = {
     createDealValidation,
     updateDealValidation,
@@ -286,5 +308,6 @@ module.exports = {
     deleteDealValidation,
     restoreDealValidation,
     addProductsToDealValidation,
-    addProductToDealsValidation
+    addProductToDealsValidation,
+    removeProductsFromDealValidation
 }; 

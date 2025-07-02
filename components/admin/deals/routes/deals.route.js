@@ -12,7 +12,8 @@ const {
     deleteDealValidation,
     restoreDealValidation,
     addProductsToDealValidation,
-    addProductToDealsValidation
+    addProductToDealsValidation,
+    removeProductsFromDealValidation
 } = require("../helper/deals.validator");
 
 /**
@@ -161,6 +162,11 @@ router.put('/:id', [authMiddleware(true), validateRequest(updateDealValidation)]
  *         schema:
  *           type: boolean
  *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: boolean
+ *         description: Filter deals by deletion status. true = only deleted deals, false = only active deals, undefined = all deals
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
@@ -177,6 +183,24 @@ router.put('/:id', [authMiddleware(true), validateRequest(updateDealValidation)]
  *         description: Unauthorized
  */
 router.get('/', [authMiddleware(true), validateRequest(listDealsValidation)], dealsController.listDeals);
+
+/**
+ * @swagger
+ * /api/admin/deals/types:
+ *   get:
+ *     summary: Get all deal types
+ *     tags: 
+ *       - Admin
+ *          - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of deal types
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/types', [authMiddleware(true)], dealsController.getDealTypes);
 
 /**
  * @swagger
@@ -280,23 +304,6 @@ router.delete('/:id', [authMiddleware(true), validateRequest(deleteDealValidatio
  */
 router.patch('/:id/restore', [authMiddleware(true), validateRequest(restoreDealValidation)], dealsController.restoreDeal);
 
-/**
- * @swagger
- * /api/admin/deals/types:
- *   get:
- *     summary: Get all deal types
- *     tags: 
- *       - Admin
- *          - Deals
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of deal types
- *       401:
- *         description: Unauthorized
- */
-router.get('/types', [authMiddleware(true)], dealsController.getDealTypes);
 
 /**
  * @swagger
@@ -383,5 +390,48 @@ router.post('/:id/products', [authMiddleware(true), validateRequest(addProductsT
  *         description: Product not found
  */
 router.post('/product/:productId', [authMiddleware(true), validateRequest(addProductToDealsValidation)], dealsController.addProductToDeals);
+
+/**
+ * @swagger
+ * /api/admin/deals/{id}/products/remove:
+ *   delete:
+ *     summary: Remove products from a deal
+ *     tags: 
+ *       - Admin
+ *          - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The ID of the deal
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - product_ids
+ *             properties:
+ *               product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of product IDs to remove from the deal
+ *     responses:
+ *       200:
+ *         description: Products removed from deal successfully
+ *       400:
+ *         description: Invalid input data
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Deal not found
+ */
+router.delete('/:id/products/remove', [authMiddleware(true), validateRequest(removeProductsFromDealValidation)], dealsController.removeProductsFromDeal);
 
 module.exports = router; 
