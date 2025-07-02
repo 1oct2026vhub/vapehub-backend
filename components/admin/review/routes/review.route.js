@@ -5,6 +5,41 @@ const { authMiddleware } = require('../../../../library/middleware');
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     Review:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         user_id:
+ *           type: integer
+ *         order_id:
+ *           type: integer
+ *         product_id:
+ *           type: integer
+ *         user_name:
+ *           type: string
+ *         company_name:
+ *           type: string
+ *         rating:
+ *           type: integer
+ *         comment:
+ *           type: string
+ *         is_visible:
+ *           type: boolean
+ *         verified_by:
+ *           type: boolean
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ */
+
+/**
+ * @swagger
  * /api/admin/review:
  *   get:
  *     summary: List all reviews (admin)
