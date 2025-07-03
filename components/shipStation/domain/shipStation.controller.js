@@ -78,20 +78,20 @@ async function createShipStationOrder(order) {
         const testLabel = true;
 
         // Create label (commented out for now)
-        const labelResponse = await createLabelForOrder({
-            orderId,
-            carrierCode,
-            serviceCode,
-            packageCode,
-            confirmation,
-            shipDate,
-            weight,
-            dimensions,
-            insuranceOptions,
-            internationalOptions,
-            advancedOptions,
-            testLabel
-        });
+        // const labelResponse = await createLabelForOrder({
+        //     orderId,
+        //     carrierCode,
+        //     serviceCode,
+        //     packageCode,
+        //     confirmation,
+        //     shipDate,
+        //     weight,
+        //     dimensions,
+        //     insuranceOptions,
+        //     internationalOptions,
+        //     advancedOptions,
+        //     testLabel
+        // });
 
 
         return { orderResponse };   //, labelResponse
