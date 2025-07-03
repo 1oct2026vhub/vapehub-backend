@@ -207,4 +207,4 @@ router.get("/available", authenticateJWT, shippingMethodController.getAvailableS
  */
 router.post("/", authenticateJWT, validateRequest(shippingMethodValidation), shippingMethodController.shippingMethod);
 
-module.exports = router;
+module.exports = router; 

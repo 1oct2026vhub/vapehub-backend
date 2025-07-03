@@ -7,9 +7,6 @@ const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
-// const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
-// const { Referral } = require("../../../models");
-
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
@@ -458,12 +455,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     };
 
                     await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-
-                    // try {
-                    //     await createShipStationOrder(order);
-                    // } catch (err) {
-                    //     logger.error('Failed to create ShipStation order:', err);
-                    // }
 
                     return successResponse(res, {
                         message: 'Webhook processed successfully',
