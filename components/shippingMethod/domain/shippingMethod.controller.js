@@ -4,7 +4,7 @@ const { Coupon, CouponUsage, User, Product, ProductVariant, Cart, ShippingMethod
 const logger = require("../../../library/logger");
 const { calculateShippingCost, getAvailableShippingMethods, calculateFinalTotal } = require("../helper/shippingMethod.helper");
 const { validationResult } = require("express-validator");
-
+const axios = require('axios');
 /**
  * Get all shipping methods
  * @param {Object} req - Express request object

@@ -1248,19 +1248,73 @@ module.exports.orderCode = async (req, res) => {
         //     // Update using instance method to trigger hooks
         //     await orderInstance.update({ status: "processing" });
         // }
-        const orderCode = req.params.orderCode;
-        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
-        const orderDetails = await axios({
-                    method: "GET",
-                    url: `https://demo.vivapayments.com/api/orders/${orderCode}`,
+        // const orderCode = req.params.orderCode;
+        // var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        // var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
+        // var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        // const orderDetails = await axios({
+        //             method: "GET",
+        //             url: `https://demo.vivapayments.com/api/orders/${orderCode}`,
                     
-                    headers: {
-                      "Authorization": "Basic " + credentials,
-                    }
+        //             headers: {
+        //               "Authorization": "Basic " + credentials,
+        //             }
+        // });
+        const order = await Order.findOne({
+            where: { 
+                order_unique_id: req.params.orderCode
+            },
+            include: [
+                { model: User, as: 'user' },
+                { 
+                    model: OrderItem, 
+                    as: 'orderItems',
+                    include: [
+                        {
+                            model: Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'price']
+                        },
+                        {
+                            model: ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price', 'stock']
+                        }
+                    ]
+                },
+                {
+                    model: UserAddress,
+                    as: 'shippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: UserAddress,
+                    as: 'billingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                }
+            ]
         });
-        res.json("sucess")
+        try {
+            console.log(orderResponse);
+        } catch (err) {
+            console.error('Failed to create ShipStation order:', err);
+        }
+        res.json(orderResponse)
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
