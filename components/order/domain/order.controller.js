@@ -11,7 +11,6 @@ const sendEmail = require('../../../library/sendEmail');
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const dealService = require('../../Cart/helper/deal.service');
-const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 
 module.exports.getOrders = async (req, res) => {
     try {
@@ -1311,7 +1310,6 @@ module.exports.orderCode = async (req, res) => {
             ]
         });
         try {
-            const { orderResponse } = await createShipStationOrder(order);
             console.log(orderResponse);
         } catch (err) {
             console.error('Failed to create ShipStation order:', err);

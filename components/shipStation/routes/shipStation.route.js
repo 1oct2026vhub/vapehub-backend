@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, 
     getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, 
-    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks } = require('../domain/shipStation.controller');
+    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices } = require('../domain/shipStation.controller');
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 
 /**
@@ -1894,7 +1894,7 @@ router.post('/shipments/void-label', authenticateJWT, voidShipStationLabel);
  *       500:
  *         description: Internal Server Error
  */
-router.get("/carriers", authenticateJWT, shippingMethodController.getShipStationCarriers);
+router.get("/carriers", authenticateJWT, getShipStationCarriers);
 
 /**
  * @swagger
@@ -1963,7 +1963,7 @@ router.get("/carriers", authenticateJWT, shippingMethodController.getShipStation
  *                 message:
  *                   type: string
  */
-router.get("/carrier-services", authenticateJWT, shippingMethodController.getShipStationCarrierServices);
+router.get("/carrier-services", authenticateJWT, getShipStationCarrierServices);
 
 
 /**
