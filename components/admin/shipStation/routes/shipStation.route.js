@@ -2,16 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, 
     getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, 
-    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices } = require('../domain/shipStation.controller');
-const authenticateJWT = require("../../auth/middleware/authMiddleware");
+    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
+    testCreateShipStationOrder, getOrderDataById } = require('../domain/shipStation.controller');
+const { authMiddleware } = require("../../../../library/middleware");
 
 /**
  * @swagger
- * /api/shipstation/products/{productId}:
+ * /api/admin/shipStation/products/{productId}:
  *   get:
  *     summary: Get a product from ShipStation by product ID
  *     description: Retrieves detailed information about a specific product from ShipStation using the product ID
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     parameters:
  *       - in: path
  *         name: productId
@@ -230,15 +231,15 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/products/:productId', authenticateJWT, getShipStationProductById);
+router.get('/products/:productId', authMiddleware(true), getShipStationProductById);
 
 /**
  * @swagger
- * /api/shipstation/products:
+ * /api/admin/shipStation/products:
  *   get:
  *     summary: List products from ShipStation
  *     description: Retrieves a paginated list of products from ShipStation with optional filtering
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -481,15 +482,15 @@ router.get('/products/:productId', authenticateJWT, getShipStationProductById);
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/products', authenticateJWT, listShipStationProducts);
+router.get('/products', authMiddleware(true), listShipStationProducts);
 
 /**
  * @swagger
- * /api/shipstation/products/{productId}:
+ * /api/admin/shipStation/products/{productId}:
  *   put:
  *     summary: Update a product in ShipStation
  *     description: Updates an existing product in ShipStation. This call does not support partial updates - the entire resource must be provided in the request body.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -772,15 +773,15 @@ router.get('/products', authenticateJWT, listShipStationProducts);
  *                   type: string
  *                   example: "Error message details"
  */
-router.put('/products/:productId', authenticateJWT, updateShipStationProduct);
+router.put('/products/:productId', authMiddleware(true), updateShipStationProduct);
 
 /**
  * @swagger
- * /api/shipstation/orders/{orderId}:
+ * /api/admin/shipStation/orders/{orderId}:
  *   get:
  *     summary: Get an order from ShipStation by order ID
  *     description: Retrieve a single order from ShipStation using the order ID
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1347,15 +1348,15 @@ router.put('/products/:productId', authenticateJWT, updateShipStationProduct);
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/orders/:orderId', authenticateJWT, getShipStationOrderById);
+router.get('/orders/:orderId', authMiddleware(true), getShipStationOrderById);
 
 /**
  * @swagger
- * /api/shipstation/orders/{orderId}:
+ * /api/admin/shipStation/orders/{orderId}:
  *   delete:
  *     summary: Delete an order from ShipStation
  *     description: Removes order from ShipStation's UI. Note this is a "soft" delete action so the order will still exist in the database, but will be set to inactive.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1435,15 +1436,15 @@ router.get('/orders/:orderId', authenticateJWT, getShipStationOrderById);
  *                   type: string
  *                   example: "Error message details"
  */
-router.delete('/orders/:orderId', authenticateJWT, deleteShipStationOrderById);
+router.delete('/orders/:orderId', authMiddleware(true), deleteShipStationOrderById);
 
 /**
  * @swagger
- * /api/shipstation/orders/{orderId}/hold:
+ * /api/admin/shipStation/orders/{orderId}/hold:
  *   post:
  *     summary: Hold an order until a specific date
  *     description: This method will change the status of the given order to On Hold status until the date you have specified, when the status will automatically change to Awaiting Shipment status.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1540,15 +1541,15 @@ router.delete('/orders/:orderId', authenticateJWT, deleteShipStationOrderById);
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/hold', authenticateJWT, holdShipStationOrderUntil);
+router.post('/orders/:orderId/hold', authMiddleware(true), holdShipStationOrderUntil);
 
 /**
  * @swagger
- * /api/shipstation/orders/{orderId}/restore:
+ * /api/admin/shipStation/orders/{orderId}/restore:
  *   post:
  *     summary: Restore an order from hold status
  *     description: This method will change the status of the given order from On Hold status to Awaiting Shipment status. This endpoint is used when a holdUntilDate is attached to an order.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1628,15 +1629,15 @@ router.post('/orders/:orderId/hold', authenticateJWT, holdShipStationOrderUntil)
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/restore', authenticateJWT, restoreShipStationOrderFromHold);
+router.post('/orders/:orderId/restore', authMiddleware(true), restoreShipStationOrderFromHold);
 
 /**
  * @swagger
- * /api/shipstation/orders/{orderId}/mark-shipped:
+ * /api/admin/shipStation/orders/{orderId}/mark-shipped:
  *   post:
  *     summary: Mark an order as shipped
  *     description: Marks an order as Shipped without creating a label in ShipStation. This is useful when you have shipped an order outside of ShipStation and want to update the order status.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1755,15 +1756,15 @@ router.post('/orders/:orderId/restore', authenticateJWT, restoreShipStationOrder
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/mark-shipped', authenticateJWT, markShipStationOrderAsShipped);
+router.post('/orders/:orderId/mark-shipped', authMiddleware(true), markShipStationOrderAsShipped);
 
 /**
  * @swagger
- * /api/shipstation/shipments/void-label:
+ * /api/admin/shipStation/shipments/void-label:
  *   post:
  *     summary: Void a shipment label
  *     description: Voids the specified label by shipmentId. This is useful when you need to cancel a shipment label that has been created but not yet used.
- *     tags: [ShipStation]
+ *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -1852,7 +1853,7 @@ router.post('/orders/:orderId/mark-shipped', authenticateJWT, markShipStationOrd
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/shipments/void-label', authenticateJWT, voidShipStationLabel);
+router.post('/shipments/void-label', authMiddleware(true), voidShipStationLabel);
 
 
 /**
@@ -1894,7 +1895,7 @@ router.post('/shipments/void-label', authenticateJWT, voidShipStationLabel);
  *       500:
  *         description: Internal Server Error
  */
-router.get("/carriers", authenticateJWT, getShipStationCarriers);
+router.get("/carriers", authMiddleware(true), getShipStationCarriers);
 
 /**
  * @swagger
@@ -1963,12 +1964,12 @@ router.get("/carriers", authenticateJWT, getShipStationCarriers);
  *                 message:
  *                   type: string
  */
-router.get("/carrier-services", authenticateJWT, getShipStationCarrierServices);
+router.get("/carrier-services", authMiddleware(true), getShipStationCarrierServices);
 
 
 /**
  * @swagger
- * /api/shipStation/webhooks-list:
+ * /api/admin/shipStation/webhooks-list:
  *   get:
  *     summary: Get ShipStation webhooks
  *     description: Retrieve a list of all registered webhooks for the ShipStation account
@@ -2036,7 +2037,282 @@ router.get("/carrier-services", authenticateJWT, getShipStationCarrierServices);
  *                   type: string
  *                   example: "Failed to retrieve webhooks from ShipStation"
  */
-router.get("/webhooks-list", authenticateJWT, getShipStationWebhooks);
+router.get("/webhooks-list", authMiddleware(true), getShipStationWebhooks);
 
+/**
+ * @swagger
+ * /api/admin/shipStation/orders/{orderId}/data:
+ *   get:
+ *     summary: Get order data by ID with all related information
+ *     description: Retrieves complete order data including user, addresses, items, and variants for testing purposes
+ *     tags: [Admin - ShipStation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The internal order ID
+ *         example: 123
+ *     responses:
+ *       200:
+ *         description: Order data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Order data retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Internal order ID
+ *                       example: 123
+ *                     order_unique_id:
+ *                       type: string
+ *                       description: Unique order identifier
+ *                       example: "ORD-12345678"
+ *                     order_code:
+ *                       type: string
+ *                       description: Order code from payment provider
+ *                       example: "123456789"
+ *                     status:
+ *                       type: string
+ *                       description: Order status
+ *                       example: "processing"
+ *                     total:
+ *                       type: number
+ *                       description: Total order amount
+ *                       example: 99.99
+ *                     sub_total:
+ *                       type: number
+ *                       description: Subtotal before shipping and discounts
+ *                       example: 89.99
+ *                     shipping_cost:
+ *                       type: number
+ *                       description: Shipping cost
+ *                       example: 10.00
+ *                     discount_price:
+ *                       type: number
+ *                       description: Discount amount
+ *                       example: 0.00
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Order creation date
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Order last update date
+ *                     user:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: User ID
+ *                         name:
+ *                           type: string
+ *                           description: User full name
+ *                         email:
+ *                           type: string
+ *                           description: User email
+ *                     shipping_address:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         street:
+ *                           type: string
+ *                         town:
+ *                           type: string
+ *                         region:
+ *                           type: string
+ *                         post_code:
+ *                           type: string
+ *                         phone:
+ *                           type: string
+ *                     billing_address:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         street:
+ *                           type: string
+ *                         town:
+ *                           type: string
+ *                         region:
+ *                           type: string
+ *                         post_code:
+ *                           type: string
+ *                         phone:
+ *                           type: string
+ *                     shipping_method:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         carrier_code:
+ *                           type: string
+ *                         service_code:
+ *                           type: string
+ *                     payment_method:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                     order_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           quantity:
+ *                             type: integer
+ *                           unit_price:
+ *                             type: number
+ *                           weight:
+ *                             type: number
+ *                           product:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                               description:
+ *                                 type: string
+ *                           variant:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               slug:
+ *                                 type: string
+ *                               price:
+ *                                 type: number
+ *                               weight:
+ *                                 type: number
+ *                               stock:
+ *                                 type: integer
+ *                     items_count:
+ *                       type: integer
+ *                       description: Total number of items in the order
+ *                     total_weight:
+ *                       type: number
+ *                       description: Total weight of all items
+ *       400:
+ *         description: Bad request - Order ID is required
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/orders/:orderId/data", authMiddleware(true), getOrderDataById);
+
+/**
+ * @swagger
+ * /api/admin/shipStation/orders/{orderId}/test-create:
+ *   post:
+ *     summary: Test creating a ShipStation order
+ *     description: Creates a ShipStation order for testing purposes using the specified order data
+ *     tags: [Admin - ShipStation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: The internal order ID to create ShipStation order for
+ *         example: 123
+ *     responses:
+ *       200:
+ *         description: ShipStation order created successfully for testing
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "ShipStation order created successfully for testing"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     order:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Internal order ID
+ *                         order_unique_id:
+ *                           type: string
+ *                           description: Unique order identifier
+ *                         status:
+ *                           type: string
+ *                           description: Order status
+ *                         total:
+ *                           type: number
+ *                           description: Total order amount
+ *                         user_email:
+ *                           type: string
+ *                           description: Customer email
+ *                         shipping_address:
+ *                           type: object
+ *                           description: Shipping address details
+ *                         billing_address:
+ *                           type: object
+ *                           description: Billing address details
+ *                         items_count:
+ *                           type: integer
+ *                           description: Number of items in order
+ *                     shipstation_result:
+ *                       type: object
+ *                       description: Response from ShipStation API
+ *                       properties:
+ *                         orderResponse:
+ *                           type: object
+ *                           properties:
+ *                             orderId:
+ *                               type: integer
+ *                               description: ShipStation order ID
+ *       400:
+ *         description: Bad request - Order ID is required
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error or ShipStation API error
+ */
+router.post("/orders/:orderId/test-create", authMiddleware(true), testCreateShipStationOrder);
 
 module.exports = router; 
