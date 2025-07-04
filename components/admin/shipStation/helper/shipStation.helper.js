@@ -1,5 +1,5 @@
 const axios = require('axios');
-const logger = require('../../../utils/logger');
+const logger = require('../../../../library/logger');
 
 async function sendOrderToShipStation(shipStationOrder) {
     try {

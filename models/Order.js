@@ -574,6 +574,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    shipstation_order_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      comment: 'ShipStation order ID for tracking orders created in ShipStation'
+    },
     user_id: {
       type: DataTypes.INTEGER,
       allowNull: false,

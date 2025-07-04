@@ -810,4 +810,252 @@ router.get('/products-sold-28days', [authMiddleware(true)], inventoryController.
  */
 router.get('/product-sales-analytics', [authMiddleware(true)], inventoryController.getAdvancedProductSalesAnalytics);
 
+/**
+ * @swagger
+ * /api/admin/inventory/dashboard:
+ *   get:
+ *     summary: Comprehensive inventory dashboard with summary statistics and filtered product listings (admin)
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of items per page
+ *       - in: query
+ *         name: stock_status
+ *         schema:
+ *           type: string
+ *           enum: [in_stock, out_of_stock, low_stock]
+ *         description: Filter by stock status
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by barcode or slug
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           default: name
+ *         description: Sort field
+ *       - in: query
+ *         name: sort_order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: ASC
+ *         description: Sort order
+ *       - in: query
+ *         name: top_selling
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Show top selling products sorted by sales in last 28 days
+ *     responses:
+ *       200:
+ *         description: Inventory dashboard retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         totalInventory:
+ *                           type: integer
+ *                           description: Total number of product variants
+ *                         inStock:
+ *                           type: integer
+ *                           description: Number of variants in stock
+ *                         outOfStock:
+ *                           type: integer
+ *                           description: Number of variants out of stock
+ *                         lowStock:
+ *                           type: integer
+ *                           description: Number of variants with low stock
+ *                         totalSalesLastMonth:
+ *                           type: integer
+ *                           description: Total sales quantity in previous month
+ *                         totalRevenueLastMonth:
+ *                           type: number
+ *                           description: Total revenue earned in previous month
+ *                     inventory:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           image:
+ *                             type: string
+ *                             nullable: true
+ *                           currentStock:
+ *                             type: integer
+ *                           lowStockThreshold:
+ *                             type: integer
+ *                           isInStock:
+ *                             type: boolean
+ *                           isOutOfStock:
+ *                             type: boolean
+ *                           isLowStock:
+ *                             type: boolean
+ *                           salesLast28Days:
+ *                             type: integer
+ *                           salesLastMonth:
+ *                             type: integer
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/dashboard', [authMiddleware(true)], inventoryController.getInventoryDashboard);
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     StockMovement:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         variant_id:
+ *           type: integer
+ *         change_type:
+ *           type: string
+ *           enum: [addition, deduction, adjustment, reservation]
+ *         quantity:
+ *           type: integer
+ *         reference:
+ *           type: string
+ *         updated_by:
+ *           type: integer
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         variant:
+ *           $ref: '#/components/schemas/ProductVariant'
+ *         updatedByUser:
+ *           $ref: '#/components/schemas/User'
+ *     StockReservation:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         variant_id:
+ *           type: integer
+ *         user_id:
+ *           type: integer
+ *         quantity:
+ *           type: integer
+ *         expires_at:
+ *           type: string
+ *           format: date-time
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         variant:
+ *           $ref: '#/components/schemas/ProductVariant'
+ *         user:
+ *           $ref: '#/components/schemas/User'
+ *         updatedByUser:
+ *           $ref: '#/components/schemas/User'
+ *     ProductVariant:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         product_id:
+ *           type: integer
+ *         slug:
+ *           type: string
+ *         barcode:
+ *           type: string
+ *         stock:
+ *           type: integer
+ *         low_stock_threshold:
+ *           type: integer
+ *         price:
+ *           type: number
+ *         purchase_price:
+ *           type: number
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         product:
+ *           $ref: '#/components/schemas/Product'
+ *     Product:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ *         description:
+ *           type: string
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *     User:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         first_name:
+ *           type: string
+ *         last_name:
+ *           type: string
+ *         email:
+ *           type: string
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *     Pagination:
+ *       type: object
+ *       properties:
+ *         total:
+ *           type: integer
+ *         page:
+ *           type: integer
+ *         totalPages:
+ *           type: integer
+ *         limit:
+ *           type: integer
+ */
+
 module.exports = router; 

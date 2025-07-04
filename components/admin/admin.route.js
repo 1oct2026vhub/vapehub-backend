@@ -37,5 +37,7 @@ router.use('/coupons', require('./coupon/routes/coupon.route'));
 router.use('/flash-news', require('./flashNews/routes/flashNews.route'));
 router.use('/review', require('./review/routes/review.route'));
 router.use('/inventory', require('./inventory/routes/inventory.route'));
+router.use('/shipStation', require('./shipStation/routes/shipStation.route'));
+router.use('/shipStationWebhook', require('./shipStationWebhook/routes/shipStationWebhook.route'));
 
 module.exports = router;
