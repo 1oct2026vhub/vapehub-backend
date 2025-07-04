@@ -172,7 +172,9 @@ async function unsubscribeFromWebhook(req, res, next) {
 async function handleWebhook(req, res, next) {
     try {
         const webhookData = req.body;
-        const { resource_type, resource_url, event } = webhookData;
+        // Use resource_type as event if event is missing
+        const event = webhookData.event || webhookData.resource_type;
+        const { resource_type, resource_url } = webhookData;
 
         // Log webhook receipt
         utilsLogger.logInfo({
@@ -191,14 +193,14 @@ async function handleWebhook(req, res, next) {
         });
 
         // Validate required fields
-        if (!event) {
-            utilsLogger.logError({
-                type: 'shipstation_webhook_validation_error',
-                error: 'Event type is required',
-                webhook_data: webhookData
-            });
-            return res.status(200).json({ success: false, message: 'Event type is required' });
-        }
+        // if (!event) {
+        //     utilsLogger.logError({
+        //         type: 'shipstation_webhook_validation_error',
+        //         error: 'Event type is required',
+        //         webhook_data: webhookData
+        //     });
+        //     return res.status(200).json({ success: false, message: 'Event type is required' });
+        // }
 
         if (!resource_url) {
             utilsLogger.logError({
