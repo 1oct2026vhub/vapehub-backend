@@ -1,5 +1,5 @@
 const axios = require('axios');
-const logger = require("../../../library/logger");
+const logger = require("../../../../library/logger");
 
 /**
  * Get ShipStation API credentials
@@ -222,10 +222,12 @@ async function updateWebhook(webhookId, updateData) {
  */
 function getAvailableWebhookTypes() {
     return [
+        'ORDER_NOTIFY',
         'ITEM_ORDER_NOTIFY',
         'SHIP_NOTIFY',
         'ITEM_SHIP_NOTIFY',
-        'ORDER_NOTIFY',
+        'FULFILLMENT_SHIPPED',
+        'FULFILLMENT_REJECTED',
         'ITEM_ORDER_NOTIFY_NON_INVENTORY',
         'ITEM_ORDER_NOTIFY_INVENTORY',
         'ITEM_ORDER_NOTIFY_INVENTORY_LEVEL',
@@ -238,6 +240,77 @@ function getAvailableWebhookTypes() {
     ];
 }
 
+/**
+ * Subscribe to all order status webhook events
+ * @param {string} targetUrl - URL where webhook notifications will be sent
+ * @param {string} friendlyName - Human-readable name for the webhook
+ * @returns {Promise<Array>} Array of created webhook objects
+ */
+async function subscribeToAllOrderStatusWebhooks(targetUrl, friendlyName = 'Order Status Updates') {
+    try {
+        const orderStatusEvents = [
+            'ORDER_NOTIFY',
+            'ITEM_ORDER_NOTIFY',
+            'SHIP_NOTIFY',
+            'ITEM_SHIP_NOTIFY',
+            'FULFILLMENT_SHIPPED',
+            'FULFILLMENT_REJECTED'
+        ];
+
+        const webhookPromises = orderStatusEvents.map(async (event) => {
+            try {
+                const webhookData = {
+                    target_url: targetUrl,
+                    event,
+                    friendly_name: `${friendlyName} - ${event}`,
+                    store_id: null
+                };
+
+                const result = await subscribeToWebhook(webhookData);
+                logger.info(`Successfully subscribed to ${event} webhook`, {
+                    event,
+                    webhook_id: result.webhookId
+                });
+                return { event, success: true, webhookId: result.webhookId };
+            } catch (error) {
+                logger.error(`Failed to subscribe to ${event} webhook:`, {
+                    event,
+                    error: error.message
+                });
+                return { event, success: false, error: error.message };
+            }
+        });
+
+        const results = await Promise.allSettled(webhookPromises);
+        
+        const successful = results.filter(result => 
+            result.status === 'fulfilled' && result.value.success
+        );
+        
+        const failed = results.filter(result => 
+            result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.success)
+        );
+
+        logger.info('Order status webhook subscription completed', {
+            successful_count: successful.length,
+            failed_count: failed.length,
+            total_events: orderStatusEvents.length
+        });
+
+        return {
+            successful: successful.map(r => r.value),
+            failed: failed.map(r => r.status === 'rejected' ? { event: 'unknown', success: false, error: r.reason.message } : r.value),
+            total: orderStatusEvents.length
+        };
+    } catch (error) {
+        logger.error('Error subscribing to order status webhooks:', {
+            error: error.message,
+            target_url: targetUrl
+        });
+        throw error;
+    }
+}
+
 module.exports = {
     getAllWebhooks,
     subscribeToWebhook,
@@ -246,5 +319,6 @@ module.exports = {
     updateWebhook,
     getAvailableWebhookTypes,
     getShipStationCredentials,
-    createAuthHeader
+    createAuthHeader,
+    subscribeToAllOrderStatusWebhooks
 }; 

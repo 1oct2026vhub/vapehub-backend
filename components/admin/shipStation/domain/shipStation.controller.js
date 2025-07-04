@@ -1,6 +1,8 @@
 const axios = require('axios');
 const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
-const { errorResponse, successResponse } = require("../../../utils/responseUtils");
+const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
+const { Order } = require('../../../../models');
+const logger = require('../../../../library/logger');
 
 async function createShipStationOrder(order) {
     try {
@@ -46,9 +48,10 @@ async function createShipStationOrder(order) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
         };
-        console.log(shipStationOrder);
+        console.log("shipStationOrder>>>>>>", shipStationOrder);
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
+        console.log("orderResponse>>>>>>", orderResponse);
         
         // Extract orderId from response
         const orderId = orderResponse.orderId;
@@ -56,6 +59,22 @@ async function createShipStationOrder(order) {
         if (!orderId) {
             throw new Error('ShipStation order created but no orderId returned in response');
         }
+
+        // Update the order in our database with the ShipStation order ID
+        await Order.update(
+            { shipstation_order_id: orderId },
+            { 
+                where: { id: order.id },
+                isAdmin: true,
+                userId: null // System update
+            }
+        );
+
+        logger.info('Updated order with ShipStation order ID', {
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            shipstation_order_id: orderId
+        });
 
         // Map order data to label creation params (customize as needed)
         const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
@@ -619,67 +638,58 @@ async function getShipStationWebhooks(req, res){
     }
 }
 
+/**
+ * Get ShipStation carriers
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
 async function getShipStationCarriers(req, res, next) {
-    const apiKey = process.env.SHIPSTATION_API_KEY;
-    const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-    console.log(apiKey, apiSecret)
-    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-    const response = await axios.get('https://ssapi.shipstation.com/carriers', {
-        headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-        }
-    });
-    return successResponse(res, response.data, 'Carriers retrieved successfully');
-}
-
-async function getShipStationCarrierServices(req, res) {
     try {
-        const carrierCode = req.query.carrierCode;
-        if (!carrierCode) {
-            return res.status(400).json({ success: false, message: 'carrierCode is required' });
-        }
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        
+        if (!apiKey || !apiSecret) {
+            return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
+        }
+
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
+        const response = await axios.get('https://ssapi.shipstation.com/carriers', {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
         });
-        return successResponse(res, response.data, 'Carrier services retrieved successfully');
+
+        return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
-        return errorResponse(res, error, error.message);
+        logger.error('Error getting ShipStation carriers:', error);
+        return errorResponse(res, error, 'Failed to retrieve carriers from ShipStation');
     }
 }
 
-
-async function getShipStationCarriers(req, res, next) {
-    const apiKey = process.env.SHIPSTATION_API_KEY;
-    const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-    console.log(apiKey, apiSecret)
-    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-    const response = await axios.get('https://ssapi.shipstation.com/carriers', {
-        headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-        }
-    });
-    return successResponse(res, response.data, 'Carriers retrieved successfully');
-}
-
+/**
+ * Get ShipStation carrier services
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
 async function getShipStationCarrierServices(req, res) {
     try {
         const carrierCode = req.query.carrierCode;
+        
         if (!carrierCode) {
-            return res.status(400).json({ success: false, message: 'carrierCode is required' });
+            return errorResponse(res, {}, 'carrierCode is required', 400);
         }
+
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        
+        if (!apiKey || !apiSecret) {
+            return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
+        }
+
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
         const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
@@ -688,12 +698,242 @@ async function getShipStationCarrierServices(req, res) {
                 'Content-Type': 'application/json'
             }
         });
+
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
-        return errorResponse(res, error, error.message);
+        logger.error('Error getting ShipStation carrier services:', error);
+        return errorResponse(res, error, 'Failed to retrieve carrier services from ShipStation');
+    }
+}
+
+/**
+ * Get order data by ID and create ShipStation order for testing
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+async function testCreateShipStationOrder(req, res, next) {
+    try {
+        console.log("testCreateShipStationOrder>>>>>>", req.params);
+        const { orderId } = req.params;
+        
+        if (!orderId) {
+            return errorResponse(res, {}, 'Order ID is required', 400);
+        }
+
+        // Find order with all related data
+        const order = await Order.findOne({
+            where: { id: orderId },
+            include: [
+                {
+                    model: Order.sequelize.models.User,
+                    as: 'user',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
+                    model: Order.sequelize.models.ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                },
+                {
+                    model: Order.sequelize.models.OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'quantity', 'unit_price'],
+                    include: [
+                        {
+                            model: Order.sequelize.models.Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'slug']
+                        },
+                        {
+                            model: Order.sequelize.models.ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price', 'weight']
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (!order) {
+            return errorResponse(res, {}, 'Order not found', 404);
+        }
+
+        logger.info('Creating ShipStation order for testing', {
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            user_email: order.user?.email
+        });
+
+        // Create ShipStation order
+        const shipStationResult = await createShipStationOrder(order);
+
+        logger.info('ShipStation order created successfully', {
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            shipstation_response: shipStationResult
+        });
+
+        return successResponse(res, {
+            order: {
+                id: order.id,
+                order_unique_id: order.order_unique_id,
+                status: order.status,
+                total: order.total,
+                user_email: order.user?.email,
+                shipping_address: order.orderShippingAddress,
+                billing_address: order.orderBillingAddress,
+                items_count: order.orderItems?.length || 0
+            },
+            shipstation_result: shipStationResult
+        }, 'ShipStation order created successfully for testing');
+
+    } catch (error) {
+        logger.error('Error creating ShipStation order for testing:', {
+            error: error.message,
+            stack: error.stack,
+            order_id: req.params.orderId
+        });
+
+        return errorResponse(res, error, 'Failed to create ShipStation order for testing');
+    }
+}
+
+/**
+ * Get order data by ID with all related information
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+async function getOrderDataById(req, res, next) {
+    try {
+        const { orderId } = req.params;
+        
+        if (!orderId) {
+            return errorResponse(res, {}, 'Order ID is required', 400);
+        }
+
+        // Find order with all related data
+        const order = await Order.findOne({
+            where: { id: orderId },
+            include: [
+                {
+                    model: Order.sequelize.models.User,
+                    as: 'user',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
+                    model: Order.sequelize.models.ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                },
+                {
+                    model: Order.sequelize.models.PaymentMethod,
+                    as: 'paymentMethod',
+                    attributes: ['id', 'name']
+                },
+                {
+                    model: Order.sequelize.models.OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'quantity', 'unit_price'],
+                    include: [
+                        {
+                            model: Order.sequelize.models.Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'slug', 'description']
+                        },
+                        {
+                            model: Order.sequelize.models.ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price', 'weight', 'stock']
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (!order) {
+            return errorResponse(res, {}, 'Order not found', 404);
+        }
+
+        // Format the response for better readability
+        const formattedOrder = {
+            id: order.id,
+            order_unique_id: order.order_unique_id,
+            order_code: order.order_code,
+            status: order.status,
+            total: order.total,
+            sub_total: order.sub_total,
+            shipping_cost: order.shipping_cost,
+            discount_price: order.discount_price,
+            created_at: order.createdAt,
+            updated_at: order.updatedAt,
+            user: order.user ? {
+                id: order.user.id,
+                name: `${order.user.first_name} ${order.user.last_name}`,
+                email: order.user.email
+            } : null,
+            shipping_address: order.orderShippingAddress,
+            billing_address: order.orderBillingAddress,
+            shipping_method: order.shippingMethod,
+            payment_method: order.paymentMethod,
+            order_items: order.orderItems?.map(item => ({
+                id: item.id,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                product: {
+                    id: item.product?.id,
+                    name: item.product?.name,
+                    slug: item.product?.slug,
+                    description: item.product?.description
+                },
+                variant: item.variant ? {
+                    id: item.variant.id,
+                    slug: item.variant.slug,
+                    price: item.variant.price,
+                    weight: item.variant.weight,
+                    stock: item.variant.stock
+                } : null
+            })) || [],
+            items_count: order.orderItems?.length || 0,
+            total_weight: order.orderItems?.reduce((sum, item) => sum + (item.variant?.weight || 0), 0) || 0
+        };
+
+        return successResponse(res, formattedOrder, 'Order data retrieved successfully');
+
+    } catch (error) {
+        logger.error('Error getting order data by ID:', {
+            error: error.message,
+            stack: error.stack,
+            order_id: req.params.orderId
+        });
+
+        return errorResponse(res, error, 'Failed to retrieve order data');
     }
 }
 
 module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, 
-    deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices
+    deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
+    testCreateShipStationOrder,
+    getOrderDataById
  }; 

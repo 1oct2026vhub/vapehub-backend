@@ -6,6 +6,7 @@ const moment = require('moment');
 const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
+const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 
 module.exports.listAllOrders = async (req, res, next) => {
     try {
@@ -364,6 +365,17 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 if (item.variant) {
                     await item.variant.increment('stock', { by: item.quantity });
                 }
+            }
+        }
+
+        // Handle ShipStation order creation when status is packed
+        if (status === orderStatus.PACKED) {
+            try {
+                await createShipStationOrder(order);
+            } catch (shipStationError) {
+                console.error("ShipStation order creation failed:", shipStationError);
+                // Don't fail the entire request, just log the error
+                // You might want to add a notification or flag for failed ShipStation creation
             }
         }
 
