@@ -70,9 +70,7 @@ module.exports = {
   // Unified function for fetching all or searching products by name
   async getProducts(req, res) {
     try {
-      console.log("req.query>>>>", req.query);
       const { q } = req.query;
-      console.log(q);
       const where = q && q.length > 0
         ? { name: { [require('sequelize').Op.like]: `%${q}%` } }
         : undefined;
@@ -83,10 +81,8 @@ module.exports = {
         order: [['name', 'ASC']],
         ...(limit ? { limit } : {})
       });
-      console.log(products);
       res.json(products);
     } catch (err) {
-      console.log("err>>>>", err);
       res.status(500).json({ error: err.message });
     }
   }

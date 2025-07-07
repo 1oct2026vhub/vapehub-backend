@@ -36,6 +36,16 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 0.0,
             },
+            service_code: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Service code for shipping carrier (e.g., "fedex_2day")'
+            },
+            carrier_code: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Carrier code for shipping method (e.g., "fedex")'
+            },
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,
             updated_by: {

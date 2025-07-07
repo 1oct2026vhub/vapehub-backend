@@ -20,7 +20,7 @@ async function createShipStationOrder(order) {
             orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
             orderStatus: 'awaiting_shipment',
             customerUsername: order.user?.email,
-            customerEmail: order.user?.email,
+            customerEmail: order.email || order.user?.email,
             billTo: order.orderBillingAddress ? {
                 name: order.orderBillingAddress.name,
                 street1: order.orderBillingAddress.street,
@@ -48,10 +48,10 @@ async function createShipStationOrder(order) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
         };
-        console.log("shipStationOrder>>>>>>", shipStationOrder);
+        // console.log("shipStationOrder>>>>>>", shipStationOrder);
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
-        console.log("orderResponse>>>>>>", orderResponse);
+        // console.log("orderResponse>>>>>>", orderResponse);
         
         // Extract orderId from response
         const orderId = orderResponse.orderId;
@@ -96,24 +96,30 @@ async function createShipStationOrder(order) {
         const advancedOptions = null;
         const testLabel = true;
 
-        // Create label (commented out for now)
-        // const labelResponse = await createLabelForOrder({
-        //     orderId,
-        //     carrierCode,
-        //     serviceCode,
-        //     packageCode,
-        //     confirmation,
-        //     shipDate,
-        //     weight,
-        //     dimensions,
-        //     insuranceOptions,
-        //     internationalOptions,
-        //     advancedOptions,
-        //     testLabel
-        // });
+        // Create label for the order
+        let labelResponse = null;
+        try {
+            labelResponse = await createLabelForOrder({
+                orderId,
+                carrierCode,
+                serviceCode,
+                packageCode,
+                confirmation,
+                shipDate,
+                weight,
+                dimensions,
+                insuranceOptions,
+                internationalOptions,
+                advancedOptions,
+                testLabel
+            });
+        } catch (labelError) {
+            console.log("labelError>>>>>>", labelError);
+            // Don't fail the entire operation, just log the error
+            // The order was created successfully, so we can still return the order response
+        }
 
-
-        return { orderResponse };   //, labelResponse
+        return { orderResponse, labelResponse };
 
     } catch (error) {
         // Re-throw the error so calling code can handle it
@@ -622,7 +628,7 @@ async function getShipStationWebhooks(req, res){
                 'Content-Type': 'application/json'
             }
         });
-        console.log(response);
+        // console.log(response);
         return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
     } catch (error) {
         console.error('Error retrieving ShipStation webhooks:', error);
@@ -714,7 +720,7 @@ async function getShipStationCarrierServices(req, res) {
  */
 async function testCreateShipStationOrder(req, res, next) {
     try {
-        console.log("testCreateShipStationOrder>>>>>>", req.params);
+        // console.log("testCreateShipStationOrder>>>>>>", req.params);
         const { orderId } = req.params;
         
         if (!orderId) {
@@ -784,6 +790,16 @@ async function testCreateShipStationOrder(req, res, next) {
             shipstation_response: shipStationResult
         });
 
+        // Extract label information for better visibility
+        const labelInfo = shipStationResult.labelResponse ? {
+            shipment_id: shipStationResult.labelResponse.shipmentId,
+            tracking_number: shipStationResult.labelResponse.trackingNumber,
+            shipment_cost: shipStationResult.labelResponse.shipmentCost,
+            insurance_cost: shipStationResult.labelResponse.insuranceCost,
+            has_label_data: !!shipStationResult.labelResponse.labelData,
+            label_data_length: shipStationResult.labelResponse.labelData ? shipStationResult.labelResponse.labelData.length : 0
+        } : null;
+
         return successResponse(res, {
             order: {
                 id: order.id,
@@ -795,8 +811,9 @@ async function testCreateShipStationOrder(req, res, next) {
                 billing_address: order.orderBillingAddress,
                 items_count: order.orderItems?.length || 0
             },
-            shipstation_result: shipStationResult
-        }, 'ShipStation order created successfully for testing');
+            shipstation_result: shipStationResult,
+            label_info: labelInfo
+        }, 'ShipStation order and label created successfully for testing');
 
     } catch (error) {
         logger.error('Error creating ShipStation order for testing:', {
