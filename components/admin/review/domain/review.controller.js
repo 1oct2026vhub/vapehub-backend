@@ -39,26 +39,25 @@ module.exports = {
       if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`;
         
-        // Search in user name (first_name + last_name)
-        includeClause[0].where = {
-          [Op.or]: [
-            { first_name: { [Op.like]: searchTerm } },
-            { last_name: { [Op.like]: searchTerm } },
-            { email: { [Op.like]: searchTerm } }
-          ]
-        };
-        includeClause[0].required = true;
-        
-        // Search in product name
-        includeClause[1].where = {
-          name: { [Op.like]: searchTerm }
-        };
-        includeClause[1].required = true;
-        
-        // Also search in review comment
+        // Create OR condition for search across multiple fields
         whereClause[Op.or] = [
+          // Search in review comment
           { comment: { [Op.like]: searchTerm } },
-          { user_name: { [Op.like]: searchTerm } }
+          { user_name: { [Op.like]: searchTerm } },
+          // Search in user name (first_name + last_name) and email
+          {
+            '$user.first_name$': { [Op.like]: searchTerm }
+          },
+          {
+            '$user.last_name$': { [Op.like]: searchTerm }
+          },
+          {
+            '$user.email$': { [Op.like]: searchTerm }
+          },
+          // Search in product name
+          {
+            '$product.name$': { [Op.like]: searchTerm }
+          }
         ];
       }
       
@@ -77,7 +76,6 @@ module.exports = {
         order: [[finalSortBy, finalSortOrder]],
         distinct: true // Important for correct count with includes
       });
-      
       // Transform the response to include user and product info
       const transformedReviews = rows.map(review => {
         const reviewData = review.toJSON();
