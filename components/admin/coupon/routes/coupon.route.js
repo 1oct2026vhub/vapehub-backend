@@ -61,6 +61,13 @@ const { validateRequest } = require('../../../../utils/validationMiddleware');
  *           type: string
  *           enum: [active, inactive]
  *           description: Status of the coupon
+ *         entity_type:
+ *           type: string
+ *           enum: [product, brand, category]
+ *           description: Type of entity this coupon applies to (optional)
+ *         entity_id:
+ *           type: integer
+ *           description: ID of the specific entity (product, brand, or category) this coupon applies to
  */
 
 /**
@@ -142,6 +149,17 @@ router.post('/',
  *           type: string
  *           format: date
  *         description: Filter by end date
+ *       - in: query
+ *         name: entity_type
+ *         schema:
+ *           type: string
+ *           enum: [product, brand, category]
+ *         description: Filter by entity type
+ *       - in: query
+ *         name: entity_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by specific entity ID
  *     responses:
  *       200:
  *         description: List of coupons with pagination
