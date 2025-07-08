@@ -65,10 +65,13 @@
         width: 100%;
         border-collapse: collapse;
         margin-bottom: 16px;
+        font-size: 14px;
       }
       th, td {
-        padding: 12px 10px;
+        padding: 10px 8px;
         text-align: left;
+        word-wrap: break-word;
+        max-width: 120px;
       }
       th {
         background: #f1f5f9;
@@ -134,14 +137,16 @@
       </div>
       <div class="content">
         <h2>Low Stock Alert</h2>
-        <p>You have <strong>{{totalLowStockCount}} items</strong> with low stock that need attention. Please review and restock as soon as possible:</p>
+        <p>You have <strong>{{totalLowStockCount}} items</strong> with low stock that need attention. The table below shows current stock levels and sales performance over the last 28 days:</p>
         <table>
           <thead>
             <tr>
               <th>Product</th>
               <th>Variant</th>
               <th>Stock</th>
-              <th>Threshold</th>
+              <th>Low Stock Threshold</th>
+              <th>Last 28 Days Sales</th>
+              <th>Last 28 Days Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -151,6 +156,8 @@
               <td>{{this.variantName}}</td>
               <td>{{this.stock}}</td>
               <td>{{this.low_stock_threshold}}</td>
+              <td>{{this.last28DaysSales}}</td>
+              <td>£{{this.last28DaysAmount}}</td>
             </tr>
             {{/each}}
           </tbody>
