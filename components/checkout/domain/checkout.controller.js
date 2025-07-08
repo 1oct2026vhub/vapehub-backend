@@ -471,27 +471,27 @@ module.exports.applyCoupon = async (req, res, next) => {
                 responseMessage = 'Coupon applied successfully';
             }
         }
-        // const settings = await LoyaltyPointsSettings.findOne({
-        //     where: { status: true }
-        // });
-        // if(settings){
-        //     const user = await User.findOne({
-        //         where: { id: userId }
-        //     });
+        const settings = await LoyaltyPointsSettings.findOne({
+            where: { status: true }
+        });
+        if(settings){
+            const user = await User.findOne({
+                where: { id: userId }
+            });
             
-        //     if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
-        //         const points = user.loyalty_points;
-        //         const loyaltyAmount = settings.loyalty_amount;
-        //         const loyaltyAmountType = settings.loyalty_amount_type;
-        //         if(loyaltyAmountType === 'percentage'){
-        //             const loyaltyDiscount = (loyaltyAmount / 100) * total;
-        //             total = Math.max(0, total - loyaltyDiscount);
-        //         }else{
-        //             total = Math.max(0, total - loyaltyAmount);
-        //         }
+            if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                const points = user.loyalty_points;
+                const loyaltyAmount = settings.loyalty_amount;
+                const loyaltyAmountType = settings.loyalty_amount_type;
+                if(loyaltyAmountType === 'percentage'){
+                    const loyaltyDiscount = (loyaltyAmount / 100) * total;
+                    total = Math.max(0, total - loyaltyDiscount);
+                }else{
+                    total = Math.max(0, total - loyaltyAmount);
+                }
 
-        //     }
-        // }
+            }
+        }
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
