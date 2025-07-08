@@ -1,8 +1,9 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
-const { ProductVariant, Product } = require('../models');
+const { ProductVariant, Product, Order, OrderItem } = require('../models');
 const sendEmail = require('../library/sendEmail');
 const constants = require('../config/constants');
+const moment = require('moment-timezone');
 
 // Run every hour at minute 0
 cron.schedule('0 * * * *', async () => {
@@ -20,13 +21,49 @@ cron.schedule('0 * * * *', async () => {
     });
 
     // Filter in JS for variants where stock <= low_stock_threshold
-    const lowStockList = lowStockVariants.filter(v => v.stock <= v.low_stock_threshold)
-      .map(v => ({
+    const lowStockVariantsFiltered = lowStockVariants.filter(v => v.stock <= v.low_stock_threshold);
+    
+    // Calculate last 28 days sales for each low stock variant
+    const lowStockList = await Promise.all(lowStockVariantsFiltered.map(async (v) => {
+      const twentyEightDaysAgo = moment().tz(process.env.UK_TIMEZONE || 'Europe/London').subtract(28, 'days').startOf('day');
+      
+      // Get sales data for this variant in last 28 days
+      const salesData = await OrderItem.findAll({
+        where: {
+          product_variant_id: v.id,
+          createdAt: {
+            [Op.gte]: twentyEightDaysAgo.toDate()
+          }
+        },
+        include: [{
+          model: Order,
+          as: 'order',
+          where: {
+            status: {
+              [Op.in]: ['completed', 'delivered', 'shipped']
+            }
+          },
+          attributes: []
+        }],
+        attributes: [
+          [require('sequelize').fn('SUM', require('sequelize').col('quantity')), 'totalQuantity'],
+          [require('sequelize').fn('SUM', require('sequelize').literal('quantity * price')), 'totalAmount']
+        ],
+        raw: true
+      });
+
+      const salesCount = parseInt(salesData[0]?.totalQuantity || 0);
+      const salesAmount = parseFloat(salesData[0]?.totalAmount || 0);
+
+      return {
         productName: v.product?.name || 'N/A',
         variantName: v.slug || v.id,
         stock: v.stock,
-        low_stock_threshold: v.low_stock_threshold
-      }));
+        low_stock_threshold: v.low_stock_threshold,
+        last28DaysSales: salesCount,
+        last28DaysAmount: salesAmount.toFixed(2)
+      };
+    }));
 
     // Only send email if there are low stock items
     if (lowStockList.length > 0) {
