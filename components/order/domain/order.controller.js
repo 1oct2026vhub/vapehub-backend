@@ -2,7 +2,7 @@ const { Sequelize, Op } = require("sequelize");
 const moment = require('moment-timezone');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod, LoyaltyPointsSettings} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -407,7 +407,26 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
+        // const settings = await LoyaltyPointsSettings.findOne({
+        //     where: { status: true }
+        // });
 
+        // if(settings){
+        //     const user = await User.findOne({
+        //         where: { id: user_id }
+        //     });
+        //     if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+        //         const points = user.loyalty_points;
+        //         const loyaltyAmount = settings.loyalty_amount;
+        //         const loyaltyAmountType = settings.loyalty_amount_type;
+        //         if(loyaltyAmountType === 'percentage'){
+        //             const loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
+        //             calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+        //         }else{
+        //             calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+        //         }
+        //     }
+        // }
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;

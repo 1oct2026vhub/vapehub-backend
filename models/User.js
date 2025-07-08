@@ -139,6 +139,12 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: 0
         },
+        loyalty_points: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            comment: 'Total loyalty points earned by the user'
+        },
         receive_promotions: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
