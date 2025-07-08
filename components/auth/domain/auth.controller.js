@@ -258,6 +258,17 @@ module.exports.register = async (req, res, next) => {
                 url: '/admin/users',  // URL to the admin users list
                 is_admin: true
             });
+            const welcomeData = {
+                emailTypes: constants.emailTypes.WELCOME,
+                to: user.email,
+                context: {
+                    userName: username,
+                    couponCode: null,
+                    
+                },
+                attachments: ""
+            };
+            await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
         }
         else{
             // Create a random coupon code for the new user

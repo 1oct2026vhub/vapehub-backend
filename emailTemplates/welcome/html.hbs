@@ -263,6 +263,7 @@
                 <a href="{{FRONTEND_URL}}/shop" class="cta-button">Start Shopping Now</a>
             </div>
 
+            {{#if couponCode}}
             <!-- Coupon Section -->
             <div class="coupon-section" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); padding: 30px; margin: 30px 0; border-radius: 15px; text-align: center; color: white; position: relative; overflow: hidden;">
                 <div style="position: absolute; top: -10px; right: -10px; width: 20px; height: 20px; background: white; border-radius: 50%;"></div>
@@ -299,6 +300,7 @@
                     <a href="{{FRONTEND_URL}}/shop" style="display: inline-block; padding: 12px 30px; background: white; color: #ff6b6b; text-decoration: none; border-radius: 25px; font-weight: 600; font-size: 14px; margin-top: 15px; transition: all 0.3s ease;">Use Coupon Now</a>
                 </div>
             </div>
+            {{/if}}
 
             <div class="social-links">
                 <a href="#" class="social-link">📘</a>

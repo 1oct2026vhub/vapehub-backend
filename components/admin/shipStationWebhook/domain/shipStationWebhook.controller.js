@@ -172,10 +172,24 @@ async function unsubscribeFromWebhook(req, res, next) {
 async function handleWebhook(req, res, next) {
     try {
         const webhookData = req.body;
+        // console.log('handleWebhook', webhookData);
         // Use resource_type as event if event is missing
         const event = webhookData.event || webhookData.resource_type;
         const { resource_type, resource_url } = webhookData;
 
+        // const shipstationApiKey = process.env.SHIPSTATION_API_KEY;
+        // const shipstationApiSecret = process.env.SHIPSTATION_SECRET_KEY;
+
+       
+        // const response = await axios.get(resource_url, {
+        //     auth: {
+        //         username: shipstationApiKey,
+        //         password: shipstationApiSecret,
+        //     },
+        // });
+
+        // const order = response.data.orders;
+        // console.log('orders>>>>', order);
         // Log webhook receipt
         utilsLogger.logInfo({
             type: 'shipstation_webhook_received',
@@ -220,23 +234,85 @@ async function handleWebhook(req, res, next) {
 
         // Handle different webhook events
         switch (event) {
-            case 'ORDER_NOTIFY':
-                await handleOrderNotify(webhookData);
+            case 'ORDER_NOTIFY': {
+                    try {
+                        // console.log('resource_type>>>>', resource_type);
+                        const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                        for (const order of orders) {
+                            // You can call your existing order processing logic here, e.g.:
+                            await handleOrderNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail });
+                        }
+                    } catch (err) {
+                        utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    }
+                
                 break;
+            }
             case 'ITEM_ORDER_NOTIFY':
-                await handleItemOrderNotify(webhookData);
+                // console.log('ITEM_ORDER_NOTIFY>>>>', webhookData);
+                try {
+                    // console.log('resource_type>>>>', resource_type);
+                    const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                    for (const order of orders) {
+                        // You can call your existing order processing logic here, e.g.:
+                        await handleItemOrderNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    }
+                } catch (err) {
+                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                }
+                // await handleItemOrderNotify(webhookData);
                 break;
             case 'SHIP_NOTIFY':
-                await handleShipNotify(webhookData);
+                try {
+                    // console.log('resource_type>>>>', resource_type);
+                    const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                    for (const order of orders) {
+                        // You can call your existing order processing logic here, e.g.:
+                        await handleShipNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    }
+                } catch (err) {
+                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                }
+                // await handleShipNotify(webhookData);
                 break;
             case 'ITEM_SHIP_NOTIFY':
-                await handleItemShipNotify(webhookData);
+                try {
+                    // console.log('resource_type>>>>', resource_type);
+                    const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                    for (const order of orders) {
+                        // You can call your existing order processing logic here, e.g.:
+                        await handleItemShipNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    }
+                } catch (err) {
+                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                }
+                // await handleItemShipNotify(webhookData);
                 break;
             case 'FULFILLMENT_SHIPPED':
-                await handleFulfillmentShipped(webhookData);
+                try {
+                    // console.log('resource_type>>>>', resource_type);
+                    const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                    for (const order of orders) {
+                        // You can call your existing order processing logic here, e.g.:
+                        await handleFulfillmentShipped({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    }
+                } catch (err) {
+                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                }
+                // await handleFulfillmentShipped(webhookData);
                 break;
             case 'FULFILLMENT_REJECTED':
-                await handleFulfillmentRejected(webhookData);
+                try {
+                    // console.log('resource_type>>>>', resource_type);
+                    const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
+                    for (const order of orders) {
+                        // You can call your existing order processing logic here, e.g.:
+                        await handleFulfillmentRejected({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    }
+                } catch (err) {
+                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                }
+                // await handleFulfillmentRejected(webhookData);
                 break;
             default:
                 logger.warn('Unhandled webhook event type', { event, resource_url });
@@ -260,30 +336,24 @@ async function handleWebhook(req, res, next) {
  * Handle ORDER_NOTIFY webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleOrderNotify(webhookData) {
+async function handleOrderNotify(orderData) {
     try {
-        const { resource_url } = webhookData;
-        
+        // console.log('orderId>>>>', orderId);
         // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
-
+       
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId );
             return;
         }
 
         // Update order status to processing
         await order.update({ 
-            status: 'processing' 
+            status: 'packed' 
         }, { 
             isAdmin: true,
             userId: null // System update
@@ -292,7 +362,7 @@ async function handleOrderNotify(webhookData) {
         logger.info('Order status updated to processing via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling ORDER_NOTIFY webhook:', error);
@@ -304,24 +374,15 @@ async function handleOrderNotify(webhookData) {
  * Handle ITEM_ORDER_NOTIFY webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleItemOrderNotify(webhookData) {
+async function handleItemOrderNotify(orderData) {
     try {
-        const { resource_url } = webhookData;
-        
-        // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
-
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
             return;
         }
 
@@ -336,7 +397,7 @@ async function handleItemOrderNotify(webhookData) {
         logger.info('Order status updated to packed via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling ITEM_ORDER_NOTIFY webhook:', error);
@@ -348,24 +409,19 @@ async function handleItemOrderNotify(webhookData) {
  * Handle SHIP_NOTIFY webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleShipNotify(webhookData) {
+async function handleShipNotify(orderData) {
     try {
-        const { resource_url } = webhookData;
+        // const { resource_url } = webhookData;
         
         // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
             return;
         }
 
@@ -380,7 +436,7 @@ async function handleShipNotify(webhookData) {
         logger.info('Order status updated to shipped via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling SHIP_NOTIFY webhook:', error);
@@ -392,24 +448,24 @@ async function handleShipNotify(webhookData) {
  * Handle ITEM_SHIP_NOTIFY webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleItemShipNotify(webhookData) {
+async function handleItemShipNotify(orderData) {
     try {
-        const { resource_url } = webhookData;
+        // const { resource_url } = webhookData;
         
         // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
+        // const orderId = extractOrderIdFromUrl(resource_url);
+        // if (!orderId) {
+        //     logger.warn('Could not extract order ID from resource URL', { resource_url });
+        //     return;
+        // }
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
             return;
         }
 
@@ -424,7 +480,7 @@ async function handleItemShipNotify(webhookData) {
         logger.info('Order status updated to out_for_delivery via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling ITEM_SHIP_NOTIFY webhook:', error);
@@ -436,24 +492,24 @@ async function handleItemShipNotify(webhookData) {
  * Handle FULFILLMENT_SHIPPED webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleFulfillmentShipped(webhookData) {
+async function handleFulfillmentShipped(orderData) {
     try {
-        const { resource_url } = webhookData;
+        // const { resource_url } = webhookData;
         
         // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
+        // const orderId = extractOrderIdFromUrl(resource_url);
+        // if (!orderId) {
+        //     logger.warn('Could not extract order ID from resource URL', { resource_url });
+        //     return;
+        // }
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
             return;
         }
 
@@ -468,7 +524,7 @@ async function handleFulfillmentShipped(webhookData) {
         logger.info('Order status updated to delivered via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling FULFILLMENT_SHIPPED webhook:', error);
@@ -480,24 +536,24 @@ async function handleFulfillmentShipped(webhookData) {
  * Handle FULFILLMENT_REJECTED webhook event
  * @param {Object} webhookData - Webhook payload
  */
-async function handleFulfillmentRejected(webhookData) {
+async function handleFulfillmentRejected(orderData) {
     try {
-        const { resource_url } = webhookData;
+        // const { resource_url } = webhookData;
         
         // Extract order ID from resource URL
-        const orderId = extractOrderIdFromUrl(resource_url);
-        if (!orderId) {
-            logger.warn('Could not extract order ID from resource URL', { resource_url });
-            return;
-        }
+        // const orderId = extractOrderIdFromUrl(resource_url);
+        // if (!orderId) {
+        //     logger.warn('Could not extract order ID from resource URL', { resource_url });
+        //     return;
+        // }
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderId }
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', { orderId });
+            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
             return;
         }
 
@@ -512,7 +568,7 @@ async function handleFulfillmentRejected(webhookData) {
         logger.info('Order status updated to fail via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderId
+            shipstation_order_id: order.shipstation_order_id || orderData.orderId
         });
     } catch (error) {
         logger.error('Error handling FULFILLMENT_REJECTED webhook:', error);
@@ -563,6 +619,32 @@ function extractOrderIdFromUrl(resourceUrl) {
         logger.error('Error extracting order ID from URL:', { resourceUrl, error: error.message });
         return null;
     }
+}
+
+// Helper: Extract importBatch from resource_url
+function extractImportBatchFromUrl(resourceUrl) {
+    try {
+        const url = new URL(resourceUrl);
+        return url.searchParams.get('importBatch');
+    } catch (e) {
+        return null;
+    }
+}
+
+// Helper: Fetch orders by importBatch from ShipStation
+async function fetchOrdersByImportBatch(resource_url, resource_type) {
+    const shipstationApiKey = process.env.SHIPSTATION_API_KEY;
+    const shipstationApiSecret = process.env.SHIPSTATION_SECRET_KEY;
+    if (!shipstationApiKey || !shipstationApiSecret) throw new Error('ShipStation API credentials not configured');
+    const response = await axios.get(resource_url, {
+        auth: {
+            username: shipstationApiKey,
+            password: shipstationApiSecret,
+        },
+    });
+    console.log('resource_type>>>>', resource_type);
+    console.log('response.data.orders>>>>', response.data);
+    return response.data.orders || [];
 }
 
 module.exports = {

@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, sequelize } = require("../../../models");
+const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require('../../../utils/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -2504,7 +2504,25 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 // Don't throw the error, just log it and continue
             }
         }
+        // const settings = await LoyaltyPointsSettings.findOne({
+        //     where: { status: true }
+        // });
 
+        // if(settings){
+        //     const user = await User.findOne({
+        //         where: { id: order.user_id }
+        //     });
+        //     if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+        //         await user.update({
+        //             loyalty_points: sequelize.literal(`loyalty_points - ${settings.loyalty_amount}`)
+        //         });
+        //     }
+        //     else{
+        //         await user.update({
+        //             loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+        //         });
+        //     }
+        // }
         // Clear the user's cart
         await Cart.destroy({ 
             where: { user_id: order.user_id }
@@ -2849,6 +2867,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                     amount: amount,
                 }}}, "Success");
     } catch (error) {
+        console.log(error);
         return errorResponse(res, error, error.message);
     }
 };

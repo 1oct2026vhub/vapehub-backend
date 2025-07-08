@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, sequelize } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require("../../../utils/logger");
 const crypto = require("crypto");
@@ -160,6 +160,26 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             used_at: new Date()
                         });
                     }
+
+                    // const settings = await LoyaltyPointsSettings.findOne({
+                    //     where: { status: true }
+                    // });
+            
+                    // if(settings){
+                    //     const user = await User.findOne({
+                    //         where: { id: order.user_id }
+                    //     });
+                    //     if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                    //         await user.update({
+                    //             loyalty_points: sequelize.literal(`loyalty_points - ${settings.loyalty_amount}`)
+                    //         });
+                    //     }
+                    //     else{
+                    //         await user.update({
+                    //             loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+                    //         });
+                    //     }
+                    // }
                     // Clear the user's cart
                     await Cart.destroy({ 
                         where: { user_id: order.user_id }

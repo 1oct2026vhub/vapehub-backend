@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod, LoyaltyPointsSettings } = require("../../../models");
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
@@ -212,7 +212,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 },
                 {
                     model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                    attributes: ["id", "name", "price", "discount_price", "stock_quantity", "brand_id", "category_id"],
                     as: "product"
                 },
                 {
@@ -402,6 +402,45 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                 }
 
+                // Check entity type validation if coupon has entity_type and entity_id
+                if (coupon.entity_type && coupon.entity_id) {
+                    let hasMatchingEntity = false;
+                    
+                    for (const item of cart) {
+                        if (!item.product) continue;
+                        
+                        switch (coupon.entity_type) {
+                            case 'product':
+                                if (item.product.id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                            case 'brand':
+                                if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                            case 'category':
+                                if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                        }
+                        
+                        if (hasMatchingEntity) break;
+                    }
+                    
+                    if (!hasMatchingEntity) {
+                        throw {
+                            statusCode: 400,
+                            message: `This coupon is only valid for ${coupon.entity_type} items. No matching ${coupon.entity_type} found in your cart.`
+                        }
+                    }
+                }
+
                 // Calculate discount
                 let discount = 0;
                 let discount_type = '';
@@ -432,7 +471,27 @@ module.exports.applyCoupon = async (req, res, next) => {
                 responseMessage = 'Coupon applied successfully';
             }
         }
-        
+        // const settings = await LoyaltyPointsSettings.findOne({
+        //     where: { status: true }
+        // });
+        // if(settings){
+        //     const user = await User.findOne({
+        //         where: { id: userId }
+        //     });
+            
+        //     if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+        //         const points = user.loyalty_points;
+        //         const loyaltyAmount = settings.loyalty_amount;
+        //         const loyaltyAmountType = settings.loyalty_amount_type;
+        //         if(loyaltyAmountType === 'percentage'){
+        //             const loyaltyDiscount = (loyaltyAmount / 100) * total;
+        //             total = Math.max(0, total - loyaltyDiscount);
+        //         }else{
+        //             total = Math.max(0, total - loyaltyAmount);
+        //         }
+
+        //     }
+        // }
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
