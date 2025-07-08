@@ -149,6 +149,7 @@ module.exports = {
         ...req.body,
         verified_by: true // Set default to 1 (true)
       });
+      
       res.status(201).json(review);
     } catch (err) {
       res.status(400).json({ error: err.message });
