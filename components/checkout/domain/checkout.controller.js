@@ -212,7 +212,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 },
                 {
                     model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                    attributes: ["id", "name", "price", "discount_price", "stock_quantity", "brand_id", "category_id"],
                     as: "product"
                 },
                 {
@@ -399,6 +399,45 @@ module.exports.applyCoupon = async (req, res, next) => {
                     throw {
                         statusCode: 400,
                         message: `Coupon requires a minimum purchase of £${coupon.minimum_purchase}.`
+                    }
+                }
+
+                // Check entity type validation if coupon has entity_type and entity_id
+                if (coupon.entity_type && coupon.entity_id) {
+                    let hasMatchingEntity = false;
+                    
+                    for (const item of cart) {
+                        if (!item.product) continue;
+                        
+                        switch (coupon.entity_type) {
+                            case 'product':
+                                if (item.product.id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                            case 'brand':
+                                if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                            case 'category':
+                                if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                    hasMatchingEntity = true;
+                                    break;
+                                }
+                                break;
+                        }
+                        
+                        if (hasMatchingEntity) break;
+                    }
+                    
+                    if (!hasMatchingEntity) {
+                        throw {
+                            statusCode: 400,
+                            message: `This coupon is only valid for ${coupon.entity_type} items. No matching ${coupon.entity_type} found in your cart.`
+                        }
                     }
                 }
 
