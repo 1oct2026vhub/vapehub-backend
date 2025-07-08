@@ -19,7 +19,6 @@ cron.schedule('0 * * * *', async () => {
         attributes: ['name']
       }]
     });
-
     // Filter in JS for variants where stock <= low_stock_threshold
     const lowStockVariantsFiltered = lowStockVariants.filter(v => v.stock <= v.low_stock_threshold);
     
@@ -30,14 +29,14 @@ cron.schedule('0 * * * *', async () => {
       // Get sales data for this variant in last 28 days
       const salesData = await OrderItem.findAll({
         where: {
-          product_variant_id: v.id,
+          variant_id: v.id,
           createdAt: {
             [Op.gte]: twentyEightDaysAgo.toDate()
           }
         },
         include: [{
           model: Order,
-          as: 'order',
+          as: 'Order',
           where: {
             status: {
               [Op.in]: ['completed', 'delivered', 'shipped']
@@ -47,11 +46,11 @@ cron.schedule('0 * * * *', async () => {
         }],
         attributes: [
           [require('sequelize').fn('SUM', require('sequelize').col('quantity')), 'totalQuantity'],
-          [require('sequelize').fn('SUM', require('sequelize').literal('quantity * price')), 'totalAmount']
+          [require('sequelize').fn('SUM', require('sequelize').col('OrderItem.total')), 'totalAmount']
         ],
         raw: true
       });
-
+      
       const salesCount = parseInt(salesData[0]?.totalQuantity || 0);
       const salesAmount = parseFloat(salesData[0]?.totalAmount || 0);
 
@@ -64,7 +63,6 @@ cron.schedule('0 * * * *', async () => {
         last28DaysAmount: salesAmount.toFixed(2)
       };
     }));
-
     // Only send email if there are low stock items
     if (lowStockList.length > 0) {
       const data = {
