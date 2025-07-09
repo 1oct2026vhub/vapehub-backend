@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory } = require("../../../models");
+const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require('../../../utils/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -2534,6 +2534,51 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
                     });
                 }
+            }
+        }
+
+        // Handle mail subscription discount
+        const mailSubscription = await MailSubscription.findOne({
+            where: { 
+                email: order.user.email,
+                isDiscountUsed: false
+            }
+        });
+
+        if (mailSubscription) {
+            const mailSettings = await MailSubscriptionSettings.findOne({
+                where: { status: true }
+            });
+
+            if (mailSettings) {
+                // Mark discount as used
+                await mailSubscription.update({
+                    isDiscountUsed: true
+                });
+
+                // Create notification for user about applied discount
+                await createNotification({
+                    userId: order.user_id,
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Mail subscription discount of ${mailSettings.discount_type === 'percentage' ? mailSettings.discount_amount + '%' : '£' + mailSettings.discount_amount} applied to your first order!`
+                    },
+                    title: 'Mail Subscription Discount Applied',
+                    url: `/order-details/${order.id}`
+                });
+
+                // Create admin notification about applied discount
+                await createNotification({
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Mail subscription discount applied to order #${order.order_unique_id} for user ${order.user.email}`
+                    },
+                    title: 'Mail Subscription Discount Applied',
+                    url: '/admin/orders',
+                    is_admin: true
+                });
             }
         }
         
