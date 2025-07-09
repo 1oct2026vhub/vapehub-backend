@@ -510,6 +510,10 @@ router.get('/:id', authenticateJWT, orderController.getOrderById);
  *               total:
  *                 type: number
  *                 example: 100.50
+ *               loyalty:
+ *                 type: boolean
+ *                 description: Flag indicating if loyalty points should be used. Defaults to false if not provided.
+ *                 example: true
  *     responses:
  *       200:
  *         description: Order placed successfully

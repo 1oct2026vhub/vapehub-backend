@@ -2,7 +2,7 @@ const { Sequelize, Op } = require("sequelize");
 const moment = require('moment-timezone');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod, LoyaltyPointsSettings} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -162,7 +162,7 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, loyalty, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
         
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
@@ -288,6 +288,7 @@ module.exports.placeOrder = async (req, res, next) => {
         let coupon_count_flag = false;
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
+        let loyalty_flag = false;
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -409,7 +410,8 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        else{
+
+        if(loyalty){
             const settings = await LoyaltyPointsSettings.findOne({
                 where: { status: true }
             });
@@ -430,8 +432,52 @@ module.exports.placeOrder = async (req, res, next) => {
                         loyaltyDiscount = loyaltyAmount;
                         calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
                     }
+                    loyalty_flag = true;
                     
-                    
+                }
+            }
+        }
+
+        // Check for mail subscription discount (first purchase)
+        let mailSubscriptionDiscount = 0;
+        let mailSubscriptionDiscountType = null;
+        let mailSubscription_flag = false;
+        
+        const user = await User.findOne({
+            where: { id: user_id },
+            attributes: ['id', 'email']
+        });
+
+        if (user && user.email) {
+            // Check if user has mail subscription and hasn't used discount yet
+            const mailSubscription = await MailSubscription.findOne({
+                where: { 
+                    email: user.email,
+                    isDiscountUsed: false
+                }
+            });
+
+            if (mailSubscription) {
+                // Get active mail subscription settings
+                const mailSettings = await MailSubscriptionSettings.findOne({
+                    where: { 
+                        status: true
+                    }
+                });
+
+                if (mailSettings && mailSettings.discount_amount > 0) {
+                    const discountAmount = mailSettings.discount_amount;
+                    const discountType = mailSettings.discount_type;
+
+                    if (discountType === 'percentage') {
+                        mailSubscriptionDiscount = (discountAmount / 100) * calculatedTotal;
+                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                    } else {
+                        mailSubscriptionDiscount = Math.min(discountAmount, calculatedTotal);
+                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                    }
+                    mailSubscriptionDiscountType = discountType;
+                    mailSubscription_flag = true;
                 }
             }
         }
@@ -563,7 +609,8 @@ module.exports.placeOrder = async (req, res, next) => {
             discount_price: referralDiscount,
             discount_type: discountType,
             referral_id: referralId,
-            payment_method_id: paymentMethodRecord.id
+            payment_method_id: paymentMethodRecord.id,
+            loyalty_flag: loyalty_flag
         }, { transaction });
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
@@ -610,6 +657,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         referral_discount: referralDiscount,
                         loyalty_discount: loyaltyDiscount,
                         // loyalty_discount_type: loyaltyDiscountType,
+                        mail_subscription_discount: mailSubscriptionDiscount,
+                        mail_subscription_discount_type: mailSubscriptionDiscountType,
                         total: calculatedTotal
                     },
                     shipping: { address: shippingAddrs },

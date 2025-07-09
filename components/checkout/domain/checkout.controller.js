@@ -1,6 +1,6 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod, LoyaltyPointsSettings } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
@@ -194,7 +194,7 @@ module.exports.checkout = async (req, res, next) => {
 module.exports.applyCoupon = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode, shippingMethodId } = req.body;
+        const { couponCode, shippingMethodId, loyalty } = req.body;
         let subTotal = 0;
         let total = 0;
         let totalItems = 0;
@@ -247,7 +247,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity;
         }
-
+        
         // Calculate deals
         const deals = await dealService.getApplicableDeals(cart);
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
@@ -473,7 +473,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 responseMessage = 'Coupon applied successfully';
             }
         }
-        else{
+        if(loyalty){
             const settings = await LoyaltyPointsSettings.findOne({
                 where: { status: true }
             });
@@ -481,7 +481,6 @@ module.exports.applyCoupon = async (req, res, next) => {
                 const user = await User.findOne({
                     where: { id: userId }
                 });
-                
                 if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
                     const points = user.loyalty_points;
                     const loyaltyAmount = settings.loyalty_amount;
@@ -494,6 +493,47 @@ module.exports.applyCoupon = async (req, res, next) => {
                         loyaltyDiscount = loyaltyAmount;
                     }
                     loyaltyDiscountType = loyaltyAmountType;
+                }
+            }
+        }
+
+        // Check for mail subscription discount (first purchase)
+        let mailSubscriptionDiscount = 0;
+        let mailSubscriptionDiscountType = null;
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'email']
+        });
+
+        if (user && user.email) {
+            // Check if user has mail subscription and hasn't used discount yet
+            const mailSubscription = await MailSubscription.findOne({
+                where: { 
+                    email: user.email,
+                    isDiscountUsed: false
+                }
+            });
+
+            if (mailSubscription) {
+                // Get active mail subscription settings
+                const mailSettings = await MailSubscriptionSettings.findOne({
+                    where: { 
+                        status: true
+                    }
+                });
+
+                if (mailSettings && mailSettings.discount_amount > 0) {
+                    const discountAmount = mailSettings.discount_amount;
+                    const discountType = mailSettings.discount_type;
+
+                    if (discountType === 'percentage') {
+                        mailSubscriptionDiscount = (discountAmount / 100) * total;
+                        total = Math.max(0, total - mailSubscriptionDiscount);
+                    } else {
+                        mailSubscriptionDiscount = Math.min(discountAmount, total);
+                        total = Math.max(0, total - mailSubscriptionDiscount);
+                    }
+                    mailSubscriptionDiscountType = discountType;
                 }
             }
         }
@@ -515,6 +555,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             discount_amount,
             loyalty_discount: loyaltyDiscount,
             loyalty_discount_type: loyaltyDiscountType,
+            mail_subscription_discount: mailSubscriptionDiscount,
+            mail_subscription_discount_type: mailSubscriptionDiscountType,
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals

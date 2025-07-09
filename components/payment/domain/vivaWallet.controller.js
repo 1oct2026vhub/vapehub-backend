@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require("../../../utils/logger");
 const crypto = require("crypto");
@@ -149,6 +149,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             );
                         }
                     }
+
                     if (order.coupon_id) {
                         await Coupon.update( { usage_count: sequelize.literal("usage_count + 1") }, { where: { id: order.coupon_id } });
                         
@@ -160,36 +161,85 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             used_at: new Date()
                         });
                     }
-
-                    const settings = await LoyaltyPointsSettings.findOne({
-                        where: { status: true }
-                    });
-            
-                    if(settings){
-                        const user = await User.findOne({
-                            where: { id: order.user_id }
+                    
+                    if(order.loyalty_flag){
+                        const settings = await LoyaltyPointsSettings.findOne({
+                            where: { status: true }
                         });
-                        if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
-                            const redeemedPoints = user.loyalty_points;
-                            await user.update({
-                                loyalty_points: 0
+                
+                        if(settings){
+                            const user = await User.findOne({
+                                where: { id: order.user_id }
                             });
-                            // Add loyalty points redemption history
-                            await LoyaltyPointsHistory.create({
-                                user_id: user.id,
-                                type: 'redeemed',
-                                points: Math.abs(redeemedPoints),
-                                order_id: order.id || null,
-                                description: 'Points redeemed',
-                                timestamp: new Date()
-                            });
+                            if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                                const redeemedPoints = user.loyalty_points;
+                                await user.update({
+                                    loyalty_points: 0
+                                });
+                                // Add loyalty points redemption history
+                                await LoyaltyPointsHistory.create({
+                                    user_id: user.id,
+                                    type: 'redeemed',
+                                    points: Math.abs(redeemedPoints),
+                                    order_id: order.id || null,
+                                    description: 'Points redeemed',
+                                    timestamp: new Date()
+                                });
+                            }
+                            else{
+                                await user.update({
+                                    loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+                                });
+                            }
                         }
-                        else{
-                            await user.update({
-                                loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+                    }
+
+                    // Handle mail subscription discount
+                    const mailSubscription = await MailSubscription.findOne({
+                        where: { 
+                            email: order.user.email,
+                            isDiscountUsed: false
+                        }
+                    });
+
+                    if (mailSubscription) {
+                        const mailSettings = await MailSubscriptionSettings.findOne({
+                            where: { status: true }
+                        });
+
+                        if (mailSettings) {
+                            // Mark discount as used
+                            await mailSubscription.update({
+                                isDiscountUsed: true
+                            });
+
+                            // Create notification for user about applied discount
+                            await createNotification({
+                                userId: order.user_id,
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `Mail subscription discount of ${mailSettings.discount_type === 'percentage' ? mailSettings.discount_amount + '%' : '£' + mailSettings.discount_amount} applied to your first order!`
+                                },
+                                title: 'Mail Subscription Discount Applied',
+                                url: `/order-details/${order.id}`
+                            });
+
+                            // Create admin notification about applied discount
+                            await createNotification({
+                                type: 'system',
+                                action: 'alert',
+                                data: {
+                                    message: `Mail subscription discount applied to order #${order.order_unique_id} for user ${order.user.email}`
+                                },
+                                title: 'Mail Subscription Discount Applied',
+                                url: '/admin/orders',
+                                is_admin: true
                             });
                         }
                     }
+
+                    
                     // Clear the user's cart
                     await Cart.destroy({ 
                         where: { user_id: order.user_id }

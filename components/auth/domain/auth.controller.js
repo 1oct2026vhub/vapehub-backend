@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role, Referral, ReferralMethod, Coupon } = require("../../../models");
+const { User, Role, Referral, ReferralMethod, Coupon, MailSubscription } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -94,7 +94,7 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, mail_subscription = false } = req.body;
         let{ referral_code } = req.query;
         if (!referral_code) {
             referral_code = null;
@@ -141,6 +141,27 @@ module.exports.register = async (req, res, next) => {
             referred_by: referrer ? referrer.id : null
         });
         const username = user?.first_name ?? user.email.split('@')[0];
+
+        // Handle mail subscription
+        if (mail_subscription === 'true' || mail_subscription === true) {
+            try {
+                // Check if email already exists in mail subscription table
+                const existingSubscription = await MailSubscription.findOne({
+                    where: { email: email }
+                });
+
+                // If not present, insert new subscription
+                if (!existingSubscription) {
+                    await MailSubscription.create({
+                        user_id: user.id,
+                        email: email
+                    });
+                }
+            } catch (subscriptionError) {
+                // Log error but don't fail the registration
+                console.error('Error handling mail subscription:', subscriptionError);
+            }
+        }
 
         // Create notifications for all admin users
         await createNotification({
