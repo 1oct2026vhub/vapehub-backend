@@ -2,7 +2,7 @@ const { Sequelize, Op } = require("sequelize");
 const moment = require('moment-timezone');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const {saveShippingAddress, getVivaAccessToken, createVivaOrder, getVivaAccessTokenByMerchantId} = require("../helper/order.helper")
-const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod, LoyaltyPointsSettings} = require("../../../models");
+const { Review, Coupon, CouponUsage, User, Product, ProductVariant, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, Cart, ShippingMethod, ProductVariantImage, UserAddress, PaymentMethod, Category, Flavor,Referral, Order, OrderItem, sequelize, Transaction, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings} = require("../../../models");
 const logger = require("../../../library/logger");
 const { v4: uuidv4 } = require('uuid');
 const crypto = require("crypto");
@@ -437,6 +437,50 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
+
+        // Check for mail subscription discount (first purchase)
+        let mailSubscriptionDiscount = 0;
+        let mailSubscriptionDiscountType = null;
+        let mailSubscription_flag = false;
+        
+        const user = await User.findOne({
+            where: { id: user_id },
+            attributes: ['id', 'email']
+        });
+
+        if (user && user.email) {
+            // Check if user has mail subscription and hasn't used discount yet
+            const mailSubscription = await MailSubscription.findOne({
+                where: { 
+                    email: user.email,
+                    isDiscountUsed: false
+                }
+            });
+
+            if (mailSubscription) {
+                // Get active mail subscription settings
+                const mailSettings = await MailSubscriptionSettings.findOne({
+                    where: { 
+                        status: true
+                    }
+                });
+
+                if (mailSettings && mailSettings.discount_amount > 0) {
+                    const discountAmount = mailSettings.discount_amount;
+                    const discountType = mailSettings.discount_type;
+
+                    if (discountType === 'percentage') {
+                        mailSubscriptionDiscount = (discountAmount / 100) * calculatedTotal;
+                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                    } else {
+                        mailSubscriptionDiscount = Math.min(discountAmount, calculatedTotal);
+                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                    }
+                    mailSubscriptionDiscountType = discountType;
+                    mailSubscription_flag = true;
+                }
+            }
+        }
         
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
@@ -613,6 +657,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         referral_discount: referralDiscount,
                         loyalty_discount: loyaltyDiscount,
                         // loyalty_discount_type: loyaltyDiscountType,
+                        mail_subscription_discount: mailSubscriptionDiscount,
+                        mail_subscription_discount_type: mailSubscriptionDiscountType,
                         total: calculatedTotal
                     },
                     shipping: { address: shippingAddrs },

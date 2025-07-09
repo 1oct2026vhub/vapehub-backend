@@ -75,6 +75,10 @@ router.post("/login", authController.login);
  *                 description: The password of the user (must be at least 8 characters)
  *                 minLength: 8
  *                 example: Password@123
+ *               mail_subscription:
+ *                 type: boolean
+ *                 description: Whether the user wants to subscribe to promotional emails. Defaults to false if not provided.
+ *                 example: true
  *     responses:
  *       201:
  *         description: User successfully registered
