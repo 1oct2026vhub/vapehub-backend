@@ -288,6 +288,7 @@ module.exports.placeOrder = async (req, res, next) => {
         let coupon_count_flag = false;
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
+        let loyalty_flag = false;
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -430,7 +431,7 @@ module.exports.placeOrder = async (req, res, next) => {
                         loyaltyDiscount = loyaltyAmount;
                         calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
                     }
-                    
+                    loyalty_flag = true;
                     
                 }
             }
@@ -563,7 +564,8 @@ module.exports.placeOrder = async (req, res, next) => {
             discount_price: referralDiscount,
             discount_type: discountType,
             referral_id: referralId,
-            payment_method_id: paymentMethodRecord.id
+            payment_method_id: paymentMethodRecord.id,
+            loyalty_flag: loyalty_flag
         }, { transaction });
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });

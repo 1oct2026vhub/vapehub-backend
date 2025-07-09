@@ -711,6 +711,12 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       }
     },
+    loyalty_flag: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: 'Flag to indicate if loyalty points were used in this order'
+    },
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false,

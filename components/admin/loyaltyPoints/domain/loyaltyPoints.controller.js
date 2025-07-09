@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { LoyaltyPointsSettings, User } = require('../../../../models');
+const { LoyaltyPointsSettings, User, LoyaltyPointsHistory, Order, sequelize } = require('../../../../models');
 const logger = require('../../../../library/logger');
 
 module.exports = {
@@ -259,5 +259,112 @@ module.exports = {
             logger.error('Error deleting loyalty points setting:', error);
             return errorResponse(res, error, 'Failed to delete loyalty points setting');
         }
-    }
+    },
+
+    // List all loyalty points history with pagination and filters
+    async listLoyaltyPointsHistory(req, res) {
+        try {
+            const { 
+                page = 1, 
+                limit = 10, 
+                user_id, 
+                type, 
+                order_id,
+                start_date,
+                end_date,
+                sort_by = 'timestamp',
+                sort_order = 'DESC'
+            } = req.query;
+            
+            const offset = (page - 1) * limit;
+            
+            // Build where clause
+            const whereClause = {};
+            
+            if (user_id) {
+                whereClause.user_id = user_id;
+            }
+            
+            if (type && ['earned', 'redeemed'].includes(type)) {
+                whereClause.type = type;
+            }
+            
+            if (order_id) {
+                whereClause.order_id = order_id;
+            }
+            
+            // Date range filter
+            if (start_date || end_date) {
+                whereClause.timestamp = {};
+                if (start_date) {
+                    whereClause.timestamp.$gte = new Date(start_date);
+                }
+                if (end_date) {
+                    whereClause.timestamp.$lte = new Date(end_date);
+                }
+            }
+
+            // Validate sort parameters
+            const validSortFields = ['timestamp', 'points', 'type', 'user_id', 'order_id'];
+            const validSortOrders = ['ASC', 'DESC'];
+            
+            const sortField = validSortFields.includes(sort_by) ? sort_by : 'timestamp';
+            const sortOrder = validSortOrders.includes(sort_order.toUpperCase()) ? sort_order.toUpperCase() : 'DESC';
+
+            const { count, rows: history } = await LoyaltyPointsHistory.findAndCountAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'first_name', 'last_name', 'email']
+                    },
+                    {
+                        model: Order,
+                        as: 'order',
+                        attributes: ['id', 'order_unique_id', 'total', 'status'],
+                        required: false
+                    }
+                ],
+                order: [[sortField, sortOrder]],
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
+
+            // Calculate summary statistics
+            const summary = await LoyaltyPointsHistory.findAll({
+                where: whereClause,
+                attributes: [
+                    [sequelize.fn('SUM', sequelize.literal('CASE WHEN type = "earned" THEN points ELSE 0 END')), 'total_earned'],
+                    [sequelize.fn('SUM', sequelize.literal('CASE WHEN type = "redeemed" THEN ABS(points) ELSE 0 END')), 'total_redeemed'],
+                    [sequelize.fn('COUNT', sequelize.literal('CASE WHEN type = "earned" THEN 1 END')), 'earned_transactions'],
+                    [sequelize.fn('COUNT', sequelize.literal('CASE WHEN type = "redeemed" THEN 1 END')), 'redeemed_transactions']
+                ],
+                raw: true
+            });
+
+            const response = {
+                history: history,
+                summary: {
+                    total_earned: parseInt(summary[0]?.total_earned || 0),
+                    total_redeemed: parseInt(summary[0]?.total_redeemed || 0),
+                    earned_transactions: parseInt(summary[0]?.earned_transactions || 0),
+                    redeemed_transactions: parseInt(summary[0]?.redeemed_transactions || 0),
+                    net_points: parseInt(summary[0]?.total_earned || 0) - parseInt(summary[0]?.total_redeemed || 0)
+                },
+                pagination: {
+                    total: count,
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total_pages: Math.ceil(count / limit)
+                }
+            };
+
+            return successResponse(res, response, 'Loyalty points history retrieved successfully');
+        } catch (error) {
+            logger.error('Error listing loyalty points history:', error);
+            return errorResponse(res, error, 'Failed to retrieve loyalty points history');
+        }
+    },
+
 }; 
