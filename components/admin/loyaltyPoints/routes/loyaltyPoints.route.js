@@ -6,7 +6,8 @@ const {
     getLoyaltyPointsSetting,
     createLoyaltyPointsSetting,
     updateLoyaltyPointsSetting,
-    deleteLoyaltyPointsSetting
+    deleteLoyaltyPointsSetting,
+    listLoyaltyPointsHistory
 } = require('../domain/loyaltyPoints.controller');
 const {
     listLoyaltyPointsSettingsValidation,
@@ -14,6 +15,7 @@ const {
     createLoyaltyPointsSettingsValidation,
     updateLoyaltyPointsSettingsValidation,
     deleteLoyaltyPointsSettingValidation,
+    listLoyaltyPointsHistoryValidation,
     handleValidationErrors
 } = require('../helper/loyaltyPoints.validator');
 
@@ -249,6 +251,98 @@ router.delete('/settings/:id', [
 
 /**
  * @swagger
+ * /api/admin/loyalty-points/history:
+ *   get:
+ *     summary: List loyalty points history (admin)
+ *     tags: [Admin - Loyalty Points]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: user_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by user ID
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [earned, redeemed]
+ *         description: Filter by transaction type
+ *       - in: query
+ *         name: order_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by order ID
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by start date (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by end date (YYYY-MM-DD)
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [timestamp, points, type, user_id, order_id]
+ *           default: timestamp
+ *         description: Sort field
+ *       - in: query
+ *         name: sort_order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order
+ *     responses:
+ *       200:
+ *         description: Loyalty points history retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     history:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/LoyaltyPointsHistory'
+ *                     summary:
+ *                       $ref: '#/components/schemas/LoyaltyPointsHistorySummary'
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/history', [
+    authMiddleware(true),
+    handleValidationErrors
+], listLoyaltyPointsHistory);
+
+/**
+ * @swagger
  * components:
  *   schemas:
  *     LoyaltyPointsSettings:
@@ -394,6 +488,67 @@ router.delete('/settings/:id', [
  *           type: integer
  *         total_pages:
  *           type: integer
+ *     LoyaltyPointsHistory:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *           description: Unique identifier for the history entry
+ *         user_id:
+ *           type: integer
+ *           description: ID of the user who earned/spent the points
+ *         type:
+ *           type: string
+ *           enum: [earned, redeemed]
+ *           description: Type of transaction
+ *         points:
+ *           type: integer
+ *           description: Points earned (positive) or spent (negative)
+ *         order_id:
+ *           type: integer
+ *           nullable: true
+ *           description: Reference to order if points are from purchase
+ *         description:
+ *           type: string
+ *           nullable: true
+ *           description: Description of the transaction
+ *         timestamp:
+ *           type: string
+ *           format: date-time
+ *           description: When the transaction occurred
+ *         user:
+ *           $ref: '#/components/schemas/User'
+ *         order:
+ *           type: object
+ *           nullable: true
+ *           properties:
+ *             id:
+ *               type: integer
+ *             order_unique_id:
+ *               type: string
+ *             total:
+ *               type: number
+ *               format: float
+ *             status:
+ *               type: string
+ *     LoyaltyPointsHistorySummary:
+ *       type: object
+ *       properties:
+ *         total_earned:
+ *           type: integer
+ *           description: Total points earned
+ *         total_redeemed:
+ *           type: integer
+ *           description: Total points redeemed
+ *         earned_transactions:
+ *           type: integer
+ *           description: Number of earned transactions
+ *         redeemed_transactions:
+ *           type: integer
+ *           description: Number of redeemed transactions
+ *         net_points:
+ *           type: integer
+ *           description: Net points (earned - redeemed)
  */
 
 module.exports = router; 

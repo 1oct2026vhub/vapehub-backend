@@ -2504,35 +2504,39 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 // Don't throw the error, just log it and continue
             }
         }
-        const settings = await LoyaltyPointsSettings.findOne({
-            where: { status: true }
-        });
-
-        if(settings){
-            const user = await User.findOne({
-                where: { id: order.user_id }
+        
+        if(order.loyalty_flag){
+            const settings = await LoyaltyPointsSettings.findOne({
+                where: { status: true }
             });
-            if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
-                const redeemedPoints = user.loyalty_points;
-                await user.update({
-                    loyalty_points: 0
+    
+            if(settings){
+                const user = await User.findOne({
+                    where: { id: order.user_id }
                 });
-                // Add loyalty points redemption history
-                await LoyaltyPointsHistory.create({
-                    user_id: user.id,
-                    type: 'redeemed',
-                    points: Math.abs(redeemedPoints),
-                    order_id: order.id || null,
-                    description: 'Points redeemed',
-                    timestamp: new Date()
-                });
-            }
-            else{
-                await user.update({
-                    loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
-                });
+                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                    const redeemedPoints = user.loyalty_points;
+                    await user.update({
+                        loyalty_points: 0
+                    });
+                    // Add loyalty points redemption history
+                    await LoyaltyPointsHistory.create({
+                        user_id: user.id,
+                        type: 'redeemed',
+                        points: Math.abs(redeemedPoints),
+                        order_id: order.id || null,
+                        description: 'Points redeemed',
+                        timestamp: new Date()
+                    });
+                }
+                else{
+                    await user.update({
+                        loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+                    });
+                }
             }
         }
+        
         // Clear the user's cart
         await Cart.destroy({ 
             where: { user_id: order.user_id }
