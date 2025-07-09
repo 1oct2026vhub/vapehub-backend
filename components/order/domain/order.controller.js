@@ -286,6 +286,8 @@ module.exports.placeOrder = async (req, res, next) => {
         let referralDiscount = 0;
         let referralId = null;
         let coupon_count_flag = false;
+        let loyaltyDiscount = 0;
+        let loyaltyDiscountType = null;
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -407,26 +409,33 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        const settings = await LoyaltyPointsSettings.findOne({
-            where: { status: true }
-        });
-
-        if(settings){
-            const user = await User.findOne({
-                where: { id: user_id }
+        else{
+            const settings = await LoyaltyPointsSettings.findOne({
+                where: { status: true }
             });
-            if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
-                const points = user.loyalty_points;
-                const loyaltyAmount = settings.loyalty_amount;
-                const loyaltyAmountType = settings.loyalty_amount_type;
-                if(loyaltyAmountType === 'percentage'){
-                    const loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
-                    calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
-                }else{
-                    calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+    
+            if(settings){
+                const user = await User.findOne({
+                    where: { id: user_id }
+                });
+                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                    const points = user.loyalty_points;
+                    const loyaltyAmount = settings.loyalty_amount;
+                    const loyaltyAmountType = settings.loyalty_amount_type;
+                    
+                    if(loyaltyAmountType === 'percentage'){
+                        loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
+                        calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+                    }else{
+                        loyaltyDiscount = loyaltyAmount;
+                        calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                    }
+                    
+                    
                 }
             }
         }
+        
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
@@ -599,6 +608,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         deals_discount: dealsDiscount,
                         coupon_discount: coupon ? discount : 0,
                         referral_discount: referralDiscount,
+                        loyalty_discount: loyaltyDiscount,
+                        // loyalty_discount_type: loyaltyDiscountType,
                         total: calculatedTotal
                     },
                     shipping: { address: shippingAddrs },

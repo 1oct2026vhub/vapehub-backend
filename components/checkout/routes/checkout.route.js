@@ -259,6 +259,6 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                   type: string
  *                   example: "Internal server error"
  */
-router.post("/apply-coupon", authenticateJWT,  validateRequest(applyCouponValidate),  checkoutController.applyCoupon)
+router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  // validateRequest(applyCouponValidate),
 
 module.exports = router
