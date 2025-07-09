@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
-const { LoyaltyPointsSettings, User } = require('../../../models');
+const { LoyaltyPointsSettings, User, LoyaltyPointsHistory } = require('../../../models');
 const logger = require('../../../library/logger');
 
 module.exports = {
@@ -62,5 +62,6 @@ module.exports = {
             logger.error('Error getting user redemption info:', error);
             return errorResponse(res, error, 'Failed to retrieve redemption information');
         }
-    }
+    },
+
 }; 

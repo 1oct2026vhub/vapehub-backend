@@ -260,6 +260,8 @@ module.exports.applyCoupon = async (req, res, next) => {
         let referral_value_type = null;
         let discount_amount = 0;
         let responseMessage = '';
+        let loyaltyDiscount = 0;
+        let loyaltyDiscountType = null;
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
@@ -471,27 +473,31 @@ module.exports.applyCoupon = async (req, res, next) => {
                 responseMessage = 'Coupon applied successfully';
             }
         }
-        const settings = await LoyaltyPointsSettings.findOne({
-            where: { status: true }
-        });
-        if(settings){
-            const user = await User.findOne({
-                where: { id: userId }
+        else{
+            const settings = await LoyaltyPointsSettings.findOne({
+                where: { status: true }
             });
-            
-            if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
-                const points = user.loyalty_points;
-                const loyaltyAmount = settings.loyalty_amount;
-                const loyaltyAmountType = settings.loyalty_amount_type;
-                if(loyaltyAmountType === 'percentage'){
-                    const loyaltyDiscount = (loyaltyAmount / 100) * total;
-                    total = Math.max(0, total - loyaltyDiscount);
-                }else{
-                    total = Math.max(0, total - loyaltyAmount);
+            if(settings){
+                const user = await User.findOne({
+                    where: { id: userId }
+                });
+                
+                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                    const points = user.loyalty_points;
+                    const loyaltyAmount = settings.loyalty_amount;
+                    const loyaltyAmountType = settings.loyalty_amount_type;
+                    if(loyaltyAmountType === 'percentage'){
+                        loyaltyDiscount = (loyaltyAmount / 100) * total;
+                        total = Math.max(0, total - loyaltyDiscount);
+                    }else{
+                        total = Math.max(0, total - loyaltyAmount);
+                        loyaltyDiscount = loyaltyAmount;
+                    }
+                    loyaltyDiscountType = loyaltyAmountType;
                 }
-
             }
         }
+        
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
@@ -507,6 +513,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             referral_value: referral_value,
             referral_value_type,
             discount_amount,
+            loyalty_discount: loyaltyDiscount,
+            loyalty_discount_type: loyaltyDiscountType,
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
