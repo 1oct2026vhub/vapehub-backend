@@ -194,7 +194,7 @@ module.exports.checkout = async (req, res, next) => {
 module.exports.applyCoupon = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode, shippingMethodId } = req.body;
+        const { couponCode, shippingMethodId, loyalty } = req.body;
         let subTotal = 0;
         let total = 0;
         let totalItems = 0;
@@ -473,7 +473,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                 responseMessage = 'Coupon applied successfully';
             }
         }
-        else{
+        
+        if(loyalty){
             const settings = await LoyaltyPointsSettings.findOne({
                 where: { status: true }
             });

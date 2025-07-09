@@ -162,7 +162,7 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, loyalty, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
         
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
@@ -410,7 +410,8 @@ module.exports.placeOrder = async (req, res, next) => {
                 }
             }
         }
-        else{
+
+        if(loyalty){
             const settings = await LoyaltyPointsSettings.findOne({
                 where: { status: true }
             });
