@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require("../../../utils/logger");
 const crypto = require("crypto");
@@ -170,8 +170,18 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             where: { id: order.user_id }
                         });
                         if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                            const redeemedPoints = user.loyalty_points;
                             await user.update({
                                 loyalty_points: 0
+                            });
+                            // Add loyalty points redemption history
+                            await LoyaltyPointsHistory.create({
+                                user_id: user.id,
+                                type: 'redeemed',
+                                points: Math.abs(redeemedPoints),
+                                order_id: order.id || null,
+                                description: 'Points redeemed',
+                                timestamp: new Date()
                             });
                         }
                         else{

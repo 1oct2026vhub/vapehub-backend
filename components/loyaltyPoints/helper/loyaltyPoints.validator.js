@@ -1,4 +1,4 @@
-const { body } = require("express-validator");
+const { body, query } = require("express-validator");
 
 const loyaltyPointsValidator = {
     // Validate order amount for points calculation
@@ -24,6 +24,22 @@ const loyaltyPointsValidator = {
             .withMessage("User ID must be a positive integer")
             .notEmpty()
             .withMessage("User ID is required")
+    ],
+
+    // Validate history query parameters
+    historyQuery: [
+        query("page")
+            .optional()
+            .isInt({ min: 1 })
+            .withMessage("Page must be a positive integer"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("type")
+            .optional()
+            .isIn(['earned', 'redeemed'])
+            .withMessage("Type must be one of: earned, redeemed")
     ]
 };
 

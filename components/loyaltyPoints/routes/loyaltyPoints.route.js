@@ -60,4 +60,5 @@ const loyaltyPointsValidator = require('../helper/loyaltyPoints.validator');
  */
 router.get('/redemption', authenticateJWT, loyaltyPointsController.getUserRedemptionInfo);
 
+
 module.exports = router; 
