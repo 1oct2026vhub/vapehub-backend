@@ -105,6 +105,7 @@ app.use("/api", require('./components/router'));
 app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/logs", express.static(path.join(__dirname, "public/logs")));
 
-require('./cron/lowStockAlert');
+// Initialize cron jobs
+require('./cron/init');
 
 module.exports = app;

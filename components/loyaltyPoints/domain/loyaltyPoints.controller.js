@@ -36,7 +36,7 @@ module.exports = {
             let redemptionAmount = 0;
             let redemptionType = 'none';
 
-            if (canRedeem) {
+            // if (canRedeem) {
                 if (settings.loyalty_amount_type === 'percentage') {
                     redemptionAmount = settings.loyalty_amount;
                     redemptionType = 'percentage';
@@ -44,7 +44,7 @@ module.exports = {
                     redemptionAmount = settings.loyalty_amount;
                     redemptionType = 'fixed';
                 }
-            }
+            // }
 
             const response = {
                 user_points: user.loyalty_points || 0,
@@ -54,7 +54,7 @@ module.exports = {
                 redemption_amount: redemptionAmount,
                 redemption_type: redemptionType,
                 points_value: settings.points_value,
-                total_points_value: (user.loyalty_points || 0) * settings.points_value
+                // total_points_value: (user.loyalty_points || 0) * settings.points_value
             };
 
             return successResponse(res, response, 'Redemption information retrieved successfully');
