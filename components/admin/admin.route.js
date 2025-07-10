@@ -42,4 +42,5 @@ router.use('/shipStationWebhook', require('./shipStationWebhook/routes/shipStati
 router.use('/loyalty-points', require('./loyaltyPoints/routes/loyaltyPoints.route'));
 router.use('/mail-subscription-settings', require('./mailSubscriptionSettings/routes/mailSubscriptionSettings.route'));
 
+
 module.exports = router;

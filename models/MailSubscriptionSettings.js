@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
             autoIncrement: true,
             unique: true
         },
+
         email_frequency: {
             type: DataTypes.ENUM('daily', 'weekly', 'monthly', 'never'),
             allowNull: true,
