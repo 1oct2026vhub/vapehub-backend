@@ -9,7 +9,6 @@ const { productStatus } = require("../../../config/constants");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        console.log("req.query>>>>","product");
         const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
             ...req.query,
             status: productStatus.PUBLISHED
@@ -228,10 +227,10 @@ module.exports.getProductByid = async (req, res, next) => {
             const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
 
             // Check if product has deals and set apply_coupon based on stock quantity
-            let apply_coupon = false;
+            let apply_deals = false;
             if (product.deals && product.deals.length > 0) {
                 // Check if any deal's required_qty is met by the variant's stock
-                apply_coupon = product.deals.some(deal => {
+                apply_deals = product.deals.some(deal => {
                     return variant.stock >= deal.required_qty;
                 });
             }
@@ -255,7 +254,7 @@ module.exports.getProductByid = async (req, res, next) => {
                 stock_status: variant.stock_status,
                 status: variant.status,
                 isInStock: variant.stock > 0,
-                apply_coupon: apply_coupon,
+                apply_deals: apply_deals,
                 primaryImage: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
