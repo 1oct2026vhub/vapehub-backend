@@ -25,7 +25,7 @@ async function getLatestProducts(frequency) {
 
     switch (frequency) {
         case 'daily':
-            startDate = now.clone().subtract(365, 'day').startOf('day');
+            startDate = now.clone().subtract(30, 'day').startOf('day');
             break;
         case 'weekly':
             startDate = now.clone().subtract(7, 'days').startOf('day');
@@ -74,7 +74,6 @@ async function getLatestProducts(frequency) {
             order: [['createdAt', 'DESC']],
             limit: 12 // Limit to 12 latest products
         });
-
         // Process products to include primary image and pricing
         return products.map(product => {
             const primaryImage = product.ProductImages?.[0]?.image_url;
@@ -201,7 +200,6 @@ async function sendProductUpdateEmails(frequency) {
                         },
                         attachments: []
                     };
-
                     await sendEmail(
                         emailData.to, 
                         emailData.emailTypes, 
@@ -215,10 +213,8 @@ async function sendProductUpdateEmails(frequency) {
                     return { success: false, email: subscriber.email, error: error.message };
                 }
             });
-
             // Wait for current batch to complete concurrently
             const batchResults = await Promise.all(batchPromises);
-            
             // Count results from this batch
             batchResults.forEach(result => {
                 if (result.success) {
@@ -249,23 +245,7 @@ async function sendProductUpdateEmails(frequency) {
     }
 }
 
-cron.schedule('0 * * * *', async () => {
-    try {
-        const globalSettings = await MailSubscriptionSettings.findOne({
-            where: { status: true }
-        });
-        
-        if (globalSettings && globalSettings.email_frequency === 'daily' && globalSettings.product_updates) {
-            await sendProductUpdateEmails(globalSettings.email_frequency);
-        } else {
-            logger.info('Daily product update emails skipped - frequency not set to daily or product updates disabled');
-        }
-    } catch (error) {
-        logger.error('Error in daily product update cron job:', error);
-    }
-}, {
-    timezone: process.env.UK_TIMEZONE || 'Europe/London'
-});
+
 // Schedule cron jobs to check MailSubscriptionSettings and send emails accordingly
 // Daily check at 9 AM UK time
 cron.schedule('0 9 * * *', async () => {
