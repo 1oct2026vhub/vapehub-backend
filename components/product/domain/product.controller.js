@@ -226,6 +226,15 @@ module.exports.getProductByid = async (req, res, next) => {
             // Get primary image
             const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
 
+            // Check if product has deals and set apply_coupon based on stock quantity
+            let apply_coupon = false;
+            if (product.deals && product.deals.length > 0) {
+                // Check if any deal's required_qty is met by the variant's stock
+                apply_coupon = product.deals.some(deal => {
+                    return variant.stock >= deal.required_qty;
+                });
+            }
+
             variantStockMap.set(combinationKey, {
                 variantId: variant.id,
                 slug: variant.slug,
@@ -245,6 +254,7 @@ module.exports.getProductByid = async (req, res, next) => {
                 stock_status: variant.stock_status,
                 status: variant.status,
                 isInStock: variant.stock > 0,
+                apply_coupon: apply_coupon,
                 primaryImage: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
