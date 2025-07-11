@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Menu, MenuItem, Product, Brand, Blog, Category, sequelize, ProductImage } = require("../../../models");
+const { Menu, MenuItem, Product, Brand, Blog, Category, Deal, sequelize, ProductImage } = require("../../../models");
 const logger = require("../../../library/logger");
+const { Op } = require("sequelize");
 
 module.exports = {
 
@@ -17,7 +18,7 @@ module.exports = {
                 where.entity_type = filters.entity_type;
             }
             if (filters.label) {
-                where.label = { [Op.iLike]: `%${filters.label}%` };
+                where.label = { [Op.like]: `%${filters.label}%` };
             }
             // First get all menus with their children
             const menus = await Menu.findAll({
@@ -38,7 +39,6 @@ module.exports = {
             });
             // Convert to tree structure
             const menuTree = buildMenuTree(menus.map(menu => menu.toJSON()));
-
             // Function to process menu items recursively
             const processMenuItems = async (items) => {
                 for (const item of items) {
@@ -86,6 +86,34 @@ module.exports = {
                                         attributes: attributes
                                     });
                                     item.entity_data = blog;
+                                    break;
+                                case 'deal':
+                                    const deal = await Deal.findByPk(item.entity_id, {
+                                        attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'valid_from', 'valid_to'],
+                                        include: [{
+                                            model: Product,
+                                            as: 'products',
+                                            through: { attributes: [] }, // Don't include junction table attributes
+                                            attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
+                                            include: [{
+                                                model: ProductImage,
+                                                as: 'ProductImages',
+                                                where: { is_primary: true },
+                                                attributes: ['image_url'],
+                                                required: false
+                                            }]
+                                        }]
+                                    });
+                                    
+                                    // Add primary product image to deal if products exist
+                                    if (deal && deal.products && deal.products.length > 0) {
+                                        const primaryProduct = deal.products[0];
+                                        if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
+                                            deal.image_url = primaryProduct.ProductImages[0].image_url;
+                                        }
+                                    }
+                                    
+                                    item.entity_data = deal;
                                     break;
                             }
                         } catch (error) {
@@ -135,6 +163,34 @@ module.exports = {
                                             });
                                             child.entity_data = blog;
                                             break;
+                                        case 'deal':
+                                            const deal = await Deal.findByPk(child.entity_id, {
+                                                attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active'],
+                                                include: [{
+                                                    model: Product,
+                                                    as: 'products',
+                                                    through: { attributes: [] },
+                                                    attributes: ['id', 'name', 'slug'],
+                                                    include: [{
+                                                        model: ProductImage,
+                                                        as: 'ProductImages',
+                                                        where: { is_primary: true },
+                                                        attributes: ['image_url'],
+                                                        required: false
+                                                    }]
+                                                }]
+                                            });
+                                            
+                                            // Add primary product image to deal if products exist
+                                            if (deal && deal.products && deal.products.length > 0) {
+                                                const primaryProduct = deal.products[0];
+                                                if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
+                                                    deal.image_url = primaryProduct.ProductImages[0].image_url;
+                                                }
+                                            }
+                                            
+                                            child.entity_data = deal;
+                                            break;
                                     }
                                 } catch (error) {
                                     logger.error(`Error fetching ${child.entity_type} data:`, error);
@@ -157,6 +213,12 @@ module.exports = {
                                                 attributes: ['id', 'name', 'slug', 'price', 'discount_price']
                                             });
                                             child.entity_data = product;
+                                            break;
+                                        case 'deal':
+                                            const deal = await Deal.findByPk(child.entity_id, {
+                                                attributes: ['id', 'name', 'slug', 'deal_type', 'discount_percent', 'fixed_price', 'is_active']
+                                            });
+                                            child.entity_data = deal;
                                             break;
                                     }
                                 } catch (error) {
