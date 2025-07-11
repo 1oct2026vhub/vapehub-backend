@@ -7,6 +7,7 @@ const hbs = require('handlebars')
 
 const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
+const utilsLogger = require('../../utils/logger');
 
 /**
  * Function to render a new email, save it as file and add it to index file
@@ -16,8 +17,10 @@ exports.newEmail = async(email) => {
 
     // Ensure emails directory exists
     try {
+        utilsLogger.logInfo(`emailsDir: ${emailsDir}`);
         await fs.access(emailsDir);
     } catch (error) {
+        utilsLogger.logError(`Error in newEmail: ${error}`);
         if (error.code === 'ENOENT') {
             await fs.mkdir(emailsDir, { recursive: true });
         } else {
@@ -33,18 +36,26 @@ exports.newEmail = async(email) => {
         dir: emailsDir,
         id: fileId,
     })
-
+    utilsLogger.logInfo(`fileId: ${fileId}`);
     let oldIndexText;
     try {
         oldIndexText = await fs.readFile(indexFilePath, 'utf8');
+        utilsLogger.logInfo(`oldIndexText: ${oldIndexText}`);
     } catch (error) {
+        utilsLogger.logError(`Error in newEmail: ${error}`);
         if(error.code === 'ENOENT') {
             await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n`)
+            utilsLogger.logInfo(`indexFilePath error: ${indexFilePath}`);
+            utilsLogger.logInfo(`fileId error: ${fileId}`);
+            utilsLogger.logInfo(`Date.now() error: ${Date.now()}`);
+            utilsLogger.logInfo(`encodeURI(email.subject) error: ${encodeURI(email.subject)}`);
+            utilsLogger.logInfo(`encodeURI(email.to) error: ${encodeURI(email.to)}`);
             return;
         }
         throw error;
     }
     const oldIndex = oldIndexText.split('\n').filter(i => i);
+    utilsLogger.logInfo(`oldIndex: ${oldIndex}`);
     if(oldIndex.length >= 50) {
         const toDel = oldIndex.splice(49);
         for(let i of toDel) {
@@ -52,6 +63,11 @@ exports.newEmail = async(email) => {
         }
     }
     await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`)
+    utilsLogger.logInfo(`indexFilePath: ${indexFilePath}`);
+    utilsLogger.logInfo(`fileId: ${fileId}`);
+    utilsLogger.logInfo(`Date.now(): ${Date.now()}`);
+    utilsLogger.logInfo(`encodeURI(email.subject): ${encodeURI(email.subject)}`);
+    utilsLogger.logInfo(`encodeURI(email.to): ${encodeURI(email.to)}`);
 }
 
 /**
