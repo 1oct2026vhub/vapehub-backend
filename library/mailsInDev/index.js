@@ -58,16 +58,32 @@ exports.newEmail = async(email) => {
     utilsLogger.logInfo(`oldIndex: ${oldIndex}`);
     if(oldIndex.length >= 50) {
         const toDel = oldIndex.splice(49);
-        for(let i of toDel) {
-            await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
+        try{
+            for(let i of toDel) {
+                await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
+            }
         }
+        catch(error){
+            utilsLogger.logError(`Error in newEmail: ${error}`);
+        }
+        utilsLogger.logInfo(`toDel: ${toDel}`);
     }
-    await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`)
-    utilsLogger.logInfo(`indexFilePath: ${indexFilePath}`);
-    utilsLogger.logInfo(`fileId: ${fileId}`);
-    utilsLogger.logInfo(`Date.now(): ${Date.now()}`);
-    utilsLogger.logInfo(`encodeURI(email.subject): ${encodeURI(email.subject)}`);
-    utilsLogger.logInfo(`encodeURI(email.to): ${encodeURI(email.to)}`);
+    const updatedIndexContent = `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`;
+    utilsLogger.logInfo(`Updating index file with content: ${updatedIndexContent}`);
+    utilsLogger.logInfo(`Writing to indexFilePath: ${indexFilePath}`);
+    
+    try {
+        await fs.writeFile(indexFilePath, updatedIndexContent);
+        utilsLogger.logInfo(`✅ Successfully updated index file`);
+        
+        // Verify the file was written
+        const verifyContent = await fs.readFile(indexFilePath, 'utf8');
+        utilsLogger.logInfo(`✅ Verified updated index file content: ${verifyContent}`);
+    } catch (writeError) {
+        utilsLogger.logError(`❌ Failed to update index file: ${writeError}`);
+        throw writeError;
+    }
+    
 }
 
 /**
