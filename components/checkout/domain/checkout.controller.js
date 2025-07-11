@@ -262,6 +262,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         let responseMessage = '';
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
+        let loyaltyRedeem = false;
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
@@ -493,6 +494,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         loyaltyDiscount = loyaltyAmount;
                     }
                     loyaltyDiscountType = loyaltyAmountType;
+                    loyaltyRedeem = true;
                 }
             }
         }
@@ -555,6 +557,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             discount_amount,
             loyalty_discount: loyaltyDiscount,
             loyalty_discount_type: loyaltyDiscountType,
+            loyalty_redeem: loyaltyRedeem,
             mail_subscription_discount: mailSubscriptionDiscount,
             mail_subscription_discount_type: mailSubscriptionDiscountType,
             deals: {

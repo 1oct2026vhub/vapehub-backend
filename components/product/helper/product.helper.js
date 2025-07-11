@@ -220,7 +220,8 @@ const fetchProducts = async (query, status = 'published') => {
       brand,
       variant,
       is_new,
-      source
+      source,
+      deal_id
     } = query;
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
@@ -418,9 +419,10 @@ const fetchProducts = async (query, status = 'published') => {
           is_active: true,
           is_deleted: false,
           valid_from: { [Op.lte]: new Date() },
-          valid_to: { [Op.gte]: new Date() }
+          valid_to: { [Op.gte]: new Date() },
+          ...(deal_id && { id: parseInt(deal_id) })
         },
-        required: false,
+        required: deal_id ? true : false,
         attributes: [
           'id', 
           'name', 
@@ -490,6 +492,12 @@ const fetchProducts = async (query, status = 'published') => {
       lastMonthDate.setDate(lastMonthDate.getDate() - 30);
       productFilterConditions.push("p.createdAt >= :lastMonthDate");
       productFilterParams.lastMonthDate = lastMonthDate;
+    }
+    
+    // Add deal filter condition
+    if (deal_id) {
+      productFilterConditions.push("EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = :dealId AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())");
+      productFilterParams.dealId = parseInt(deal_id);
     }
     
     // Price range filter for products
@@ -582,6 +590,7 @@ const fetchProducts = async (query, status = 'published') => {
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )` : ''}
           ${brand ? `AND p.brand_id IN (${brand})` : ''}
+          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
       )
       SELECT 
         c.id, 
@@ -652,6 +661,7 @@ const fetchProducts = async (query, status = 'published') => {
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )` : ''}
           ${categories ? `AND p.category_id IN (${categories})` : ''}
+          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
       )
       SELECT 
         b.id, 
@@ -726,6 +736,19 @@ const fetchProducts = async (query, status = 'published') => {
                 )
                 .join(' OR ')}
             )
+          )
+        ` : ''}
+        ${deal_id ? `
+          AND EXISTS (
+            SELECT 1 
+            FROM deal_products dp 
+            JOIN deals d ON dp.deal_id = d.id 
+            WHERE dp.product_id = p.id 
+            AND d.id = ${parseInt(deal_id)} 
+            AND d.is_active = true 
+            AND d.is_deleted = false 
+            AND d.valid_from <= NOW() 
+            AND d.valid_to >= NOW()
           )
         ` : ''}
       )
@@ -858,6 +881,7 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
+          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
       )
       SELECT 
         CASE 

@@ -10,6 +10,8 @@ module.exports = {
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
         WELCOME: 'WELCOME',
         INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
+        PRODUCT_UPDATES: 'PRODUCT_UPDATES',
+        PROMOTIONAL: 'PROMOTIONAL',
     },
     emailTypeData: {
         REGISTER: {
@@ -60,6 +62,16 @@ module.exports = {
         INVENTORY_LOW_STOCK: {
             folderName: 'inventory',
             subject: 'Low Stock Alert: Product Variants',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        PRODUCT_UPDATES: {
+            folderName: 'product_updates',
+            subject: 'New Products Alert! 🆕 Latest Additions to VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        PROMOTIONAL: {
+            folderName: 'promotional',
+            subject: 'Special Offer from VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },
