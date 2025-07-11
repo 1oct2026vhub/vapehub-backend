@@ -482,7 +482,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 const user = await User.findOne({
                     where: { id: userId }
                 });
-                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                if(user.loyalty_points >= settings.minimum_points_redemption && total >= settings.minimum_purchase_amount){  // && total >= settings.minimum_purchase_amount
                     const points = user.loyalty_points;
                     const loyaltyAmount = settings.loyalty_amount;
                     const loyaltyAmountType = settings.loyalty_amount_type;
@@ -495,6 +495,12 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                     loyaltyDiscountType = loyaltyAmountType;
                     loyaltyRedeem = true;
+                }
+                else{
+                    throw {
+                        statusCode: 400,
+                        message: `Minimum purchase amount of £${settings.minimum_purchase_amount} is not met.`
+                    }
                 }
             }
         }

@@ -104,8 +104,10 @@ app.use("/api", require('./components/router'));
 // Static files
 app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/logs", express.static(path.join(__dirname, "public/logs")));
+app.use("/logs", express.static(path.join(__dirname, "logs")));
 
 // Initialize cron jobs
 require('./cron/init');
 
-module.exports = app;
+module.exports = ap
+p;

@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const { MailSubscriptionSettings, MailSubscription } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
+const utilsLogger = require('../../../../utils/logger');
 const { 
     uploadPromotionalImages, 
     validatePromotionalImages, 
@@ -359,10 +360,8 @@ module.exports = {
                         return { success: false, email: subscriber.email, error: error.message };
                     }
                 });
-                console.log("batchPromises>", batchPromises);
                 // Wait for current batch to complete
                 const batchResults = await Promise.allSettled(batchPromises);
-                console.log("batchResults>", batchResults);
                 // Count results
                 batchResults.forEach(result => {
                     if (result.status === 'fulfilled' && result.value.success) {
@@ -374,7 +373,6 @@ module.exports = {
                         }
                     }
                 });
-                console.log("batchResults>", batchResults);
                 // Add delay between batches (except for the last batch)
                 if (i + BATCH_SIZE < subscribers.length) {
                     await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
@@ -403,6 +401,7 @@ module.exports = {
 
         } catch (error) {
             logger.error('Error sending promotional emails:', error);
+            utilsLogger.logError(error);
             return errorResponse(res, error, error.message);
         }
     },
