@@ -109,5 +109,4 @@ app.use("/logs", express.static(path.join(__dirname, "logs")));
 // Initialize cron jobs
 require('./cron/init');
 
-module.exports = ap
-p;
+module.exports = app;

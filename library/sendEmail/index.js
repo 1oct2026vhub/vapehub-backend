@@ -7,7 +7,6 @@ const { errorResponse } = require("../../utils/responseUtils")
 const fs = require('fs/promises')
 const path = require('path')
 const Handlebars = require('handlebars')
-const utilsLogger = require('../../utils/logger')
 
 let transporter;
 
