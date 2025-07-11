@@ -439,7 +439,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                     if (!hasMatchingEntity) {
                         throw {
                             statusCode: 400,
-                            message: `This coupon is only valid for ${coupon.entity_type} items. No matching ${coupon.entity_type} found in your cart.`
+                            message: `This discount applies to selected ${coupon.entity_type} only. Your cart doesn't match the required items.`
                         }
                     }
                 }

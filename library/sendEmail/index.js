@@ -89,10 +89,10 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             });
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
-                utilsLogger.logInfo("EMAIL_TEST_MODE>>>>>", process.env.EMAIL_TEST_MODE);
+                utilsLogger.logInfo(`EMAIL_TEST_MODE>>>>> ${process.env.EMAIL_TEST_MODE}`);
                 return await newEmail(data);
             } else {
-                utilsLogger.logInfo("EMAIL_TEST_MODE>>>>>", process.env.EMAIL_TEST_MODE);
+                utilsLogger.logInfo(`EMAIL_TEST_MODE>>>>> ${process.env.EMAIL_TEST_MODE}`);
                 return await transporter.sendMail(data);
             }
         } catch (error) {
