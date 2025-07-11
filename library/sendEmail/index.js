@@ -48,6 +48,8 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // Ensure email templates directory exists
         const templatesDir = path.join(__dirname, '../../emailTemplates');
         const templateDir = path.join(templatesDir, emailConfig.folderName);
+        utilsLogger.logInfo(`Email template templatesDir: ${templatesDir} `);
+        utilsLogger.logInfo(`Email template directory: ${templateDir} `);
         try {
             // Check if template directory exists
             await fs.access(templateDir);
@@ -64,10 +66,15 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
+        logger.info(`Email template directory: ${templateDir}`);
+        utilsLogger.logInfo(`Email template directory: ${templateDir} `);
+        utilsLogger.logInfo(`Email template htmlPath: ${htmlPath} `);
+        utilsLogger.logInfo(`Email template textPath: ${textPath} `);
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
-
+            utilsLogger.logInfo(`Email template text: ${text} `);
+            utilsLogger.logInfo(`Email template html: ${html} `);
             data.text = Handlebars.compile(text)({ 
                 ...context, 
                 host: process.env.HOST_URL, 
@@ -82,8 +89,10 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             });
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
+                console.log("EMAIL_TEST_MODE>>>>>", EMAIL_TEST_MODE);
                 return await newEmail(data);
             } else {
+                console.log("EMAIL_TEST_MODE>>>>>", EMAIL_TEST_MODE);
                 return await transporter.sendMail(data);
             }
         } catch (error) {

@@ -354,7 +354,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         status: "active",
                         start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
                         end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
-                }
+                    }
                 });
                 if (!coupon) {
                     throw {
