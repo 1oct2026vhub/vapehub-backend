@@ -47,6 +47,13 @@ module.exports = (sequelize, DataTypes) => {
                     entity_type: 'blog'
                 }
             });
+            this.belongsTo(models.Deal, {
+                foreignKey: 'entity_id',
+                constraints: false,
+                scope: {
+                    entity_type: 'deal'
+                }
+            });
         }
 
         // Instance method to get entity details
@@ -114,11 +121,11 @@ module.exports = (sequelize, DataTypes) => {
             }
         },
         entity_type: {
-            type: DataTypes.ENUM('brand', 'category', 'product', 'blog', 'page'),
+            type: DataTypes.ENUM('brand', 'category', 'product', 'blog', 'page', 'deal'),
             allowNull: true,
             validate: {
                 isValidEntityType(value) {
-                    if (value && !['brand', 'category', 'product', 'blog', 'page'].includes(value)) {
+                    if (value && !['brand', 'category', 'product', 'blog', 'page', 'deal'].includes(value)) {
                         throw new Error('Invalid entity type');
                     }
                 }

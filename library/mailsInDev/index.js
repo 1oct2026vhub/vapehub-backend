@@ -17,10 +17,8 @@ exports.newEmail = async(email) => {
 
     // Ensure emails directory exists
     try {
-        utilsLogger.logInfo(`emailsDir: ${emailsDir}`);
         await fs.access(emailsDir);
     } catch (error) {
-        utilsLogger.logError(`Error in newEmail: ${error}`);
         if (error.code === 'ENOENT') {
             await fs.mkdir(emailsDir, { recursive: true });
         } else {
@@ -36,26 +34,17 @@ exports.newEmail = async(email) => {
         dir: emailsDir,
         id: fileId,
     })
-    utilsLogger.logInfo(`fileId: ${fileId}`);
     let oldIndexText;
     try {
         oldIndexText = await fs.readFile(indexFilePath, 'utf8');
-        utilsLogger.logInfo(`oldIndexText: ${oldIndexText}`);
     } catch (error) {
-        utilsLogger.logError(`Error in newEmail: ${error}`);
         if(error.code === 'ENOENT') {
             await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n`)
-            utilsLogger.logInfo(`indexFilePath error: ${indexFilePath}`);
-            utilsLogger.logInfo(`fileId error: ${fileId}`);
-            utilsLogger.logInfo(`Date.now() error: ${Date.now()}`);
-            utilsLogger.logInfo(`encodeURI(email.subject) error: ${encodeURI(email.subject)}`);
-            utilsLogger.logInfo(`encodeURI(email.to) error: ${encodeURI(email.to)}`);
             return;
         }
         throw error;
     }
     const oldIndex = oldIndexText.split('\n').filter(i => i);
-    utilsLogger.logInfo(`oldIndex: ${oldIndex}`);
     if(oldIndex.length >= 50) {
         const toDel = oldIndex.splice(49);
         try{
@@ -66,21 +55,15 @@ exports.newEmail = async(email) => {
         catch(error){
             utilsLogger.logError(`Error in newEmail: ${error}`);
         }
-        utilsLogger.logInfo(`toDel: ${toDel}`);
     }
     const updatedIndexContent = `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`;
-    utilsLogger.logInfo(`Updating index file with content: ${updatedIndexContent}`);
-    utilsLogger.logInfo(`Writing to indexFilePath: ${indexFilePath}`);
     
     try {
         await fs.writeFile(indexFilePath, updatedIndexContent);
-        utilsLogger.logInfo(`✅ Successfully updated index file`);
         
         // Verify the file was written
         const verifyContent = await fs.readFile(indexFilePath, 'utf8');
-        utilsLogger.logInfo(`✅ Verified updated index file content: ${verifyContent}`);
     } catch (writeError) {
-        utilsLogger.logError(`❌ Failed to update index file: ${writeError}`);
         throw writeError;
     }
     
