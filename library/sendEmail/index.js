@@ -37,7 +37,8 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         const data = {
             from: emailConfig.from,
             to,
-            subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
+            subject: context.subject || (context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject),
+            // subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
         };
 
         if (attachments.length > 0) {
@@ -87,6 +88,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             }
         } catch (error) {
             logger.error(`Error reading email templates: ${error.message}`);
+            utilsLogger.logError(error);
             throw {
                 message: "Error reading email templates",
                 status: 500,
@@ -96,6 +98,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         }
     } catch (error) {
         logger.error(`Error in sendEmail: ${error.message}`);
+        utilsLogger.logError(error);
         throw error;
     }
 }
