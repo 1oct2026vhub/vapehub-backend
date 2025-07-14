@@ -1217,8 +1217,78 @@ module.exports = {
           salesLast28Days: parseInt(item.salesLast28Days) || 0,
           salesLastMonth: parseInt(item.salesLastMonth) || 0
         }));
+      } else if (stock_status === 'low_stock') {
+        // Fetch all variants that match the base criteria (no pagination)
+        const allVariants = await ProductVariant.findAll({
+          where: whereClause,
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['id', 'name', 'slug']
+            },
+            {
+              model: ProductVariantImage,
+              as: 'variantImages',
+              where: { is_primary: true },
+              required: false,
+              attributes: ['image_url']
+            }
+          ],
+          order: orderClause
+        });
+
+        // Calculate detailed data for all variants
+        let allInventoryData = await Promise.all(allVariants.map(async (variant) => {
+          // Sales in last 28 days
+          const salesLast28Days = orderIds28Days.length > 0
+            ? await OrderItem.sum('quantity', {
+                where: {
+                  variant_id: variant.id,
+                  order_id: { [Op.in]: orderIds28Days }
+                }
+              }) || 0
+            : 0;
+
+          // Sales in previous month
+          const salesLastMonth = orderIdsLastMonth.length > 0
+            ? await OrderItem.sum('quantity', {
+                where: {
+                  variant_id: variant.id,
+                  order_id: { [Op.in]: orderIdsLastMonth }
+                }
+              }) || 0
+            : 0;
+
+          // Stock status
+          const isInStock = variant.stock > 0;
+          const isOutOfStock = variant.stock === 0;
+          const isLowStock = isInStock && variant.stock <= variant.low_stock_threshold;
+
+          return {
+            id: variant.id,
+            name: `${variant.product?.name} - ${variant.slug}`,
+            image: variant.variantImages?.[0]?.image_url || null,
+            currentStock: variant.stock,
+            lowStockThreshold: variant.low_stock_threshold,
+            isInStock,
+            isOutOfStock,
+            isLowStock,
+            salesLast28Days,
+            salesLastMonth
+          };
+        }));
+
+        // Filter for low stock
+        allInventoryData = allInventoryData.filter(item => item.isLowStock);
+        count = allInventoryData.length;
+
+        // Paginate in JS
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + parseInt(limit);
+        variants = allInventoryData.slice(startIndex, endIndex);
       } else {
-        // Normal pagination for non-top-selling requests
+        // Normal pagination for non-top-selling and non-low-stock requests
         const result = await ProductVariant.findAndCountAll({
           where: whereClause,
           include: [
@@ -1239,7 +1309,6 @@ module.exports = {
           offset,
           limit: parseInt(limit)
         });
-        
         variants = result.rows;
         count = result.count;
       }
@@ -1248,6 +1317,9 @@ module.exports = {
       let inventoryData;
       if (top_selling === 'true' || top_selling === true) {
         // For top selling, we already have the calculated data
+        inventoryData = variants;
+      } else if (stock_status === 'low_stock') {
+        // Already calculated and paginated above
         inventoryData = variants;
       } else {
         // Calculate detailed data for normal pagination
