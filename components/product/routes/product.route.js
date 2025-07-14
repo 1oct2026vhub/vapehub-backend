@@ -965,4 +965,267 @@ router.post('/filter-variants',
     productController.filterVariantsByAttributes
 );
 
+/**
+ * @swagger
+ * /api/product/category/{category_id}/deals:
+ *   get:
+ *     tags:
+ *       - Product
+ *     summary: Get all products with deals in a specific category
+ *     parameters:
+ *       - in: path
+ *         name: category_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the category to get deals for
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of products to return per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           minimum: 0
+ *         description: Number of products to skip for pagination
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved products with deals for the category
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     category:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Category ID
+ *                         name:
+ *                           type: string
+ *                           description: Category name
+ *                         slug:
+ *                           type: string
+ *                           description: Category slug
+ *                         description:
+ *                           type: string
+ *                           description: Category description
+ *                           nullable: true
+ *                     products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Product ID
+ *                           name:
+ *                             type: string
+ *                             description: Product name
+ *                           slug:
+ *                             type: string
+ *                             description: Product slug
+ *                           description:
+ *                             type: string
+ *                             description: Product description
+ *                             nullable: true
+ *                           price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Product price
+ *                             nullable: true
+ *                           discount_price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Product discount price
+ *                             nullable: true
+ *                           stock_quantity:
+ *                             type: integer
+ *                             description: Available stock quantity
+ *                             nullable: true
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product creation date
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product last update date
+ *                           category:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           brand:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           primary_image:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               url:
+ *                                 type: string
+ *                               is_primary:
+ *                                 type: boolean
+ *                           deals:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   description: Deal ID
+ *                                 name:
+ *                                   type: string
+ *                                   description: Deal name
+ *                                 slug:
+ *                                   type: string
+ *                                   description: Deal slug
+ *                                 deal_type:
+ *                                   type: string
+ *                                   description: Type of deal (e.g., buy_one_get_one, percentage_discount, etc.)
+ *                                 required_qty:
+ *                                   type: integer
+ *                                   description: Required quantity for the deal
+ *                                   nullable: true
+ *                                 get_qty:
+ *                                   type: integer
+ *                                   description: Quantity you get with the deal
+ *                                   nullable: true
+ *                                 fixed_price:
+ *                                   type: number
+ *                                   format: decimal
+ *                                   description: Fixed price for the deal
+ *                                   nullable: true
+ *                                 discount_percent:
+ *                                   type: integer
+ *                                   description: Discount percentage
+ *                                   nullable: true
+ *                                 tiered_qty_json:
+ *                                   type: object
+ *                                   description: JSON object for tiered quantity deals
+ *                                   nullable: true
+ *                                 valid_from:
+ *                                   type: string
+ *                                   format: date-time
+ *                                   description: Deal start date
+ *                                 valid_to:
+ *                                   type: string
+ *                                   format: date-time
+ *                                   description: Deal end date
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of products with deals in the category
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *                         has_next:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         has_prev:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_products_with_deals:
+ *                           type: integer
+ *                           description: Total number of products that have deals
+ *                         total_deals:
+ *                           type: integer
+ *                           description: Total number of deals across all products
+ *                 message:
+ *                   type: string
+ *                   example: "Deals by category retrieved successfully"
+ *       400:
+ *         description: Bad request - Invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Category ID is required"
+ *                 error:
+ *                   type: string
+ *       404:
+ *         description: Category not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Category not found"
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/category/:category_id/deals',
+    validateRequest([
+        param('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+    ]),
+    productController.getDealsByCategory
+);
+
 module.exports = router;

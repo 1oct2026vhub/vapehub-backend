@@ -1,10 +1,58 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Flavor, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings, Brand, Category } = require("../../../models");
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 
+/**
+ * Get entity name based on entity type and entity ID
+ * @param {string} entityType - The type of entity (product, brand, category)
+ * @param {number} entityId - The ID of the entity
+ * @returns {Promise<Object|null>} Entity details or null if not found
+ */
+const getEntityName = async (entityType, entityId) => {
+    try {
+        if (!entityType || !entityId) {
+            return null;
+        }
+
+        let entity;
+        switch (entityType) {
+            case 'product':
+                entity = await Product.findByPk(entityId, {
+                    attributes: ['id', 'name', 'slug']
+                });
+                break;
+            case 'brand':
+                entity = await Brand.findByPk(entityId, {
+                    attributes: ['id', 'name', 'slug']
+                });
+                break;
+            case 'category':
+                entity = await Category.findByPk(entityId, {
+                    attributes: ['id', 'name', 'slug']
+                });
+                break;
+            default:
+                return null;
+        }
+
+        if (!entity) {
+            return null;
+        }
+
+        return {
+            id: entity.id,
+            name: entity.name,
+            slug: entity.slug,
+            entity_type: entityType
+        };
+    } catch (error) {
+        logger.error('Error getting entity name:', error);
+        return null;
+    }
+};
 
 
 module.exports.checkout = async (req, res, next) => {
@@ -408,6 +456,10 @@ module.exports.applyCoupon = async (req, res, next) => {
                 // Check entity type validation if coupon has entity_type and entity_id
                 if (coupon.entity_type && coupon.entity_id) {
                     let hasMatchingEntity = false;
+                    let entityDetails = null;
+                    
+                    // Get entity details for better error message
+                    entityDetails = await getEntityName(coupon.entity_type, coupon.entity_id);
                     
                     for (const item of cart) {
                         if (!item.product) continue;
@@ -437,9 +489,10 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                     
                     if (!hasMatchingEntity) {
+                        const entityName = entityDetails ? entityDetails.name : coupon.entity_type;
                         throw {
                             statusCode: 400,
-                            message: `This discount applies to selected ${coupon.entity_type} only. Your cart doesn't match the required items.`
+                            message: `This discount applies to ${coupon.entity_type} ${entityName} only. Your cart doesn't match the required items.`
                         }
                     }
                 }
@@ -552,12 +605,19 @@ module.exports.applyCoupon = async (req, res, next) => {
         discount_amount = Math.floor(discount_amount * 100) / 100;
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
 
+        // Get entity details if coupon has entity restrictions
+        let couponEntityDetails = null;
+        if (coupon && coupon.entity_type && coupon.entity_id) {
+            couponEntityDetails = await getEntityName(coupon.entity_type, coupon.entity_id);
+        }
+
         const resObj = {
             totalItems,
             shippingCost,
             subTotal,
             total,
             coupon,
+            coupon_entity: couponEntityDetails,
             referral_value: referral_value,
             referral_value_type,
             discount_amount,
