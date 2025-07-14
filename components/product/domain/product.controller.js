@@ -959,7 +959,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 module.exports.getDealsByCategory = async (req, res, next) => {
     try {
         const { category_id } = req.params;
-        const { limit = 10, offset = 0 } = req.query;
+        const { deal_id, limit = 10, offset = 0 } = req.query;
 
         // Validate category_id
         if (!category_id) {
@@ -970,6 +970,19 @@ module.exports.getDealsByCategory = async (req, res, next) => {
         const category = await Category.findByPk(category_id);
         if (!category) {
             throw new Error('Category not found');
+        }
+
+        // Build deal filter
+        const dealFilter = {
+            is_active: true,
+            is_deleted: false,
+            valid_from: { [Op.lte]: new Date() },
+            valid_to: { [Op.gte]: new Date() }
+        };
+
+        // Add deal_id filter if provided
+        if (deal_id) {
+            dealFilter.id = deal_id;
         }
 
         // Get all products in the category with their deals
@@ -1003,12 +1016,7 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                         model: DealProduct,
                         attributes: [] // Exclude DealProduct table data from response
                     },
-                    where: {
-                        is_active: true,
-                        is_deleted: false,
-                        valid_from: { [Op.lte]: new Date() },
-                        valid_to: { [Op.gte]: new Date() }
-                    },
+                    where: dealFilter,
                     required: false,
                     attributes: [
                         'id', 
@@ -1055,12 +1063,7 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                         model: DealProduct,
                         attributes: []
                     },
-                    where: {
-                        is_active: true,
-                        is_deleted: false,
-                        valid_from: { [Op.lte]: new Date() },
-                        valid_to: { [Op.gte]: new Date() }
-                    },
+                    where: dealFilter,
                     required: false
                 }
             ]
@@ -1151,3 +1154,259 @@ module.exports.getDealsByCategory = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+module.exports.getCategoriesWithDeals = async (req, res, next) => {
+    try {
+        const { limit = 10, offset = 0 } = req.query;
+
+        // Get all categories that have products with active deals
+        const categoriesWithDeals = await Category.findAll({
+            where: {
+                deletedAt: null
+            },
+            include: [
+                {
+                    model: Product,
+                    as: 'Products',
+                    where: {
+                        status: productStatus.PUBLISHED
+                    },
+                    include: [
+                        {
+                            model: Deal,
+                            as: 'deals',
+                            through: { 
+                                model: DealProduct,
+                                attributes: []
+                            },
+                            where: {
+                                is_active: true,
+                                is_deleted: false,
+                                valid_from: { [Op.lte]: new Date() },
+                                valid_to: { [Op.gte]: new Date() }
+                            },
+                            required: true,
+                            attributes: [
+                                'id', 
+                                'name', 
+                                'slug', 
+                                'deal_type', 
+                                'required_qty', 
+                                'get_qty', 
+                                'fixed_price', 
+                                'discount_percent', 
+                                'tiered_qty_json',
+                                'valid_from',
+                                'valid_to',
+                                'createdAt'
+                            ]
+                        }
+                    ],
+                    required: true,
+                    attributes: ['id']
+                }
+            ],
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'description',
+                'logo_url'
+            ],
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            order: [['name', 'ASC']]
+        });
+
+        // Get total count for pagination
+        const totalCount = await Category.count({
+            where: {
+                deletedAt: null
+            },
+            include: [
+                {
+                    model: Product,
+                    as: 'Products',
+                    where: {
+                        status: productStatus.PUBLISHED
+                    },
+                    include: [
+                        {
+                            model: Deal,
+                            as: 'deals',
+                            through: { 
+                                model: DealProduct,
+                                attributes: []
+                            },
+                            where: {
+                                is_active: true,
+                                is_deleted: false,
+                                valid_from: { [Op.lte]: new Date() },
+                                valid_to: { [Op.gte]: new Date() }
+                            },
+                            required: true
+                        }
+                    ],
+                    required: true
+                }
+            ]
+        });
+
+        // Transform the response
+        const transformedCategories = categoriesWithDeals.map(category => {
+            // Get unique deals for this category
+            const deals = [...new Set(category.Products.flatMap(product => product.deals))].filter(Boolean);
+
+            return {
+                id: category.id,
+                name: category.name,
+                slug: category.slug,
+                description: category.description,
+                logo_url: category.logo_url,
+                deals: deals.map(deal => ({
+                    id: deal.id,
+                    name: deal.name,
+                    slug: deal.slug,
+                    deal_type: deal.deal_type,
+                    required_qty: deal.required_qty,
+                    get_qty: deal.get_qty,
+                    fixed_price: deal.fixed_price,
+                    discount_percent: deal.discount_percent,
+                    tiered_qty_json: deal.tiered_qty_json,
+                    valid_from: deal.valid_from,
+                    valid_to: deal.valid_to,
+                    createdAt: deal.createdAt
+                })),
+                deal_count: deals.length,
+                product_count: category.Products.length
+            };
+        });
+
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
+        const currentPage = Math.floor(parseInt(offset) / parseInt(limit)) + 1;
+
+        const response = {
+            categories: transformedCategories,
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                has_next: currentPage < totalPages,
+                has_prev: currentPage > 1
+            },
+            summary: {
+                total_categories: transformedCategories.length,
+                total_deals: [...new Set(transformedCategories.flatMap(cat => cat.deals.map(deal => deal.id)))].length,
+                total_products: transformedCategories.reduce((sum, cat) => sum + cat.product_count, 0)
+            }
+        };
+
+        return successResponse(res, response, 'Categories with deals retrieved successfully');
+    } catch (error) {
+        logger.error('Error getting categories with deals:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getAllDeals = async (req, res, next) => {
+    try {
+        const { limit = 10, offset = 0, deal_type, search } = req.query;
+
+        // Build deal filter
+        const dealFilter = {
+            is_active: true,
+            is_deleted: false,
+            valid_from: { [Op.lte]: new Date() },
+            valid_to: { [Op.gte]: new Date() }
+        };
+
+        // Add deal_type filter if provided
+        if (deal_type) {
+            dealFilter.deal_type = deal_type;
+        }
+
+        // Add search filter if provided
+        if (search) {
+            dealFilter[Op.or] = [
+                { name: { [Op.iLike]: `%${search}%` } },
+                { slug: { [Op.iLike]: `%${search}%` } }
+            ];
+        }
+
+        // Get all active deals
+        const deals = await Deal.findAll({
+            where: dealFilter,
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'deal_type', 
+                'required_qty', 
+                'get_qty', 
+                'fixed_price', 
+                'discount_percent', 
+                'tiered_qty_json',
+                'bundle_product_ids_json',
+                'valid_from',
+                'valid_to',
+                'createdAt',
+                'updatedAt'
+            ],
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            order: [['createdAt', 'DESC']]
+        });
+
+        // Get total count for pagination
+        const totalCount = await Deal.count({
+            where: dealFilter
+        });
+
+        // Transform the response
+        const transformedDeals = deals.map(deal => ({
+            id: deal.id,
+            name: deal.name,
+            slug: deal.slug,
+            deal_type: deal.deal_type,
+            required_qty: deal.required_qty,
+            get_qty: deal.get_qty,
+            fixed_price: deal.fixed_price,
+            discount_percent: deal.discount_percent,
+            tiered_qty_json: deal.tiered_qty_json,
+            bundle_product_ids_json: deal.bundle_product_ids_json,
+            valid_from: deal.valid_from,
+            valid_to: deal.valid_to,
+            created_at: deal.createdAt,
+            updated_at: deal.updatedAt
+        }));
+
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
+        const currentPage = Math.floor(parseInt(offset) / parseInt(limit)) + 1;
+
+        const response = {
+            deals: transformedDeals,
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                has_next: currentPage < totalPages,
+                has_prev: currentPage > 1
+            },
+            summary: {
+                total_deals: transformedDeals.length
+            }
+        };
+
+        return successResponse(res, response, 'All deals retrieved successfully');
+    } catch (error) {
+        logger.error('Error getting all deals:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
