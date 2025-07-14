@@ -1,4 +1,4 @@
-const { Brand, Category, Product, Blog } = require('../../../../models');
+const { Brand, Category, Product, Blog, Deal } = require('../../../../models');
 
 const getEntitySlug = async (entityType, entityId, original = null) => {
     let entity;
@@ -15,6 +15,9 @@ const getEntitySlug = async (entityType, entityId, original = null) => {
             break;
         case 'blog':
             entity = await Blog.findByPk(entityId);
+            break;
+        case 'deal':
+            entity = await Deal.findByPk(entityId);
             break;
         case 'page':
             entity = { slug: original };

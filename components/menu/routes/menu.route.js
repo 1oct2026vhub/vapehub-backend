@@ -21,7 +21,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
  *         name: entity_type
  *         schema:
  *           type: string
- *           enum: [brand, category, product, blog]
+ *           enum: [brand, category, product, blog, deal]
  *         description: Filter menus by entity type
  *       - in: query
  *         name: label
