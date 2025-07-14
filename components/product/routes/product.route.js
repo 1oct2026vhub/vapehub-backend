@@ -980,6 +980,13 @@ router.post('/filter-variants',
  *           type: integer
  *         description: ID of the category to get deals for
  *       - in: query
+ *         name: deal_id
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         required: false
+ *         description: Optional Deal ID to filter by specific deal
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -1222,10 +1229,384 @@ router.post('/filter-variants',
 router.get('/category/:category_id/deals',
     validateRequest([
         param('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
+        query('deal_id').optional().isInt({ min: 1 }).withMessage('Deal ID must be a positive integer'),
         query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
         query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
     ]),
     productController.getDealsByCategory
 );
+
+/**
+ * @swagger
+ * /api/product/categories-with-deals:
+ *   get:
+ *     summary: Retrieve all categories with their associated active deals
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of categories to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           minimum: 0
+ *         description: Number of categories to skip
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved categories with deals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       description: Categories with their associated deals
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Category ID
+ *                           name:
+ *                             type: string
+ *                             description: Category name
+ *                           slug:
+ *                             type: string
+ *                             description: Category slug
+ *                           description:
+ *                             type: string
+ *                             description: Category description
+ *                             nullable: true
+ *                           logo_url:
+ *                             type: string
+ *                             description: Category logo URL
+ *                             nullable: true
+ *                           deals:
+ *                             type: array
+ *                             description: Active deals associated with this category
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   description: Deal ID
+ *                                 name:
+ *                                   type: string
+ *                                   description: Deal name
+ *                                 slug:
+ *                                   type: string
+ *                                   description: Deal slug
+ *                                 deal_type:
+ *                                   type: string
+ *                                   description: Type of deal
+ *                                 required_qty:
+ *                                   type: integer
+ *                                   description: Required quantity for deal
+ *                                   nullable: true
+ *                                 get_qty:
+ *                                   type: integer
+ *                                   description: Quantity to get in deal
+ *                                   nullable: true
+ *                                 fixed_price:
+ *                                   type: number
+ *                                   format: decimal
+ *                                   description: Fixed price for deal
+ *                                   nullable: true
+ *                                 discount_percent:
+ *                                   type: integer
+ *                                   description: Discount percentage
+ *                                   nullable: true
+ *                                 tiered_qty_json:
+ *                                   type: object
+ *                                   description: JSON object for tiered quantity deals
+ *                                   nullable: true
+ *                                 valid_from:
+ *                                   type: string
+ *                                   format: date-time
+ *                                   description: Deal start date
+ *                                 valid_to:
+ *                                   type: string
+ *                                   format: date-time
+ *                                   description: Deal end date
+ *                                 createdAt:
+ *                                   type: string
+ *                                   format: date-time
+ *                                   description: Deal creation date
+ *                           deal_count:
+ *                             type: integer
+ *                             description: Number of deals in this category
+ *                           product_count:
+ *                             type: integer
+ *                             description: Number of products in this category
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of categories
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *                         has_next:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         has_prev:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_categories:
+ *                           type: integer
+ *                           description: Total number of categories returned
+ *                         total_deals:
+ *                           type: integer
+ *                           description: Total number of unique deals across all categories
+ *                         total_products:
+ *                           type: integer
+ *                           description: Total number of products across all categories
+ *                 message:
+ *                   type: string
+ *                   example: "Categories with deals retrieved successfully"
+ *       400:
+ *         description: Bad request - Invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/categories-with-deals',
+    validateRequest([
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+    ]),
+    productController.getCategoriesWithDeals
+);
+
+/**
+ * @swagger
+ * /api/product/deals:
+ *   get:
+ *     summary: Get all active deals
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: query
+ *         name: deal_type
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Filter by deal type (e.g., buy_one_get_one, percentage_discount, etc.)
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Search deals by name or slug
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of deals to return per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           minimum: 0
+ *         description: Number of deals to skip for pagination
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved deals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deals:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Deal ID
+ *                           name:
+ *                             type: string
+ *                             description: Deal name
+ *                           slug:
+ *                             type: string
+ *                             description: Deal slug
+ *                           deal_type:
+ *                             type: string
+ *                             description: Type of deal
+ *                           required_qty:
+ *                             type: integer
+ *                             description: Required quantity for deal
+ *                             nullable: true
+ *                           get_qty:
+ *                             type: integer
+ *                             description: Quantity to get in deal
+ *                             nullable: true
+ *                           fixed_price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Fixed price for deal
+ *                             nullable: true
+ *                           discount_percent:
+ *                             type: integer
+ *                             description: Discount percentage
+ *                             nullable: true
+ *                           tiered_qty_json:
+ *                             type: object
+ *                             description: JSON object for tiered quantity deals
+ *                             nullable: true
+ *                           bundle_product_ids_json:
+ *                             type: array
+ *                             description: Array of product IDs for bundle deals
+ *                             nullable: true
+ *                           valid_from:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Deal start date
+ *                           valid_to:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Deal end date
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Deal creation date
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Deal last update date
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of deals
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *                         has_next:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         has_prev:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_deals:
+ *                           type: integer
+ *                           description: Total number of deals returned
+ *                 message:
+ *                   type: string
+ *                   example: "All deals retrieved successfully"
+ *       400:
+ *         description: Bad request - Invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/deals',
+    validateRequest([
+        query('deal_type').optional().isString().withMessage('Deal type must be a string'),
+        query('search').optional().isString().withMessage('Search term must be a string'),
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+    ]),
+    productController.getAllDeals
+);
+
 
 module.exports = router;
