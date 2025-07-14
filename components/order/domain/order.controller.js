@@ -366,7 +366,6 @@ module.exports.placeOrder = async (req, res, next) => {
                     if (!userUsedCoupon) {
                         // For single-use coupons, only calculate if it hasn't been used before
                         if (coupon.is_single_use && !singleUsedCoupon) {
-
                             let discount_type = 0;
                             if(coupon.discount_type === "percentage"){
                                 discount_type = coupon.discount_type;
@@ -374,8 +373,67 @@ module.exports.placeOrder = async (req, res, next) => {
                             else if(coupon.discount_type === "fixed_amount"){
                                 discount_type = "fixed";
                             }
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+
+                            // Calculate discount based on entity type
+                            if (coupon.entity_type && coupon.entity_id) {
+                                // Filter cart items that match the entity type and ID
+                                let applicableItems = [];
+                                for (const item of cartItems) {
+                                    if (!item.product) continue;
+                                    
+                                    let isApplicable = false;
+                                    switch (coupon.entity_type) {
+                                        case 'product':
+                                            if (item.product.id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                        case 'brand':
+                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                        case 'category':
+                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                    }
+                                    
+                                    if (isApplicable) {
+                                        applicableItems.push(item);
+                                    }
+                                }
+
+                                // Calculate subtotal for applicable items only
+                                const applicableSubtotal = applicableItems.reduce((sum, item) => {
+                                    const variant = item.product.variants.find(v => v.id === item.variant_id);
+                                    const unitPrice = variant ? variant.price : item.product.price;
+                                    return sum + (item.quantity * unitPrice);
+                                }, 0);
+
+                                // Calculate discount based on applicable items subtotal
+                                if (coupon.discount_type === "percentage") {
+                                    discount = (coupon.discount_value / 100) * applicableSubtotal;
+                                } else if (coupon.discount_type === "fixed_amount") {
+                                    discount = coupon.discount_value;
+                                }
+
+                                // Apply maximum discount limit if set
+                                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                                    discount = coupon.maximum_discount;
+                                }
+
+                                // Ensure discount doesn't exceed applicable subtotal
+                                if (parseFloat(discount) > parseFloat(applicableSubtotal)) {
+                                    discount = applicableSubtotal;
+                                }
+                            } else {
+                                // No entity restriction - apply to entire cart
+                                discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                                discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            }
+
                             calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
@@ -383,7 +441,6 @@ module.exports.placeOrder = async (req, res, next) => {
                         }
                         // For non-single-use coupons, calculate normally
                         else if (!coupon.is_single_use) {
-
                             let discount_type = 0;
                             if(coupon.discount_type === "percentage"){
                                 discount_type = coupon.discount_type;
@@ -391,8 +448,67 @@ module.exports.placeOrder = async (req, res, next) => {
                             else if(coupon.discount_type === "fixed_amount"){
                                 discount_type = "fixed";
                             }
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+
+                            // Calculate discount based on entity type
+                            if (coupon.entity_type && coupon.entity_id) {
+                                // Filter cart items that match the entity type and ID
+                                let applicableItems = [];
+                                for (const item of cartItems) {
+                                    if (!item.product) continue;
+                                    
+                                    let isApplicable = false;
+                                    switch (coupon.entity_type) {
+                                        case 'product':
+                                            if (item.product.id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                        case 'brand':
+                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                        case 'category':
+                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                                isApplicable = true;
+                                            }
+                                            break;
+                                    }
+                                    
+                                    if (isApplicable) {
+                                        applicableItems.push(item);
+                                    }
+                                }
+
+                                // Calculate subtotal for applicable items only
+                                const applicableSubtotal = applicableItems.reduce((sum, item) => {
+                                    const variant = item.product.variants.find(v => v.id === item.variant_id);
+                                    const unitPrice = variant ? variant.price : item.product.price;
+                                    return sum + (item.quantity * unitPrice);
+                                }, 0);
+
+                                // Calculate discount based on applicable items subtotal
+                                if (coupon.discount_type === "percentage") {
+                                    discount = (coupon.discount_value / 100) * applicableSubtotal;
+                                } else if (coupon.discount_type === "fixed_amount") {
+                                    discount = coupon.discount_value;
+                                }
+
+                                // Apply maximum discount limit if set
+                                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                                    discount = coupon.maximum_discount;
+                                }
+
+                                // Ensure discount doesn't exceed applicable subtotal
+                                if (parseFloat(discount) > parseFloat(applicableSubtotal)) {
+                                    discount = applicableSubtotal;
+                                }
+                            } else {
+                                // No entity restriction - apply to entire cart
+                                discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                                discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            }
+
                             calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
