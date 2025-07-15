@@ -1156,7 +1156,7 @@ module.exports = {
         };
         
         if (search) {
-          productWhereClause += ' AND (pv.barcode LIKE :search OR pv.slug LIKE :search)';
+          productWhereClause += ' AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)';
           replacements.search = `%${search}%`;
         }
         if (stock_status === 'in_stock') {
