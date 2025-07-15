@@ -127,6 +127,104 @@ router.post('/', [
 
 /**
  * @swagger
+ * /api/admin/mail-subscription-settings/subscribers:
+ *   get:
+ *     summary: Get all subscribers for admin selection (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search subscribers by email
+ *     responses:
+ *       200:
+ *         description: Subscribers retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscribers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           email:
+ *                             type: string
+ *                           user_id:
+ *                             type: integer
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/subscribers', [
+    authMiddleware(true)
+], getAllSubscribers);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/stats:
+ *   get:
+ *     summary: Get subscriber statistics (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     responses:
+ *       200:
+ *         description: Subscriber statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalSubscribers:
+ *                       type: integer
+ *                     recentSubscribers:
+ *                       type: integer
+ *                     frequencyStats:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: integer
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/subscribers/stats', [
+    authMiddleware(true)
+], getSubscriberStats);
+
+/**
+ * @swagger
  * /api/admin/mail-subscription-settings/{id}:
  *   get:
  *     summary: Get mail subscription setting by ID (admin)
@@ -365,104 +463,6 @@ router.post('/promotional/send', [
     authMiddleware(true),
     upload.array('images', 10) // Handle up to 10 image files
 ], sendPromotionalEmail);
-
-/**
- * @swagger
- * /api/admin/mail-subscription-settings/subscribers:
- *   get:
- *     summary: Get all subscribers for admin selection (admin)
- *     tags: [Admin - Mail Subscription Settings]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 50
- *         description: Number of items per page
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search subscribers by email
- *     responses:
- *       200:
- *         description: Subscribers retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     subscribers:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id:
- *                             type: integer
- *                           email:
- *                             type: string
- *                           user_id:
- *                             type: integer
- *                           createdAt:
- *                             type: string
- *                             format: date-time
- *                     pagination:
- *                       $ref: '#/components/schemas/Pagination'
- *                 message:
- *                   type: string
- *       500:
- *         description: Server error
- */
-router.get('/subscribers', [
-    authMiddleware(true)
-], getAllSubscribers);
-
-/**
- * @swagger
- * /api/admin/mail-subscription-settings/subscribers/stats:
- *   get:
- *     summary: Get subscriber statistics (admin)
- *     tags: [Admin - Mail Subscription Settings]
- *     responses:
- *       200:
- *         description: Subscriber statistics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     totalSubscribers:
- *                       type: integer
- *                     recentSubscribers:
- *                       type: integer
- *                     frequencyStats:
- *                       type: object
- *                       additionalProperties:
- *                         type: integer
- *                 message:
- *                   type: string
- *       500:
- *         description: Server error
- */
-router.get('/subscribers/stats', [
-    authMiddleware(true)
-], getSubscriberStats);
 
 /**
  * @swagger
