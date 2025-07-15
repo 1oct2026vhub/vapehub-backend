@@ -844,7 +844,7 @@ router.get('/product-sales-analytics', [authMiddleware(true)], inventoryControll
  *         name: sort_by
  *         schema:
  *           type: string
- *           default: name
+ *           default: created_at
  *         description: Sort field
  *       - in: query
  *         name: sort_order
@@ -927,6 +927,97 @@ router.get('/product-sales-analytics', [authMiddleware(true)], inventoryControll
  *         description: Server error
  */
 router.get('/dashboard', [authMiddleware(true)], inventoryController.getInventoryDashboard);
+
+/**
+ * @swagger
+ * /api/admin/inventory/deleted:
+ *   get:
+ *     summary: Get deleted products inventory with summary statistics (admin)
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of items per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by barcode, slug, or product name
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           default: deleted_at
+ *         description: Sort field
+ *       - in: query
+ *         name: sort_order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order
+ *     responses:
+ *       200:
+ *         description: Deleted products inventory retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         totalDeletedVariants:
+ *                           type: integer
+ *                         deletedProducts:
+ *                           type: integer
+ *                         deletedVariants:
+ *                           type: integer
+ *                     inventory:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           image:
+ *                             type: string
+ *                             nullable: true
+ *                           currentStock:
+ *                             type: integer
+ *                           lowStockThreshold:
+ *                             type: integer
+ *                           deletedAt:
+ *                             type: string
+ *                             format: date-time
+ *                           productDeletedAt:
+ *                             type: string
+ *                             format: date-time
+ *                             nullable: true
+ *                     pagination:
+ *                       $ref: '#/components/schemas/Pagination'
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/deleted', [authMiddleware(true)], inventoryController.getDeletedInventory);
 
 /**
  * @swagger
