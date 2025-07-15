@@ -1014,8 +1014,8 @@ module.exports = {
         limit = 20, 
         stock_status, // 'in_stock', 'out_of_stock', 'low_stock'
         search,
-        sort_by = 'name',
-        sort_order = 'ASC',
+        sort_by = 'created_at',
+        sort_order = 'DESC',
         top_selling = false // New option for top selling products
       } = req.query;
 
@@ -1111,11 +1111,11 @@ module.exports = {
 
       // Build WHERE clause for product filtering
       const whereClause = {};
-      
       if (search) {
         whereClause[Op.or] = [
           { barcode: { [Op.like]: `%${search}%` } },
-          { slug: { [Op.like]: `%${search}%` } }
+          { slug: { [Op.like]: `%${search}%` } },
+          { '$product.name$': { [Op.like]: `%${search}%` } }
         ];
       }
 
@@ -1137,7 +1137,12 @@ module.exports = {
       // Handle sorting for name field (which is in the Product table)
       let orderClause;
       if (sort_by === 'name') {
-        orderClause = [[{ model: Product, as: 'product' }, 'name', sort_order]];
+        // If there's a search, avoid complex association ordering to prevent SQL issues
+        if (search) {
+          orderClause = [['created_at', 'DESC']]; // Fallback to creation date
+        } else {
+          orderClause = [[{ model: Product, as: 'product' }, 'name', sort_order]];
+        }
       } else {
         orderClause = [[sort_by, sort_order]];
       }
@@ -1176,7 +1181,8 @@ module.exports = {
             CASE WHEN pv.stock = 0 THEN 1 ELSE 0 END as isOutOfStock,
             CASE WHEN pv.stock > 0 AND pv.stock <= pv.low_stock_threshold THEN 1 ELSE 0 END as isLowStock,
             COALESCE(SUM(CASE WHEN o.updatedAt >= :startDate28Days AND o.updatedAt <= :endDate28Days THEN oi.quantity ELSE 0 END), 0) as salesLast28Days,
-            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth
+            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
+            COALESCE(SUM(oi.quantity), 0) as totalSales
           FROM product_variants pv
           INNER JOIN products p ON pv.product_id = p.id
           LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1
@@ -1215,7 +1221,8 @@ module.exports = {
           isOutOfStock: item.isOutOfStock === 1,
           isLowStock: item.isLowStock === 1,
           salesLast28Days: parseInt(item.salesLast28Days) || 0,
-          salesLastMonth: parseInt(item.salesLastMonth) || 0
+          salesLastMonth: parseInt(item.salesLastMonth) || 0,
+          totalSales: parseInt(item.totalSales) || 0
         }));
       } else if (stock_status === 'low_stock') {
         // Fetch all variants that match the base criteria (no pagination)
@@ -1260,6 +1267,22 @@ module.exports = {
               }) || 0
             : 0;
 
+          // Get all completed/delivered order IDs for total sales calculation
+          const completedOrderIds = await Order.findAll({
+            attributes: ['id'],
+            where: { status: { [Op.in]: ['completed', 'delivered'] } },
+            raw: true
+          }).then(orders => orders.map(o => o.id));
+          // Total sales (all-time)
+          const totalSales = completedOrderIds.length > 0
+            ? await OrderItem.sum('quantity', {
+                where: {
+                  variant_id: variant.id,
+                  order_id: { [Op.in]: completedOrderIds }
+                }
+              }) || 0
+            : 0;
+
           // Stock status
           const isInStock = variant.stock > 0;
           const isOutOfStock = variant.stock === 0;
@@ -1275,7 +1298,8 @@ module.exports = {
             isOutOfStock,
             isLowStock,
             salesLast28Days,
-            salesLastMonth
+            salesLastMonth,
+            totalSales
           };
         }));
 
@@ -1289,28 +1313,99 @@ module.exports = {
         variants = allInventoryData.slice(startIndex, endIndex);
       } else {
         // Normal pagination for non-top-selling and non-low-stock requests
-        const result = await ProductVariant.findAndCountAll({
-          where: whereClause,
-          include: [
-            {
-              model: Product,
-              as: 'product',
-              attributes: ['id', 'name', 'slug']
+        let result;
+        
+        if (search) {
+          // Use raw SQL for search to avoid subquery issues
+          const searchSql = `
+            SELECT 
+              pv.*,
+              p.id as 'product.id',
+              p.name as 'product.name', 
+              p.slug as 'product.slug',
+              pvi.id as 'variantImages.id',
+              pvi.image_url as 'variantImages.image_url'
+            FROM product_variants pv
+            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+            LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
+            WHERE pv.deleted_at IS NULL 
+            AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
+            ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
+            ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
+            ORDER BY ${sort_by === 'name' ? 'p.name' : 'pv.' + sort_by} ${sort_order}
+            LIMIT :limit OFFSET :offset
+          `;
+          
+          const searchResults = await sequelize.query(searchSql, {
+            replacements: { 
+              search: `%${search}%`,
+              limit: parseInt(limit),
+              offset: parseInt(offset)
             },
-            {
-              model: ProductVariantImage,
-              as: 'variantImages',
-              where: { is_primary: true },
-              required: false,
-              attributes: ['image_url']
-            }
-          ],
-          order: orderClause,
-          offset,
-          limit: parseInt(limit)
-        });
-        variants = result.rows;
-        count = result.count;
+            type: sequelize.QueryTypes.SELECT
+          });
+          
+          // Convert raw SQL results to Sequelize-like format
+          variants = searchResults.map(row => ({
+            id: row.id,
+            product_id: row.product_id,
+            slug: row.slug,
+            stock: row.stock,
+            low_stock_threshold: row.low_stock_threshold,
+            product: {
+              id: row['product.id'],
+              name: row['product.name'],
+              slug: row['product.slug']
+            },
+            variantImages: row['variantImages.image_url'] ? [{
+              id: row['variantImages.id'],
+              image_url: row['variantImages.image_url']
+            }] : []
+          }));
+          
+          // Get total count for pagination
+          const countSql = `
+            SELECT COUNT(*) as total
+            FROM product_variants pv
+            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+            WHERE pv.deleted_at IS NULL 
+            AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
+            ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
+            ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
+          `;
+          
+          const countResult = await sequelize.query(countSql, {
+            replacements: { search: `%${search}%` },
+            type: sequelize.QueryTypes.SELECT
+          });
+          
+          count = countResult[0].total;
+        } else {
+          // Use normal Sequelize for non-search queries
+          result = await ProductVariant.findAndCountAll({
+            where: whereClause,
+            include: [
+              {
+                model: Product,
+                as: 'product',
+                attributes: ['id', 'name', 'slug']
+              },
+              {
+                model: ProductVariantImage,
+                as: 'variantImages',
+                where: { is_primary: true },
+                required: false,
+                attributes: ['image_url']
+              }
+            ],
+            order: orderClause,
+            offset,
+            limit: parseInt(limit)
+          });
+          
+          variants = result.rows;
+          count = result.count;
+        }
       }
 
       // Calculate detailed data for variants (only for non-top-selling case)
@@ -1344,6 +1439,22 @@ module.exports = {
               }) || 0
             : 0;
 
+          // Get all completed/delivered order IDs for total sales calculation
+          const completedOrderIds = await Order.findAll({
+            attributes: ['id'],
+            where: { status: { [Op.in]: ['completed', 'delivered'] } },
+            raw: true
+          }).then(orders => orders.map(o => o.id));
+          // Total sales (all-time)
+          const totalSales = completedOrderIds.length > 0
+            ? await OrderItem.sum('quantity', {
+                where: {
+                  variant_id: variant.id,
+                  order_id: { [Op.in]: completedOrderIds }
+                }
+              }) || 0
+            : 0;
+
           // Stock status
           const isInStock = variant.stock > 0;
           const isOutOfStock = variant.stock === 0;
@@ -1359,7 +1470,8 @@ module.exports = {
             isOutOfStock,
             isLowStock,
             salesLast28Days,
-            salesLastMonth
+            salesLastMonth,
+            totalSales
           };
         }));
       }
