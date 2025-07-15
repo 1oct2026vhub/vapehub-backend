@@ -411,7 +411,7 @@ module.exports = {
         try {
             const { page = 1, limit = 50, search = '' } = req.query;
             const offset = (page - 1) * limit;
-
+            
             const whereClause = {
                 deletedAt: null
             };

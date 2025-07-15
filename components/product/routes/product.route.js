@@ -42,6 +42,13 @@ const multer = require("multer");
  *           example: "1,2,3"
  *         description: Comma-separated brand IDs
  *       - in: query
+ *         name: deal_id
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         required: false
+ *         description: Filter products by specific deal ID
+ *       - in: query
  *         name: variant
  *         schema:
  *           type: string
