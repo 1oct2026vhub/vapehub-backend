@@ -1063,16 +1063,32 @@ module.exports = {
         totalRevenueLastMonth
       ] = await Promise.all([
         // Total variants count
-        ProductVariant.count(),
+        ProductVariant.count({
+          include: [{
+            model: Product,
+            as: 'product',
+            where: { deletedAt: null }
+          }]
+        }),
         
         // In stock variants
         ProductVariant.count({
-          where: { stock: { [Op.gt]: 0 } }
+          where: { stock: { [Op.gt]: 0 } },
+          include: [{
+            model: Product,
+            as: 'product',
+            where: { deletedAt: null }
+          }]
         }),
         
         // Out of stock variants
         ProductVariant.count({
-          where: { stock: 0 }
+          where: { stock: 0 },
+          include: [{
+            model: Product,
+            as: 'product',
+            where: { deletedAt: null }
+          }]
         }),
         
         // Low stock variants
@@ -1080,6 +1096,11 @@ module.exports = {
           where: {
             stock: { [Op.gt]: 0 }
           },
+          include: [{
+            model: Product,
+            as: 'product',
+            where: { deletedAt: null }
+          }],
           attributes: ['id', 'stock', 'low_stock_threshold']
         }).then(variants => {
           return variants.filter(variant => variant.stock <= variant.low_stock_threshold).length;
@@ -1184,8 +1205,8 @@ module.exports = {
             COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
             COALESCE(SUM(oi.quantity), 0) as totalSales
           FROM product_variants pv
-          INNER JOIN products p ON pv.product_id = p.id
-          LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1
+          INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+          LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('completed', 'delivered')
           WHERE pv.deleted_at IS NULL ${productWhereClause}
@@ -1232,12 +1253,13 @@ module.exports = {
             {
               model: Product,
               as: 'product',
-              attributes: ['id', 'name', 'slug']
+              attributes: ['id', 'name', 'slug'],
+              where: { deletedAt: null }
             },
             {
               model: ProductVariantImage,
               as: 'variantImages',
-              where: { is_primary: true },
+              where: { is_primary: true, deleted_at: null },
               required: false,
               attributes: ['image_url']
             }
@@ -1388,12 +1410,13 @@ module.exports = {
               {
                 model: Product,
                 as: 'product',
-                attributes: ['id', 'name', 'slug']
+                attributes: ['id', 'name', 'slug'],
+                where: { deletedAt: null }
               },
               {
                 model: ProductVariantImage,
                 as: 'variantImages',
-                where: { is_primary: true },
+                where: { is_primary: true, deleted_at: null },
                 required: false,
                 attributes: ['image_url']
               }
@@ -1498,5 +1521,130 @@ module.exports = {
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
-  }
+  },
+
+  async getDeletedInventory(req, res) {
+    try {
+      const { 
+        page = 1, 
+        limit = 20, 
+        search,
+        sort_by = 'deleted_at',
+        sort_order = 'DESC'
+      } = req.query;
+
+      const offset = (page - 1) * limit;
+
+      // Calculate summary statistics for deleted items
+      const [
+        totalDeletedVariants,
+        deletedProducts,
+        deletedVariants
+      ] = await Promise.all([
+        // Total deleted variants (only variants that were deleted)
+        ProductVariant.count({
+          where: { deleted_at: { [Op.ne]: null } }
+        }),
+        
+        // Count of deleted products (products don't have soft deletes, so this will be 0)
+        Promise.resolve(0),
+        
+        // Count of deleted variants (same as total since products don't have soft deletes)
+        ProductVariant.count({
+          where: { deleted_at: { [Op.ne]: null } }
+        })
+      ]);
+
+      // Build WHERE clause for filtering
+      const whereClause = {
+        deleted_at: { [Op.ne]: null }
+      };
+
+      if (search) {
+        whereClause[Op.and] = [
+          {
+            [Op.or]: [
+              { barcode: { [Op.like]: `%${search}%` } },
+              { slug: { [Op.like]: `%${search}%` } },
+              { '$product.name$': { [Op.like]: `%${search}%` } }
+            ]
+          }
+        ];
+      }
+
+      // Handle sorting
+      let orderClause;
+      if (sort_by === 'name') {
+        orderClause = [[{ model: Product, as: 'product' }, 'name', sort_order]];
+      } else if (sort_by === 'deleted_at') {
+        // Sort by the most recent deletion (variant only since products don't have soft deletes)
+        orderClause = [
+          ['deleted_at', sort_order]
+        ];
+      } else {
+        orderClause = [[sort_by, sort_order]];
+      }
+
+      // Get deleted variants with their products
+      const result = await ProductVariant.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: Product,
+            as: 'product',
+            attributes: ['id', 'name', 'slug']
+          },
+          {
+            model: ProductVariantImage,
+            as: 'variantImages',
+            where: { is_primary: true },
+            required: false,
+            attributes: ['image_url'],
+            paranoid: false
+          }
+        ],
+        order: orderClause,
+        offset,
+        limit: parseInt(limit),
+        paranoid: false // Include soft-deleted variants
+      });
+
+      // Format the response data
+      const deletedInventory = result.rows.map(variant => {
+        const isVariantDeleted = variant.deleted_at !== null;
+        
+        return {
+          id: variant.id,
+          name: `${variant.product?.name || 'Unknown Product'} - ${variant.slug}`,
+          image: variant.variantImages?.[0]?.image_url || null,
+          currentStock: variant.stock,
+          lowStockThreshold: variant.low_stock_threshold,
+          deletedAt: variant.deleted_at,
+          productDeletedAt: null, // Products don't have soft deletes
+          isProductDeleted: false, // Products don't have soft deletes
+          isVariantDeleted,
+          deletionType: 'variant'
+        };
+      });
+
+      const dashboard = {
+        summary: {
+          totalDeletedVariants,
+          deletedProducts,
+          deletedVariants
+        },
+        inventory: deletedInventory,
+        pagination: {
+          total: result.count,
+          page: parseInt(page),
+          totalPages: Math.ceil(result.count / limit),
+          limit: parseInt(limit)
+        }
+      };
+
+      return successResponse(res, dashboard, "Deleted inventory retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
 }; 

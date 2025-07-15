@@ -34,6 +34,15 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             unique: true
         },
+        image_url: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            validate: {
+                isUrl: {
+                    msg: 'Image URL must be a valid URL'
+                }
+            }
+        },
         deal_type: {
             type: DataTypes.ENUM(DEAL_TYPE_ENUMS),
             allowNull: false
