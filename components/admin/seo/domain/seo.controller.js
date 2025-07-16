@@ -136,7 +136,6 @@ const seoController = {
           return errorResponse(res, { message: `${entityType} with id ${entityId} not found` }, 'Not Found', 404);
         }
       }
-
       // Check for existing slug
       const existingSlug = await SeoMeta.findOne({
         where: {
@@ -149,7 +148,6 @@ const seoController = {
           }
         }
       });
-
       if (existingSlug) {
         return errorResponse(res, { message: 'Slug must be unique' }, 'Bad Request', 400);
       }
