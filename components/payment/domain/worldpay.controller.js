@@ -2517,7 +2517,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
                     const redeemedPoints = user.loyalty_points;
                     await user.update({
-                        loyalty_points: 0
+                        loyalty_points: sequelize.literal(`loyalty_points - ${settings.minimum_points_redemption}`)
                     });
                     // Add loyalty points redemption history
                     await LoyaltyPointsHistory.create({

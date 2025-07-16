@@ -47,9 +47,50 @@ const seoController = {
         // Don't fail the request if health check fails
       }
 
+      // Get entity name based on entity type
+      let entityName = null;
+      let entityData = null;
+      
+      switch (entityType) {
+        case 'product':
+          entityData = await Product.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'name', 'slug']
+          });
+          entityName = entityData?.name;
+          break;
+        case 'category':
+          entityData = await Category.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'name', 'slug']
+          });
+          entityName = entityData?.name;
+          break;
+        case 'brand':
+          entityData = await Brand.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'name', 'slug']
+          });
+          entityName = entityData?.name;
+          break;
+        case 'blog_category':
+          entityData = await BlogCategory.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'name', 'slug']
+          });
+          entityName = entityData?.name;
+          break;
+        case 'blog_post':
+          entityData = await Blog.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'title', 'slug']
+          });
+          entityName = entityData?.title;
+          break;
+        case 'page':
+          entityName = seoMeta.slug; // For pages, use slug as name
+          break;
+      }
+
       return successResponse(res, { 
         seoMeta,
-        health
+        health,
+        entityName
       }, 'SEO metadata retrieved successfully');
     } catch (error) {
       logger.error('Error getting SEO metadata:', error);
@@ -95,7 +136,6 @@ const seoController = {
           return errorResponse(res, { message: `${entityType} with id ${entityId} not found` }, 'Not Found', 404);
         }
       }
-
       // Check for existing slug
       const existingSlug = await SeoMeta.findOne({
         where: {
@@ -108,7 +148,6 @@ const seoController = {
           }
         }
       });
-
       if (existingSlug) {
         return errorResponse(res, { message: 'Slug must be unique' }, 'Bad Request', 400);
       }
@@ -172,6 +211,7 @@ const seoController = {
       // Pagination
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
+      // First get the count and basic data
       const { count, rows } = await SeoMeta.findAndCountAll({
         where: whereClause,
         limit: parseInt(limit),
@@ -179,15 +219,81 @@ const seoController = {
         order: [['updatedAt', 'DESC']]
       });
 
-      // Add health check for each item
-      const itemsWithHealth = await Promise.all(rows.map(async (item) => {
+      // Now fetch entity data for each row based on entityType
+      const rowsWithEntities = await Promise.all(rows.map(async (seoMeta) => {
+        let entityData = null;
+        
+        switch (seoMeta.entityType) {
+          case 'product':
+            entityData = await Product.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'name', 'slug']
+            });
+            break;
+          case 'category':
+            entityData = await Category.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'name', 'slug']
+            });
+            break;
+          case 'brand':
+            entityData = await Brand.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'name', 'slug']
+            });
+            break;
+          case 'blog_category':
+            entityData = await BlogCategory.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'name', 'slug']
+            });
+            break;
+          case 'blog_post':
+            entityData = await Blog.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'title', 'slug']
+            });
+            break;
+        }
+
+        return {
+          ...seoMeta.toJSON(),
+          [seoMeta.entityType === 'blog_post' ? 'blog' : seoMeta.entityType === 'blog_category' ? 'blogCategory' : seoMeta.entityType]: entityData
+        };
+      }));
+
+      // Add health check and entity name for each item
+      const itemsWithHealth = await Promise.all(rowsWithEntities.map(async (item) => {
         try {
           const identifier = item.entityType === 'page' ? item.slug : item.entityId;
           const health = await seoService.checkSeoHealth(item.entityType, identifier);
-          return { ...item.toJSON(), health };
+          
+          // Get entity name based on entity type
+          let entityName = null;
+          switch (item.entityType) {
+            case 'product':
+              entityName = item.product?.name;
+              break;
+            case 'category':
+              entityName = item.category?.name;
+              break;
+            case 'brand':
+              entityName = item.brand?.name;
+              break;
+            case 'blog_category':
+              entityName = item.blogCategory?.name;
+              break;
+            case 'blog_post':
+              entityName = item.blog?.title;
+              break;
+            case 'page':
+              entityName = item.slug; // For pages, use slug as name
+              break;
+          }
+          
+          return { 
+            ...item, 
+            health,
+            entityName
+          };
         } catch (error) {
           logger.error({ error, item }, 'Error getting health check for item');
-          return { ...item.toJSON(), health: null };
+          return { ...item, health: null, entityName: null };
         }
       }));
 

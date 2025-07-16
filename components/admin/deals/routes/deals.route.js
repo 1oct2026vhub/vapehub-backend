@@ -408,6 +408,46 @@ router.patch('/:id/restore', [authMiddleware(true), validateRequest(restoreDealV
  *     responses:
  *       200:
  *         description: Products added to deal successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Products added to deal successfully
+ *                 data:
+ *                   $ref: '#/components/schemas/Deal'
+ *                 warnings:
+ *                   type: object
+ *                   description: Stock warnings if any products have inventory issues
+ *                   properties:
+ *                     stock_issues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           product_id:
+ *                             type: integer
+ *                           product_name:
+ *                             type: string
+ *                           issue:
+ *                             type: string
+ *                             enum: [Product is out of stock, Product has out of stock variants, Product has low stock variants]
+ *                           stock_level:
+ *                             type: integer
+ *                           out_of_stock_variants:
+ *                             type: integer
+ *                           low_stock_variants:
+ *                             type: integer
+ *                           total_variants:
+ *                             type: integer
+ *                     message:
+ *                       type: string
+ *                       example: Some products have stock issues. Please review inventory levels.
  *       400:
  *         description: Invalid input data
  *       401:
@@ -451,6 +491,47 @@ router.post('/:id/products', [authMiddleware(true), validateRequest(addProductsT
  *     responses:
  *       200:
  *         description: Product added to deals successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Product added to deals successfully
+ *                 data:
+ *                   type: object
+ *                   description: Updated product with deals
+ *                 warnings:
+ *                   type: object
+ *                   description: Stock warnings if the product has inventory issues
+ *                   properties:
+ *                     stock_issues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           product_id:
+ *                             type: integer
+ *                           product_name:
+ *                             type: string
+ *                           issue:
+ *                             type: string
+ *                             enum: [Product is out of stock, Product has out of stock variants, Product has low stock variants]
+ *                           stock_level:
+ *                             type: integer
+ *                           out_of_stock_variants:
+ *                             type: integer
+ *                           low_stock_variants:
+ *                             type: integer
+ *                           total_variants:
+ *                             type: integer
+ *                     message:
+ *                       type: string
+ *                       example: Product has stock issues. Please review inventory levels.
  *       400:
  *         description: Invalid input data
  *       401:
