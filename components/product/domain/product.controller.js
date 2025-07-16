@@ -1010,6 +1010,16 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                     required: false
                 },
                 {
+                    model: Flavor,
+                    as: 'Flavors',
+                    through: { 
+                        model: ProductFlavor,
+                        attributes: [] // Exclude ProductFlavor table data from response
+                    },
+                    required: false,
+                    attributes: ['id', 'name']
+                },
+                {
                     model: Deal,
                     as: 'deals',
                     through: { 
@@ -1105,6 +1115,11 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                     url: primaryImage.image_url,
                     is_primary: primaryImage.is_primary
                 } : null,
+                flavors: product.Flavors ? product.Flavors.map(flavor => ({
+                    id: flavor.id,
+                    name: flavor.name,
+                    description: flavor.description
+                })) : [],
                 deals: product.deals.map(deal => ({
                     id: deal.id,
                     name: deal.name,
