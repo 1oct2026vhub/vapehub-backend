@@ -1,5 +1,6 @@
 'use strict';
 const router = require("express").Router();
+const multer = require('multer');
 const { authMiddleware } = require('../../../../library/middleware');
 const dealsController = require("../domain/deals.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
@@ -15,6 +16,22 @@ const {
     addProductToDealsValidation,
     removeProductsFromDealValidation
 } = require("../helper/deals.validator");
+
+// Configure multer for file uploads
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPEG, PNG, GIF, WebP are allowed.'), false);
+        }
+    }
+});
 
 /**
  * @swagger
@@ -75,6 +92,9 @@ const {
  *           type: string
  *           format: date-time
  *           description: Deal validity end date
+ *         image_url:
+ *           type: string
+ *           description: S3 URL for deal image
  */
 
 /**
@@ -90,9 +110,58 @@ const {
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/Deal'
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Deal image file (optional)
+ *               name:
+ *                 type: string
+ *                 description: Name of the deal
+ *               slug:
+ *                 type: string
+ *                 description: URL-friendly version of the deal name (optional, will be auto-generated if not provided)
+ *               deal_type:
+ *                 type: string
+ *                 enum: [BUY_N_FOR_FIXED, BUY_X_GET_Y_FREE, BUY_MORE_SAVE_MORE, BUNDLE, QUANTITY_DISCOUNT]
+ *                 description: Type of the deal
+ *               required_qty:
+ *                 type: integer
+ *                 description: Required quantity for the deal
+ *               get_qty:
+ *                 type: integer
+ *                 description: Quantity to get for free (for BUY_X_GET_Y_FREE)
+ *               fixed_price:
+ *                 type: number
+ *                 format: float
+ *                 description: Fixed price for the deal
+ *               discount_percent:
+ *                 type: integer
+ *                 description: Discount percentage
+ *               tiered_qty_json:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     min:
+ *                       type: integer
+ *                     discount:
+ *                       type: integer
+ *                 description: Tiered quantity discounts
+ *               is_active:
+ *                 type: boolean
+ *                 description: Whether the deal is active
+ *               valid_from:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Deal validity start date
+ *               valid_to:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Deal validity end date
  *     responses:
  *       201:
  *         description: Deal created successfully
@@ -101,7 +170,7 @@ const {
  *       401:
  *         description: Unauthorized
  */
-router.post('/', [authMiddleware(true), validateRequest(createDealValidation)], dealsController.createDeal);
+router.post('/', [authMiddleware(true), upload.single('image'), validateRequest(createDealValidation)], dealsController.createDeal);
 
 /**
  * @swagger
@@ -135,7 +204,7 @@ router.post('/', [authMiddleware(true), validateRequest(createDealValidation)], 
  *       404:
  *         description: Deal not found
  */
-router.put('/:id', [authMiddleware(true), validateRequest(updateDealValidation)], dealsController.updateDeal);
+router.put('/:id', [authMiddleware(true), upload.single('image'), validateRequest(updateDealValidation)], dealsController.updateDeal);
 
 /**
  * @swagger

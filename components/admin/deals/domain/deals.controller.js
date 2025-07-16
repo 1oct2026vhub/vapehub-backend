@@ -5,11 +5,40 @@ const { DEAL_TYPES } = require('../../../../config/constants');
 const { Op } = require('sequelize');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
+const { uploadFiletToS3, generateUniqueFileName } = require('../../../../library/s3');
 
 module.exports.createDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
         const dealData = req.body;
+        
+        // Handle image upload if file is provided
+        if (req.file) {
+            try {
+                const fileName = generateUniqueFileName(req.file.originalname);
+                const key = `deals/${fileName}`;
+                
+                const uploadParams = {
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: key,
+                    Body: req.file.buffer,
+                    ContentType: req.file.mimetype
+                    // Removed ACL as the bucket doesn't support it
+                };
+                
+                const uploadResult = await uploadFiletToS3(uploadParams);
+                if (uploadResult && uploadResult.Location) {
+                    dealData.image_url = uploadResult.Location;
+                } else {
+                    throw new Error('Upload failed - no location returned');
+                }
+            } catch (uploadError) {
+                console.error('Image upload error:', uploadError);
+                const error = new Error('Failed to upload image');
+                error.statusCode = 500;
+                throw error;
+            }
+        }
         
         // Validate bundle product IDs if deal type is BUNDLE
         if (dealData.deal_type === DEAL_TYPES.BUNDLE) {
@@ -60,6 +89,34 @@ module.exports.updateDeal = async (req, res, next) => {
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
+        }
+
+        // Handle image upload if file is provided
+        if (req.file) {
+            try {
+                const fileName = generateUniqueFileName(req.file.originalname);
+                const key = `deals/${fileName}`;
+                
+                const uploadParams = {
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: key,
+                    Body: req.file.buffer,
+                    ContentType: req.file.mimetype
+                    // Removed ACL as the bucket doesn't support it
+                };
+                
+                const uploadResult = await uploadFiletToS3(uploadParams);
+                if (uploadResult && uploadResult.Location) {
+                    dealData.image_url = uploadResult.Location;
+                } else {
+                    throw new Error('Upload failed - no location returned');
+                }
+            } catch (uploadError) {
+                console.error('Image upload error:', uploadError);
+                const error = new Error('Failed to upload image');
+                error.statusCode = 500;
+                throw error;
+            }
         }
 
         // Validate bundle product IDs if deal type is BUNDLE
