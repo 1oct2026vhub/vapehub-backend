@@ -65,7 +65,6 @@ const getDateFormat = (period, tableAlias = 'Order') => {
 // Helper function to get date range string for a specific date
 const getDateRangeString = (date, period) => {
     if (!date) return '';
-    
     try {
         if (period === 'weekly') {
             const [year, week] = date.split('-');
@@ -258,9 +257,10 @@ module.exports.getUserGrowthChart = async (req, res) => {
                 }
             },
             group: [getDateFormat(period, 'User')],
-            order: [[getDateFormat(period, 'User'), 'ASC']]
+            order: [[getDateFormat(period, 'User'), 'ASC']],
+            raw: true, 
         });
-
+        
         const formattedData = userData.map(item => {
             const date = item.date;
             return {
@@ -270,7 +270,6 @@ module.exports.getUserGrowthChart = async (req, res) => {
                 customer: parseInt(item.customerUsersCount || 0)
             };
         });
-
         logger.info('User growth chart data retrieved successfully');
         return successResponse(res, formattedData, 'User growth chart data retrieved successfully');
     } catch (error) {
@@ -320,7 +319,6 @@ module.exports.getTransactionChart = async (req, res) => {
             order: [[getDateFormat(period, 'Transaction'), 'ASC']],
             raw: true
         });
-
         const formattedData = transactionData.map(item => {
             const date = item.date;
             return {
@@ -330,7 +328,6 @@ module.exports.getTransactionChart = async (req, res) => {
                 totalRevenue: parseFloat(item.totalRevenue || 0)
             };
         });
-
         logger.info('Transaction chart data retrieved successfully');
         return successResponse(res, formattedData, 'Transaction chart data retrieved successfully');
     } catch (error) {
