@@ -1,6 +1,6 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Deal, Product, SlugRelation, DealProduct } = require("../../../../models");
+const { Deal, Product, SlugRelation, DealProduct, ProductVariant } = require("../../../../models");
 const { DEAL_TYPES } = require('../../../../config/constants');
 const { Op } = require('sequelize');
 const SlugManager = require('../../../../utils/slugManager');
@@ -342,13 +342,20 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             throw error;
         }
 
-        // Verify all products exist
+        // Verify all products exist and check stock levels
         const products = await Product.findAll({
             where: {
                 id: {
                     [Op.in]: product_ids
                 }
             },
+            include: [
+                {
+                    model: ProductVariant,
+                    as: 'variants',
+                    attributes: ['id', 'slug', 'stock', 'low_stock_threshold', 'stock_status']
+                }
+            ],
             transaction
         });
 
@@ -359,7 +366,113 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             throw error;
         }
 
-        // Create deal products
+        // Check stock levels for each product
+        const stockIssues = [];
+        
+        for (const product of products) {
+            // Initialize stock issue object for this product
+            const stockIssue = {
+                product_id: product.id,
+                product_name: product.name,
+                issue: ''
+            };
+
+            // Check product-level stock first (highest priority)
+            if (product.stock_quantity !== null && product.stock_quantity <= 0) {
+                stockIssue.issue = 'Product is out of stock';
+                stockIssue.stock_level = product.stock_quantity;
+            }
+
+            // Check variants stock levels only if product is not out of stock
+            if (product.variants && product.variants.length > 0 && !stockIssue.issue) {
+                const outOfStockVariants = product.variants.filter(v => v.stock <= 0);
+                const lowStockVariants = product.variants.filter(v => 
+                    v.stock > 0 && v.stock <= v.low_stock_threshold
+                );
+
+                if (outOfStockVariants.length > 0) {
+                    stockIssue.issue = 'Product has out of stock variants';
+                    stockIssue.out_of_stock_variants = outOfStockVariants.length;
+                    stockIssue.total_variants = product.variants.length;
+                    stockIssue.out_of_stock_variant_details = outOfStockVariants.map(v => ({
+                        variant_id: v.id,
+                        variant_slug: v.slug,
+                        stock: v.stock,
+                        low_stock_threshold: v.low_stock_threshold,
+                        message: 'Variant is out of stock'
+                    }));
+
+                    // If there are also low stock variants, include them
+                    if (lowStockVariants.length > 0) {
+                        stockIssue.low_stock_variants = lowStockVariants.length;
+                        stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
+                            variant_id: v.id,
+                            variant_slug: v.slug,
+                            stock: v.stock,
+                            low_stock_threshold: v.low_stock_threshold,
+                            message: 'Variant is low in stock'
+                        }));
+                    }
+                } else if (lowStockVariants.length > 0) {
+                    stockIssue.issue = 'Product has low stock variants';
+                    stockIssue.low_stock_variants = lowStockVariants.length;
+                    stockIssue.total_variants = product.variants.length;
+                    stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
+                        variant_id: v.id,
+                        variant_slug: v.slug,
+                        stock: v.stock,
+                        low_stock_threshold: v.low_stock_threshold,
+                        message: 'Variant is low in stock'
+                    }));
+                }
+            }
+
+            // Only add to stockIssues if there are actual issues
+            if (stockIssue.issue) {
+                stockIssues.push(stockIssue);
+            }
+        }
+
+        // If there are stock issues, return them as warnings but still proceed
+        if (stockIssues.length > 0) {
+            // Create deal products
+            const dealProducts = product_ids.map(product_id => ({
+                deal_id: id,
+                product_id
+            }));
+
+            await DealProduct.bulkCreate(dealProducts, {
+                transaction,
+                ignoreDuplicates: true
+            });
+
+            // Fetch updated deal with products
+            const updatedDeal = await Deal.findByPk(id, {
+                include: [
+                    {
+                        model: Product,
+                        as: 'products',
+                        attributes: ['id', 'name', 'slug'],
+                        required: false
+                    }
+                ],
+                transaction
+            });
+
+            await transaction.commit();
+            
+            return res.status(200).json({
+                status: 'success',
+                message: 'Products added to deal successfully with stock warnings',
+                data: updatedDeal,
+                warnings: {
+                    stock_issues: stockIssues,
+                    message: 'Some products have stock issues. Please review inventory levels.'
+                }
+            });
+        }
+
+        // Create deal products (no stock issues)
         const dealProducts = product_ids.map(product_id => ({
             deal_id: id,
             product_id
@@ -397,8 +510,18 @@ module.exports.addProductToDeals = async (req, res) => {
         const { productId } = req.params;
         const { deal_ids } = req.body;
 
-        // Verify product exists
-        const product = await Product.findByPk(productId);
+        // Verify product exists and check stock levels
+        const product = await Product.findByPk(productId, {
+            include: [
+                {
+                    model: ProductVariant,
+                    as: 'variants',
+                    attributes: ['id', 'slug', 'stock', 'low_stock_threshold', 'stock_status']
+                }
+            ],
+            transaction
+        });
+        
         if (!product) {
             await transaction.rollback();
             return res.status(404).json({
@@ -407,11 +530,77 @@ module.exports.addProductToDeals = async (req, res) => {
             });
         }
 
+        // Check stock levels for the product
+        const stockIssues = [];
+        
+        // Initialize stock issue object for this product
+        const stockIssue = {
+            product_id: product.id,
+            product_name: product.name,
+            issue: ''
+        };
+
+        // Check product-level stock first (highest priority)
+        if (product.stock_quantity !== null && product.stock_quantity <= 0) {
+            stockIssue.issue = 'Product is out of stock';
+            stockIssue.stock_level = product.stock_quantity;
+        }
+
+        // Check variants stock levels only if product is not out of stock
+        if (product.variants && product.variants.length > 0 && !stockIssue.issue) {
+            const outOfStockVariants = product.variants.filter(v => v.stock <= 0);
+            const lowStockVariants = product.variants.filter(v => 
+                v.stock > 0 && v.stock <= v.low_stock_threshold
+            );
+
+            if (outOfStockVariants.length > 0) {
+                stockIssue.issue = 'Product has out of stock variants';
+                stockIssue.out_of_stock_variants = outOfStockVariants.length;
+                stockIssue.total_variants = product.variants.length;
+                stockIssue.out_of_stock_variant_details = outOfStockVariants.map(v => ({
+                    variant_id: v.id,
+                    variant_slug: v.slug,
+                    stock: v.stock,
+                    low_stock_threshold: v.low_stock_threshold,
+                    message: 'Variant is out of stock'
+                }));
+
+                // If there are also low stock variants, include them
+                if (lowStockVariants.length > 0) {
+                    stockIssue.low_stock_variants = lowStockVariants.length;
+                    stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
+                        variant_id: v.id,
+                        variant_slug: v.slug,
+                        stock: v.stock,
+                        low_stock_threshold: v.low_stock_threshold,
+                        message: 'Variant is low in stock'
+                    }));
+                }
+            } else if (lowStockVariants.length > 0) {
+                stockIssue.issue = 'Product has low stock variants';
+                stockIssue.low_stock_variants = lowStockVariants.length;
+                stockIssue.total_variants = product.variants.length;
+                stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
+                    variant_id: v.id,
+                    variant_slug: v.slug,
+                    stock: v.stock,
+                    low_stock_threshold: v.low_stock_threshold,
+                    message: 'Variant is low in stock'
+                }));
+            }
+        }
+
+        // Only add to stockIssues if there are actual issues
+        if (stockIssue.issue) {
+            stockIssues.push(stockIssue);
+        }
+
         // Verify all deals exist
         const deals = await Deal.findAll({
             where: {
                 id: deal_ids
-            }
+            },
+            transaction
         });
 
         if (deals.length !== deal_ids.length) {
@@ -443,6 +632,19 @@ module.exports.addProductToDeals = async (req, res) => {
         });
 
         await transaction.commit();
+
+        // Return response with stock warnings if any
+        if (stockIssues.length > 0) {
+            return res.status(200).json({
+                status: 'success',
+                message: 'Product added to deals successfully with stock warnings',
+                data: updatedProduct,
+                warnings: {
+                    stock_issues: stockIssues,
+                    message: 'Product has stock issues. Please review inventory levels.'
+                }
+            });
+        }
 
         res.status(200).json({
             status: 'success',
