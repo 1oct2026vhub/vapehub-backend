@@ -66,7 +66,35 @@ module.exports = (sequelize) => {
   });
 
   SeoMeta.associate = (models) => {
-    // Add any associations here if needed
+    // Product association
+    SeoMeta.belongsTo(models.Product, {
+      foreignKey: 'entityId',
+      as: 'product'
+    });
+
+    // Category association
+    SeoMeta.belongsTo(models.Category, {
+      foreignKey: 'entityId',
+      as: 'category'
+    });
+
+    // Brand association
+    SeoMeta.belongsTo(models.Brand, {
+      foreignKey: 'entityId',
+      as: 'brand'
+    });
+
+    // Blog Category association
+    SeoMeta.belongsTo(models.BlogCategory, {
+      foreignKey: 'entityId',
+      as: 'blogCategory'
+    });
+
+    // Blog association
+    SeoMeta.belongsTo(models.Blog, {
+      foreignKey: 'entityId',
+      as: 'blog'
+    });
   };
 
   return SeoMeta;
