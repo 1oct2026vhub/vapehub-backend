@@ -548,6 +548,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                         coupon_discount_value = coupon.discount_value;
                         discount_type = 'fixed';
                         discount_amount = coupon.discount_value;
+                        
                     }
                     // Apply maximum discount limit if set
                     if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
