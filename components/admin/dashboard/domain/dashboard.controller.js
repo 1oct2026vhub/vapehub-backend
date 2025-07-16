@@ -238,7 +238,6 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 yearlyAbbreviated: "£" + dashboardHelper.formatAbbreviatedNumber(stats.sales.yearly)
             }
         };
-
         logger.info('Dashboard statistics retrieved successfully');
         return successResponse(res, formattedStats, 'Dashboard statistics retrieved successfully');
     } catch (error) {
