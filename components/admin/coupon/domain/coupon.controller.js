@@ -42,7 +42,9 @@ const couponController = {
       } = req.query;
 
       const offset = (page - 1) * limit;
-      const where = {};
+      const where = {
+        coupon_user: null // Filter for null coupon_user
+      };
 
       // Add search filter
       if (search) {
