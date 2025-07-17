@@ -205,6 +205,18 @@ module.exports.placeOrder = async (req, res, next) => {
                             as: "variants",
                             where: { deleted_at: null },
                             required: false
+                        },
+                        {
+                            model: Brand,
+                            as: "Brands",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        },
+                        {
+                            model: Category,
+                            as: "Categories",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
                         }
                     ], 
                     as: "product" 
@@ -389,12 +401,12 @@ module.exports.placeOrder = async (req, res, next) => {
                                             }
                                             break;
                                         case 'brand':
-                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
                                         case 'category':
-                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
@@ -464,12 +476,12 @@ module.exports.placeOrder = async (req, res, next) => {
                                             }
                                             break;
                                         case 'brand':
-                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
                                         case 'category':
-                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
