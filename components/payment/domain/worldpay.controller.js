@@ -2900,6 +2900,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 shippingCost: order.shipping_cost || 0,
                 totalAmount: order.total || 0,
                 discountPrice: order.discount_price || 0,
+                loyaltyDiscount: order.loyalty_discount || 0,
                 items: order.orderItems.map(item => ({
                     name: item.variant ? `${item.product?.name || ''} - ${item.variant?.slug || ''}` : item.product?.name || '',
                     quantity: item.quantity || 0,

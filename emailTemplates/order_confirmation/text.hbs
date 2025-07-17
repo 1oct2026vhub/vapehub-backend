@@ -14,6 +14,13 @@ Items Ordered:
   Total: {{total}}
 {{/items}}
 
+{{#if discountPrice}}
+Coupon Discount: -£{{discountPrice}}
+{{/if}}
+{{#if loyaltyDiscount}}
+Loyalty Points Discount: -£{{loyaltyDiscount}}
+{{/if}}
+
 Total Amount: {{totalAmount}}
 
 Shipping Address:
