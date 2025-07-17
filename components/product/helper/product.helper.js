@@ -14,16 +14,19 @@ async function getTrendingProducts(limit = 10) {
         p.slug, 
         p.price, 
         p.discount_price, 
-        COUNT(o.id) AS order_count
+        COUNT(DISTINCT o.id) AS order_count
       FROM 
-        orders o
+        products p
       JOIN 
-        products p ON o.product_id = p.id
+        order_items oi ON oi.product_id = p.id
+      JOIN 
+        orders o ON o.id = oi.order_id
       WHERE 
         o.createdAt BETWEEN :startOfMonth AND :endOfMonth
         AND p.status = 'published'
+        AND o.status NOT IN ('cancelled', 'refunded')
       GROUP BY 
-        p.id
+        p.id, p.name, p.slug, p.price, p.discount_price
       ORDER BY 
         order_count DESC
       LIMIT :limit
@@ -300,18 +303,49 @@ const fetchProducts = async (query, status = 'published') => {
           [Op.gte]: new Date(new Date().setDate(new Date().getDate() - 30))
         }
       }),
-      ...(categories && {
-        category_id: {
-          [Op.in]: categories.split(',').map(Number)
-        }
-      }),
-      ...(brand && {
-        brand_id: {
-          [Op.in]: brand.split(',').map(Number)
-        }
-      }),
       status: status
     };
+
+    // Add category and brand filtering using many-to-many relationships
+    if (categories) {
+      const categoryIds = categories.split(',').map(Number);
+      productWhereClause.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT product_id 
+          FROM product_categories 
+          WHERE category_id IN (${categoryIds.join(',')})
+        )`)
+      };
+    }
+
+    if (brand) {
+      const brandIds = brand.split(',').map(Number);
+      if (categories) {
+        // If both categories and brands are specified, use AND logic
+        productWhereClause.id = {
+          [Op.and]: [
+            Sequelize.literal(`(
+              SELECT DISTINCT product_id 
+              FROM product_categories 
+              WHERE category_id IN (${categories.split(',').map(Number).join(',')})
+            )`),
+            Sequelize.literal(`(
+              SELECT DISTINCT product_id 
+              FROM product_brands 
+              WHERE brand_id IN (${brandIds.join(',')})
+            )`)
+          ]
+        };
+      } else {
+        productWhereClause.id = {
+          [Op.in]: Sequelize.literal(`(
+            SELECT DISTINCT product_id 
+            FROM product_brands 
+            WHERE brand_id IN (${brandIds.join(',')})
+          )`)
+        };
+      }
+    }
     // Create a separate variant where clause without the price range filter
     let priceRangeVariantWhereClause = "";
     if (variantFilters.id) {
@@ -360,13 +394,15 @@ const fetchProducts = async (query, status = 'published') => {
     const includeClause = [
       {
         model: Category,
-        as: 'Category',
-        attributes: ['id', 'name', 'slug']
+        as: 'Categories',
+        attributes: ['id', 'name', 'slug'],
+        through: { attributes: ['is_primary'] }
       },
       {
         model: Brand,
-        as: 'Brand',
-        attributes: ['id', 'name', 'slug']
+        as: 'Brands',
+        attributes: ['id', 'name', 'slug'],
+        through: { attributes: ['is_primary'] }
       },
       {
         model: ProductVariant,
@@ -490,6 +526,7 @@ const fetchProducts = async (query, status = 'published') => {
       }
       return false;
     });
+
     // Build base product filter conditions for SQL queries
     let productFilterConditions = [];
     let productFilterParams = {};
@@ -555,28 +592,30 @@ const fetchProducts = async (query, status = 'published') => {
       ? sqlAttributeFilterConditions.join(" OR ") 
       : "";
 
-    // 1. Fetch categories with product counts - WITH category filter
-    // For category_items: Filters by keyword, price_range, brand, variant, and is_new
-    const categoryFilterConditions = [...productFilterConditions];
-    const categoryFilterParams = {...productFilterParams};
+    // Prepare price range filter conditions for category and brand queries
+    const priceRangeFilterConditions = productFilterConditions.filter(condition => 
+      !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
+    );
+    const priceRangeFilterParams = {...productFilterParams};
     
-    // Add brand filter for category_items
-    if (brand) {
-      const brandIds = brand.split(',').map(Number);
-      categoryFilterConditions.push("p.brand_id IN (:brandIds)");
-      categoryFilterParams.brandIds = brandIds;
+    // Add variant filter for price_ranges
+    let priceRangeVariantWhereClauseForPriceRange = "";
+    if (variantFilters.id) {
+      priceRangeVariantWhereClauseForPriceRange = "AND pv.id = :variantId";
+      priceRangeFilterParams.variantId = variantFilters.id;
     }
     
-    const categoryWhereClause = categoryFilterConditions.length > 0 
-      ? "WHERE " + categoryFilterConditions.join(" AND ") 
+    const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
+      ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
       : "";
-    
+
+    // 1. Fetch categories with product counts - WITH category filter
+    // For category_items: Filters by keyword, price_range, brand, variant, and is_new
+    // Updated: Use product_categories junction table
     const categoryResults = await sequelize.query(`
       WITH product_price_ranges AS (
         SELECT 
           p.id as product_id,
-          p.category_id,
-          p.brand_id,
           (
             SELECT MIN(pv2.price)
             FROM product_variants pv2
@@ -589,65 +628,35 @@ const fetchProducts = async (query, status = 'published') => {
           products p
         WHERE
           p.deletedAt IS NULL
-          ${priceRange ? `AND EXISTS (
-            SELECT 1
-            FROM (
-              SELECT MIN(pv2.price) AS min_price
-              FROM product_variants pv2
-              WHERE 
-                pv2.product_id = p.id
-                AND pv2.status = 'active'
-                AND pv2.deleted_at IS NULL
-            ) AS min_price_table
-            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
-          )` : ''}
-          ${brand ? `AND p.brand_id IN (${brand})` : ''}
+          ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
+          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
       )
       SELECT 
         c.id, 
         c.name, 
         c.slug, 
-        COUNT(DISTINCT p.product_id) as product_count
+        COUNT(DISTINCT pc.product_id) as product_count
       FROM 
         categories c
-      JOIN 
-        product_price_ranges p ON p.category_id = c.id
-      ${sqlAttributeWhereClause ? `
-      JOIN product_attribute_terms pat ON pat.product_id = p.product_id
-      ` : ''}
+      JOIN product_categories pc ON pc.category_id = c.id
+      JOIN product_price_ranges ppr ON ppr.product_id = pc.product_id
       WHERE
-        p.min_price IS NOT NULL
-        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
+        ppr.min_price IS NOT NULL
       GROUP BY 
         c.id, c.name, c.slug
     `, {
-      replacements: categoryFilterParams,
+      replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
     // 2. Fetch brands with product counts - WITH brand filter
-    // For brand_items: Filters by keyword, price_range, categories, variant, and is_new
-    const brandFilterConditions = [...productFilterConditions];
-    const brandFilterParams = {...productFilterParams};
-    
-    // Add categories filter for brand_items
-    if (categories) {
-      const categoryIds = categories.split(',').map(Number);
-      brandFilterConditions.push("p.category_id IN (:categoryIds)");
-      brandFilterParams.categoryIds = categoryIds;
-    }
-    
-    const brandWhereClause = brandFilterConditions.length > 0 
-      ? "WHERE " + brandFilterConditions.join(" AND ") 
-      : "";
-    
+    // For brand_items: Filters by keyword, price_range, category, variant, and is_new
+    // Updated: Use product_brands junction table
     const brandResults = await sequelize.query(`
       WITH product_price_ranges AS (
         SELECT 
           p.id as product_id,
-          p.brand_id,
-          p.category_id,
           (
             SELECT MIN(pv2.price)
             FROM product_variants pv2
@@ -660,40 +669,25 @@ const fetchProducts = async (query, status = 'published') => {
           products p
         WHERE
           p.deletedAt IS NULL
-          ${priceRange ? `AND EXISTS (
-            SELECT 1
-            FROM (
-              SELECT MIN(pv2.price) AS min_price
-              FROM product_variants pv2
-              WHERE 
-                pv2.product_id = p.id
-                AND pv2.status = 'active'
-                AND pv2.deleted_at IS NULL
-            ) AS min_price_table
-            WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
-          )` : ''}
-          ${categories ? `AND p.category_id IN (${categories})` : ''}
+          ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
+          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
       )
       SELECT 
         b.id, 
         b.name, 
         b.slug, 
-        COUNT(DISTINCT p.product_id) as product_count
+        COUNT(DISTINCT pb.product_id) as product_count
       FROM 
         brands b
-      JOIN 
-        product_price_ranges p ON p.brand_id = b.id
-      ${sqlAttributeWhereClause ? `
-      JOIN product_attribute_terms pat ON pat.product_id = p.product_id
-      ` : ''}
+      JOIN product_brands pb ON pb.brand_id = b.id
+      JOIN product_price_ranges ppr ON ppr.product_id = pb.product_id
       WHERE
-        p.min_price IS NOT NULL
-        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
+        ppr.min_price IS NOT NULL
       GROUP BY 
         b.id, b.name, b.slug
     `, {
-      replacements: brandFilterParams,
+      replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
 
@@ -701,19 +695,8 @@ const fetchProducts = async (query, status = 'published') => {
     const attributeFilterConditions = [...productFilterConditions];
     const attributeFilterParams = {...productFilterParams};
     
-    // Add brand filter for attributes
-    if (brand) {
-      const brandIds = brand.split(',').map(Number);
-      attributeFilterConditions.push("p.brand_id IN (:brandIds)");
-      attributeFilterParams.brandIds = brandIds;
-    }
-    
-    // Add categories filter for attributes
-    if (categories) {
-      const categoryIds = categories.split(',').map(Number);
-      attributeFilterConditions.push("p.category_id IN (:categoryIds)");
-      attributeFilterParams.categoryIds = categoryIds;
-    }
+    // Note: Brand and category filtering for attributes is now handled through the junction tables
+    // in the main product filtering logic, so we don't need to add them here
 
     const attributeResults = await sequelize.query(`
       WITH filtered_products AS (
@@ -845,35 +828,7 @@ const fetchProducts = async (query, status = 'published') => {
 
     // 3. Fetch price ranges with product counts - WITH price range filter
     // For price_ranges: Filters by keyword, brand, categories, variant, and is_new
-    const priceRangeFilterConditions = productFilterConditions.filter(condition => 
-      !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
-    );
-    const priceRangeFilterParams = {...productFilterParams};
-    
-    // Add brand filter for price_ranges
-    if (brand) {
-      const brandIds = brand.split(',').map(Number);
-      priceRangeFilterConditions.push("p.brand_id IN (:brandIds)");
-      priceRangeFilterParams.brandIds = brandIds;
-    }
-    
-    // Add categories filter for price_ranges
-    if (categories) {
-      const categoryIds = categories.split(',').map(Number);
-      priceRangeFilterConditions.push("p.category_id IN (:categoryIds)");
-      priceRangeFilterParams.categoryIds = categoryIds;
-    }
-    
-    // Add variant filter for price_ranges
-    let priceRangeVariantWhereClauseForPriceRange = "";
-    if (variantFilters.id) {
-      priceRangeVariantWhereClauseForPriceRange = "AND pv.id = :variantId";
-      priceRangeFilterParams.variantId = variantFilters.id;
-    }
-    
-    const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
-      ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
-      : "";
+    // Note: priceRangeFilterConditions, priceRangeFilterParams, and priceRangeWhereClause are already defined above
     
     const priceRangeResults = await sequelize.query(`
       WITH product_price_ranges AS (
@@ -940,17 +895,19 @@ const fetchProducts = async (query, status = 'published') => {
 
     // Prepare additional data based on source
     const additionalData = {};
-    if (source === "category" && availableProducts[0]?.Category) {
+    if (source === "category" && availableProducts[0]?.Categories && availableProducts[0].Categories.length > 0) {
+      const primaryCategory = availableProducts[0].Categories.find(cat => cat.ProductCategory?.is_primary) || availableProducts[0].Categories[0];
       Object.assign(additionalData, {
-        id: availableProducts[0].Category.id,
-        name: availableProducts[0].Category.name,
-        slug: availableProducts[0].Category.slug
+        id: primaryCategory.id,
+        name: primaryCategory.name,
+        slug: primaryCategory.slug
       });
-    } else if (source === "brand" && availableProducts[0]?.Brand) {
+    } else if (source === "brand" && availableProducts[0]?.Brands && availableProducts[0].Brands.length > 0) {
+      const primaryBrand = availableProducts[0].Brands.find(brand => brand.ProductBrand?.is_primary) || availableProducts[0].Brands[0];
       Object.assign(additionalData, {
-        id: availableProducts[0].Brand.id,
-        name: availableProducts[0].Brand.name,
-        slug: availableProducts[0].Brand.slug
+        id: primaryBrand.id,
+        name: primaryBrand.name,
+        slug: primaryBrand.slug
       });
     }
     return {

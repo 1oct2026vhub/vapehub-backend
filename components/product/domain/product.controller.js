@@ -544,7 +544,8 @@ module.exports.trendingProduct = async (req, res) => {
         const trendingProducts = await getTrendingProducts(10);
         return successResponse(res, trendingProducts, { message: 'Top 10 trending products fetched successfully' },)
     } catch (error) {
-        logger.error(error)
+        logger.error(error);
+        console.log("🚀 ~ module.exports.trendingProduct= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }
@@ -670,13 +671,15 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             include: [
                 {
                     model: Category,
-                    as: 'Category',
-                    attributes: ['id', 'name', 'slug']
+                    as: 'Categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: Brand,
-                    as: 'Brand',
-                    attributes: ['id', 'name', 'slug']
+                    as: 'Brands',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: ProductVariant,
@@ -971,15 +974,15 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 description: product.variants && product.variants.length > 0 ? product.variants[0].description : product.description,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
-                category: product.Category ? {
-                    id: product.Category.id,
-                    name: product.Category.name,
-                    slug: product.Category.slug
+                category: product.Categories && product.Categories.length > 0 ? {
+                    id: product.Categories[0].id,
+                    name: product.Categories[0].name,
+                    slug: product.Categories[0].slug
                 } : null,
-                brand: product.Brand ? {
-                    id: product.Brand.id,
-                    name: product.Brand.name,
-                    slug: product.Brand.slug
+                brand: product.Brands && product.Brands.length > 0 ? {
+                    id: product.Brands[0].id,
+                    name: product.Brands[0].name,
+                    slug: product.Brands[0].slug
                 } : null,
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
@@ -1040,19 +1043,21 @@ module.exports.getDealsByCategory = async (req, res, next) => {
         // Get all products in the category with their deals
         const productsWithDeals = await Product.findAll({
             where: {
-                category_id: category_id,
                 status: productStatus.PUBLISHED
             },
             include: [
                 {
                     model: Category,
-                    as: 'Category',
-                    attributes: ['id', 'name', 'slug']
+                    as: 'Categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] },
+                    where: { id: category_id }
                 },
                 {
                     model: Brand,
-                    as: 'Brand',
-                    attributes: ['id', 'name', 'slug']
+                    as: 'Brands',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: ProductImage,
@@ -1114,10 +1119,14 @@ module.exports.getDealsByCategory = async (req, res, next) => {
         // Get total count for pagination
         const totalCount = await Product.count({
             where: {
-                category_id: category_id,
                 status: productStatus.PUBLISHED
             },
             include: [
+                {
+                    model: Category,
+                    as: 'Categories',
+                    where: { id: category_id }
+                },
                 {
                     model: Deal,
                     as: 'deals',
@@ -1152,15 +1161,15 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
-                category: product.Category ? {
-                    id: product.Category.id,
-                    name: product.Category.name,
-                    slug: product.Category.slug
+                category: product.Categories && product.Categories.length > 0 ? {
+                    id: product.Categories[0].id,
+                    name: product.Categories[0].name,
+                    slug: product.Categories[0].slug
                 } : null,
-                brand: product.Brand ? {
-                    id: product.Brand.id,
-                    name: product.Brand.name,
-                    slug: product.Brand.slug
+                brand: product.Brands && product.Brands.length > 0 ? {
+                    id: product.Brands[0].id,
+                    name: product.Brands[0].name,
+                    slug: product.Brands[0].slug
                 } : null,
                 primary_image: primaryImage ? {
                     id: primaryImage.id,

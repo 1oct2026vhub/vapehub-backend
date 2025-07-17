@@ -1106,8 +1106,8 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                     name,
                     slug,
                     description,
-                    brand_slug,
-                    category_slug
+                    brand_slugs,
+                    category_slugs
                 ] = rowValues;
 
                 // Skip if required fields are missing
@@ -1123,7 +1123,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
 
                 await processProductRow({
                     id, name, slug, description, 
-                    brand_slug, category_slug, updated_by, 
+                    brand_slugs, category_slugs, updated_by, 
                     results
                 });
             }
@@ -1193,20 +1193,40 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
 };
 
 // Helper function to process a product row
-const processProductRow = async ({ id, name, slug, description, brand_slug, category_slug, updated_by, results }) => {
+const processProductRow = async ({ id, name, slug, description, brand_slugs, category_slugs, updated_by, results }) => {
     try {
-        // Find brand if brand_slug exists
-        let brand = null;
-        if (brand_slug) {
-            brand = await Brand.findOne({ where: { slug: brand_slug } });
-            if (!brand) throw new Error(`Brand with slug ${brand_slug} not found`);
+        // Find brands if brand_slugs exists
+        let brands = [];
+        if (brand_slugs) {
+            const brandSlugsArray = brand_slugs.split(',').map(slug => slug.trim()).filter(slug => slug);
+            if (brandSlugsArray.length > 0) {
+                brands = await Brand.findAll({ 
+                    where: { slug: { [Op.in]: brandSlugsArray } } 
+                });
+                
+                if (brands.length !== brandSlugsArray.length) {
+                    const foundSlugs = brands.map(brand => brand.slug);
+                    const missingSlugs = brandSlugsArray.filter(slug => !foundSlugs.includes(slug));
+                    throw new Error(`Some brands not found: ${missingSlugs.join(', ')}`);
+                }
+            }
         }
 
-        // Find category if category_slug exists
-        let category = null;
-        if (category_slug) {
-            category = await Category.findOne({ where: { slug: category_slug } });
-            if (!category) throw new Error(`Category with slug ${category_slug} not found`);
+        // Find categories if category_slugs exists
+        let categories = [];
+        if (category_slugs) {
+            const categorySlugsArray = category_slugs.split(',').map(slug => slug.trim()).filter(slug => slug);
+            if (categorySlugsArray.length > 0) {
+                categories = await Category.findAll({ 
+                    where: { slug: { [Op.in]: categorySlugsArray } } 
+                });
+                
+                if (categories.length !== categorySlugsArray.length) {
+                    const foundSlugs = categories.map(category => category.slug);
+                    const missingSlugs = categorySlugsArray.filter(slug => !foundSlugs.includes(slug));
+                    throw new Error(`Some categories not found: ${missingSlugs.join(', ')}`);
+                }
+            }
         }
 
         const productData = {
@@ -1250,33 +1270,37 @@ const processProductRow = async ({ id, name, slug, description, brand_slug, cate
         }
 
         // Update category associations
-        if (category) {
+        if (categories.length > 0) {
             // Remove existing category associations
             await ProductCategory.destroy({
                 where: { product_id: product.id }
             });
 
-            // Create new category association
-            await ProductCategory.create({
+            // Create new category associations
+            const categoryData = categories.map((category, index) => ({
                 product_id: product.id,
                 category_id: category.id,
-                is_primary: true
-            });
+                is_primary: index === 0 // First category is primary
+            }));
+            
+            await ProductCategory.bulkCreate(categoryData);
         }
 
         // Update brand associations
-        if (brand) {
+        if (brands.length > 0) {
             // Remove existing brand associations
             await ProductBrand.destroy({
                 where: { product_id: product.id }
             });
 
-            // Create new brand association
-            await ProductBrand.create({
+            // Create new brand associations
+            const brandData = brands.map((brand, index) => ({
                 product_id: product.id,
                 brand_id: brand.id,
-                is_primary: true
-            });
+                is_primary: index === 0 // First brand is primary
+            }));
+            
+            await ProductBrand.bulkCreate(brandData);
         }
 
         // Create or update slug relation
@@ -1406,8 +1430,8 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             { header: 'Name', key: 'name', width: 30 },
             { header: 'Slug', key: 'slug', width: 30 },
             { header: 'Description', key: 'description', width: 50 },
-            { header: 'Brand Slug', key: 'brand_slug', width: 20 },
-            { header: 'Category Slug', key: 'category_slug', width: 20 }
+            { header: 'Brand Slugs (comma-separated)', key: 'brand_slugs', width: 30 },
+            { header: 'Category Slugs (comma-separated)', key: 'category_slugs', width: 30 }
         ];
 
         // Add sample product data
@@ -1416,8 +1440,8 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Sample Product',
             slug: 'sample-product',
             description: 'This is a sample product description',
-            brand_slug: 'sample-brand',
-            category_slug: 'sample-category'
+            brand_slugs: 'sample-brand,premium-brand',
+            category_slugs: 'sample-category,featured-category'
         });
 
         productSheet.addRow({
@@ -1425,8 +1449,8 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
             name: 'Existing Product',
             slug: 'existing-product',
             description: 'This is an existing product',
-            brand_slug: 'existing-brand',
-            category_slug: 'existing-category'
+            brand_slugs: 'existing-brand',
+            category_slugs: 'existing-category,popular-category'
         });
 
         // Attributes Sheet
@@ -1459,6 +1483,7 @@ module.exports.downloadSampleExcel = async (req, res, next) => {
         // Add notes
         productSheet.addRow({});
         productSheet.addRow(['NOTE:', 'Leave ID empty for new products. Fill ID for updating existing products.']);
+        productSheet.addRow(['NOTE:', 'Multiple brands and categories should be comma-separated (e.g., "brand1,brand2").']);
         attributeSheet.addRow({});
         attributeSheet.addRow(['NOTE:', 'Multiple terms should be comma-separated. Product slug must match a product in the Products sheet.']);
 
