@@ -207,15 +207,48 @@ module.exports.listDeals = async (req, res, next) => {
             whereCondition.valid_to = { [Op.gte]: now };
         }
 
-        const { count, rows: deals } = await Deal.findAndCountAll(queryOptions);
+        // Get total count without includes for accurate pagination
+        const countQuery = {
+            where: whereCondition,
+            paranoid: queryOptions.paranoid
+        };
+        const totalCount = await Deal.count(countQuery);
+
+        // Calculate pagination values
+        const currentPage = parseInt(page);
+        const pageLimit = parseInt(limit);
+        const totalPages = Math.ceil(totalCount / pageLimit);
+
+
+
+        // If page is beyond total pages, return empty result with proper pagination info
+        if (currentPage > totalPages) {
+            const response = {
+                deals: [],
+                pagination: {
+                    total: totalCount,
+                    page: currentPage,
+                    limit: pageLimit,
+                    total_pages: totalPages,
+                    has_next: false,
+                    has_prev: currentPage > 1
+                }
+            };
+            return successResponse(res, response, 'Success');
+        }
+
+        // Get paginated data with includes
+        const deals = await Deal.findAll(queryOptions);
 
         const response = {
             deals,
             pagination: {
-                total: count,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total_pages: Math.ceil(count / limit)
+                total: totalCount,
+                page: currentPage,
+                limit: pageLimit,
+                total_pages: totalPages,
+                has_next: currentPage < totalPages,
+                has_prev: currentPage > 1
             }
         };
 
