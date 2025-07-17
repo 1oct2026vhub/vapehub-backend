@@ -8,10 +8,10 @@ const moment = require('moment-timezone');
 // Run every hour at minute 0
 cron.schedule('0 * * * *', async () => {
   try {
-    // Find all low stock variants (stock > 0 and stock <= low_stock_threshold)
+    // Find all low stock variants (stock > 0 and stock <= low_stock_threshold) and out of stock variants (stock = 0)
     const lowStockVariants = await ProductVariant.findAll({
       where: {
-        stock: { [Op.gt]: 0 }
+        stock: { [Op.gte]: 0 } // Changed from Op.gt to Op.gte to include stock = 0
       },
       include: [{
         model: Product,
@@ -19,7 +19,7 @@ cron.schedule('0 * * * *', async () => {
         attributes: ['name']
       }]
     });
-    // Filter in JS for variants where stock <= low_stock_threshold
+    // Filter in JS for variants where stock <= low_stock_threshold (includes out of stock)
     const lowStockVariantsFiltered = lowStockVariants.filter(v => v.stock <= v.low_stock_threshold);
     
     // Calculate last 28 days sales for each low stock variant
@@ -59,18 +59,24 @@ cron.schedule('0 * * * *', async () => {
         variantName: v.slug || v.id,
         stock: v.stock,
         low_stock_threshold: v.low_stock_threshold,
+        status: v.stock === 0 ? 'Out of Stock' : 'Low Stock',
         last28DaysSales: salesCount,
         last28DaysAmount: salesAmount.toFixed(2)
       };
     }));
-    // Only send email if there are low stock items
+    // Only send email if there are low stock or out of stock items
     if (lowStockList.length > 0) {
+      const outOfStockCount = lowStockList.filter(item => item.status === 'Out of Stock').length;
+      const lowStockCount = lowStockList.filter(item => item.status === 'Low Stock').length;
+      
       const data = {
         emailTypes: constants.emailTypes.INVENTORY_LOW_STOCK,
         to: process.env.ADMIN_EMAIL || 'admin@example.com',
         context: {
             lowStockList: lowStockList,
             totalLowStockCount: lowStockList.length,
+            outOfStockCount: outOfStockCount,
+            lowStockCount: lowStockCount,
             // FRONTEND_URL: process.env.FRONTEND_URL
         },
         attachments: ""
