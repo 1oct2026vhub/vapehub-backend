@@ -136,13 +136,19 @@
         <div class="alert-icon">⚠️</div>
       </div>
       <div class="content">
-        <h2>Low Stock Alert</h2>
-        <p>You have <strong>{{totalLowStockCount}} items</strong> with low stock that need attention. The table below shows current stock levels and sales performance over the last 28 days:</p>
+        <h2>Inventory Alert</h2>
+        <p>You have <strong>{{totalLowStockCount}} items</strong> that need attention:</p>
+        <ul style="text-align: left; max-width: 400px; margin: 0 auto 20px auto;">
+          <li><strong>{{outOfStockCount}} items</strong> are out of stock</li>
+          <li><strong>{{lowStockCount}} items</strong> are running low on stock</li>
+        </ul>
+        <p>The table below shows current stock levels and sales performance over the last 28 days:</p>
         <table>
           <thead>
             <tr>
               <th>Product</th>
               <th>Variant</th>
+              <th>Status</th>
               <th>Stock</th>
               <th>Low Stock Threshold</th>
               <th>Last 28 Days Sales</th>
@@ -154,6 +160,23 @@
             <tr>
               <td>{{this.productName}}</td>
               <td>{{this.variantName}}</td>
+              <td>
+                <span style="
+                  padding: 4px 8px;
+                  border-radius: 4px;
+                  font-size: 12px;
+                  font-weight: bold;
+                  {{#if (eq this.status 'Out of Stock')}}
+                    background-color: #fee2e2;
+                    color: #dc2626;
+                  {{else}}
+                    background-color: #fef3c7;
+                    color: #d97706;
+                  {{/if}}
+                ">
+                  {{this.status}}
+                </span>
+              </td>
               <td>{{this.stock}}</td>
               <td>{{this.low_stock_threshold}}</td>
               <td>{{this.last28DaysSales}}</td>

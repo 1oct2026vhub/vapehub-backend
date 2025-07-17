@@ -435,7 +435,7 @@ module.exports.addProductsToDeal = async (req, res, next) => {
 
         // If there are stock issues, return them as warnings but still proceed
         if (stockIssues.length > 0) {
-            // Create deal products
+        // Create deal products
             const dealProducts = product_ids.map(product_id => ({
                 deal_id: id,
                 product_id
