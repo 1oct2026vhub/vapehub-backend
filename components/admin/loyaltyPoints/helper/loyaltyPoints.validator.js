@@ -57,6 +57,11 @@ const createLoyaltyPointsSettingsValidation = [
         .isFloat({ min: 0 })
         .withMessage('Minimum purchase amount must be a positive number'),
     
+    body('min_amount_for_loyalty_points')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Minimum amount for loyalty points must be a positive number'),
+    
     body('status')
         .optional()
         .isBoolean()
@@ -99,6 +104,11 @@ const updateLoyaltyPointsSettingsValidation = [
         .optional()
         .isFloat({ min: 0 })
         .withMessage('Minimum purchase amount must be a positive number if provided'),
+    
+    body('min_amount_for_loyalty_points')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Minimum amount for loyalty points must be a positive number if provided'),
     
     body('status')
         .optional()

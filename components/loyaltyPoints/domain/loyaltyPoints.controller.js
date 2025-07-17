@@ -54,6 +54,7 @@ module.exports = {
                 redemption_amount: redemptionAmount,
                 redemption_type: redemptionType,
                 points_value: settings.points_value,
+                min_amount_for_loyalty_points: settings.min_amount_for_loyalty_points,
                 // total_points_value: (user.loyalty_points || 0) * settings.points_value
             };
 

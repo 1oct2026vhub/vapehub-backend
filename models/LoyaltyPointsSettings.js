@@ -63,6 +63,13 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0.0,
       comment: 'Minimum purchase amount required to earn points'
     },
+    // Minimum amount for loyalty points
+    min_amount_for_loyalty_points: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0.0,
+      comment: 'Minimum order amount required to earn loyalty points'
+    },
     // Program status
     status: {
       type: DataTypes.BOOLEAN,

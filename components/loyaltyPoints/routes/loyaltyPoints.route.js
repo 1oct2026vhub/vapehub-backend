@@ -8,6 +8,42 @@ const loyaltyPointsValidator = require('../helper/loyaltyPoints.validator');
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     RedemptionInfo:
+ *       type: object
+ *       properties:
+ *         user_points:
+ *           type: integer
+ *           description: User's current loyalty points
+ *         minimum_points_required:
+ *           type: integer
+ *           description: Minimum points required for redemption
+ *         can_redeem:
+ *           type: boolean
+ *           description: Whether the user can redeem points
+ *         points_needed:
+ *           type: integer
+ *           description: Points needed to reach minimum redemption
+ *         redemption_amount:
+ *           type: number
+ *           format: float
+ *           description: Redemption amount (fixed or percentage)
+ *         redemption_type:
+ *           type: string
+ *           enum: [fixed, percentage, none]
+ *           description: Type of redemption (fixed, percentage, or none)
+ *         points_value:
+ *           type: number
+ *           format: float
+ *           description: Value of each point in currency
+ *         min_amount_for_loyalty_points:
+ *           type: number
+ *           format: float
+ *           description: Minimum order amount required to earn loyalty points
+ */
+/**
+ * @swagger
  * /api/loyalty-points/redemption:
  *   get:
  *     summary: Get user's redemption information

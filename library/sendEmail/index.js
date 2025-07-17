@@ -8,6 +8,11 @@ const fs = require('fs/promises')
 const path = require('path')
 const Handlebars = require('handlebars')
 
+// Register Handlebars helpers
+Handlebars.registerHelper('eq', function(a, b) {
+    return a === b;
+});
+
 let transporter;
 
 if (process.env.EMAIL_TEST_MODE !== 'true') {
