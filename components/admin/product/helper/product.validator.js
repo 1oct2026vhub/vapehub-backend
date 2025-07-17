@@ -11,18 +11,74 @@ const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
-    check('brand_id').isInt().withMessage('Brand ID must be an integer').notEmpty().withMessage('Brand ID is required'),
-   
+    check('category_ids')
+        .optional()
+        .isArray({ min: 1 }).withMessage('Category IDs must be an array with at least one item')
+        .custom((value) => {
+            if (value && !Array.isArray(value)) {
+                throw new Error('Category IDs must be an array');
+            }
+            if (value && value.length === 0) {
+                throw new Error('At least one category ID is required');
+            }
+            if (value && !value.every(id => Number.isInteger(id) && id > 0)) {
+                throw new Error('All category IDs must be positive integers');
+            }
+            return true;
+        }),
+    check('brand_ids')
+        .optional()
+        .isArray({ min: 1 }).withMessage('Brand IDs must be an array with at least one item')
+        .custom((value) => {
+            if (value && !Array.isArray(value)) {
+                throw new Error('Brand IDs must be an array');
+            }
+            if (value && value.length === 0) {
+                throw new Error('At least one brand ID is required');
+            }
+            if (value && !value.every(id => Number.isInteger(id) && id > 0)) {
+                throw new Error('All brand IDs must be positive integers');
+            }
+            return true;
+        }),
 ];
 
 const updateProductValidations = [
     check('name').optional().isString().withMessage('Name must be a string'),
     check('slug').optional().isString().withMessage('Slug must be a string'),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('category_id').optional().isInt().withMessage('Category ID must be an integer'),
-    check('brand_id').optional().isInt().withMessage('Brand ID must be an integer'),
-    
+    check('category_ids')
+        .optional()
+        .custom((value) => {
+            if (value !== undefined && value !== null) {
+                if (!Array.isArray(value)) {
+                    throw new Error('Category IDs must be an array');
+                }
+                if (value.length === 0) {
+                    throw new Error('Category IDs array cannot be empty');
+                }
+                if (!value.every(id => Number.isInteger(id) && id > 0)) {
+                    throw new Error('All category IDs must be positive integers');
+                }
+            }
+            return true;
+        }),
+    check('brand_ids')
+        .optional()
+        .custom((value) => {
+            if (value !== undefined && value !== null) {
+                if (!Array.isArray(value)) {
+                    throw new Error('Brand IDs must be an array');
+                }
+                if (value.length === 0) {
+                    throw new Error('Brand IDs array cannot be empty');
+                }
+                if (!value.every(id => Number.isInteger(id) && id > 0)) {
+                    throw new Error('All brand IDs must be positive integers');
+                }
+            }
+            return true;
+        }),
 ];
 
 const productImageValidation = [

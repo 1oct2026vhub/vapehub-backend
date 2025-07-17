@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -68,13 +68,29 @@ module.exports.listAllProducts = async (req, res, next) => {
         // Brand filter
         if (brands) {
             const brandIds = brands.split(',').map(Number);
-            whereClause[Op.and].push({ brand_id: { [Op.in]: brandIds } });
+            whereClause[Op.and].push({
+                id: {
+                    [Op.in]: Sequelize.literal(`(
+                        SELECT DISTINCT product_id 
+                        FROM product_brands 
+                        WHERE brand_id IN (${brandIds.join(',')})
+                    )`)
+                }
+            });
         }
 
         // Category filter
         if (categories) {
             const categoryIds = categories.split(',').map(Number);
-            whereClause[Op.and].push({ category_id: { [Op.in]: categoryIds } });
+            whereClause[Op.and].push({
+                id: {
+                    [Op.in]: Sequelize.literal(`(
+                        SELECT DISTINCT product_id 
+                        FROM product_categories 
+                        WHERE category_id IN (${categoryIds.join(',')})
+                    )`)
+                }
+            });
         }
 
         // Variant attribute filters
@@ -107,13 +123,15 @@ module.exports.listAllProducts = async (req, res, next) => {
         const includeClause = [
             { 
                 model: Category, 
-                as: 'Category',
-                required: false // LEFT JOIN
+                as: 'Categories',
+                required: false, // LEFT JOIN
+                through: { attributes: ['is_primary'] }
             },
             { 
                 model: Brand, 
-                as: 'Brand',
-                required: false // LEFT JOIN
+                as: 'Brands',
+                required: false, // LEFT JOIN
+                through: { attributes: ['is_primary'] }
             },
             { 
                 model: ProductImage, 
@@ -265,19 +283,21 @@ module.exports.getProductById = async (req, res, next) => {
     try {
         const { id } = req.params; 
 
-        // Fetch the product by ID along with related data (Category, Brand, Images, Flavors, Variants, and Attributes)
+        // Fetch the product by ID along with related data (Categories, Brands, Images, Flavors, Variants, and Attributes)
         const product = await Product.findByPk(id, {
             paranoid: false,
             include: [
                 {
                     model: Category,
-                    as: "Category",
-                    paranoid: false
+                    as: "Categories",
+                    paranoid: false,
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: Brand,
-                    as: "Brand",
-                    paranoid: false
+                    as: "Brands",
+                    paranoid: false,
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: ProductImage,
@@ -401,7 +421,7 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, category_id, brand_id
+            name, slug, description, category_ids, brand_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -421,17 +441,30 @@ module.exports.createProduct = async (req, res, next) => {
         const cleanName = name.trim();
         const cleanSlug = slug.toLowerCase().trim();
 
-        // Check if category and brand exist
-        const categoryExists = await Category.findByPk(category_id);
-        if (!categoryExists) {
-            await transaction.rollback();
-            return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
+        // Validate categories if provided
+        if (category_ids && category_ids.length > 0) {
+            const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+            const categories = await Category.findAll({
+                where: { id: { [Op.in]: categoryIds } }
+            });
+            
+            if (categories.length !== categoryIds.length) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "One or more invalid category IDs" }, "Invalid category IDs", 400);
+            }
         }
 
-        const brandExists = await Brand.findByPk(brand_id);
-        if (!brandExists) {
-            await transaction.rollback();
-            return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
+        // Validate brands if provided
+        if (brand_ids && brand_ids.length > 0) {
+            const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+            const brands = await Brand.findAll({
+                where: { id: { [Op.in]: brandIds } }
+            });
+            
+            if (brands.length !== brandIds.length) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "One or more invalid brand IDs" }, "Invalid brand IDs", 400);
+            }
         }
 
         // Check for duplicate name (case-insensitive)
@@ -465,12 +498,34 @@ module.exports.createProduct = async (req, res, next) => {
                 name: cleanName,
                 slug: cleanSlug,
                 description,
-                category_id,
-                brand_id,
                 updated_by
             },
             { transaction }
         );
+
+        // Create category associations
+        if (category_ids && category_ids.length > 0) {
+            const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+            const categoryData = categoryIds.map((categoryId, index) => ({
+                product_id: product.id,
+                category_id: categoryId,
+                is_primary: index === 0 // First category is primary
+            }));
+            
+            await ProductCategory.bulkCreate(categoryData, { transaction });
+        }
+
+        // Create brand associations
+        if (brand_ids && brand_ids.length > 0) {
+            const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+            const brandData = brandIds.map((brandId, index) => ({
+                product_id: product.id,
+                brand_id: brandId,
+                is_primary: index === 0 // First brand is primary
+            }));
+            
+            await ProductBrand.bulkCreate(brandData, { transaction });
+        }
 
         // Create slug relation
         await slugManager.createOrUpdateSlug(cleanSlug, 'product', product.id, transaction);
@@ -482,13 +537,15 @@ module.exports.createProduct = async (req, res, next) => {
             include: [
                 { 
                     model: Category, 
-                    as: "Category",
-                    attributes: ['id', 'name', 'slug']
+                    as: "Categories",
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 { 
                     model: Brand, 
-                    as: "Brand",
-                    attributes: ['id', 'name', 'slug']
+                    as: "Brands",
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 { 
                     model: ProductImage, 
@@ -501,6 +558,7 @@ module.exports.createProduct = async (req, res, next) => {
         return successResponse(res, newProduct, "Product created successfully", 201);
     } catch (error) {
         await transaction.rollback();
+        console.log(error);
         logger.error('Create Product Error:', {
             error: error.message,
             stack: error.stack,
@@ -515,7 +573,7 @@ module.exports.updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
-            name, slug, description, category_id, brand_id
+            name, slug, description, category_ids, brand_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -560,21 +618,29 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Validate category if provided
-        if (category_id) {
-            const categoryExists = await Category.findByPk(category_id);
-            if (!categoryExists) {
+        // Validate categories if provided
+        if (category_ids && category_ids.length > 0) {
+            const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+            const categories = await Category.findAll({
+                where: { id: { [Op.in]: categoryIds } }
+            });
+            
+            if (categories.length !== categoryIds.length) {
                 await transaction.rollback();
-                return errorResponse(res, { message: "Invalid category ID" }, "Invalid category ID", 400);
+                return errorResponse(res, { message: "One or more invalid category IDs" }, "Invalid category IDs", 400);
             }
         }
 
-        // Validate brand if provided
-        if (brand_id) {
-            const brandExists = await Brand.findByPk(brand_id);
-            if (!brandExists) {
+        // Validate brands if provided
+        if (brand_ids && brand_ids.length > 0) {
+            const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+            const brands = await Brand.findAll({
+                where: { id: { [Op.in]: brandIds } }
+            });
+            
+            if (brands.length !== brandIds.length) {
                 await transaction.rollback();
-                return errorResponse(res, { message: "Invalid brand ID" }, "Invalid brand ID", 400);
+                return errorResponse(res, { message: "One or more invalid brand IDs" }, "Invalid brand IDs", 400);
             }
         }
 
@@ -584,8 +650,6 @@ module.exports.updateProduct = async (req, res, next) => {
             ...(cleanName && { name: cleanName }),
             ...(cleanSlug && { slug: cleanSlug }),
             ...(description && { description: description.trim() }),
-            ...(category_id && { category_id }),
-            ...(brand_id && { brand_id }),
             updated_by
         };
 
@@ -599,6 +663,48 @@ module.exports.updateProduct = async (req, res, next) => {
             await product.update(updatedFields, { transaction });
         }
 
+        // Update category associations if provided
+        if (category_ids !== undefined) {
+            // Remove existing category associations
+            await ProductCategory.destroy({
+                where: { product_id: id },
+                transaction
+            });
+
+            // Create new category associations
+            if (category_ids && category_ids.length > 0) {
+                const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+                const categoryData = categoryIds.map((categoryId, index) => ({
+                    product_id: id,
+                    category_id: categoryId,
+                    is_primary: index === 0 // First category is primary
+                }));
+                
+                await ProductCategory.bulkCreate(categoryData, { transaction });
+            }
+        }
+
+        // Update brand associations if provided
+        if (brand_ids !== undefined) {
+            // Remove existing brand associations
+            await ProductBrand.destroy({
+                where: { product_id: id },
+                transaction
+            });
+
+            // Create new brand associations
+            if (brand_ids && brand_ids.length > 0) {
+                const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+                const brandData = brandIds.map((brandId, index) => ({
+                    product_id: id,
+                    brand_id: brandId,
+                    is_primary: index === 0 // First brand is primary
+                }));
+                
+                await ProductBrand.bulkCreate(brandData, { transaction });
+            }
+        }
+
         // Update slug if provided and changed
         if (cleanSlug) {
             await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
@@ -609,13 +715,15 @@ module.exports.updateProduct = async (req, res, next) => {
             include: [
                 { 
                     model: Category, 
-                    as: "Category",
-                    attributes: ['id', 'name', 'slug']
+                    as: "Categories",
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 { 
                     model: Brand, 
-                    as: "Brand",
-                    attributes: ['id', 'name', 'slug']
+                    as: "Brands",
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 { 
                     model: ProductImage, 
@@ -1105,8 +1213,6 @@ const processProductRow = async ({ id, name, slug, description, brand_slug, cate
             name: typeof name === 'string' ? name.trim() : name,
             slug: typeof slug === 'string' ? slug.trim() : slug,
             description: typeof description === 'string' ? description.trim() : description,
-            brand_id: brand?.id,
-            category_id: category?.id,
             updated_by
         };
 
@@ -1141,6 +1247,36 @@ const processProductRow = async ({ id, name, slug, description, brand_slug, cate
             }
             product = await Product.create(productData);
             action = 'Created';
+        }
+
+        // Update category associations
+        if (category) {
+            // Remove existing category associations
+            await ProductCategory.destroy({
+                where: { product_id: product.id }
+            });
+
+            // Create new category association
+            await ProductCategory.create({
+                product_id: product.id,
+                category_id: category.id,
+                is_primary: true
+            });
+        }
+
+        // Update brand associations
+        if (brand) {
+            // Remove existing brand associations
+            await ProductBrand.destroy({
+                where: { product_id: product.id }
+            });
+
+            // Create new brand association
+            await ProductBrand.create({
+                product_id: product.id,
+                brand_id: brand.id,
+                is_primary: true
+            });
         }
 
         // Create or update slug relation
@@ -1369,14 +1505,28 @@ module.exports.updateProductStatus = async (req, res, next) => {
         await SeoService.updateProductNoIndex(productId, status);
 
         // Update category and brand SEO based on product status
-        const category = await Category.findByPk(product.category_id, { transaction });
-        if (category) {
-            await SeoService.updateCategoryNoIndex(category.id);
+        const productCategories = await ProductCategory.findAll({
+            where: { product_id: productId },
+            include: [{ model: Category, as: 'Category' }],
+            transaction
+        });
+
+        for (const productCategory of productCategories) {
+            if (productCategory.Category) {
+                await SeoService.updateCategoryNoIndex(productCategory.Category.id);
+            }
         }
 
-        const brand = await Brand.findByPk(product.brand_id, { transaction });
-        if (brand) {
-            await SeoService.updateBrandNoIndex(brand.id);
+        const productBrands = await ProductBrand.findAll({
+            where: { product_id: productId },
+            include: [{ model: Brand, as: 'Brand' }],
+            transaction
+        });
+
+        for (const productBrand of productBrands) {
+            if (productBrand.Brand) {
+                await SeoService.updateBrandNoIndex(productBrand.Brand.id);
+            }
         }
 
         await transaction.commit();

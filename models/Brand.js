@@ -10,7 +10,12 @@ module.exports = (sequelize, DataTypes) => {
                 onDelete: 'SET NULL',
                 onUpdate: 'CASCADE'
             });
-            this.hasMany(models.Product, { foreignKey: 'brand_id' });
+            this.belongsToMany(models.Product, { 
+              through: models.ProductBrand, 
+              foreignKey: 'brand_id',
+              otherKey: 'product_id',
+              as: 'Products'
+            });
         }
     }
 

@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct } = require("../../../models");;
+const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 
 async function getTrendingProducts(limit = 10) {
@@ -77,11 +77,23 @@ const fetchProducts2 = async (query) => {
 
     if (brands) {
       const brandIds = brands.split(',').map(Number);
-      whereClause.brand_id = { [Op.in]: brandIds };
+      whereClause.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT product_id 
+          FROM product_brands 
+          WHERE brand_id IN (${brandIds.join(',')})
+        )`)
+      };
     }
     if (categories) {
       const categoryIds = categories.split(',').map(Number);
-      whereClause.category_id = { [Op.in]: categoryIds };
+      whereClause.id = {
+        [Op.in]: Sequelize.literal(`(
+          SELECT DISTINCT product_id 
+          FROM product_categories 
+          WHERE category_id IN (${categoryIds.join(',')})
+        )`)
+      };
     }
 
     if (flavours) {
@@ -122,8 +134,8 @@ const fetchProducts2 = async (query) => {
 
     // Build the include clause for related models
     const includeClause = [
-      { model: Category, as: 'Category' },
-      { model: Brand, as: 'Brand' },
+      { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+      { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
       { model: ProductImage, as: 'ProductImages' },
       {
         model: Flavor, as: 'Flavors', through: {

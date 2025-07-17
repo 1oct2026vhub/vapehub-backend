@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct } = require("../../../models");;
+const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
@@ -34,11 +34,13 @@ module.exports.getProductByid = async (req, res, next) => {
         const includeClause = [
             {
                 model: Category,
-                as: 'Category'
+                as: 'Categories',
+                through: { attributes: ['is_primary'] }
             },
             {
                 model: Brand,
-                as: 'Brand'
+                as: 'Brands',
+                through: { attributes: ['is_primary'] }
             },
             {
                 model: ProductVariant,
@@ -322,7 +324,7 @@ module.exports.getProductByid = async (req, res, next) => {
 module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
-        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, flavour_ids, product_images } = req.body;
+        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
         const { id: updated_by } = req.user; // Authenticated user
 
         // find product by slug
@@ -333,7 +335,7 @@ module.exports.createProduct = async (req, res, next) => {
 
         // Create the product
         const product = await Product.create(
-            { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, updated_by },
+            { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, updated_by },
             { transaction }
         );
 
@@ -348,6 +350,30 @@ module.exports.createProduct = async (req, res, next) => {
             }));
             await ProductFlavor.bulkCreate(flavorRecords, { transaction });
         }
+        // Create category associations
+        if (category_ids && category_ids.length > 0) {
+            const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+            const categoryData = categoryIds.map((categoryId, index) => ({
+                product_id: product.id,
+                category_id: categoryId,
+                is_primary: index === 0 // First category is primary
+            }));
+            
+            await ProductCategory.bulkCreate(categoryData, { transaction });
+        }
+
+        // Create brand associations
+        if (brand_ids && brand_ids.length > 0) {
+            const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+            const brandData = brandIds.map((brandId, index) => ({
+                product_id: product.id,
+                brand_id: brandId,
+                is_primary: index === 0 // First brand is primary
+            }));
+            
+            await ProductBrand.bulkCreate(brandData, { transaction });
+        }
+
         // If product_images are provided, associate them
         if (product_images && product_images.length > 0) {
             const productImages = product_images.map(item => ({
@@ -364,8 +390,8 @@ module.exports.createProduct = async (req, res, next) => {
         // Fetch the created product with related models
         const newProduct = await Product.findByPk(product.id, {
             include: [
-                { model: Category, as: 'Category' },
-                { model: Brand, as: 'Brand' },
+                { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+                { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
                 { model: ProductImage, as: 'ProductImages' },
                 {
                     model: Flavor, as: 'Flavors', through: {
@@ -387,7 +413,7 @@ module.exports.updateProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_id, brand_id, flavour_ids, product_images } = req.body;
+        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
         const { id: updated_by } = req.user
 
         // Find the product
@@ -418,12 +444,38 @@ module.exports.updateProduct = async (req, res, next) => {
             ...(vg_ratio && { vg_ratio }),
             ...(vaping_style && { vaping_style }),
             ...(bottle_size && { bottle_size }),
-            ...(category_id && { category_id }),
-            ...(brand_id && { brand_id }),
             ...(updated_by && { updated_by })
         };
 
         await product.update(updatedFields, { transaction });
+
+        // Update category associations if provided
+        if (category_ids !== undefined) {
+            await ProductCategory.destroy({ where: { product_id: id }, transaction });
+            if (category_ids && category_ids.length > 0) {
+                const categoryIds = Array.isArray(category_ids) ? category_ids : [category_ids];
+                const categoryData = categoryIds.map((categoryId, index) => ({
+                    product_id: id,
+                    category_id: categoryId,
+                    is_primary: index === 0 // First category is primary
+                }));
+                await ProductCategory.bulkCreate(categoryData, { transaction });
+            }
+        }
+
+        // Update brand associations if provided
+        if (brand_ids !== undefined) {
+            await ProductBrand.destroy({ where: { product_id: id }, transaction });
+            if (brand_ids && brand_ids.length > 0) {
+                const brandIds = Array.isArray(brand_ids) ? brand_ids : [brand_ids];
+                const brandData = brandIds.map((brandId, index) => ({
+                    product_id: id,
+                    brand_id: brandId,
+                    is_primary: index === 0 // First brand is primary
+                }));
+                await ProductBrand.bulkCreate(brandData, { transaction });
+            }
+        }
 
         // Update associated flavors
         if (flavour_ids && flavour_ids.length > 0) {
@@ -454,8 +506,8 @@ module.exports.updateProduct = async (req, res, next) => {
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
             include: [
-                { model: Category, as: 'Category' },
-                { model: Brand, as: 'Brand' },
+                { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+                { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
                 { model: ProductImage, as: 'ProductImages' },
                 {
                     model: Flavor, as: 'Flavors', through: {
@@ -540,8 +592,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 status: productStatus.PUBLISHED
             }, 
             include: [
-                { model: Category, as: 'Category' },
-                { model: Brand, as: 'Brand' },
+                { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+                { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
                 {
                     model: ProductAttributeTerm,
                     as: 'productAttributeTerms',
