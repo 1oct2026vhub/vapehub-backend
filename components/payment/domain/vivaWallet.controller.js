@@ -199,13 +199,20 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             where: { status: true }
                         });
                         if(loyaltySettings){
-                            await User.update({
-                                loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
-                                }, {
-                                  where: {
-                                    id: order.user_id
-                                  }
-                            });
+                            // Check if order subtotal is above minimum amount for loyalty points
+                            const orderSubtotal = order.sub_total || order.total;
+                            const minAmountForLoyaltyPoints = loyaltySettings.min_amount_for_loyalty_points || 0;
+                            
+                            if (orderSubtotal >= minAmountForLoyaltyPoints) {
+                                await User.update({
+                                    loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
+                                    }, {
+                                      where: {
+                                        id: order.user_id
+                                      }
+                                });
+                                
+                            }
                         }
                     }
                     // Handle mail subscription discount
