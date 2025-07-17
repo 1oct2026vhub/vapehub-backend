@@ -10,7 +10,11 @@ const {
   removeStockValidation,
   adjustStockValidation,
   getAnalyticsValidation,
-  getProductsValidation
+  getProductsValidation,
+  bulkStockUpdateValidation,
+  bulkStockUpdateByQuantityValidation,
+  updateAllStockValidation,
+  updateProductStockValidation
 } = require('../helper/inventory.validator');
 
 /**
@@ -447,6 +451,454 @@ router.post('/remove-stock', [authMiddleware(true), ...removeStockValidation()],
  *         description: Server error
  */
 router.post('/adjust-stock', [authMiddleware(true), ...adjustStockValidation()], inventoryController.adjustStock);
+
+/**
+ * @swagger
+ * /api/admin/inventory/bulk-update:
+ *   post:
+ *     summary: Bulk update stock for multiple variants (admin)
+ *     tags: [Admin - Inventory]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - updates
+ *             properties:
+ *               updates:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 100
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - variant_id
+ *                     - new_quantity
+ *                   properties:
+ *                     variant_id:
+ *                       type: integer
+ *                       minimum: 1
+ *                       description: Variant ID
+ *                     new_quantity:
+ *                       type: integer
+ *                       minimum: 0
+ *                       description: New stock quantity
+ *               reference:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Optional reference note for all updates
+ *     responses:
+ *       200:
+ *         description: All stock updates completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Total number of updates requested
+ *                     successful:
+ *                       type: integer
+ *                       description: Number of successful updates
+ *                     failed:
+ *                       type: integer
+ *                       description: Number of failed updates
+ *                     results:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                             description: Index of the update in the original array
+ *                           variant_id:
+ *                             type: integer
+ *                           movement:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               change_type:
+ *                                 type: string
+ *                               quantity:
+ *                                 type: integer
+ *                               reference:
+ *                                 type: string
+ *                               created_at:
+ *                                 type: string
+ *                                 format: date-time
+ *                           variant:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               slug:
+ *                                 type: string
+ *                               product:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                           variant_id:
+ *                             type: integer
+ *                           error:
+ *                             type: string
+ *                 message:
+ *                   type: string
+ *       207:
+ *         description: Partial success - some updates completed, some failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BulkUpdateResponse'
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post('/bulk-update', [authMiddleware(true), ...bulkStockUpdateValidation()], inventoryController.bulkStockUpdate);
+
+/**
+ * @swagger
+ * /api/admin/inventory/bulk-update-by-quantity:
+ *   post:
+ *     summary: Bulk update stock for multiple variants with single quantity (admin)
+ *     tags: [Admin - Inventory]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - variant_ids
+ *               - quantity
+ *             properties:
+ *               variant_ids:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 100
+ *                 items:
+ *                   type: integer
+ *                   minimum: 1
+ *                 description: Array of variant IDs to update
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Stock quantity to set for all variants
+ *               reference:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Optional reference note for all updates
+ *     responses:
+ *       200:
+ *         description: All stock updates completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Total number of variants to update
+ *                     successful:
+ *                       type: integer
+ *                       description: Number of successful updates
+ *                     failed:
+ *                       type: integer
+ *                       description: Number of failed updates
+ *                     quantity:
+ *                       type: integer
+ *                       description: The quantity that was set for all variants
+ *                     results:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                             description: Index of the variant in the original array
+ *                           variant_id:
+ *                             type: integer
+ *                           oldStock:
+ *                             type: integer
+ *                           newStock:
+ *                             type: integer
+ *                           movement:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               change_type:
+ *                                 type: string
+ *                               quantity:
+ *                                 type: integer
+ *                               reference:
+ *                                 type: string
+ *                               created_at:
+ *                                 type: string
+ *                                 format: date-time
+ *                           variant:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               slug:
+ *                                 type: string
+ *                               product:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                           variant_id:
+ *                             type: integer
+ *                           error:
+ *                             type: string
+ *                 message:
+ *                   type: string
+ *       207:
+ *         description: Partial success - some updates completed, some failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/BulkUpdateByQuantityResponse'
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post('/bulk-update-by-quantity', [authMiddleware(true), ...bulkStockUpdateByQuantityValidation()], inventoryController.bulkStockUpdateByQuantity);
+
+/**
+ * @swagger
+ * /api/admin/inventory/update-all-stock:
+ *   post:
+ *     summary: Update stock for all variants to a specific quantity (admin)
+ *     tags: [Admin - Inventory]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - quantity
+ *             properties:
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Stock quantity to set for all variants
+ *               reference:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Optional reference note for all updates
+ *     responses:
+ *       200:
+ *         description: All stock updates completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Total number of variants to update
+ *                     successful:
+ *                       type: integer
+ *                       description: Number of successful updates
+ *                     failed:
+ *                       type: integer
+ *                       description: Number of failed updates
+ *                     quantity:
+ *                       type: integer
+ *                       description: The quantity that was set for all variants
+ *                     results:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                             description: Index of the variant in the original array
+ *                           variant_id:
+ *                             type: integer
+ *                           oldStock:
+ *                             type: integer
+ *                           newStock:
+ *                             type: integer
+ *                           movement:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               change_type:
+ *                                 type: string
+ *                               quantity:
+ *                                 type: integer
+ *                               reference:
+ *                                 type: string
+ *                               created_at:
+ *                                 type: string
+ *                                 format: date-time
+ *                           variant:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               slug:
+ *                                 type: string
+ *                               product:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           index:
+ *                             type: integer
+ *                           variant_id:
+ *                             type: integer
+ *                           error:
+ *                             type: string
+ *                 message:
+ *                   type: string
+ *       207:
+ *         description: Partial success - some updates completed, some failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UpdateAllStockResponse'
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: No active variants found
+ *       500:
+ *         description: Server error
+ */
+router.post('/update-all-stock', [authMiddleware(true), ...updateAllStockValidation()], inventoryController.updateAllStock);
+
+/**
+ * @swagger
+ * /api/admin/inventory/update-product-stock:
+ *   post:
+ *     summary: Update stock for all variants of a specific product (admin)
+ *     tags: [Admin - Inventory]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - product_id
+ *               - quantity
+ *             properties:
+ *               product_id:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: Product ID to update all its variants
+ *               quantity:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Stock quantity to set for all variants of this product
+ *               reference:
+ *                 type: string
+ *                 maxLength: 255
+ *                 description: Optional reference note for all updates
+ *     responses:
+ *       200:
+ *         description: All product variants updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       description: The product ID that was updated
+ *                     product_name:
+ *                       type: string
+ *                       description: The name of the product
+ *                     total:
+ *                       type: integer
+ *                       description: Total number of variants updated
+ *                     successful:
+ *                       type: integer
+ *                       description: Number of successful updates
+ *                     failed:
+ *                       type: integer
+ *                       description: Number of failed updates
+ *                     quantity:
+ *                       type: integer
+ *                       description: The quantity that was set for all variants
+ *                     results:
+ *                       type: array
+ *                       description: Empty array to avoid large response payload
+ *                     errors:
+ *                       type: array
+ *                       description: Empty array since bulk operations are all-or-nothing
+ *                     hasMoreResults:
+ *                       type: boolean
+ *                       description: Always false for this endpoint
+ *                     hasMoreErrors:
+ *                       type: boolean
+ *                       description: Always false for this endpoint
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Product not found or no variants found
+ *       500:
+ *         description: Server error
+ */
+router.post('/update-product-stock', [authMiddleware(true), ...updateProductStockValidation()], inventoryController.updateProductStock);
 
 /**
  * @swagger
@@ -1147,6 +1599,232 @@ router.get('/deleted', [authMiddleware(true)], inventoryController.getDeletedInv
  *           type: integer
  *         limit:
  *           type: integer
+ *     BulkUpdateResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         data:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total number of updates requested
+ *             successful:
+ *               type: integer
+ *               description: Number of successful updates
+ *             failed:
+ *               type: integer
+ *               description: Number of failed updates
+ *             results:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                     description: Index of the update in the original array
+ *                   variant_id:
+ *                     type: integer
+ *                   movement:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       change_type:
+ *                         type: string
+ *                       quantity:
+ *                         type: integer
+ *                       reference:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                   variant:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       slug:
+ *                         type: string
+ *                       product:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *             errors:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                   variant_id:
+ *                     type: integer
+ *                   error:
+ *                     type: string
+ *         message:
+ *           type: string
+ *     BulkUpdateByQuantityResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         data:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total number of variants to update
+ *             successful:
+ *               type: integer
+ *               description: Number of successful updates
+ *             failed:
+ *               type: integer
+ *               description: Number of failed updates
+ *             quantity:
+ *               type: integer
+ *               description: The quantity that was set for all variants
+ *             results:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                     description: Index of the variant in the original array
+ *                   variant_id:
+ *                     type: integer
+ *                   oldStock:
+ *                     type: integer
+ *                   newStock:
+ *                     type: integer
+ *                   movement:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       change_type:
+ *                         type: string
+ *                       quantity:
+ *                         type: integer
+ *                       reference:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                   variant:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       slug:
+ *                         type: string
+ *                       product:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *             errors:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                   variant_id:
+ *                     type: integer
+ *                   error:
+ *                     type: string
+ *         message:
+ *           type: string
+ *     UpdateAllStockResponse:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *         data:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *               description: Total number of variants updated
+ *             successful:
+ *               type: integer
+ *               description: Number of successful updates
+ *             failed:
+ *               type: integer
+ *               description: Number of failed updates
+ *             quantity:
+ *               type: integer
+ *               description: The quantity that was set for all variants
+ *             results:
+ *               type: array
+ *               maxItems: 10
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                     description: Index of the variant in the original array
+ *                   variant_id:
+ *                     type: integer
+ *                   oldStock:
+ *                     type: integer
+ *                   newStock:
+ *                     type: integer
+ *                   movement:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       change_type:
+ *                         type: string
+ *                       quantity:
+ *                         type: integer
+ *                       reference:
+ *                         type: string
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                   variant:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       slug:
+ *                         type: string
+ *                       product:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *             errors:
+ *               type: array
+ *               maxItems: 10
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   index:
+ *                     type: integer
+ *                   variant_id:
+ *                     type: integer
+ *                   error:
+ *                     type: string
+ *             hasMoreResults:
+ *               type: boolean
+ *               description: Whether there are more results beyond the first 10
+ *             hasMoreErrors:
+ *               type: boolean
+ *               description: Whether there are more errors beyond the first 10
+ *         message:
+ *           type: string
  */
 
 module.exports = router; 

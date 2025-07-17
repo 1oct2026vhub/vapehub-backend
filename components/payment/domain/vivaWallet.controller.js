@@ -193,7 +193,21 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             }
                         }
                     }
+                    if(!order.loyalty_flag){
 
+                        const loyaltySettings = await LoyaltyPointsSettings.findOne({
+                            where: { status: true }
+                        });
+                        if(loyaltySettings){
+                            await User.update({
+                                loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
+                                }, {
+                                  where: {
+                                    id: order.user_id
+                                  }
+                            });
+                        }
+                    }
                     // Handle mail subscription discount
                     const mailSubscription = await MailSubscription.findOne({
                         where: { 

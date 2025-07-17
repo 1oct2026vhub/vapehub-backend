@@ -137,6 +137,85 @@ const getProductsValidation = () => {
   ];
 };
 
+// Bulk stock update validation
+const bulkStockUpdateValidation = () => {
+  return [
+    body('updates')
+      .isArray({ min: 1, max: 100 })
+      .withMessage('Updates must be an array with 1-100 items'),
+    body('updates.*.variant_id')
+      .isInt({ min: 1 })
+      .withMessage('Each variant_id must be a positive integer'),
+    body('updates.*.new_quantity')
+      .isInt({ min: 0 })
+      .withMessage('Each new_quantity must be a non-negative integer'),
+    body('reference')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Reference must be a string with maximum 255 characters'),
+    validate
+  ];
+};
+
+// Bulk stock update by quantity validation
+const bulkStockUpdateByQuantityValidation = () => {
+  return [
+    body('variant_ids')
+      .isArray({ min: 1, max: 100 })
+      .withMessage('Variant IDs must be an array with 1-100 items'),
+    body('variant_ids.*')
+      .isInt({ min: 1 })
+      .withMessage('Each variant_id must be a positive integer'),
+    body('quantity')
+      .isInt({ min: 0 })
+      .withMessage('Quantity must be a non-negative integer'),
+    body('reference')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Reference must be a string with maximum 255 characters'),
+    validate
+  ];
+};
+
+// Update all stock validation
+const updateAllStockValidation = () => {
+  return [
+    body('quantity')
+      .isInt({ min: 0 })
+      .withMessage('Quantity must be a non-negative integer'),
+    body('reference')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Reference must be a string with maximum 255 characters'),
+    validate
+  ];
+};
+
+// Update product stock validation
+const updateProductStockValidation = () => {
+  return [
+    body('product_id')
+      .isInt({ min: 1 })
+      .withMessage('Product ID must be a positive integer'),
+    body('quantity')
+      .isInt({ min: 0 })
+      .withMessage('Quantity must be a non-negative integer'),
+    body('reference')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage('Reference must be a string with maximum 255 characters'),
+    validate
+  ];
+};
+
 module.exports = {
   getInventoryListValidation,
   getStockMovementsValidation,
@@ -145,5 +224,9 @@ module.exports = {
   removeStockValidation,
   adjustStockValidation,
   getAnalyticsValidation,
-  getProductsValidation
+  getProductsValidation,
+  bulkStockUpdateValidation,
+  bulkStockUpdateByQuantityValidation,
+  updateAllStockValidation,
+  updateProductStockValidation
 }; 

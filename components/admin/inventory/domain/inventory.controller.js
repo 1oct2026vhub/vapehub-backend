@@ -503,6 +503,385 @@ module.exports = {
     }
   },
 
+  // Bulk stock update for multiple variants
+  async bulkStockUpdate(req, res) {
+    try {
+      const { updates, reference } = req.body;
+      const { id: updated_by } = req.user;
+
+      if (!updates || !Array.isArray(updates) || updates.length === 0) {
+        return errorResponse(res, { message: "Updates array is required and must not be empty" }, "Validation Error", 400);
+      }
+
+      if (updates.length > 100) {
+        return errorResponse(res, { message: "Maximum 100 variants can be updated at once" }, "Validation Error", 400);
+      }
+
+      // Validate each update item
+      const validationErrors = [];
+      updates.forEach((update, index) => {
+        if (!update.variant_id || !Number.isInteger(update.variant_id) || update.variant_id <= 0) {
+          validationErrors.push(`Update ${index + 1}: Invalid variant_id`);
+        }
+        if (update.new_quantity === undefined || !Number.isInteger(update.new_quantity) || update.new_quantity < 0) {
+          validationErrors.push(`Update ${index + 1}: Invalid new_quantity (must be non-negative integer)`);
+        }
+      });
+
+      if (validationErrors.length > 0) {
+        return errorResponse(res, { message: "Validation errors", errors: validationErrors }, "Validation Error", 400);
+      }
+
+      const transaction = await ProductVariant.sequelize.transaction();
+      try {
+        const variantIds = updates.map(u => u.variant_id);
+        const updateMap = new Map(updates.map(u => [u.variant_id, u.new_quantity]));
+
+        // Check if all variants exist
+        const existingVariants = await ProductVariant.findAll({
+          where: { id: variantIds },
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['id', 'name']
+            }
+          ],
+          transaction
+        });
+
+        const existingVariantIds = new Set(existingVariants.map(v => v.id));
+        const missingVariantIds = variantIds.filter(id => !existingVariantIds.has(id));
+
+        if (missingVariantIds.length > 0) {
+          await transaction.rollback();
+          return errorResponse(res, { 
+            message: "Some variants not found", 
+            missing_variants: missingVariantIds 
+          }, "Variants not found", 404);
+        }
+
+        // Bulk update all variants using individual updates (since quantities differ)
+        const updatePromises = existingVariants.map(async (variant) => {
+          const newQuantity = updateMap.get(variant.id);
+          
+          // Update the variant stock
+          await variant.update({ stock: newQuantity }, { transaction });
+          
+          // Create stock movement
+          const movement = await StockMovement.create({
+            variant_id: variant.id,
+            change_type: 'adjustment',
+            quantity: newQuantity,
+            reference: reference || 'Bulk stock update',
+            updated_by
+          }, { transaction });
+
+          return {
+            variant_id: variant.id,
+            // oldStock: variant.stock,
+            // newStock: newQuantity,
+            movement: {
+              id: movement.id,
+              change_type: movement.change_type,
+              quantity: movement.quantity,
+              reference: movement.reference,
+              created_at: movement.created_at
+            },
+            variant: {
+              id: variant.id,
+              slug: variant.slug,
+              product: variant.product
+            }
+          };
+        });
+
+        const results = await Promise.all(updatePromises);
+
+        await transaction.commit();
+
+        const response = {
+          total: updates.length,
+          successful: results.length,
+          failed: 0,
+          results,
+          errors: []
+        };
+
+        const message = `Successfully updated stock for all ${results.length} variants`;
+
+        return successResponse(res, response, message, 200);
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Bulk stock update for multiple variants with single quantity
+  async bulkStockUpdateByQuantity(req, res) {
+    try {
+      const { variant_ids, quantity, reference } = req.body;
+      const { id: updated_by } = req.user;
+
+      if (!variant_ids || !Array.isArray(variant_ids) || variant_ids.length === 0) {
+        return errorResponse(res, { message: "Variant IDs array is required and must not be empty" }, "Validation Error", 400);
+      }
+
+      if (variant_ids.length > 100) {
+        return errorResponse(res, { message: "Maximum 100 variants can be updated at once" }, "Validation Error", 400);
+      }
+
+      if (quantity === undefined || !Number.isInteger(quantity) || quantity < 0) {
+        return errorResponse(res, { message: "Quantity must be a non-negative integer" }, "Validation Error", 400);
+      }
+
+      // Validate each variant ID
+      const validationErrors = [];
+      variant_ids.forEach((variant_id, index) => {
+        if (!Number.isInteger(variant_id) || variant_id <= 0) {
+          validationErrors.push(`Variant ID at index ${index}: Invalid variant_id`);
+        }
+      });
+
+      if (validationErrors.length > 0) {
+        return errorResponse(res, { message: "Validation errors", errors: validationErrors }, "Validation Error", 400);
+      }
+
+      const transaction = await ProductVariant.sequelize.transaction();
+      try {
+        // Check if all variants exist
+        const existingVariants = await ProductVariant.findAll({
+          where: { id: variant_ids },
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['id', 'name']
+            }
+          ],
+          transaction
+        });
+
+        const existingVariantIds = new Set(existingVariants.map(v => v.id));
+        const missingVariantIds = variant_ids.filter(id => !existingVariantIds.has(id));
+
+        if (missingVariantIds.length > 0) {
+          await transaction.rollback();
+          return errorResponse(res, { 
+            message: "Some variants not found", 
+            missing_variants: missingVariantIds 
+          }, "Variants not found", 404);
+        }
+
+        // Bulk update all variants' stock
+        await ProductVariant.update(
+          { stock: quantity },
+          { where: { id: variant_ids }, transaction }
+        );
+
+        // Bulk create StockMovement records for audit trail
+        const now = new Date();
+        const stockMovements = variant_ids.map(variant_id => ({
+          variant_id,
+          change_type: 'adjustment',
+          quantity,
+          reference: reference || 'Bulk stock update by quantity',
+          updated_by,
+          created_at: now
+        }));
+
+        await StockMovement.bulkCreate(stockMovements, { transaction });
+
+        await transaction.commit();
+
+        const response = {
+          total: variant_ids.length,
+          successful: variant_ids.length,
+          failed: 0,
+          quantity: quantity,
+          results: [], // No individual results to avoid large response
+          errors: []
+        };
+
+        const message = `Successfully updated stock to ${quantity} for all ${variant_ids.length} variants`;
+
+        return successResponse(res, response, message, 200);
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Update stock for all variants in the system
+  async updateAllStock(req, res) {
+    try {
+      const { quantity, reference } = req.body;
+      const { id: updated_by } = req.user;
+
+      if (quantity === undefined || !Number.isInteger(quantity) || quantity < 0) {
+        return errorResponse(res, { message: "Quantity must be a non-negative integer" }, "Validation Error", 400);
+      }
+
+      const transaction = await ProductVariant.sequelize.transaction();
+      try {
+        // Get all active variants
+        const allVariants = await ProductVariant.findAll({
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['id', 'name'],
+              where: { deletedAt: null }
+            }
+          ],
+          attributes: ['id', 'stock'],
+          transaction
+        });
+
+        if (allVariants.length === 0) {
+          await transaction.rollback();
+          return errorResponse(res, { message: "No active variants found" }, "No variants to update", 404);
+        }
+
+        const variantIds = allVariants.map(v => v.id);
+
+        // Bulk update all variants' stock
+        await ProductVariant.update(
+          { stock: quantity },
+          { where: { id: variantIds }, transaction }
+        );
+
+        // Bulk create StockMovement records for audit trail
+        const now = new Date();
+        const stockMovements = variantIds.map(variant_id => ({
+          variant_id,
+          change_type: 'adjustment',
+          quantity,
+          reference: reference || 'Update all stock',
+          updated_by,
+          created_at: now
+        }));
+
+        await StockMovement.bulkCreate(stockMovements, { transaction });
+
+        await transaction.commit();
+
+        const response = {
+          total: variantIds.length,
+          successful: variantIds.length,
+          failed: 0,
+          quantity: quantity,
+          results: [], // No individual results to avoid large response
+          errors: [],
+          hasMoreResults: false,
+          hasMoreErrors: false
+        };
+
+        const message = `Successfully updated stock to ${quantity} for all ${variantIds.length} variants`;
+
+        return successResponse(res, response, message, 200);
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Update stock for all variants of a specific product
+  async updateProductStock(req, res) {
+    try {
+      const { product_id, quantity, reference } = req.body;
+      const { id: updated_by } = req.user;
+
+      if (!product_id || !Number.isInteger(product_id) || product_id <= 0) {
+        return errorResponse(res, { message: "Valid product_id is required" }, "Validation Error", 400);
+      }
+
+      if (quantity === undefined || !Number.isInteger(quantity) || quantity < 0) {
+        return errorResponse(res, { message: "Quantity must be a non-negative integer" }, "Validation Error", 400);
+      }
+
+      const transaction = await ProductVariant.sequelize.transaction();
+      try {
+        // Check if product exists and is not deleted
+        const product = await Product.findByPk(product_id, {
+          where: { deletedAt: null },
+          transaction
+        });
+
+        if (!product) {
+          await transaction.rollback();
+          return errorResponse(res, { message: "Product not found or has been deleted" }, "Product not found", 404);
+        }
+
+        // Get all variants of this product
+        const productVariants = await ProductVariant.findAll({
+          where: { product_id },
+          attributes: ['id', 'stock'],
+          transaction
+        });
+
+        if (productVariants.length === 0) {
+          await transaction.rollback();
+          return errorResponse(res, { message: "No variants found for this product" }, "No variants to update", 404);
+        }
+
+        const variantIds = productVariants.map(v => v.id);
+
+        // Bulk update all variants' stock
+        await ProductVariant.update(
+          { stock: quantity },
+          { where: { id: variantIds }, transaction }
+        );
+
+        // Bulk create StockMovement records for audit trail
+        const now = new Date();
+        const stockMovements = variantIds.map(variant_id => ({
+          variant_id,
+          change_type: 'adjustment',
+          quantity,
+          reference: reference || `Update stock for product ${product.name}`,
+          updated_by,
+          created_at: now
+        }));
+
+        await StockMovement.bulkCreate(stockMovements, { transaction });
+
+        await transaction.commit();
+
+        const response = {
+          product_id,
+          product_name: product.name,
+          total: variantIds.length,
+          successful: variantIds.length,
+          failed: 0,
+          quantity: quantity,
+          results: [], // No individual results to avoid large response
+          errors: [],
+          hasMoreResults: false,
+          hasMoreErrors: false
+        };
+
+        const message = `Successfully updated stock to ${quantity} for all ${variantIds.length} variants of product "${product.name}"`;
+
+        return successResponse(res, response, message, 200);
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
   // Get inventory analytics
   async getInventoryAnalytics(req, res) {
     try {
