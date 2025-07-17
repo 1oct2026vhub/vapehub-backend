@@ -260,8 +260,22 @@ module.exports.applyCoupon = async (req, res, next) => {
                 },
                 {
                     model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity", "brand_id", "category_id"],
-                    as: "product"
+                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                    as: "product",
+                    include: [
+                        {
+                            model: Brand,
+                            as: "Brands",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        },
+                        {
+                            model: Category,
+                            as: "Categories",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        }
+                    ]
                 },
                 {
                     model: ProductVariant,
@@ -473,13 +487,13 @@ module.exports.applyCoupon = async (req, res, next) => {
                                 }
                                 break;
                             case 'brand':
-                                if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                     hasMatchingEntity = true;
                                     break;
                                 }
                                 break;
                             case 'category':
-                                if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                     hasMatchingEntity = true;
                                     break;
                                 }
@@ -517,12 +531,12 @@ module.exports.applyCoupon = async (req, res, next) => {
                                 }
                                 break;
                             case 'brand':
-                                if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                     isApplicable = true;
                                 }
                                 break;
                             case 'category':
-                                if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                     isApplicable = true;
                                 }
                                 break;
@@ -691,12 +705,12 @@ module.exports.applyCoupon = async (req, res, next) => {
                         }
                         break;
                     case 'brand':
-                        if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                        if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                             isApplicable = true;
                         }
                         break;
                     case 'category':
-                        if (item.product.category_id === parseInt(coupon.entity_id)) {
+                        if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                             isApplicable = true;
                         }
                         break;
