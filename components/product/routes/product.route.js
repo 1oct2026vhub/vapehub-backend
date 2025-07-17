@@ -108,10 +108,14 @@ const multer = require("multer");
  *                           description:
  *                             type: string
  *                             nullable: true
- *                           category_id:
- *                             type: integer
- *                           brand_id:
- *                             type: integer
+ *                           category_ids:
+ *                             type: array
+ *                             items:
+ *                               type: integer
+ *                           brand_ids:
+ *                             type: array
+ *                             items:
+ *                               type: integer
  *                           created_at:
  *                             type: string
  *                             format: date-time
@@ -335,8 +339,8 @@ router.get('/fetch/:id',
  *             required:
  *               - name
  *               - slug
- *               - category_id
- *               - brand_id
+ *               - category_ids
+ *               - brand_ids
  *             properties:
  *               name:
  *                 type: string
@@ -468,8 +472,36 @@ router.post('/', authenticateJWT,
         check('vg_ratio').optional().isString().withMessage('VG ratio must be a string'),
         check('vaping_style').optional().isString().withMessage('Vaping style must be a string'),
         check('bottle_size').optional().isString().withMessage('Bottle size must be a string'),
-        check('category_id').isInt().withMessage('Category ID must be an integer').notEmpty().withMessage('Category ID is required'),
-        check('brand_id').isInt().withMessage('Brand ID must be an integer').notEmpty().withMessage('Brand ID is required'),
+        check('category_ids')
+            .optional()
+            .isArray({ min: 1 }).withMessage('Category IDs must be an array with at least one item')
+            .custom((value) => {
+                if (value && !Array.isArray(value)) {
+                    throw new Error('Category IDs must be an array');
+                }
+                if (value && value.length === 0) {
+                    throw new Error('At least one category ID is required');
+                }
+                if (value && !value.every(id => Number.isInteger(id) && id > 0)) {
+                    throw new Error('All category IDs must be positive integers');
+                }
+                return true;
+            }),
+        check('brand_ids')
+            .optional()
+            .isArray({ min: 1 }).withMessage('Brand IDs must be an array with at least one item')
+            .custom((value) => {
+                if (value && !Array.isArray(value)) {
+                    throw new Error('Brand IDs must be an array');
+                }
+                if (value && value.length === 0) {
+                    throw new Error('At least one brand ID is required');
+                }
+                if (value && !value.every(id => Number.isInteger(id) && id > 0)) {
+                    throw new Error('All brand IDs must be positive integers');
+                }
+                return true;
+            }),
         check('flavour_ids').optional().isArray().withMessage('Flavour IDs must be an array'),
         check('flavour_ids.*.flavor_id').optional().isInt().withMessage('Flavor ID must be an integer'),
         check('flavour_ids.*.price').optional().isDecimal().withMessage('Flavor price must be a decimal number'),
@@ -567,12 +599,18 @@ router.post('/', authenticateJWT,
  *               bottle_size:
  *                 type: string
  *                 description: Bottle size of the product
- *               category_id:
- *                 type: integer
- *                 description: ID of the associated category
- *               brand_id:
- *                 type: integer
- *                 description: ID of the associated brand
+ *               category_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of category IDs (first one will be primary)
+ *                 example: [1, 2, 3]
+ *               brand_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of brand IDs (first one will be primary)
+ *                 example: [1, 2]
  *               flavour_ids:
  *                 type: array
  *                 items:
@@ -637,8 +675,38 @@ router.put('/:id', authenticateJWT,
         check('vg_ratio').optional().isString().withMessage('VG ratio must be a string'),
         check('vaping_style').optional().isString().withMessage('Vaping style must be a string'),
         check('bottle_size').optional().isString().withMessage('Bottle size must be a string'),
-        check('category_id').optional().isInt().withMessage('Category ID must be an integer'),
-        check('brand_id').optional().isInt().withMessage('Brand ID must be an integer'),
+        check('category_ids')
+            .optional()
+            .custom((value) => {
+                if (value !== undefined && value !== null) {
+                    if (!Array.isArray(value)) {
+                        throw new Error('Category IDs must be an array');
+                    }
+                    if (value.length === 0) {
+                        throw new Error('Category IDs array cannot be empty');
+                    }
+                    if (!value.every(id => Number.isInteger(id) && id > 0)) {
+                        throw new Error('All category IDs must be positive integers');
+                    }
+                }
+                return true;
+            }),
+        check('brand_ids')
+            .optional()
+            .custom((value) => {
+                if (value !== undefined && value !== null) {
+                    if (!Array.isArray(value)) {
+                        throw new Error('Brand IDs must be an array');
+                    }
+                    if (value.length === 0) {
+                        throw new Error('Brand IDs array cannot be empty');
+                    }
+                    if (!value.every(id => Number.isInteger(id) && id > 0)) {
+                        throw new Error('All brand IDs must be positive integers');
+                    }
+                }
+                return true;
+            }),
         check('flavour_ids').optional().isArray().withMessage('Flavour IDs must be an array'),
         check('flavour_ids.*.flavor_id').optional().isInt().withMessage('Flavor ID must be an integer'),
         check('flavour_ids.*.price').optional().isDecimal().withMessage('Flavor price must be a decimal number'),
