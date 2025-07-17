@@ -717,6 +717,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       comment: 'Flag to indicate if loyalty points were used in this order'
     },
+    loyalty_discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0.0,
+      comment: 'Loyalty discount amount applied to the order'
+    },
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false,

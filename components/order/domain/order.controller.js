@@ -205,6 +205,18 @@ module.exports.placeOrder = async (req, res, next) => {
                             as: "variants",
                             where: { deleted_at: null },
                             required: false
+                        },
+                        {
+                            model: Brand,
+                            as: "Brands",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        },
+                        {
+                            model: Category,
+                            as: "Categories",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
                         }
                     ], 
                     as: "product" 
@@ -389,12 +401,12 @@ module.exports.placeOrder = async (req, res, next) => {
                                             }
                                             break;
                                         case 'brand':
-                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
                                         case 'category':
-                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
@@ -464,12 +476,12 @@ module.exports.placeOrder = async (req, res, next) => {
                                             }
                                             break;
                                         case 'brand':
-                                            if (item.product.brand_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
                                         case 'category':
-                                            if (item.product.category_id === parseInt(coupon.entity_id)) {
+                                            if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
                                                 isApplicable = true;
                                             }
                                             break;
@@ -726,7 +738,8 @@ module.exports.placeOrder = async (req, res, next) => {
             discount_type: discountType,
             referral_id: referralId,
             payment_method_id: paymentMethodRecord.id,
-            loyalty_flag: loyalty_flag
+            loyalty_flag: loyalty_flag,
+            loyalty_discount: loyaltyDiscount
         }, { transaction });
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
@@ -823,7 +836,7 @@ module.exports.getOrderById = async (req, res) => {
             attributes: [
                 'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 
                 'createdAt', 'email', 'phone', 'referral_id', 'sub_total', 'discount_type',
-                'deals_discount', 'applicable_deals'
+                'deals_discount', 'applicable_deals', 'loyalty_flag', 'loyalty_discount'
             ],
             include: [
                 {

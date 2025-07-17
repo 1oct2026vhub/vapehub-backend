@@ -187,6 +187,12 @@
                             <td class="discount-price" style="color:#e74c3c;">-£{{discountPrice}}</td>
                         </tr>
                         {{/if}}
+                        {{#if loyaltyDiscount}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Loyalty Points Discount</td>
+                            <td class="loyalty-discount" style="color:#e74c3c;">-£{{loyaltyDiscount}}</td>
+                        </tr>
+                        {{/if}}
                         <tr class="total-row">
                             <td colspan="2" class="total-label">Total Amount</td>
                             <td class="total-price">£{{totalAmount}}</td>
