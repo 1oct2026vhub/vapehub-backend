@@ -81,6 +81,7 @@ module.exports = {
                 loyalty_amount_type,
                 minimum_points_redemption,
                 minimum_purchase_amount,
+                min_amount_for_loyalty_points,
                 status
             } = req.body;
 
@@ -111,6 +112,10 @@ module.exports = {
                 return errorResponse(res, {}, 'Minimum purchase amount cannot be negative', 400);
             }
 
+            if (min_amount_for_loyalty_points !== undefined && min_amount_for_loyalty_points < 0) {
+                return errorResponse(res, {}, 'Minimum amount for loyalty points cannot be negative', 400);
+            }
+
             // Create new setting
             const newSetting = await LoyaltyPointsSettings.create({
                 program_name: program_name.trim(),
@@ -119,6 +124,7 @@ module.exports = {
                 loyalty_amount_type: loyalty_amount_type || 'fixed',
                 minimum_points_redemption: minimum_points_redemption !== undefined ? minimum_points_redemption : 100,
                 minimum_purchase_amount: minimum_purchase_amount !== undefined ? minimum_purchase_amount : 0.0,
+                min_amount_for_loyalty_points: min_amount_for_loyalty_points !== undefined ? min_amount_for_loyalty_points : 0.0,
                 status: status !== undefined ? status : true,
                 updated_by: userId
             });
@@ -158,6 +164,7 @@ module.exports = {
                 loyalty_amount_type,
                 minimum_points_redemption,
                 minimum_purchase_amount,
+                min_amount_for_loyalty_points,
                 status
             } = req.body;
 
@@ -194,6 +201,10 @@ module.exports = {
                 return errorResponse(res, {}, 'Minimum purchase amount cannot be negative', 400);
             }
 
+            if (min_amount_for_loyalty_points !== undefined && min_amount_for_loyalty_points !== null && min_amount_for_loyalty_points < 0) {
+                return errorResponse(res, {}, 'Minimum amount for loyalty points cannot be negative', 400);
+            }
+
             // Update setting
             const updateData = {};
             
@@ -203,6 +214,7 @@ module.exports = {
             if (loyalty_amount_type !== undefined) updateData.loyalty_amount_type = loyalty_amount_type;
             if (minimum_points_redemption !== undefined) updateData.minimum_points_redemption = minimum_points_redemption;
             if (minimum_purchase_amount !== undefined) updateData.minimum_purchase_amount = minimum_purchase_amount;
+            if (min_amount_for_loyalty_points !== undefined) updateData.min_amount_for_loyalty_points = min_amount_for_loyalty_points;
             if (status !== undefined) updateData.status = status;
             
             updateData.updated_by = userId;

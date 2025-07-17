@@ -93,6 +93,7 @@ router.get('/settings', [
  *             loyalty_amount_type: "percentage"
  *             minimum_points_redemption: 200
  *             minimum_purchase_amount: 25.0
+ *             min_amount_for_loyalty_points: 50.0
  *             status: true
  *     responses:
  *       201:
@@ -183,6 +184,7 @@ router.get('/settings/:id', [
  *             loyalty_amount_type: "fixed"
  *             minimum_points_redemption: 300
  *             minimum_purchase_amount: 30.0
+ *             min_amount_for_loyalty_points: 75.0
  *             status: true
  *     responses:
  *       200:
@@ -373,6 +375,10 @@ router.get('/history', [
  *           type: number
  *           format: float
  *           description: Minimum purchase amount to earn points
+ *         min_amount_for_loyalty_points:
+ *           type: number
+ *           format: float
+ *           description: Minimum order amount required to earn loyalty points
  *         status:
  *           type: boolean
  *           description: Whether the loyalty program is active
@@ -438,6 +444,11 @@ router.get('/history', [
  *           format: float
  *           minimum: 0
  *           description: Minimum purchase amount to earn points
+ *         min_amount_for_loyalty_points:
+ *           type: number
+ *           format: float
+ *           minimum: 0
+ *           description: Minimum order amount required to earn loyalty points
  *         status:
  *           type: boolean
  *           description: Whether the loyalty program is active
@@ -473,6 +484,11 @@ router.get('/history', [
  *           format: float
  *           minimum: 0
  *           description: Minimum purchase amount to earn points
+ *         min_amount_for_loyalty_points:
+ *           type: number
+ *           format: float
+ *           minimum: 0
+ *           description: Minimum order amount required to earn loyalty points
  *         status:
  *           type: boolean
  *           description: Whether the loyalty program is active
