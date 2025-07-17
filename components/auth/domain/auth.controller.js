@@ -226,6 +226,18 @@ module.exports.register = async (req, res, next) => {
                         referral_code: referral_code
                     }
                 });
+
+                const welcomeData = {
+                    emailTypes: constants.emailTypes.WELCOME,
+                    to: user.email,
+                    context: {
+                        userName: username,
+                        couponCode: null,
+                        
+                    },
+                    attachments: ""
+                };
+                await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
             }
             else{   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
@@ -257,6 +269,18 @@ module.exports.register = async (req, res, next) => {
                         refer_type: activeReferrerMethod.refer_type
                     } : null
                 });
+                const welcomeData = {
+                    emailTypes: constants.emailTypes.WELCOME,
+                    to: user.email,
+                    context: {
+                        userName: username,
+                        couponCode: referral_coupon,
+                        discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
+                        minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
+                    },
+                    attachments: ""
+                };
+                await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
             }
             
             // Delete any existing referral data for this email where referred_user_id is null
@@ -279,17 +303,7 @@ module.exports.register = async (req, res, next) => {
                 url: '/admin/users',  // URL to the admin users list
                 is_admin: true
             });
-            const welcomeData = {
-                emailTypes: constants.emailTypes.WELCOME,
-                to: user.email,
-                context: {
-                    userName: username,
-                    couponCode: null,
-                    
-                },
-                attachments: ""
-            };
-            await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
+           
         }
         else{
             // Create a random coupon code for the new user
@@ -351,7 +365,6 @@ module.exports.register = async (req, res, next) => {
                 },
                 attachments: ""
             };
-            console.log(username);  
             await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
         
         }
