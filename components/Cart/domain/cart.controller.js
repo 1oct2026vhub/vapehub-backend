@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Cart, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, sequelize } = require("../../../models");
+const { User, Cart, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, sequelize, ProductCategory, ProductBrand } = require("../../../models");
 const Sequelize = require("sequelize");
 const { Op } = Sequelize
 const dealService = require('../helper/deal.service');
@@ -9,8 +9,8 @@ const includeClause = [
         model: Product,
         as: 'product', // Match the alias from Cart model
         include: [
-            { model: Category, as: 'Category' },
-            { model: Brand, as: 'Brand' },
+            { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+            { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
             { model: ProductImage, as: 'ProductImages' },
             // {
             //     model: ProductAttributeTerm,

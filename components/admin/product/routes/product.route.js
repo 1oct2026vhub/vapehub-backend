@@ -38,12 +38,16 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *           type: string
  *           enum: [draft, published, archived]
  *           description: The product status
- *         category_id:
- *           type: integer
- *           description: The category ID
- *         brand_id:
- *           type: integer
- *           description: The brand ID
+ *         category_ids:
+ *           type: array
+ *           items:
+ *             type: integer
+ *           description: Array of category IDs (first one is primary)
+ *         brand_ids:
+ *           type: array
+ *           items:
+ *             type: integer
+ *           description: Array of brand IDs (first one is primary)
  *         updated_by:
  *           type: integer
  *           description: The ID of the user who last updated the product
@@ -59,10 +63,32 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *           type: string
  *           format: date-time
  *           description: The deletion timestamp (if soft-deleted)
- *         Category:
- *           $ref: '#/components/schemas/Category'
- *         Brand:
- *           $ref: '#/components/schemas/Brand'
+ *         Categories:
+ *           type: array
+ *           items:
+ *             allOf:
+ *               - $ref: '#/components/schemas/Category'
+ *               - type: object
+ *                 properties:
+ *                   ProductCategory:
+ *                     type: object
+ *                     properties:
+ *                       is_primary:
+ *                         type: boolean
+ *                         description: Indicates if this is the primary category
+ *         Brands:
+ *           type: array
+ *           items:
+ *             allOf:
+ *               - $ref: '#/components/schemas/Brand'
+ *               - type: object
+ *                 properties:
+ *                   ProductBrand:
+ *                     type: object
+ *                     properties:
+ *                       is_primary:
+ *                         type: boolean
+ *                         description: Indicates if this is the primary brand
  *         ProductImages:
  *           type: array
  *           items:
@@ -202,12 +228,12 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *         name: categories
  *         schema:
  *           type: string
- *         description: Filter by category IDs (comma-separated)
+ *         description: Filter by category IDs (comma-separated). Products matching any of the specified categories will be returned.
  *       - in: query
  *         name: brands
  *         schema:
  *           type: string
- *         description: Filter by brand IDs (comma-separated)
+ *         description: Filter by brand IDs (comma-separated). Products matching any of the specified brands will be returned.
  *       - in: query
  *         name: deleted
  *         schema:
@@ -304,8 +330,6 @@ router.get('/fetch/:id',
  *             required:
  *               - name
  *               - slug
- *               - category_id
- *               - brand_id
  *             properties:
  *               name:
  *                 type: string
@@ -316,12 +340,18 @@ router.get('/fetch/:id',
  *               description:
  *                 type: string
  *                 description: Description of the product
- *               category_id:
- *                 type: integer
- *                 description: ID of the associated category
- *               brand_id:
- *                 type: integer
- *                 description: ID of the associated brand
+ *               category_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of category IDs (first one will be primary)
+ *                 example: [1, 2, 3]
+ *               brand_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of brand IDs (first one will be primary)
+ *                 example: [1, 2]
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -370,12 +400,18 @@ router.post('/',
  *               description:
  *                 type: string
  *                 description: Description of the product
- *               category_id:
- *                 type: integer
- *                 description: ID of the associated category
- *               brand_id:
- *                 type: integer
- *                 description: ID of the associated brand
+ *               category_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of category IDs (first one will be primary)
+ *                 example: [1, 2, 3]
+ *               brand_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of brand IDs (first one will be primary)
+ *                 example: [1, 2]
  *     responses:
  *       200:
  *         description: Product updated successfully
@@ -388,8 +424,34 @@ router.post('/',
  *                   type: integer
  *                 name:
  *                   type: string
- *                 price:
- *                   type: number
+ *                 slug:
+ *                   type: string
+ *                 description:
+ *                   type: string
+ *                 Categories:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Category'
+ *                       - type: object
+ *                         properties:
+ *                           ProductCategory:
+ *                             type: object
+ *                             properties:
+ *                               is_primary:
+ *                                 type: boolean
+ *                 Brands:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Brand'
+ *                       - type: object
+ *                         properties:
+ *                           ProductBrand:
+ *                             type: object
+ *                             properties:
+ *                               is_primary:
+ *                                 type: boolean
  *       400:
  *         description: Bad request (validation errors)
  *       401:

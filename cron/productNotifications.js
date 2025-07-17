@@ -55,13 +55,15 @@ async function getLatestProducts(frequency) {
                 },
                 {
                     model: Category,
-                    as: 'Category',
-                    attributes: ['name', 'slug']
+                    as: 'Categories',
+                    attributes: ['name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: Brand,
-                    as: 'Brand',
-                    attributes: ['name', 'slug']
+                    as: 'Brands',
+                    attributes: ['name', 'slug'],
+                    through: { attributes: ['is_primary'] }
                 },
                 {
                     model: ProductVariant,
@@ -103,8 +105,8 @@ async function getLatestProducts(frequency) {
                 price: minPrice,
                 discount_price: minDiscountPrice > 0 ? minDiscountPrice : null,
                 primaryImage: primaryImage,
-                category: product.Category?.name,
-                brand: product.Brand?.name,
+                category: product.Categories && product.Categories.length > 0 ? product.Categories[0].name : null,
+                brand: product.Brands && product.Brands.length > 0 ? product.Brands[0].name : null,
                 createdAt: product.createdAt
             };
         });

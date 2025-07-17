@@ -11,7 +11,12 @@ module.exports = (sequelize, DataTypes) => {
             });
             this.belongsTo(models.Category, { as: 'parent', foreignKey: 'parent_id' });
             this.hasMany(models.Category, { as: 'children', foreignKey: 'parent_id' });
-            this.hasMany(models.Product, { foreignKey: 'category_id' });
+            this.belongsToMany(models.Product, { 
+              through: models.ProductCategory, 
+              foreignKey: 'category_id',
+              otherKey: 'product_id',
+              as: 'Products'
+            });
         }
     }
 

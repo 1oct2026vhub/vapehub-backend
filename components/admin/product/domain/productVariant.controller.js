@@ -1344,13 +1344,15 @@ module.exports.getVariantById = async (req, res) => {
                     include: [
                         {
                             model: Category,
-                            as: 'Category',
-                            attributes: ['id', 'name', 'slug']
+                            as: 'Categories',
+                            attributes: ['id', 'name', 'slug'],
+                            through: { attributes: ['is_primary'] }
                         },
                         {
                             model: Brand,
-                            as: 'Brand',
-                            attributes: ['id', 'name', 'slug']
+                            as: 'Brands',
+                            attributes: ['id', 'name', 'slug'],
+                            through: { attributes: ['is_primary'] }
                         }
                     ]
                 },
