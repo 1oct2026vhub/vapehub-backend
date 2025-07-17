@@ -36,6 +36,7 @@ const couponController = {
         search,
         status,
         discount_type,
+        entity_type,
         start_date,
         end_date
       } = req.query;
@@ -59,6 +60,11 @@ const couponController = {
       // Add discount type filter
       if (discount_type) {
         where.discount_type = discount_type;
+      }
+
+      // Add entity type filter
+      if (entity_type) {
+        where.entity_type = entity_type;
       }
 
       // Add date range filter

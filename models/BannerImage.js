@@ -78,6 +78,17 @@ module.exports = (sequelize, DataTypes) => {
                     }
                 }
             },
+            status: {
+                type: DataTypes.ENUM('active', 'inactive'),
+                allowNull: false,
+                defaultValue: 'active',
+                validate: {
+                    isIn: {
+                        args: [['active', 'inactive']],
+                        msg: 'Status must be either "active" or "inactive"'
+                    }
+                }
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,
