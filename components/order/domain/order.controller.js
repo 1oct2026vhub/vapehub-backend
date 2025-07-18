@@ -552,15 +552,27 @@ module.exports.placeOrder = async (req, res, next) => {
                     const points = user.loyalty_points;
                     const loyaltyAmount = settings.loyalty_amount;
                     const loyaltyAmountType = settings.loyalty_amount_type;
-                    
                     if(loyaltyAmountType === 'percentage'){
                         loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
                         calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
                     }else{
-                        loyaltyDiscount = loyaltyAmount;
-                        calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                        // Only apply loyalty discount if calculated total is greater than loyalty amount
+                        if(calculatedTotal > loyaltyAmount){
+                            loyaltyDiscount = loyaltyAmount;
+                            calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                            loyalty_flag = true;
+                        }
+                        // else{
+                        //     // If calculated total is less than or equal to loyalty amount, apply only the calculated total
+                        //     loyaltyDiscount = calculatedTotal;
+                        //     calculatedTotal = 0;
+                        //     loyalty_flag = true;
+                        //     // return {
+                        //     //     statusCode: 400,
+                        //     //     message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${calculatedTotal + loyaltyDiscount}). Only £${loyaltyDiscount} discount applied.`
+                        //     // };
+                        // }
                     }
-                    loyalty_flag = true;
                     
                 }
             }
@@ -613,10 +625,8 @@ module.exports.placeOrder = async (req, res, next) => {
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
-        
         // Ensure Price Integrity
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
-
         let orderCode = 0;
         let worldpayResponse = {};
         wallet_check.payMethod = payMethod;

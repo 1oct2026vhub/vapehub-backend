@@ -101,7 +101,7 @@ async function getLatestProducts(frequency) {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
-                description: product.description,
+                // description: product.description,
                 price: minPrice,
                 discount_price: minDiscountPrice > 0 ? minDiscountPrice : null,
                 primaryImage: primaryImage,
