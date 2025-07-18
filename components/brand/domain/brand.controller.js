@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Brand, ProductBrand, ProductCategory, Category } = require("../../../models");
+const { Brand } = require("../../../models");
 const { fetchProducts } = require("../../product/helper/product.helper");
 const { Op } = require("sequelize");
 
@@ -90,51 +90,15 @@ module.exports.deleteBrand = async (req, res, next) => {
 
 module.exports.getBrandBySlug = async (req, res, next) => {
     try {
-        const { productId } = req.query;
-
-        if (productId) {
-            // Get category ID for this product
-            const productCategory = await ProductCategory.findOne({
-                where: { product_id: productId },
-                include: [{
-                    model: Category,
-                    as: 'Category',
-                    attributes: ['id']
-                }]
-            });
-
-            // Get brand ID for this product
-            const productBrand = await ProductBrand.findOne({
-                where: { product_id: productId },
-                include: [{
-                    model: Brand,
-                    as: 'Brand',
-                    attributes: ['id']
-                }]
-            });
-
-            // Set category and brand IDs from the product for fetchProducts
-            if (productCategory?.Category?.id) {
-                req.query.categories = `${productCategory.Category.id}`;
-            }
-            if (productBrand?.Brand?.id) {
-                req.query.brand = `${productBrand.Brand.id}`;
-            }
-            req.query.source = 'product';
-        } else {
-            // Original logic when no productId is provided
-            const brand = await Brand.findOne({ where: { slug: req.params.slug } });
-            if (!brand) {
-                throw {
-                    message: "Brand not found",
-                    statusCode: 400,
-                };
-            }
-            req.query.brand = `${brand.id}`;
-            req.query.source = 'brand';
+        const brand = await Brand.findOne({ where: { slug: req.params.slug } });
+        if (!brand) {
+            throw {
+                message: "Brand not found",
+                statusCode: 400,
+            };
         }
-
-        console.log("Brand controller - req.query before fetchProducts:", req.query);
+        req.query.brand = `${brand.id}`;
+        req.query.source = 'brand';
         const {additionalData, products, attributes, category_items, price_ranges, pagination } = await fetchProducts(req.query);
 
         return successResponse(res, { 
