@@ -1005,7 +1005,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         return successResponse(res, response, 'Variants filtered successfully');
     } catch (error) {
-        console.log("error>>>>",error);
         logger.error(error);
         return errorResponse(res, error, error.message);
     }
