@@ -624,8 +624,19 @@ module.exports.applyCoupon = async (req, res, next) => {
                         loyaltyDiscount = (loyaltyAmount / 100) * total;
                         total = Math.max(0, total - loyaltyDiscount);
                     }else{
-                        total = Math.max(0, total - loyaltyAmount);
-                        loyaltyDiscount = loyaltyAmount;
+                        // Only apply loyalty discount if total is greater than loyalty amount
+                        if(total > loyaltyAmount){
+                            total = Math.max(0, total - loyaltyAmount);
+                            loyaltyDiscount = loyaltyAmount;
+                        }else{
+                            // If total is less than or equal to loyalty amount, apply only the total
+                            loyaltyDiscount = total;
+                            total = 0;
+                            throw {
+                                statusCode: 400,
+                                message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${total}).`
+                            };
+                        }
                     }
                     loyaltyDiscountType = loyaltyAmountType;
                     loyaltyRedeem = true;
