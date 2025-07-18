@@ -16,7 +16,6 @@ module.exports.listAllProducts = async (req, res, next) => {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
             categories, brands, deleted, is_new, variant_attributes, status
         } = req.query;
-
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
         let whereClause = { 
@@ -248,7 +247,6 @@ module.exports.listAllProducts = async (req, res, next) => {
             distinct: true,
             paranoid: deleted === "true" || deleted === true ? false : true // Include soft-deleted records if requested
         });
-
         // Calculate pagination details
         const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
@@ -270,7 +268,7 @@ module.exports.listAllProducts = async (req, res, next) => {
             offset: parsedOffset,
             paranoid: !(deleted === "true" || deleted === true)
         });
-
+        
         return successResponse(res, { products, pagination }, 'Success');
     } catch (error) {
         console.log(error);
