@@ -1573,7 +1573,7 @@ module.exports = {
         const sqlQuery = `
           SELECT 
             pv.id,
-            CONCAT(p.name, ' - ', pv.slug) as name,
+            CONCAT(p.name, ' - ', COALESCE(pv.slug, pv.id)) as name,
             pvi.image_url as image,
             pv.stock as currentStock,
             pv.low_stock_threshold as lowStockThreshold,
@@ -1691,7 +1691,7 @@ module.exports = {
 
           return {
             id: variant.id,
-            name: `${variant.product?.name} - ${variant.slug}`,
+            name: `${variant.product?.name} - ${variant.slug ? variant.slug : `variant id(${variant.id})`}`,
             image: variant.variantImages?.[0]?.image_url || null,
             currentStock: variant.stock,
             lowStockThreshold: variant.low_stock_threshold,
@@ -1864,7 +1864,7 @@ module.exports = {
 
           return {
             id: variant.id,
-            name: `${variant.product?.name} - ${variant.slug}`,
+            name: `${variant.product?.name} - ${variant.slug ? variant.slug : `variant id(${variant.id})`}`,
             image: variant.variantImages?.[0]?.image_url || null,
             currentStock: variant.stock,
             lowStockThreshold: variant.low_stock_threshold,
