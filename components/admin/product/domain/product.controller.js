@@ -16,7 +16,6 @@ module.exports.listAllProducts = async (req, res, next) => {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
             categories, brands, deleted, is_new, variant_attributes, status
         } = req.query;
-
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
         let whereClause = { 
@@ -119,57 +118,32 @@ module.exports.listAllProducts = async (req, res, next) => {
         if (deleted !== undefined && (deleted === "true" || deleted === true)) {
             whereClause.deletedAt = { [Op.ne]: null }
         }
-        // Define relationships to include with LEFT JOIN
+        // Optimized include clause - only essential relationships for better performance
         const includeClause = [
             { 
                 model: Category, 
                 as: 'Categories',
-                required: false, // LEFT JOIN
-                through: { attributes: ['is_primary'] }
+                required: false,
+                through: { attributes: ['is_primary'] },
+                attributes: ['id', 'name', 'slug'] // Limit attributes
             },
             { 
                 model: Brand, 
                 as: 'Brands',
-                required: false, // LEFT JOIN
-                through: { attributes: ['is_primary'] }
+                required: false,
+                through: { attributes: ['is_primary'] },
+                attributes: ['id', 'name', 'slug'] // Limit attributes
             },
             { 
                 model: ProductImage, 
                 as: 'ProductImages',
-                required: false // LEFT JOIN
-            },
-            {
-                model: ProductAttributeTerm,
-                as: "productAttributeTerms",
-                attributes: [
-                    "id",
-                    "product_id",
-                    "attribute_id",
-                    "term_id",
-                    "is_visible_page",
-                    "used_in_variation"
-                ],
-                include: [  
-                    {
-                        model: Attribute,
-                        as: "attribute",
-                        attributes: [
-                            "id",
-                            "name",
-                            "slug"
-                        ]
-                    },
-                    {
-                        model: AttributeTerm,
-                        as: "term",
-                        attributes: [
-                            "id",
-                            "name",
-                            "slug"
-                        ]
-                    }
-                ]
-            },
+                required: false,
+                attributes: ['id', 'product_id', 'image_url', 'is_primary'] // Limit attributes
+            }
+        ];
+
+        // Separate query for variants and attributes to reduce JOIN complexity
+        const variantIncludeClause = [
             {
                 model: ProductVariant,
                 as: "variants",
@@ -238,15 +212,45 @@ module.exports.listAllProducts = async (req, res, next) => {
             }
         ];
 
-        // Fetch total product count with filters
+        const attributeIncludeClause = [
+            {
+                model: ProductAttributeTerm,
+                as: "productAttributeTerms",
+                attributes: [
+                    "id",
+                    "product_id",
+                    "attribute_id",
+                    "term_id",
+                    "is_visible_page",
+                    "used_in_variation"
+                ],
+                include: [  
+                    {
+                        model: Attribute,
+                        as: "attribute",
+                        attributes: [
+                            "id",
+                            "name",
+                            "slug"
+                        ]
+                    },
+                    {
+                        model: AttributeTerm,
+                        as: "term",
+                        attributes: [
+                            "id",
+                            "name",
+                            "slug"
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        // Optimized query execution - separate count and data queries
         const totalCount = await Product.count({
             where: whereClause,
-            include: includeClause.map(include => ({
-                ...include,
-                attributes: [] // Don't need attributes for counting
-            })),
-            distinct: true,
-            paranoid: deleted === "true" || deleted === true ? false : true // Include soft-deleted records if requested
+            paranoid: deleted === "true" || deleted === true ? false : true
         });
 
         // Calculate pagination details
@@ -261,7 +265,7 @@ module.exports.listAllProducts = async (req, res, next) => {
             offset: parsedOffset
         };
 
-        // Fetch paginated product data
+        // Fetch basic product data first (faster)
         const products = await Product.findAll({
             where: whereClause,
             include: includeClause,
@@ -271,6 +275,31 @@ module.exports.listAllProducts = async (req, res, next) => {
             paranoid: !(deleted === "true" || deleted === true)
         });
 
+        // Fetch variants and attributes separately for better performance
+        if (products.length > 0) {
+            const productIds = products.map(p => p.id);
+            
+            // Get variants for these products
+            const variants = await ProductVariant.findAll({
+                where: { product_id: { [Op.in]: productIds } },
+                include: variantIncludeClause[0].include,
+                attributes: variantIncludeClause[0].attributes
+            });
+
+            // Get attributes for these products
+            const attributes = await ProductAttributeTerm.findAll({
+                where: { product_id: { [Op.in]: productIds } },
+                include: attributeIncludeClause[0].include,
+                attributes: attributeIncludeClause[0].attributes
+            });
+
+            // Attach variants and attributes to products
+            products.forEach(product => {
+                product.dataValues.variants = variants.filter(v => v.product_id === product.id);
+                product.dataValues.productAttributeTerms = attributes.filter(a => a.product_id === product.id);
+            });
+        }
+        
         return successResponse(res, { products, pagination }, 'Success');
     } catch (error) {
         console.log(error);

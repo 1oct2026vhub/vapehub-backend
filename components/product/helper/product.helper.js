@@ -321,20 +321,15 @@ const fetchProducts = async (query, status = 'published') => {
     if (brand) {
       const brandIds = brand.split(',').map(Number);
       if (categories) {
-        // If both categories and brands are specified, use AND logic
+        // If both categories and brands are specified, use EXISTS logic to avoid subquery issues
         productWhereClause.id = {
-          [Op.and]: [
-            Sequelize.literal(`(
-              SELECT DISTINCT product_id 
-              FROM product_categories 
-              WHERE category_id IN (${categories.split(',').map(Number).join(',')})
-            )`),
-            Sequelize.literal(`(
-              SELECT DISTINCT product_id 
-              FROM product_brands 
-              WHERE brand_id IN (${brandIds.join(',')})
-            )`)
-          ]
+          [Op.in]: Sequelize.literal(`(
+            SELECT DISTINCT pc.product_id 
+            FROM product_categories pc
+            INNER JOIN product_brands pb ON pc.product_id = pb.product_id
+            WHERE pc.category_id IN (${categories.split(',').map(Number).join(',')})
+            AND pb.brand_id IN (${brandIds.join(',')})
+          )`)
         };
       } else {
         productWhereClause.id = {
@@ -892,7 +887,6 @@ const fetchProducts = async (query, status = 'published') => {
         value: range.value
       };
     });
-
     // Prepare additional data based on source
     const additionalData = {};
     if (source === "category" && availableProducts[0]?.Categories && availableProducts[0].Categories.length > 0) {
