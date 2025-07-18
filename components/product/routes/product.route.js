@@ -1683,5 +1683,300 @@ router.get('/deals',
     productController.getAllDeals
 );
 
+/**
+ * @swagger
+ * /api/product/more-like-this:
+ *   get:
+ *     summary: Get similar products based on category and attributes
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         required: true
+ *         description: ID of the source product to find similar products for
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of similar products to return per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           minimum: 0
+ *         description: Number of products to skip for pagination
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved similar products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     source_product:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Source product ID
+ *                         name:
+ *                           type: string
+ *                           description: Source product name
+ *                         slug:
+ *                           type: string
+ *                           description: Source product slug
+ *                         categories:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                         attributes:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               attribute:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                                   type:
+ *                                     type: string
+ *                               term:
+ *                                 type: object
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   name:
+ *                                     type: string
+ *                                   slug:
+ *                                     type: string
+ *                     similar_products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Product ID
+ *                           name:
+ *                             type: string
+ *                             description: Product name
+ *                           slug:
+ *                             type: string
+ *                             description: Product slug
+ *                           description:
+ *                             type: string
+ *                             description: Product description
+ *                             nullable: true
+ *                           price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Product price
+ *                             nullable: true
+ *                           discount_price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Product discount price
+ *                             nullable: true
+ *                           stock_quantity:
+ *                             type: integer
+ *                             description: Product stock quantity
+ *                             nullable: true
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product creation date
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product last update date
+ *                           category:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           brand:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           primary_image:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               url:
+ *                                 type: string
+ *                               is_primary:
+ *                                 type: boolean
+ *                           attribute_terms:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 attribute:
+ *                                   type: object
+ *                                   properties:
+ *                                     id:
+ *                                       type: integer
+ *                                     name:
+ *                                       type: string
+ *                                     type:
+ *                                       type: string
+ *                                     image_url:
+ *                                       type: string
+ *                                       nullable: true
+ *                                 terms:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       id:
+ *                                         type: integer
+ *                                       name:
+ *                                         type: string
+ *                                       slug:
+ *                                         type: string
+ *                           similarity:
+ *                             type: object
+ *                             properties:
+ *                               score:
+ *                                 type: number
+ *                                 format: float
+ *                                 description: Similarity score (0-1)
+ *                               category_matches:
+ *                                 type: integer
+ *                                 description: Number of matching categories
+ *                               attribute_matches:
+ *                                 type: integer
+ *                                 description: Number of matching attributes
+ *                               total_source_attributes:
+ *                                 type: integer
+ *                                 description: Total number of attributes in source product
+ *                               percentage:
+ *                                 type: integer
+ *                                 description: Similarity percentage (0-100)
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of similar products
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *                         has_next:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         has_prev:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_similar_products:
+ *                           type: integer
+ *                           description: Total number of similar products returned
+ *                         average_similarity_score:
+ *                           type: number
+ *                           format: float
+ *                           description: Average similarity score of returned products
+ *                 message:
+ *                   type: string
+ *                   example: "More like this products retrieved successfully"
+ *       400:
+ *         description: Bad request - Invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *       404:
+ *         description: Source product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/more-like-this',
+    validateRequest([
+        query('product_id').isInt({ min: 1 }).withMessage('Product ID must be a positive integer'),
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+    ]),
+    productController.getMoreLikeThisProducts
+);
 
 module.exports = router;

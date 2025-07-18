@@ -1005,7 +1005,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         return successResponse(res, response, 'Variants filtered successfully');
     } catch (error) {
-        console.log("error>>>>",error);
         logger.error(error);
         return errorResponse(res, error, error.message);
     }
@@ -1482,6 +1481,305 @@ module.exports.getAllDeals = async (req, res, next) => {
         return successResponse(res, response, 'All deals retrieved successfully');
     } catch (error) {
         logger.error('Error getting all deals:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getMoreLikeThisProducts = async (req, res, next) => {
+    try {
+        const { product_id, limit = 10, offset = 0 } = req.query;
+
+        // Validate product_id
+        if (!product_id) {
+            throw new Error('Product ID is required');
+        }
+
+        // Find the source product with its categories and attributes
+        const sourceProduct = await Product.findOne({
+            where: { 
+                id: product_id,
+                status: productStatus.PUBLISHED
+            },
+            include: [
+                {
+                    model: Category,
+                    as: 'Categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
+                },
+                {
+                    model: ProductAttributeTerm,
+                    as: 'productAttributeTerms',
+                    include: [
+                        { 
+                            model: Attribute, 
+                            as: 'attribute',
+                            attributes: ['id', 'name', 'type', 'image_url'] 
+                        },
+                        { 
+                            model: AttributeTerm, 
+                            as: 'term',
+                            attributes: ['id', 'name', 'slug'] 
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (!sourceProduct) {
+            throw new Error('Source product not found');
+        }
+
+        // Get category IDs from source product
+        const sourceCategoryIds = sourceProduct.Categories.map(cat => cat.id);
+
+        // Get attribute-term combinations from source product
+        const sourceAttributeTerms = sourceProduct.productAttributeTerms.map(pat => ({
+            attribute_id: pat.attribute_id,
+            term_id: pat.term_id
+        }));
+
+        // Build the query to find similar products
+        const similarProductsQuery = {
+            where: {
+                id: { [Op.ne]: product_id }, // Exclude the source product
+                status: productStatus.PUBLISHED
+            },
+            include: [
+                {
+                    model: Category,
+                    as: 'Categories',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] },
+                    where: {
+                        id: { [Op.in]: sourceCategoryIds }
+                    },
+                    required: true
+                },
+                {
+                    model: Brand,
+                    as: 'Brands',
+                    attributes: ['id', 'name', 'slug'],
+                    through: { attributes: ['is_primary'] }
+                },
+                {
+                    model: ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['id', 'image_url', 'is_primary'],
+                    where: { is_primary: true },
+                    required: false
+                },
+                {
+                    model: ProductAttributeTerm,
+                    as: 'productAttributeTerms',
+                    include: [
+                        { 
+                            model: Attribute, 
+                            as: 'attribute',
+                            attributes: ['id', 'name', 'type', 'image_url'] 
+                        },
+                        { 
+                            model: AttributeTerm, 
+                            as: 'term',
+                            attributes: ['id', 'name', 'slug'] 
+                        }
+                    ]
+                }
+            ],
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'description', 
+                'price', 
+                'discount_price',
+                'stock_quantity',
+                'createdAt',
+                'updatedAt'
+            ],
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            order: [['createdAt', 'DESC']]
+        };
+
+        // Get similar products
+        const similarProducts = await Product.findAll(similarProductsQuery);
+
+        // Calculate similarity scores and sort by relevance
+        const productsWithScores = similarProducts.map(product => {
+            let similarityScore = 0;
+            let matchingAttributes = 0;
+            let totalSourceAttributes = sourceAttributeTerms.length;
+
+            // Check category similarity (weight: 40%)
+            const productCategoryIds = product.Categories.map(cat => cat.id);
+            const categoryMatches = sourceCategoryIds.filter(id => 
+                productCategoryIds.includes(id)
+            ).length;
+            const categoryScore = (categoryMatches / sourceCategoryIds.length) * 0.4;
+
+            // Check attribute similarity (weight: 60%)
+            const productAttributeTerms = product.productAttributeTerms.map(pat => ({
+                attribute_id: pat.attribute_id,
+                term_id: pat.term_id
+            }));
+
+            sourceAttributeTerms.forEach(sourceAttr => {
+                const hasMatchingAttribute = productAttributeTerms.some(prodAttr => 
+                    prodAttr.attribute_id === sourceAttr.attribute_id && 
+                    prodAttr.term_id === sourceAttr.term_id
+                );
+                if (hasMatchingAttribute) {
+                    matchingAttributes++;
+                }
+            });
+
+            const attributeScore = totalSourceAttributes > 0 ? 
+                (matchingAttributes / totalSourceAttributes) * 0.6 : 0;
+
+            similarityScore = categoryScore + attributeScore;
+
+            return {
+                product,
+                similarityScore,
+                categoryMatches,
+                attributeMatches: matchingAttributes,
+                totalSourceAttributes
+            };
+        });
+
+        // Sort by similarity score (highest first)
+        productsWithScores.sort((a, b) => b.similarityScore - a.similarityScore);
+
+        // Get total count for pagination
+        const totalCount = await Product.count({
+            where: {
+                id: { [Op.ne]: product_id },
+                status: productStatus.PUBLISHED
+            },
+            include: [
+                {
+                    model: Category,
+                    as: 'Categories',
+                    where: {
+                        id: { [Op.in]: sourceCategoryIds }
+                    },
+                    required: true
+                }
+            ]
+        });
+
+        // Transform the response
+        const transformedProducts = productsWithScores.map(({ product, similarityScore, categoryMatches, attributeMatches, totalSourceAttributes }) => {
+            const primaryImage = product.ProductImages && product.ProductImages.length > 0 
+                ? product.ProductImages[0] 
+                : null;
+
+            // Group attributes for the response
+            const attributeTermsMap = new Map();
+            product.productAttributeTerms.forEach((pat) => {
+                const attribute = pat.attribute;
+                if (!attributeTermsMap.has(attribute.id)) {
+                    attributeTermsMap.set(attribute.id, {
+                        attribute: {
+                            id: attribute.id,
+                            name: attribute.name,
+                            type: attribute.type,
+                            image_url: attribute.image_url
+                        },
+                        terms: []
+                    });
+                }
+                attributeTermsMap.get(attribute.id).terms.push({
+                    id: pat.term.id,
+                    name: pat.term.name,
+                    slug: pat.term.slug
+                });
+            });
+
+            return {
+                id: product.id,
+                name: product.name,
+                slug: product.slug,
+                description: product.description,
+                price: product.price,
+                discount_price: product.discount_price,
+                stock_quantity: product.stock_quantity,
+                created_at: product.createdAt,
+                updated_at: product.updatedAt,
+                category: product.Categories && product.Categories.length > 0 ? {
+                    id: product.Categories[0].id,
+                    name: product.Categories[0].name,
+                    slug: product.Categories[0].slug
+                } : null,
+                brand: product.Brands && product.Brands.length > 0 ? {
+                    id: product.Brands[0].id,
+                    name: product.Brands[0].name,
+                    slug: product.Brands[0].slug
+                } : null,
+                primary_image: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    is_primary: primaryImage.is_primary
+                } : null,
+                attribute_terms: Array.from(attributeTermsMap.values()),
+                similarity: {
+                    score: Math.round(similarityScore * 100) / 100, // Round to 2 decimal places
+                    category_matches: categoryMatches,
+                    attribute_matches: attributeMatches,
+                    total_source_attributes: totalSourceAttributes,
+                    percentage: Math.round(similarityScore * 100)
+                }
+            };
+        });
+
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
+        const currentPage = Math.floor(parseInt(offset) / parseInt(limit)) + 1;
+
+        const response = {
+            source_product: {
+                id: sourceProduct.id,
+                name: sourceProduct.name,
+                slug: sourceProduct.slug,
+                categories: sourceProduct.Categories.map(cat => ({
+                    id: cat.id,
+                    name: cat.name,
+                    slug: cat.slug
+                })),
+                attributes: sourceProduct.productAttributeTerms.map(pat => ({
+                    attribute: {
+                        id: pat.attribute.id,
+                        name: pat.attribute.name,
+                        type: pat.attribute.type
+                    },
+                    term: {
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug
+                    }
+                }))
+            },
+            similar_products: transformedProducts,
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                has_next: currentPage < totalPages,
+                has_prev: currentPage > 1
+            },
+            summary: {
+                total_similar_products: transformedProducts.length,
+                average_similarity_score: transformedProducts.length > 0 ? 
+                    Math.round((transformedProducts.reduce((sum, p) => sum + p.similarity.score, 0) / transformedProducts.length) * 100) / 100 : 0
+            }
+        };
+
+        return successResponse(res, response, 'More like this products retrieved successfully');
+    } catch (error) {
+        logger.error('Error getting more like this products:', error);
         return errorResponse(res, error, error.message);
     }
 };

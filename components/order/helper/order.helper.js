@@ -109,7 +109,6 @@ const createVivaOrder = async (accessToken, amount) => {
         if (!accessToken) {
             throw new Error("Access token is required");
         }
-
         if (!amount || amount <= 0) {
             throw new Error("Invalid amount");
         }
