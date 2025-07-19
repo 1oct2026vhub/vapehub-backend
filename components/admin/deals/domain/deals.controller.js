@@ -399,6 +399,38 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             throw error;
         }
 
+        // Check if any products are already in other deals
+        const existingDealProducts = await DealProduct.findAll({
+            where: {
+                product_id: {
+                    [Op.in]: product_ids
+                }
+            },
+            include: [{
+                model: Deal,
+                as: 'deal',
+                attributes: ['id', 'name', 'slug']
+            }],
+            transaction
+        });
+
+        if (existingDealProducts.length > 0) {
+            await transaction.rollback();
+            const error = new Error('One or more products are already in deals');
+            error.statusCode = 400;
+            error.data = {
+                products_already_in_deals: existingDealProducts.map(dp => ({
+                    product_id: dp.product_id,
+                    existing_deal: {
+                        id: dp.deal.id,
+                        name: dp.deal.name,
+                        slug: dp.deal.slug
+                    }
+                }))
+            };
+            throw error;
+        }
+
         // Check stock levels for each product
         const stockIssues = [];
         
@@ -532,7 +564,9 @@ module.exports.addProductsToDeal = async (req, res, next) => {
         await transaction.commit();
         successResponse(res, updatedDeal, 'Products added to deal successfully');
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message);
     }
 };
@@ -644,6 +678,36 @@ module.exports.addProductToDeals = async (req, res) => {
             });
         }
 
+        // Check if product is already in any deal
+        const existingDealProduct = await DealProduct.findOne({
+            where: {
+                product_id: productId
+            },
+            include: [{
+                model: Deal,
+                as: 'deal',
+                attributes: ['id', 'name', 'slug']
+            }],
+            transaction
+        });
+
+        if (existingDealProduct) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Product is already in a deal',
+                data: {
+                    existing_deal: {
+                        id: existingDealProduct.deal.id,
+                        name: existingDealProduct.deal.name,
+                        slug: existingDealProduct.deal.slug
+                    },
+                    product_id: productId,
+                    product_name: product.name
+                }
+            });
+        }
+
         // Create deal products
         const dealProducts = deal_ids.map(deal_id => ({
             deal_id,
@@ -685,7 +749,9 @@ module.exports.addProductToDeals = async (req, res) => {
             data: updatedProduct
         });
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         console.error('Error adding product to deals:', error);
         res.status(500).json({
             status: 'error',
