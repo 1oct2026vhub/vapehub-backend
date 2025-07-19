@@ -341,6 +341,8 @@ const fetchProducts = async (query, status = 'published') => {
         };
       }
     }
+
+
     // Create a separate variant where clause without the price range filter
     let priceRangeVariantWhereClause = "";
     if (variantFilters.id) {
@@ -371,6 +373,7 @@ const fetchProducts = async (query, status = 'published') => {
       // stock_status: 'in_stock',
       status: 'active'
     };
+
 
     // Attribute term conditions
     let attributeTermConditions = [];
