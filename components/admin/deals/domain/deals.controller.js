@@ -6,6 +6,7 @@ const { Op } = require('sequelize');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
 const { uploadFiletToS3, generateUniqueFileName } = require('../../../../library/s3');
+const moment = require('moment-timezone');
 
 module.exports.createDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
@@ -399,7 +400,8 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             throw error;
         }
 
-        // Check if any products are already in other deals
+        // Check if any products are already in active and valid deals
+        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
         const existingDealProducts = await DealProduct.findAll({
             where: {
                 product_id: {
@@ -409,7 +411,13 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             include: [{
                 model: Deal,
                 as: 'deal',
-                attributes: ['id', 'name', 'slug']
+                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                where: {
+                    is_active: true,
+                    is_deleted: false,
+                    valid_from: { [Op.lte]: currentUkTime }, // Deal has started (UK time)
+                    valid_to: { [Op.gte]: currentUkTime } // Deal hasn't expired (UK time)
+                }
             }],
             transaction
         });
@@ -424,7 +432,10 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                     existing_deal: {
                         id: dp.deal.id,
                         name: dp.deal.name,
-                        slug: dp.deal.slug
+                        slug: dp.deal.slug,
+                        is_active: dp.deal.is_active,
+                        valid_from: dp.deal.valid_from,
+                        valid_to: dp.deal.valid_to
                     }
                 }))
             };
@@ -677,7 +688,8 @@ module.exports.addProductToDeals = async (req, res) => {
             });
         }
 
-        // Check if product is already in any deal
+        // Check if product is already in any active and valid deal
+        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
         const existingDealProduct = await DealProduct.findOne({
             where: {
                 product_id: productId
@@ -685,7 +697,13 @@ module.exports.addProductToDeals = async (req, res) => {
             include: [{
                 model: Deal,
                 as: 'deal',
-                attributes: ['id', 'name', 'slug']
+                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                where: {
+                    is_active: true,
+                    is_deleted: false,
+                    valid_from: { [Op.lte]: currentUkTime }, // Deal has started (UK time)
+                    valid_to: { [Op.gte]: currentUkTime } // Deal hasn't expired (UK time)
+                }
             }],
             transaction
         });
@@ -699,7 +717,10 @@ module.exports.addProductToDeals = async (req, res) => {
                     existing_deal: {
                         id: existingDealProduct.deal.id,
                         name: existingDealProduct.deal.name,
-                        slug: existingDealProduct.deal.slug
+                        slug: existingDealProduct.deal.slug,
+                        is_active: existingDealProduct.deal.is_active,
+                        valid_from: existingDealProduct.deal.valid_from,
+                        valid_to: existingDealProduct.deal.valid_to
                     },
                     product_id: productId,
                     product_name: product.name
