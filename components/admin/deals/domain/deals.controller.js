@@ -560,7 +560,6 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             ],
             transaction
         });
-
         await transaction.commit();
         successResponse(res, updatedDeal, 'Products added to deal successfully');
     } catch (error) {
