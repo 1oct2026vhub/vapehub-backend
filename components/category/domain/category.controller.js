@@ -124,6 +124,9 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                 req.query.brand = `${productBrand.Brand.id}`;
             }
             req.query.source = 'product';
+            
+            // Remove variant filtering when fetching by both category and brand
+            // delete req.query.variant;
         } else {
             // Original logic when no productId is provided
             const category = await Category.findOne({ where: { slug: req.params.slug } });
