@@ -2514,7 +2514,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 const user = await User.findOne({
                     where: { id: order.user_id }
                 });
-                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                if(parseFloat(user.loyalty_points) >= parseFloat(settings.minimum_points_redemption)){  // && total >= settings.minimum_purchase_amount
                     const redeemedPoints = user.loyalty_points;
                     await user.update({
                         loyalty_points: sequelize.literal(`loyalty_points - ${settings.minimum_points_redemption}`)
@@ -2546,7 +2546,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 const orderSubtotal = order.sub_total || order.total;
                 const minAmountForLoyaltyPoints = loyaltySettings.min_amount_for_loyalty_points || 0;
                 
-                if (orderSubtotal >= minAmountForLoyaltyPoints) {
+                if (parseFloat(orderSubtotal) >= parseFloat(minAmountForLoyaltyPoints)) {
                     await User.update({
                         loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
                         }, {
