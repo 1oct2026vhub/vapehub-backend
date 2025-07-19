@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
+const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, LoyaltyPointsSettings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
@@ -298,6 +298,12 @@ module.exports.getProductByid = async (req, res, next) => {
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
         
+        // Fetch loyalty points settings
+        const loyaltySettings = await LoyaltyPointsSettings.findOne({
+            where: { status: true },
+            order: [['createdAt', 'DESC']]
+        });
+        
         // Prepare the response
         const response = {
             ...product.toJSON(),
@@ -312,7 +318,17 @@ module.exports.getProductByid = async (req, res, next) => {
                     v.stock > 0 && v.stock <= v.low_stock_threshold
                 ).length,
                 outOfStockVariants: product.variants.filter(v => v.stock <= 0).length
-            }
+            },
+            loyaltySettings: loyaltySettings ? {
+                program_name: loyaltySettings.program_name,
+                points_value: parseFloat(loyaltySettings.points_value),
+                loyalty_amount: loyaltySettings.loyalty_amount,
+                loyalty_amount_type: loyaltySettings.loyalty_amount_type,
+                minimum_points_redemption: loyaltySettings.minimum_points_redemption,
+                minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
+                min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                status: loyaltySettings.status
+            } : null
         };
 
         successResponse(res, response, 'Success');
