@@ -416,7 +416,7 @@ module.exports.addProductsToDeal = async (req, res, next) => {
 
         if (existingDealProducts.length > 0) {
             await transaction.rollback();
-            const error = new Error('One or more products are already in deals');
+            const error = new Error('Selected product is already assigned to an existing deal.');
             error.statusCode = 400;
             error.data = {
                 products_already_in_deals: existingDealProducts.map(dp => ({
