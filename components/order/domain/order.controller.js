@@ -1527,6 +1527,33 @@ module.exports.orderCode = async (req, res) => {
                 }
             ]
         });
+        // console.log("order>>>", order);
+        if(!order.loyalty_flag){
+
+            const loyaltySettings = await LoyaltyPointsSettings.findOne({
+                where: { status: true }
+            });
+            console.log("loyaltySettings>>>", loyaltySettings);
+            if(loyaltySettings){
+                // Check if order subtotal is above minimum amount for loyalty points
+                const orderSubtotal = order.sub_total || order.total;
+                const minAmountForLoyaltyPoints = loyaltySettings.min_amount_for_loyalty_points || 0;
+                console.log("orderSubtotal>>>", orderSubtotal);
+                console.log("minAmountForLoyaltyPoints>>>", minAmountForLoyaltyPoints);
+                if (parseFloat(orderSubtotal) >= parseFloat(minAmountForLoyaltyPoints)) {
+                    console.log("loyaltyorder.user_id>>>", order.user_id);
+                    await User.update({
+                        loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
+                        }, {
+                          where: {
+                            id: order.user_id
+                          }
+                    });
+                    console.log("loyalty_points>>>", order.user.loyalty_points);
+                }
+                console.log("loyalty_points>>>", order.user.loyalty_points);
+            }
+        }
         try {
             console.log(orderResponse);
         } catch (err) {
