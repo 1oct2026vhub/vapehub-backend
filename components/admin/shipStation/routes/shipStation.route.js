@@ -1,9 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, 
-    getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, 
-    restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
-    testCreateShipStationOrder, getOrderDataById } = require('../domain/shipStation.controller');
+const { 
+    sendOrderToShipStationController,
+    createLabelForOrderController,
+    getProductByIdController,
+    listProductsController,
+    updateProductController,
+    getOrderByIdController,
+    deleteOrderByIdController,
+    holdOrderUntilController,
+    restoreOrderFromHoldController,
+    markOrderAsShippedController,
+    voidShipmentLabelController
+} = require('../domain/shipStation.controller');
 const { authMiddleware } = require("../../../../library/middleware");
 
 /**
@@ -231,7 +240,7 @@ const { authMiddleware } = require("../../../../library/middleware");
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/products/:productId', authMiddleware(true), getShipStationProductById);
+router.get('/products/:productId', authMiddleware(true), getProductByIdController);
 
 /**
  * @swagger
@@ -482,7 +491,7 @@ router.get('/products/:productId', authMiddleware(true), getShipStationProductBy
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/products', authMiddleware(true), listShipStationProducts);
+router.get('/products', authMiddleware(true), listProductsController);
 
 /**
  * @swagger
@@ -773,7 +782,7 @@ router.get('/products', authMiddleware(true), listShipStationProducts);
  *                   type: string
  *                   example: "Error message details"
  */
-router.put('/products/:productId', authMiddleware(true), updateShipStationProduct);
+router.put('/products/:productId', authMiddleware(true), updateProductController);
 
 /**
  * @swagger
@@ -1348,7 +1357,7 @@ router.put('/products/:productId', authMiddleware(true), updateShipStationProduc
  *                   type: string
  *                   example: "Error message details"
  */
-router.get('/orders/:orderId', authMiddleware(true), getShipStationOrderById);
+router.get('/orders/:orderId', authMiddleware(true), getOrderByIdController);
 
 /**
  * @swagger
@@ -1436,7 +1445,7 @@ router.get('/orders/:orderId', authMiddleware(true), getShipStationOrderById);
  *                   type: string
  *                   example: "Error message details"
  */
-router.delete('/orders/:orderId', authMiddleware(true), deleteShipStationOrderById);
+router.delete('/orders/:orderId', authMiddleware(true), deleteOrderByIdController);
 
 /**
  * @swagger
@@ -1541,7 +1550,7 @@ router.delete('/orders/:orderId', authMiddleware(true), deleteShipStationOrderBy
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/hold', authMiddleware(true), holdShipStationOrderUntil);
+router.post('/orders/:orderId/hold', authMiddleware(true), holdOrderUntilController);
 
 /**
  * @swagger
@@ -1629,7 +1638,7 @@ router.post('/orders/:orderId/hold', authMiddleware(true), holdShipStationOrderU
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/restore', authMiddleware(true), restoreShipStationOrderFromHold);
+router.post('/orders/:orderId/restore', authMiddleware(true), restoreOrderFromHoldController);
 
 /**
  * @swagger
@@ -1756,7 +1765,7 @@ router.post('/orders/:orderId/restore', authMiddleware(true), restoreShipStation
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/orders/:orderId/mark-shipped', authMiddleware(true), markShipStationOrderAsShipped);
+router.post('/orders/:orderId/mark-shipped', authMiddleware(true), markOrderAsShippedController);
 
 /**
  * @swagger
@@ -1853,198 +1862,14 @@ router.post('/orders/:orderId/mark-shipped', authMiddleware(true), markShipStati
  *                   type: string
  *                   example: "Error message details"
  */
-router.post('/shipments/void-label', authMiddleware(true), voidShipStationLabel);
-
-
-/**
- * @swagger
- * /api/shipping-method/carriers:
- *   get:
- *     summary: Get ShipStation carriers
- *     description: Retrieve a list of all carriers connected to ShipStation
- *     tags:
- *       - Shipping Method
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of carriers retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   name:
- *                     type: string
- *                   code:
- *                     type: string
- *                   accountNumber:
- *                     type: string
- *                   requiresFundedAccount:
- *                     type: boolean
- *                   balance:
- *                     type: number
- *                   nickname:
- *                     type: string
- *                   shippingProviderId:
- *                     type: integer
- *                   primary:
- *                     type: boolean
- *       500:
- *         description: Internal Server Error
- */
-router.get("/carriers", authMiddleware(true), getShipStationCarriers);
+router.post('/shipments/void-label', authMiddleware(true), voidShipmentLabelController);
 
 /**
  * @swagger
- * /api/shipping-method/carrier-services:
- *   get:
- *     summary: Get ShipStation carrier services
- *     description: Retrieve a list of all available shipping services for a given carrier from ShipStation
- *     tags:
- *       - Shipping Method
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: carrierCode
- *         schema:
- *           type: string
- *         required: true
- *         description: The code of the carrier (e.g., fedex, ups, stamps_com)
- *     responses:
- *       200:
- *         description: List of carrier services retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       carrierCode:
- *                         type: string
- *                       code:
- *                         type: string
- *                       name:
- *                         type: string
- *                       domestic:
- *                         type: boolean
- *                       international:
- *                         type: boolean
- *       400:
- *         description: carrierCode is required
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *       500:
- *         description: Internal Server Error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- */
-router.get("/carrier-services", authMiddleware(true), getShipStationCarrierServices);
-
-
-/**
- * @swagger
- * /api/admin/shipStation/webhooks-list:
- *   get:
- *     summary: Get ShipStation webhooks
- *     description: Retrieve a list of all registered webhooks for the ShipStation account
- *     tags:
- *       - ShipStation
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of webhooks retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Webhooks retrieved successfully"
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       IsLabelAPIHook:
- *                         type: boolean
- *                         description: Whether this is a label API hook
- *                       WebHookID:
- *                         type: integer
- *                         description: Unique identifier for the webhook
- *                       SellerID:
- *                         type: integer
- *                         description: Seller ID associated with the webhook
- *                       StoreID:
- *                         type: integer
- *                         description: Store ID associated with the webhook
- *                       HookType:
- *                         type: string
- *                         description: Type of webhook (e.g., ITEM_ORDER_NOTIFY, SHIP_NOTIFY)
- *                       MessageFormat:
- *                         type: string
- *                         description: Format of the webhook message (e.g., Json)
- *                       Url:
- *                         type: string
- *                         description: URL where webhook notifications are sent
- *                       Name:
- *                         type: string
- *                         description: Name of the webhook
- *                       Active:
- *                         type: boolean
- *                         description: Whether the webhook is active
- *       500:
- *         description: Internal Server Error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Failed to retrieve webhooks from ShipStation"
- */
-router.get("/webhooks-list", authMiddleware(true), getShipStationWebhooks);
-
-/**
- * @swagger
- * /api/admin/shipStation/orders/{orderId}/data:
- *   get:
- *     summary: Get order data by ID with all related information
- *     description: Retrieves complete order data including user, addresses, items, and variants for testing purposes
+ * /api/admin/shipStation/orders/{orderId}/send:
+ *   post:
+ *     summary: Send order to ShipStation
+ *     description: Sends an order to ShipStation for processing
  *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
@@ -2058,7 +1883,7 @@ router.get("/webhooks-list", authMiddleware(true), getShipStationWebhooks);
  *         example: 123
  *     responses:
  *       200:
- *         description: Order data retrieved successfully
+ *         description: Order sent to ShipStation successfully
  *         content:
  *           application/json:
  *             schema:
@@ -2069,163 +1894,9 @@ router.get("/webhooks-list", authMiddleware(true), getShipStationWebhooks);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Order data retrieved successfully"
+ *                   example: "Order sent to ShipStation successfully"
  *                 data:
  *                   type: object
- *                   properties:
- *                     id:
- *                       type: integer
- *                       description: Internal order ID
- *                       example: 123
- *                     order_unique_id:
- *                       type: string
- *                       description: Unique order identifier
- *                       example: "ORD-12345678"
- *                     order_code:
- *                       type: string
- *                       description: Order code from payment provider
- *                       example: "123456789"
- *                     status:
- *                       type: string
- *                       description: Order status
- *                       example: "processing"
- *                     total:
- *                       type: number
- *                       description: Total order amount
- *                       example: 99.99
- *                     sub_total:
- *                       type: number
- *                       description: Subtotal before shipping and discounts
- *                       example: 89.99
- *                     shipping_cost:
- *                       type: number
- *                       description: Shipping cost
- *                       example: 10.00
- *                     discount_price:
- *                       type: number
- *                       description: Discount amount
- *                       example: 0.00
- *                     created_at:
- *                       type: string
- *                       format: date-time
- *                       description: Order creation date
- *                     updated_at:
- *                       type: string
- *                       format: date-time
- *                       description: Order last update date
- *                     user:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         id:
- *                           type: integer
- *                           description: User ID
- *                         name:
- *                           type: string
- *                           description: User full name
- *                         email:
- *                           type: string
- *                           description: User email
- *                     shipping_address:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         id:
- *                           type: integer
- *                         name:
- *                           type: string
- *                         street:
- *                           type: string
- *                         town:
- *                           type: string
- *                         region:
- *                           type: string
- *                         post_code:
- *                           type: string
- *                         phone:
- *                           type: string
- *                     billing_address:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         id:
- *                           type: integer
- *                         name:
- *                           type: string
- *                         street:
- *                           type: string
- *                         town:
- *                           type: string
- *                         region:
- *                           type: string
- *                         post_code:
- *                           type: string
- *                         phone:
- *                           type: string
- *                     shipping_method:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         id:
- *                           type: integer
- *                         name:
- *                           type: string
- *                         carrier_code:
- *                           type: string
- *                         service_code:
- *                           type: string
- *                     payment_method:
- *                       type: object
- *                       nullable: true
- *                       properties:
- *                         id:
- *                           type: integer
- *                         name:
- *                           type: string
- *                     order_items:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id:
- *                             type: integer
- *                           quantity:
- *                             type: integer
- *                           unit_price:
- *                             type: number
- *                           weight:
- *                             type: number
- *                           product:
- *                             type: object
- *                             properties:
- *                               id:
- *                                 type: integer
- *                               name:
- *                                 type: string
- *                               slug:
- *                                 type: string
- *                               description:
- *                                 type: string
- *                           variant:
- *                             type: object
- *                             nullable: true
- *                             properties:
- *                               id:
- *                                 type: integer
- *                               slug:
- *                                 type: string
- *                               price:
- *                                 type: number
- *                               weight:
- *                                 type: number
- *                               stock:
- *                                 type: integer
- *                     items_count:
- *                       type: integer
- *                       description: Total number of items in the order
- *                     total_weight:
- *                       type: number
- *                       description: Total weight of all items
  *       400:
  *         description: Bad request - Order ID is required
  *       404:
@@ -2233,14 +1904,14 @@ router.get("/webhooks-list", authMiddleware(true), getShipStationWebhooks);
  *       500:
  *         description: Internal server error
  */
-router.get("/orders/:orderId/data", authMiddleware(true), getOrderDataById);
+router.post('/orders/:orderId/send', authMiddleware(true), sendOrderToShipStationController);
 
 /**
  * @swagger
- * /api/admin/shipStation/orders/{orderId}/test-create:
+ * /api/admin/shipStation/orders/{orderId}/create-label:
  *   post:
- *     summary: Test creating a ShipStation order
- *     description: Creates a ShipStation order for testing purposes using the specified order data
+ *     summary: Create label for order
+ *     description: Creates a shipping label for an order in ShipStation
  *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
@@ -2250,11 +1921,59 @@ router.get("/orders/:orderId/data", authMiddleware(true), getOrderDataById);
  *         required: true
  *         schema:
  *           type: integer
- *         description: The internal order ID to create ShipStation order for
+ *         description: The internal order ID
  *         example: 123
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               carrierCode:
+ *                 type: string
+ *                 default: "usps"
+ *                 description: Carrier code
+ *               serviceCode:
+ *                 type: string
+ *                 default: "usps_priority_mail"
+ *                 description: Service code
+ *               packageCode:
+ *                 type: string
+ *                 default: "package"
+ *                 description: Package code
+ *               confirmation:
+ *                 type: string
+ *                 default: "delivery"
+ *                 description: Confirmation type
+ *               shipDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Ship date
+ *               weight:
+ *                 type: object
+ *                 properties:
+ *                   value:
+ *                     type: number
+ *                   units:
+ *                     type: string
+ *               dimensions:
+ *                 type: object
+ *                 properties:
+ *                   length:
+ *                     type: number
+ *                   width:
+ *                     type: number
+ *                   height:
+ *                     type: number
+ *                   units:
+ *                     type: string
+ *               testLabel:
+ *                 type: boolean
+ *                 default: true
  *     responses:
  *       200:
- *         description: ShipStation order created successfully for testing
+ *         description: Label created successfully
  *         content:
  *           application/json:
  *             schema:
@@ -2265,54 +1984,27 @@ router.get("/orders/:orderId/data", authMiddleware(true), getOrderDataById);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "ShipStation order created successfully for testing"
+ *                   example: "Order processed successfully"
  *                 data:
  *                   type: object
- *                   properties:
- *                     order:
- *                       type: object
- *                       properties:
- *                         id:
- *                           type: integer
- *                           description: Internal order ID
- *                         order_unique_id:
- *                           type: string
- *                           description: Unique order identifier
- *                         status:
- *                           type: string
- *                           description: Order status
- *                         total:
- *                           type: number
- *                           description: Total order amount
- *                         user_email:
- *                           type: string
- *                           description: Customer email
- *                         shipping_address:
- *                           type: object
- *                           description: Shipping address details
- *                         billing_address:
- *                           type: object
- *                           description: Billing address details
- *                         items_count:
- *                           type: integer
- *                           description: Number of items in order
- *                     shipstation_result:
- *                       type: object
- *                       description: Response from ShipStation API
- *                       properties:
- *                         orderResponse:
- *                           type: object
- *                           properties:
- *                             orderId:
- *                               type: integer
- *                               description: ShipStation order ID
  *       400:
  *         description: Bad request - Order ID is required
  *       404:
  *         description: Order not found
  *       500:
- *         description: Internal server error or ShipStation API error
+ *         description: Internal server error
  */
-router.post("/orders/:orderId/test-create", authMiddleware(true), testCreateShipStationOrder);
+router.post('/orders/:orderId/create-label', authMiddleware(true), createLabelForOrderController);
+
+
+
+
+
+
+
+
+
+
+
 
 module.exports = router; 
