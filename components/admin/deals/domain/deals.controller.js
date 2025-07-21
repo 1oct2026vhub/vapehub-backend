@@ -475,7 +475,7 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                         variant_slug: v.slug,
                         stock: v.stock,
                         low_stock_threshold: v.low_stock_threshold,
-                        message: 'Variant is out of stock'
+                        message: `Variant ${v.slug} is out of stock (${v.stock} units available)`
                     }));
 
                     // If there are also low stock variants, include them
@@ -486,7 +486,7 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                             variant_slug: v.slug,
                             stock: v.stock,
                             low_stock_threshold: v.low_stock_threshold,
-                            message: 'Variant is low in stock'
+                            message: `Variant ${v.slug} is low in stock (${v.stock}/${v.low_stock_threshold} units)`
                         }));
                     }
                 } else if (lowStockVariants.length > 0) {
@@ -498,7 +498,7 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                         variant_slug: v.slug,
                         stock: v.stock,
                         low_stock_threshold: v.low_stock_threshold,
-                        message: 'Variant is low in stock'
+                        message: `Variant ${v.slug} is low in stock (${v.stock}/${v.low_stock_threshold} units)`
                     }));
                 }
             }
@@ -537,13 +537,42 @@ module.exports.addProductsToDeal = async (req, res, next) => {
 
             await transaction.commit();
             
+            // Determine if there are any low stock or out of stock issues
+            const has_low_stock = stockIssues.some(issue => issue.stock_status === 'low_stock' || (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0));
+            const has_out_of_stock = stockIssues.some(issue => issue.stock_status === 'out_of_stock' || (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) || (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0));
+
+            // Build a detailed message listing affected products/variants
+            let detailedMessage = '';
+            const productSummaries = stockIssues.map(issue => {
+                let summary = `${issue.product_name}`;
+                if (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) {
+                    const slugs = issue.out_of_stock_variant_details.map(v => v.variant_slug).join(', ');
+                    summary += ` (out of stock variants: ${slugs})`;
+                }
+                if (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0) {
+                    const slugs = issue.low_stock_variant_details.map(v => v.variant_slug).join(', ');
+                    summary += ` (low stock variants: ${slugs})`;
+                }
+                if (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0) {
+                    summary += ` (product out of stock)`;
+                }
+                return summary;
+            });
+            if (productSummaries.length > 0) {
+                detailedMessage = `Stock issues detected for: ${productSummaries.join('; ')}. Please review inventory levels.`;
+            } else {
+                detailedMessage = 'Some products have stock issues. Please review inventory levels.';
+            }
+
             return res.status(200).json({
                 status: 'success',
                 message: 'Products added to deal successfully with stock warnings',
                 data: updatedDeal,
                 warnings: {
                     stock_issues: stockIssues,
-                    message: 'Some products have stock issues. Please review inventory levels.'
+                    message: detailedMessage,
+                    has_low_stock,
+                    has_out_of_stock
                 }
             });
         }
@@ -619,8 +648,10 @@ module.exports.addProductToDeals = async (req, res) => {
 
         // Check product-level stock first (highest priority)
         if (product.stock_quantity !== null && product.stock_quantity <= 0) {
-            stockIssue.issue = 'Product is out of stock';
+            stockIssue.issue = `Product "${product.name}" is out of stock (${product.stock_quantity} units available)`;
             stockIssue.stock_level = product.stock_quantity;
+            stockIssue.requires_attention = true;
+            stockIssue.stock_status = 'out_of_stock';
         }
 
         // Check variants stock levels only if product is not out of stock
@@ -631,44 +662,68 @@ module.exports.addProductToDeals = async (req, res) => {
             );
 
             if (outOfStockVariants.length > 0) {
-                stockIssue.issue = 'Product has out of stock variants';
+                const outOfStockSlugs = outOfStockVariants.map(v => v.slug).join(', ');
+                stockIssue.issue = `Product has out of stock variants: ${outOfStockSlugs}`;
                 stockIssue.out_of_stock_variants = outOfStockVariants.length;
                 stockIssue.total_variants = product.variants.length;
+                stockIssue.requires_attention = true;
+                stockIssue.stock_status = 'out_of_stock';
                 stockIssue.out_of_stock_variant_details = outOfStockVariants.map(v => ({
                     variant_id: v.id,
                     variant_slug: v.slug,
                     stock: v.stock,
                     low_stock_threshold: v.low_stock_threshold,
-                    message: 'Variant is out of stock'
+                    message: `Variant ${v.slug} is out of stock (${v.stock} units available)`,
+                    requires_attention: true,
+                    stock_status: 'out_of_stock'
                 }));
 
                 // If there are also low stock variants, include them
                 if (lowStockVariants.length > 0) {
+                    const lowStockSlugs = lowStockVariants.map(v => v.slug).join(', ');
                     stockIssue.low_stock_variants = lowStockVariants.length;
                     stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
                         variant_id: v.id,
                         variant_slug: v.slug,
                         stock: v.stock,
                         low_stock_threshold: v.low_stock_threshold,
-                        message: 'Variant is low in stock'
+                        message: `Variant ${v.slug} is low in stock (${v.stock}/${v.low_stock_threshold} units)`,
+                        requires_attention: true,
+                        stock_status: 'low_stock'
                     }));
                 }
             } else if (lowStockVariants.length > 0) {
-                stockIssue.issue = 'Product has low stock variants';
+                const lowStockSlugs = lowStockVariants.map(v => v.slug).join(', ');
+                stockIssue.issue = `Product has low stock variants: ${lowStockSlugs}`;
                 stockIssue.low_stock_variants = lowStockVariants.length;
                 stockIssue.total_variants = product.variants.length;
+                stockIssue.requires_attention = true;
+                stockIssue.stock_status = 'low_stock';
                 stockIssue.low_stock_variant_details = lowStockVariants.map(v => ({
                     variant_id: v.id,
                     variant_slug: v.slug,
                     stock: v.stock,
                     low_stock_threshold: v.low_stock_threshold,
-                    message: 'Variant is low in stock'
+                    message: `Variant ${v.slug} is low in stock (${v.stock}/${v.low_stock_threshold} units)`,
+                    requires_attention: true,
+                    stock_status: 'low_stock'
                 }));
             }
         }
 
         // Only add to stockIssues if there are actual issues
         if (stockIssue.issue) {
+            // If product-level out of stock, add a details array for consistency
+            if (stockIssue.stock_status === 'out_of_stock' && (!stockIssue.out_of_stock_variant_details && !stockIssue.low_stock_variant_details)) {
+                stockIssue.out_of_stock_product_details = [{
+                    product_id: product.id,
+                    product_name: product.name,
+                    stock: product.stock_quantity,
+                    message: stockIssue.issue,
+                    requires_attention: true,
+                    stock_status: 'out_of_stock'
+                }];
+            }
             stockIssues.push(stockIssue);
         }
 
@@ -752,13 +807,42 @@ module.exports.addProductToDeals = async (req, res) => {
 
         // Return response with stock warnings if any
         if (stockIssues.length > 0) {
+            // Determine if there are any low stock or out of stock issues
+            const has_low_stock = stockIssues.some(issue => issue.stock_status === 'low_stock' || (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0));
+            const has_out_of_stock = stockIssues.some(issue => issue.stock_status === 'out_of_stock' || (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) || (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0));
+
+            // Build a detailed message listing affected products/variants
+            let detailedMessage = '';
+            const productSummaries = stockIssues.map(issue => {
+                let summary = `${issue.product_name}`;
+                if (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) {
+                    const slugs = issue.out_of_stock_variant_details.map(v => v.variant_slug).join(', ');
+                    summary += ` (out of stock variants: ${slugs})`;
+                }
+                if (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0) {
+                    const slugs = issue.low_stock_variant_details.map(v => v.variant_slug).join(', ');
+                    summary += ` (low stock variants: ${slugs})`;
+                }
+                if (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0) {
+                    summary += ` (product out of stock)`;
+                }
+                return summary;
+            });
+            if (productSummaries.length > 0) {
+                detailedMessage = `Stock issues detected for: ${productSummaries.join('; ')}. Please review inventory levels.`;
+            } else {
+                detailedMessage = 'Product has stock issues. Please review inventory levels.';
+            }
+
             return res.status(200).json({
                 status: 'success',
                 message: 'Product added to deals successfully with stock warnings',
                 data: updatedProduct,
                 warnings: {
                     stock_issues: stockIssues,
-                    message: 'Product has stock issues. Please review inventory levels.'
+                    message: detailedMessage,
+                    has_low_stock,
+                    has_out_of_stock
                 }
             });
         }
