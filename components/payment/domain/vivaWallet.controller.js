@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings, StockMovement } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require("../../../utils/logger");
 const crypto = require("crypto");
@@ -127,14 +127,16 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
                     for (const item of order.orderItems) {
                         if (item.variant) {
-                            // Update variant stock using StockMovement
-                            await StockMovement.createMovement({
-                                variant_id: item.variant.id,
-                                change_type: 'deduction',
-                                quantity: item.quantity,
-                                reference: `Order ${order.id} - VivaWallet payment`,
-                                updated_by: order.user_id
-                            });
+                            // Update variant stock
+                            await ProductVariant.update(
+                                { stock: sequelize.literal(`stock - ${item.quantity}`) },
+                                { 
+                                    where: { 
+                                        id: item.variant.id,
+                                        stock: { [Op.gte]: item.quantity }
+                                    }
+                                }
+                            );
                         } else {
                             // Update product stock
                             await Product.update(

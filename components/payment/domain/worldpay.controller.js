@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings, StockMovement } = require("../../../models");
+const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require('../../../utils/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -2448,14 +2448,16 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
 
         for (const item of order.orderItems) {
             if (item.variant) {
-                // Update variant stock using StockMovement
-                await StockMovement.createMovement({
-                    variant_id: item.variant.id,
-                    change_type: 'deduction',
-                    quantity: item.quantity,
-                    reference: `Order ${order.id} - WorldPay payment success`,
-                    updated_by: order.user_id
-                });
+                // Update variant stock
+                await ProductVariant.update(
+                    { stock: sequelize.literal(`stock - ${item.quantity}`) },
+                    { 
+                        where: { 
+                            id: item.variant.id,
+                            stock: { [Op.gte]: item.quantity }
+                        }
+                    }
+                );
             } else {
                 // Update product stock
                 await Product.update(
@@ -2494,8 +2496,11 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         order_id: order.id,
                         used_at: new Date()
                     });
+                } else {
+                    console.log("🚀 ~ handleWorldpayPaymentSuccess ~ existingCouponUsage:", existingCouponUsage.id)
                 }
             } catch (error) {
+                console.log("🚀 ~ handleWorldpayPaymentSuccess ~ error:", error)
                 // Don't throw the error, just log it and continue
             }
         }
