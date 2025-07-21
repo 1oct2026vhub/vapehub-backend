@@ -315,4 +315,28 @@ router.put('/:id/shuffle',
     bannerController.shuffleDisplayOrder
 );
 
+/**
+ * @swagger
+ * /api/admin/banners/{id}/restore:
+ *   post:
+ *     summary: Restore a soft-deleted banner
+ *     tags:
+ *       - ADMIN - Banner
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the banner to restore
+ *     responses:
+ *       200:
+ *         description: Banner restored successfully
+ *       404:
+ *         description: Banner not found
+ */
+router.post('/:id/restore', authMiddlewareAdmin, bannerController.restoreBanner);
+
 module.exports = router; 
