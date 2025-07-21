@@ -1032,4 +1032,37 @@ router.get("/referral-stats", authenticateJWT, userController.getReferralStats);
 //  */
 // router.put('/referral-methods/:id', authenticateJWT, userController.updateReferralMethod);
 
+/**
+ * @swagger
+ * /api/users/contact-us:
+ *   get:
+ *     summary: Get public Contact Us info
+ *     tags: [USER - ContactUs]
+ *     description: Returns the latest Contact Us information (send us a message, call us, social media) for the user side.
+ *     responses:
+ *       200:
+ *         description: Contact info retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     send_us_a_message:
+ *                       type: string
+ *                     call_us:
+ *                       type: string
+ *                     social_media:
+ *                       type: string
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Contact info not found
+ */
+router.get('/contact-us', userController.getContactUsInfo);
+
 module.exports = router;

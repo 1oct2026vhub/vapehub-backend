@@ -237,9 +237,7 @@ module.exports.deleteBanner = async (req, res) => {
 module.exports.getBannerDetails = async (req, res) => {
     try {
         const { id } = req.params;
-
         const banner = await BannerImage.findByPk(id);
-        
         if (!banner) {
             const error = new Error("Banner not found");
             error.statusCode = 404;
@@ -335,4 +333,20 @@ module.exports.shuffleDisplayOrder = async (req, res) => {
 const getNextDisplayOrder = async () => {
     const maxOrder = await BannerImage.max('display_order');
     return (maxOrder || 0) + 1;
+}; 
+
+// Restore a soft-deleted banner
+module.exports.restoreBanner = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Find the banner including soft-deleted
+        const banner = await BannerImage.findByPk(id, { paranoid: false });
+        if (!banner) {
+            return res.status(404).json({ success: false, message: "Banner not found" });
+        }
+        await banner.restore();
+        return res.json({ success: true, message: "Banner restored successfully", data: banner });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
 }; 

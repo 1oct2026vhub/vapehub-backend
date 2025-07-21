@@ -1,13 +1,235 @@
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Referral, ReferralMethod } = require("../../../models");
+const { User, UserAddress, Referral, ReferralMethod, Role, Connect } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const { Op } = require('sequelize');
 const { Order, Transaction } = require('../../../models');
-const logger = require('../../../utils/logger');
+
+// Contact us API - Get admin contact information
+const getContactInfo = async (req, res) => {
+    try {
+        // Get admin users with contact information
+        const adminUsers = await User.findAll({
+            include: [{
+                model: Role,
+                as: "roles",
+                where: { is_admin_panel: true },
+                attributes: ["role", "permission"]
+            }],
+            attributes: [
+                "id", 
+                "first_name", 
+                "last_name", 
+                "email", 
+                "phone",
+                "super_user"
+            ],
+            where: {
+                blocked: false, // Only active admin users
+                email_verified_at: { [Op.ne]: null } // Only verified users
+            },
+            order: [
+                ['super_user', 'DESC'] // Super users first
+            ]
+        });
+
+        // Get primary admin contact (super user or first admin)
+        const primaryAdmin = adminUsers.find(user => user.super_user) || adminUsers[0];
+
+        // Get all admin contacts
+        const adminContacts = adminUsers.map(user => ({
+            id: user.id,
+            name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Admin',
+            email: user.email,
+            phone: user.phone,
+            role: user.roles?.role || 'Admin',
+            is_primary: user.super_user || false
+        }));
+
+        // Get company contact information from environment variables
+        const companyInfo = {
+            name: process.env.COMPANY_NAME || 'VapeHub',
+            email: process.env.COMPANY_EMAIL || primaryAdmin?.email,
+            phone: process.env.COMPANY_PHONE || primaryAdmin?.phone,
+            address: process.env.COMPANY_ADDRESS || '',
+            website: process.env.COMPANY_WEBSITE || process.env.FRONTEND_URL,
+            support_email: process.env.SUPPORT_EMAIL || primaryAdmin?.email,
+            support_phone: process.env.SUPPORT_PHONE || primaryAdmin?.phone
+        };
+
+        // Business hours (can be customized)
+        const businessHours = {
+            monday: { open: '09:00', close: '18:00', closed: false },
+            tuesday: { open: '09:00', close: '18:00', closed: false },
+            wednesday: { open: '09:00', close: '18:00', closed: false },
+            thursday: { open: '09:00', close: '18:00', closed: false },
+            friday: { open: '09:00', close: '18:00', closed: false },
+            saturday: { open: '10:00', close: '16:00', closed: false },
+            sunday: { open: '00:00', close: '00:00', closed: true }
+        };
+
+        // Social media links (can be customized)
+        const socialMedia = {
+            facebook: process.env.FACEBOOK_URL || '',
+            twitter: process.env.TWITTER_URL || '',
+            instagram: process.env.INSTAGRAM_URL || '',
+            linkedin: process.env.LINKEDIN_URL || ''
+        };
+
+        const contactInfo = {
+            company: companyInfo,
+            primary_contact: primaryAdmin ? {
+                name: `${primaryAdmin.first_name || ''} ${primaryAdmin.last_name || ''}`.trim() || 'Admin',
+                email: primaryAdmin.email,
+                phone: primaryAdmin.phone,
+                role: primaryAdmin.roles?.role || 'Admin'
+            } : null,
+            admin_contacts: adminContacts,
+            business_hours: businessHours,
+            social_media: socialMedia,
+            support: {
+                email: companyInfo.support_email,
+                phone: companyInfo.support_phone,
+                response_time: '24-48 hours',
+                available_hours: 'Monday to Friday, 9 AM - 6 PM'
+            }
+        };
+
+        successResponse(res, contactInfo, 'Contact information retrieved successfully');
+    } catch (error) {
+        console.error('Error fetching contact information:', error);
+        return errorResponse(res, error, 'Failed to fetch contact information', 500);
+    }
+};
+
+// Submit contact form
+const submitContactForm = async (req, res) => {
+    try {
+        const { 
+            name, 
+            email, 
+            phone, 
+            subject, 
+            message, 
+            contact_type = 'general' // general, support, sales, technical
+        } = req.body;
+
+        // Validate required fields
+        if (!name || !email || !subject || !message) {
+            return errorResponse(res, {}, 'Name, email, subject, and message are required', 400);
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return errorResponse(res, {}, 'Please provide a valid email address', 400);
+        }
+
+        // Get admin users to send notification
+        const adminUsers = await User.findAll({
+            include: [{
+                model: Role,
+                as: "roles",
+                where: { is_admin_panel: true },
+                attributes: ["role"]
+            }],
+            attributes: ["id", "email", "first_name", "super_user"],
+            where: {
+                blocked: false,
+                email_verified_at: { [Op.ne]: null }
+            }
+        });
+
+        // Get primary admin for email
+        const primaryAdmin = adminUsers.find(user => user.super_user) || adminUsers[0];
+
+        if (!primaryAdmin) {
+            return errorResponse(res, {}, 'No admin contact found', 500);
+        }
+
+        // Prepare email data
+        const emailData = {
+            emailTypes: 'CONTACT_FORM',
+            to: primaryAdmin.email,
+            context: {
+                adminName: primaryAdmin.first_name || 'Admin',
+                customerName: name,
+                customerEmail: email,
+                customerPhone: phone || 'Not provided',
+                subject: subject,
+                message: message,
+                contactType: contact_type,
+                submittedAt: new Date().toLocaleString(),
+                adminEmail: primaryAdmin.email
+            },
+            attachments: ""
+        };
+
+        // Send email to admin
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context, emailData.attachments);
+
+        // Send confirmation email to customer
+        const customerEmailData = {
+            emailTypes: 'CONTACT_CONFIRMATION',
+            to: email,
+            context: {
+                customerName: name,
+                subject: subject,
+                message: message,
+                adminEmail: primaryAdmin.email,
+                adminPhone: primaryAdmin.phone || 'Available on request',
+                responseTime: '24-48 hours',
+                submittedAt: new Date().toLocaleString(),
+                reference: `CF-${Date.now()}`
+            },
+            attachments: ""
+        };
+
+        await sendEmail(customerEmailData.to, customerEmailData.emailTypes, customerEmailData.context, customerEmailData.attachments);
+
+        // Create notifications for all admin users
+        const notificationPromises = adminUsers.map(admin => 
+            createNotification({
+                userId: admin.id,
+                type: 'contact',
+                action: 'received',
+                data: {
+                    customerName: name,
+                    customerEmail: email,
+                    subject: subject,
+                    contactType: contact_type,
+                    message: message.length > 100 ? message.substring(0, 100) + '...' : message
+                },
+                title: `New Contact Form: ${subject}`,
+                url: '/admin/contacts'
+            })
+        );
+
+        await Promise.all(notificationPromises);
+
+        // Log the contact form submission
+        console.info('Contact form submitted:', {
+            customerName: name,
+            customerEmail: email,
+            subject: subject,
+            contactType: contact_type,
+            adminNotified: adminUsers.length
+        });
+
+        successResponse(res, {
+            message: 'Contact form submitted successfully',
+            reference: `CF-${Date.now()}`,
+            response_time: '24-48 hours'
+        }, 'Contact form submitted successfully');
+
+    } catch (error) {
+        console.error('Error submitting contact form:', error);
+        return errorResponse(res, error, 'Failed to submit contact form', 500);
+    }
+};
 
 const userProfile = async (req, res, next) => {
     try {
@@ -891,6 +1113,19 @@ const getReferralStats = async (req, res) => {
 //     }
 // };
 
+// Get public contact us info for user side
+const getContactUsInfo = async (req, res) => {
+    try {
+        const connect = await Connect.findOne({ order: [['updated_at', 'DESC']] });
+        if (!connect) {
+            return errorResponse(res, {}, 'Contact info not found', 404);
+        }
+        return successResponse(res, connect, 'Contact info retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports = {
     userProfile, 
     updateUserProfile, 
@@ -905,6 +1140,9 @@ module.exports = {
     awardProfileCompletionPoints, 
     deleteAccount, 
     getReferralStats,
+    getContactInfo,
+    submitContactForm,
+    getContactUsInfo,
     // createReferralMethod,
     // updateReferralMethod,
     // getReferralMethods
