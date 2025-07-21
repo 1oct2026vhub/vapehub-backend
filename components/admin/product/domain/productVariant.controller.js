@@ -782,20 +782,28 @@ module.exports.updateProductVariant = async (req, res) => {
 
         // Update basic info (excluding stock)
         await existingVariant.update({
-            ...otherVariantData,
+            ...variantData,
             updated_by
         }, { transaction });
 
         // If stock was updated, create a stock movement record
-        if (stock !== undefined && stock !== existingVariant.stock) {
-            await StockMovement.createMovement({
+        // if (stock !== undefined && stock !== existingVariant.stock) {
+            await StockMovement.create({
                 variant_id: variant_id,
                 change_type: 'adjustment',
                 quantity: stock,
-                reference: 'Variant stock update',
-                updated_by
+                reference: 'Variant stock update from product variant',
+                updated_by,
+                stock_update_from: 'overwrite'
             }, { transaction });
-        }
+            // await StockMovement.createMovement({
+            //     variant_id: variant_id,
+            //     change_type: 'adjustment',
+            //     quantity: stock,
+            //     reference: 'Variant stock update',
+            //     updated_by
+            // }, { transaction });
+        // }
 
         // Update attributes if provided
         if (Array.isArray(variantData.attributes)) {
@@ -2231,7 +2239,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         // Handle direct value updates
         const directFields = [
             'weight', 'length', 'width', 'height', 
-            'low_stock_threshold'
+            'stock', 'low_stock_threshold'
         ];
 
         directFields.forEach(field => {
@@ -2242,15 +2250,6 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
                 updateData[field] = parseFloat(updates[field]);
             }
         });
-
-        // Handle stock updates separately to use StockMovement
-        const stockUpdate = updates.stock !== undefined;
-        if (stockUpdate) {
-            if (typeof updates.stock !== 'number' || isNaN(updates.stock)) {
-                throw new Error('Stock must be a valid number');
-            }
-            // Don't add stock to updateData - we'll handle it separately
-        }
 
         // Handle stock_status and status updates
         if (updates.stock_status) {
@@ -2272,29 +2271,11 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
             updateData.status = updates.status;
         }
 
-        // Update variants (excluding stock)
+        // Update variants
         await ProductVariant.update(updateData, {
             where: whereClause,
             transaction
         });
-
-        // Handle stock updates separately using StockMovement
-        if (stockUpdate) {
-            const variantIds = variants.map(v => v.id);
-            
-            // Create stock movements for each variant
-            const stockMovementPromises = variantIds.map(variant_id => 
-                StockMovement.createMovement({
-                    variant_id,
-                    change_type: 'adjustment',
-                    quantity: updates.stock,
-                    reference: 'Bulk variant stock update',
-                    updated_by
-                }, { transaction })
-            );
-            
-            await Promise.all(stockMovementPromises);
-        }
 
         // Fetch updated variants
         const updatedVariants = await ProductVariant.findAll({
@@ -2330,4 +2311,3 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
-
