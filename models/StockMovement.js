@@ -100,6 +100,11 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       },
       onDelete: 'SET NULL'
+    },
+    stock_update_from: {
+      type: DataTypes.ENUM('inventory', 'overwrite'),
+      allowNull: false,
+      defaultValue: 'inventory'
     }
   }, {
     sequelize,
