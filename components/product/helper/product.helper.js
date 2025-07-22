@@ -455,6 +455,13 @@ const fetchProducts = async (query, status = 'published') => {
         attributes: ['id', 'product_id', 'image_url', 'is_primary']
       },
       {
+        model: Flavor,
+        as: 'Flavors',
+        through: { model: ProductFlavor, attributes: [] },
+        required: false,
+        attributes: ['id', 'name', 'description']
+      },
+      {
         model: Deal,
         as: 'deals',
         through: { 
@@ -523,6 +530,17 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
       return false;
+    }).map(product => {
+      // Add flavors and flavor_count to each product
+      return {
+        ...product.toJSON(),
+        flavors: product.Flavors ? product.Flavors.map(flavor => ({
+          id: flavor.id,
+          name: flavor.name,
+          description: flavor.description
+        })) : [],
+        flavor_count: product.Flavors ? product.Flavors.length : 0
+      };
     });
 
     // Build base product filter conditions for SQL queries

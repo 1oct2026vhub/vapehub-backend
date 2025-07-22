@@ -1126,6 +1126,22 @@ const getContactUsInfo = async (req, res) => {
     }
 };
 
+// Get only social/contact info for user side
+const getConnectSocialInfo = async (req, res) => {
+    try {
+        const connect = await Connect.findOne({
+            order: [['updated_at', 'DESC']],
+            attributes: ['instagram', 'whatsapp', 'facebook', 'email', 'phone_number']
+        });
+        if (!connect) {
+            return errorResponse(res, {}, 'Contact info not found', 404);
+        }
+        return successResponse(res, connect, 'Social contact info retrieved successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports = {
     userProfile, 
     updateUserProfile, 
@@ -1143,6 +1159,7 @@ module.exports = {
     getContactInfo,
     submitContactForm,
     getContactUsInfo,
+    getConnectSocialInfo,
     // createReferralMethod,
     // updateReferralMethod,
     // getReferralMethods
