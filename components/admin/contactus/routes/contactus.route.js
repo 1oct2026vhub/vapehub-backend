@@ -26,6 +26,21 @@ const adminAuth = [authMiddleware(true)];
  *                 type: string
  *               social_media:
  *                 type: string
+ *               facebook:
+ *                 type: string
+ *                 example: "https://facebook.com/example"
+ *               whatsapp:
+ *                 type: string
+ *                 example: "https://wa.me/1234567890"
+ *               instagram:
+ *                 type: string
+ *                 example: "https://instagram.com/example"
+ *               email:
+ *                 type: string
+ *                 example: "info@example.com"
+ *               phone_number:
+ *                 type: string
+ *                 example: "+1234567890"
  *     responses:
  *       201:
  *         description: Contact info created successfully
@@ -97,6 +112,21 @@ router.get('/:id', adminAuth, contactusController.getConnectById);
  *                 type: string
  *               social_media:
  *                 type: string
+ *               facebook:
+ *                 type: string
+ *                 example: "https://facebook.com/example"
+ *               whatsapp:
+ *                 type: string
+ *                 example: "https://wa.me/1234567890"
+ *               instagram:
+ *                 type: string
+ *                 example: "https://instagram.com/example"
+ *               email:
+ *                 type: string
+ *                 example: "info@example.com"
+ *               phone_number:
+ *                 type: string
+ *                 example: "+1234567890"
  *     responses:
  *       200:
  *         description: Contact info updated successfully

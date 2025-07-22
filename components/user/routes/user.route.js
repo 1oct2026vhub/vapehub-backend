@@ -1065,4 +1065,46 @@ router.get("/referral-stats", authenticateJWT, userController.getReferralStats);
  */
 router.get('/contact-us', userController.getContactUsInfo);
 
+/**
+ * @swagger
+ * /api/users/contact-social-info:
+ *   get:
+ *     summary: Get public social/contact info
+ *     tags: [USER - ContactUs]
+ *     description: Returns the latest social/contact info (instagram, whatsapp, facebook, email, phone_number) for the user side.
+ *     responses:
+ *       200:
+ *         description: Social contact info retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     instagram:
+ *                       type: string
+ *                       example: "https://instagram.com/example"
+ *                     whatsapp:
+ *                       type: string
+ *                       example: "https://wa.me/1234567890"
+ *                     facebook:
+ *                       type: string
+ *                       example: "https://facebook.com/example"
+ *                     email:
+ *                       type: string
+ *                       example: "info@example.com"
+ *                     phone_number:
+ *                       type: string
+ *                       example: "+1234567890"
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Contact info not found
+ */
+router.get('/contact-social-info', userController.getConnectSocialInfo);
+
 module.exports = router;
