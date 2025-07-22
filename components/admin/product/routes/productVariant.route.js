@@ -14,14 +14,18 @@
  *         slug:
  *           type: string
  *           description: Unique identifier for the variant
+ *         regular_price:
+ *           type: number
+ *           format: float
+ *           description: Regular price of the variant (base price)
  *         price:
  *           type: number
  *           format: float
- *           description: Regular price of the variant
+ *           description: Current selling price (automatically set to the lower of regular_price or discount_price)
  *         discount_price:
  *           type: number
  *           format: float
- *           description: Discounted price of the variant
+ *           description: Discounted price of the variant (if set, must be less than regular_price)
  *         purchase_price:
  *           type: number
  *           format: float
@@ -279,20 +283,20 @@ router.get('/:variant_id',
  *                   type: object
  *                   required:
  *                     - slug
- *                     - price
+ *                     - regular_price
  *                     - attributes
  *                   properties:
  *                     slug:
  *                       type: string
  *                       description: Unique identifier for the variant
- *                     price:
+ *                     regular_price:
  *                       type: number
  *                       format: decimal
- *                       description: Regular price of the variant
+ *                       description: Regular price of the variant (base price)
  *                     discount_price:
  *                       type: number
  *                       format: decimal
- *                       description: Discounted price (must be less than regular price)
+ *                       description: Discounted price (must be less than regular_price)
  *                     purchase_price:
  *                       type: number
  *                       format: decimal
@@ -561,20 +565,20 @@ router.get('/product/:product_id/attributes',
  *                   type: object
  *                   required:
  *                     - slug
- *                     - price
+ *                     - regular_price
  *                     - attributes
  *                   properties:
  *                     slug:
  *                       type: string
  *                       description: Unique identifier for the variant
- *                     price:
+ *                     regular_price:
  *                       type: number
  *                       format: decimal
- *                       description: Regular price of the variant
+ *                       description: Regular price of the variant (base price)
  *                     discount_price:
  *                       type: number
  *                       format: decimal
- *                       description: Discounted price (must be less than regular price)
+ *                       description: Discounted price (must be less than regular_price)
  *                     purchase_price:
  *                       type: number
  *                       format: decimal
@@ -737,55 +741,50 @@ router.post('/product/:product_id/variants',
  *               slug:
  *                 type: string
  *                 description: Unique identifier for the variant
- *               price:
+ *               regular_price:
  *                 type: number
  *                 format: decimal
- *                 description: Regular price of the variant
+ *                 description: Regular price of the variant (base price)
  *               discount_price:
  *                 type: number
- *                 format: decimal
- *                 description: Discounted price (must be less than regular price)
+ *                 example: 89.99
+ *                 description: Discount price (optional, must be less than regular_price if provided)
  *               purchase_price:
  *                 type: number
- *                 format: decimal
- *                 description: Purchase price of the variant
+ *                 example: 79.99
+ *                 description: Purchase price (must be less than selling price)
  *               stock:
  *                 type: integer
- *                 description: Available stock quantity
+ *                 example: 100
  *               low_stock_threshold:
  *                 type: integer
- *                 description: Threshold for low stock warning
+ *                 example: 10
  *               weight:
  *                 type: number
- *                 format: decimal
- *                 description: Weight in grams
- *               length:    
+ *                 example: 0.5
+ *               length:
  *                 type: number
- *                 format: decimal
- *                 description: Length in centimeters
+ *                 example: 10
  *               width:
  *                 type: number
- *                 format: decimal
- *                 description: Width in centimeters
+ *                 example: 5
  *               height:
  *                 type: number
- *                 format: decimal
- *                 description: Height in centimeters
+ *                 example: 2
  *               barcode:
  *                 type: string
- *                 description: Unique barcode for the variant
- *               attributes:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - attribute_id
- *                     - term_id
- *                   properties:
- *                     attribute_id:
- *                       type: integer
- *                     term_id:
- *                       type: integer
+ *                 example: "1234567890"
+ *               description:
+ *                 type: string
+ *                 example: "Black color variant"
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive, draft]
+ *                 example: "active"
+ *               stock_status:
+ *                 type: string
+ *                 enum: [in_stock, out_of_stock, low_stock]
+ *                 example: "in_stock"
  *     responses:
  *       200:
  *         description: Product variant updated successfully
@@ -802,6 +801,31 @@ router.post('/product/:product_id/variants',
  *                 message:
  *                   type: string
  *                   example: Product variant updated successfully
+ *                 validation:
+ *                   type: object
+ *                   properties:
+ *                     regular_price:
+ *                       type: string
+ *                       example: "Required. Must be a positive number."
+ *                     discount_price:
+ *                       type: string
+ *                       example: "Optional. Must be less than regular_price if provided."
+ *                     purchase_price:
+ *                       type: string
+ *                       example: "Must be less than selling price."
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Discount price must be less than regular price"
  *       404:
  *         description: Variant or product not found
  *         content:
@@ -1664,13 +1688,13 @@ router.post('/product/:product_id/generate',
  *               updates:
  *                 type: object
  *                 properties:
- *                   price:
+ *                   regular_price:
  *                     type: object
  *                     properties:
  *                       type:
  *                         type: string
  *                         enum: [set, increase, decrease]
- *                         description: Type of price update
+ *                         description: Type of regular price update
  *                       value:
  *                         type: number
  *                         description: Value to set, increase, or decrease by

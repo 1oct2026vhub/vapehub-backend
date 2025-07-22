@@ -7,10 +7,11 @@ const commonValidations = {
     productId: param('product_id')
         .isInt()
         .withMessage('Invalid product ID'),
-    
-    variantId: param('variant_id')
+
+        variantId: param('variant_id')
         .isInt()
         .withMessage('Invalid variant ID'),
+
     
     imageId: param('image_id')
         .isInt()
@@ -24,26 +25,24 @@ const commonValidations = {
 
     variantBaseFields: [
         body('slug')
-            .optional()
-            .custom((value) => {
-                if (value === null) return true;
-                if (typeof value === 'string' && value.trim().length >= 3 && value.trim().length <= 100) return true;
-                throw new Error('Slug must be between 3 and 100 characters');
-            }),
-        body('price')
-            .optional()
-            .custom((value) => {
-                if (value === null) value = 0;
-                if (typeof value === 'number' && value >= 0) return true;
-                throw new Error('Price must be a positive number or null');
-            })
-            .default(0),
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 100 })
+        .withMessage('Variant slug must be between 3 and 100 characters'),
+
+        body('regular_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Regular price must be a positive number'),
+
+       
         body('discount_price')
             .optional()
             .custom((value, { req }) => {
                 if (value === null) return true;
                 if (typeof value === 'number' && value >= 0) {
-                    if (value !== 0 && req.body.price && req.body.price !== 0 && value >= req.body.price) {
+                    if (value !== 0 && req.body.regular_price && req.body.regular_price !== 0 && value >= req.body.regular_price) {
                         throw new Error('Sale price must be less than regular price');
                     }
                     return true;
@@ -306,24 +305,20 @@ const createProductVariantsValidator = [
         .trim()
         .isLength({ min: 3, max: 100 })
         .withMessage('Variant slug must be between 3 and 100 characters'),
-    body('variants.*.price')
+    body('variants.*.regular_price')
         .notEmpty()
-        .withMessage('Price is required')
+        .withMessage('Regular price is required')
         .isFloat({ min: 0 })
-        .withMessage('Variant price must be a positive number'),
-    body('variants.*.stock')
-        .notEmpty()
-        .withMessage('Stock is required')
-        .isInt({ min: 0 })
-        .withMessage('Stock must be a positive integer'),
+        .withMessage('Variant regular price must be a positive number'),
+
     body('variants.*.discount_price')
         .optional()
         .isFloat({ min: 0 })
         .withMessage('Sale price must be a positive number')
         .custom((value, { req, path }) => {
             const variantIndex = parseInt(path.split('[')[1]);
-            if (value >= req.body.variants[variantIndex].price) {
-                throw new Error('Sale price must be less than regular price');
+            if (value >= req.body.variants[variantIndex].regular_price) {
+                throw new Error('Discount price must be less than regular price');
             }
             return true;
         }),
@@ -331,10 +326,17 @@ const createProductVariantsValidator = [
         .optional()
         .isFloat({ min: 0 })
         .withMessage('Purchase price must be a positive number'),
+        
+    body('variants.*.stock')
+        .notEmpty()
+        .withMessage('Stock is required')
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a positive integer'),
+
     body('variants.*.low_stock_threshold')
         .optional()
         .isInt({ min: 0 })
-        .withMessage('Low stock threshold must be a positive integer'),
+        .withMessage('Low stock threshold must be a non-negative integer'),
     body('variants.*.weight')
         .optional()
         .isFloat({ min: 0 })
@@ -375,31 +377,70 @@ const createProductVariantsValidator = [
         .notEmpty()
         .withMessage('Term ID is required')
         .isInt({ min: 1 })
-        .withMessage('Term ID must be a positive integer'),
-    body('variants')
-        .custom((value, { req }) => {
-            const attributeCombinations = new Set();
-            
-            for (const variant of value) {
-                const combination = variant.attributes
-                    .map(attr => `${attr.attribute_id}:${attr.term_id}`)
-                    .sort()
-                    .join('|');
-                
-                if (attributeCombinations.has(combination)) {
-                    throw new Error('Duplicate attribute combination found. Each variant must have a unique combination of attributes.');
-                }
-                
-                attributeCombinations.add(combination);
-            }
-            
-            return true;
-        })
+        .withMessage('Term ID must be a positive integer')
 ];
 
 const updateProductVariantValidator = [
+    commonValidations.productId,
     commonValidations.variantId,
-    ...commonValidations.variantBaseFields,
+    body('slug')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 100 })
+        .withMessage('Variant slug must be between 3 and 100 characters'),
+    body('regular_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Regular price must be a positive number'),
+    body('discount_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Discount price must be a positive number')
+        .custom((value, { req }) => {
+            if (value >= req.body.regular_price) {
+                throw new Error('Discount price must be less than regular price');
+            }
+            return true;
+        }),
+    body('purchase_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Purchase price must be a positive number'),
+    body('stock')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a non-negative integer'),
+    body('low_stock_threshold')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Low stock threshold must be a non-negative integer'),
+    body('weight')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Weight must be a positive number'),
+    body('length')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Length must be a positive number'),
+    body('width')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Width must be a positive number'),
+    body('height')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Height must be a positive number'),
+    body('barcode')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Barcode must be between 3 and 50 characters'),
+    body('status')
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage('Status must be either active or inactive'),
     body('attributes')
         .optional()
         .isArray()
@@ -506,16 +547,16 @@ const bulkUpdateVariantsDirectValidator = [
     body('updates')
         .isObject()
         .withMessage('Updates must be an object'),
-    body('updates.price')
+    body('updates.regular_price')
         .optional()
         .isObject()
-        .withMessage('Price update must be an object')
+        .withMessage('Regular price update must be an object')
         .custom((value) => {
             if (!['set', 'increase', 'decrease'].includes(value.type)) {
-                throw new Error('Price update type must be set, increase, or decrease');
+                throw new Error('Regular price update type must be set, increase, or decrease');
             }
             if (typeof value.value !== 'number' || value.value < 0) {
-                throw new Error('Price value must be a positive number');
+                throw new Error('Regular price value must be a positive number');
             }
             if (typeof value.is_percentage !== 'boolean') {
                 throw new Error('is_percentage must be a boolean');
