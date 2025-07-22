@@ -6,6 +6,7 @@ const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
+const { sequelize } = require("../../../../models");
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -370,7 +371,6 @@ module.exports.updateProductAttributes = async (req, res) => {
 
         return successResponse(res, updatedProduct, "Product attributes updated successfully");
     } catch (error) {
-        console.log(error);
         if (transaction && !transaction.finished) {
             await transaction.rollback();
         }
@@ -463,17 +463,17 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
     const price = updateData.discount_price && updateData.discount_price < updateData.regular_price 
         ? updateData.discount_price 
         : updateData.regular_price;
-
-    const [updatedCount, [updatedVariant]] = await ProductVariant.update({
+    // MySQL does not return updated rows, only affected count
+    await ProductVariant.update({
         ...updateData,
         price,
         updated_by
     }, {
         where: { id: variantId },
-        returning: true,
         transaction
     });
 
+    const updatedVariant = await ProductVariant.findByPk(variantId, { transaction });
     return updatedVariant;
 };
 
@@ -494,7 +494,7 @@ module.exports.createProductVariants = async (req, res) => {
         const hasVariationAttributes = await validateVariationAttributes(product_id, transaction);
 
         const createdVariants = await Promise.all(variantsData.map(async (variant) => {
-            if (variant.purchase_price && variant.purchase_price >= variant.price) {
+            if (variant.purchase_price && variant.purchase_price >= variant.regular_price) {
                 return errorResponse(res, { message: "Purchase price must be less than selling price"}, "Purchase price must be less than selling price" , 400);
                 // throw new Error("Purchase price must be less than selling price");
             }
@@ -677,7 +677,7 @@ const validateUpdateData = async (variantData, existingVariant, variantId, trans
     }
 
     // Validate prices
-    const priceToCheck = variantData.price || existingVariant.price;
+    const priceToCheck = variantData.regular_price || existingVariant.regular_price;
     if (variantData.discount_price !== undefined && variantData.discount_price >= priceToCheck) {
         throw new Error(ERROR_MESSAGES.INVALID_DISCOUNT);
     }
@@ -898,7 +898,6 @@ module.exports.removeProductVariant = async (req, res) => {
         return successResponse(res, null, "Product variant removed successfully");
     } catch (error) {
         await transaction.rollback();
-        console.log(error);
         logger.error('Remove Product Variant Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -1763,7 +1762,6 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                             // First validate all pairs before making any changes
                             for (const pair of attributePairs) {
                                 try {
-                                    console.log(pair);
                                     const parts = pair.split(':');
                                     if (parts.length !== 2) {
                                         throw new Error(`Invalid attribute format: ${pair}. Use format: attribute_slug:term_slug`);
@@ -2274,7 +2272,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
                 if (newPurchasePrice < 0) {
                     throw new Error('Purchase price cannot be negative');
                 }
-                if (newPurchasePrice >= updateData.price) {
+                if (newPurchasePrice >= updateData.regular_price) {
                     throw new Error('Purchase price must be less than selling price');
                 }
                 updateData.purchase_price = newPurchasePrice;

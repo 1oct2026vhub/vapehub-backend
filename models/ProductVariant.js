@@ -58,6 +58,13 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       unique: true
     },
+    regular_price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      validate: {
+        min: 0
+      }
+    },
     price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
@@ -70,8 +77,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       validate: {
         min: 0,
-        isLessThanPrice(value) {
-          if (value && value !== null && value !== 0 && this.price && this.price !== null && this.price !== 0 && value >= this.price) {
+        isLessThanRegularPrice(value) {
+          if (
+            value && value !== null && value !== 0 &&
+            this.regular_price && this.regular_price !== null && this.regular_price !== 0 &&
+            value >= this.regular_price
+          ) {
             throw new Error('Sale price must be less than regular price');
           }
         }

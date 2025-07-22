@@ -29,8 +29,10 @@ module.exports = {
             if (!settings) {
                 return errorResponse(res, {}, 'Loyalty program is not available', 404);
             }
-
+            console.log("settings>>>>",settings.minimum_points_redemption);
+            console.log("user.loyalty_points>>>>",user.loyalty_points);
             const canRedeem = user.loyalty_points >= settings.minimum_points_redemption;
+            console.log("canRedeem>>>>",canRedeem);
             const pointsNeeded = Math.max(0, settings.minimum_points_redemption - user.loyalty_points);
 
             let redemptionAmount = 0;

@@ -3,12 +3,18 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // Add regular_price column
-    await queryInterface.addColumn('product_variants', 'regular_price', {
-      type: Sequelize.DECIMAL(10, 2),
-      allowNull: true,
-      after: 'price'
-    });
+    // Check if 'regular_price' column exists before adding
+    const [results] = await queryInterface.sequelize.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'regular_price'
+    `);
+    if (!results.length) {
+      await queryInterface.addColumn('product_variants', 'regular_price', {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: true,
+        after: 'price'
+      });
+    }
 
     // Update existing records to set regular_price based on price and discount_price
     await queryInterface.sequelize.query(`
@@ -28,6 +34,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    // Only remove the column if it exists (manual check may be needed)
     await queryInterface.removeColumn('product_variants', 'regular_price');
   }
 }; 
