@@ -787,7 +787,7 @@ module.exports.updateProductVariant = async (req, res) => {
         }, { transaction });
 
         // If stock was updated, create a stock movement record
-        // if (stock !== undefined && stock !== existingVariant.stock) {
+        if (stock !== undefined && stock !== null && stock !== 0) {
             await StockMovement.create({
                 variant_id: variant_id,
                 change_type: 'adjustment',
@@ -796,14 +796,7 @@ module.exports.updateProductVariant = async (req, res) => {
                 updated_by,
                 stock_update_from: 'overwrite'
             }, { transaction });
-            // await StockMovement.createMovement({
-            //     variant_id: variant_id,
-            //     change_type: 'adjustment',
-            //     quantity: stock,
-            //     reference: 'Variant stock update',
-            //     updated_by
-            // }, { transaction });
-        // }
+        }
 
         // Update attributes if provided
         if (Array.isArray(variantData.attributes)) {

@@ -19,6 +19,26 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    facebook: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    whatsapp: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    instagram: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    phone_number: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: false,

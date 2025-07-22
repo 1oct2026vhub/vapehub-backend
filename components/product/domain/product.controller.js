@@ -747,6 +747,16 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     attributes: ['id', 'product_id', 'image_url', 'is_primary']
                 },
                 {
+                    model: Flavor,
+                    as: 'Flavors',
+                    through: { 
+                        model: ProductFlavor,
+                        attributes: [] // Exclude ProductFlavor table data from response
+                    },
+                    required: false,
+                    attributes: ['id', 'name']
+                },
+                {
                     model: Deal,
                     as: 'deals',
                     through: { 
@@ -1050,7 +1060,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
                     min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                     status: loyaltySettings.status
-                } : null
+                } : null,
+                flavors: product.Flavors ? product.Flavors.map(flavor => ({
+                    id: flavor.id,
+                    name: flavor.name,
+                    description: flavor.description
+                })) : [],
+                flavor_count: product.Flavors ? product.Flavors.length : 0
             },
             variants: variants.map(variant => ({
                 ...variant,
