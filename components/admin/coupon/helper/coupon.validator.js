@@ -56,12 +56,12 @@ const validateCreateCoupon = [
     .isFloat({ min: 0.01 })
     .withMessage('Maximum discount must be a positive number greater than 0')
     .custom((value, { req }) => {
-      if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
-        throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
-      }
-      if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
-        throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
-      }
+      // if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
+      //   throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
+      // }
+      // if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
+      //   throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
+      // }
       return true;
     }),
 
@@ -71,7 +71,7 @@ const validateCreateCoupon = [
     .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -79,10 +79,10 @@ const validateCreateCoupon = [
   body('is_single_use')
     .optional()
     .isBoolean()
-    .withMessage('is_single_use must be a boolean')
+    .withMessage('Single use must be a boolean')
     .custom((value, { req }) => {
       if (value && req.body.usage_limit > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -185,6 +185,7 @@ const validateUpdateCoupon = [
     .isFloat({ min: 0.01 })
     .withMessage('Minimum purchase must be a positive number greater than 0')
     .custom((value, { req }) => {
+      console.log(value, req.body.discount_value, req.body.discount_type);
       if (req.body.discount_type === 'fixed_amount' && value <= req.body.discount_value) {
         throw new Error('Minimum purchase must be greater than the fixed discount amount');
       }
@@ -196,12 +197,12 @@ const validateUpdateCoupon = [
     .isFloat({ min: 0.01 })
     .withMessage('Maximum discount must be a positive number greater than 0')
     .custom((value, { req }) => {
-      if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
-        throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
-      }
-      if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
-        throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
-      }
+      // if (req.body.discount_type === 'fixed_amount' && value < req.body.discount_value) {
+      //   throw new Error('Maximum discount must be greater than or equal to the fixed discount amount');
+      // }
+      // if (req.body.minimum_purchase && value < req.body.minimum_purchase) {
+      //   throw new Error('Maximum discount must be greater than or equal to minimum purchase amount');
+      // }
       return true;
     }),
 
@@ -211,7 +212,7 @@ const validateUpdateCoupon = [
     .withMessage('Usage limit must be a non-negative integer')
     .custom((value, { req }) => {
       if (req.body.is_single_use && value > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),
@@ -219,10 +220,10 @@ const validateUpdateCoupon = [
   body('is_single_use')
     .optional()
     .isBoolean()
-    .withMessage('is_single_use must be a boolean')
+    .withMessage('Single use must be a boolean')
     .custom((value, { req }) => {
       if (value && req.body.usage_limit > 1) {
-        throw new Error('Usage limit must be 1 when is_single_use is true');
+        throw new Error('Usage limit must be 1 when single use is true');
       }
       return true;
     }),

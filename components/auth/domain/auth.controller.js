@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid')
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, Role, Referral, ReferralMethod } = require("../../../models");
+const { User, Role, Referral, ReferralMethod, Coupon, MailSubscription } = require("../../../models");
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const moment = require('moment');
@@ -94,27 +94,11 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, mail_subscription = false } = req.body;
         let{ referral_code } = req.query;
         if (!referral_code) {
             referral_code = null;
         }
-
-        // Log registration attempt
-        logger.logVerification({
-            type: 'registration_attempt',
-            request: {
-                email,
-                referral_code,
-                headers: req.headers,
-                query: req.query,
-                body: req.body,
-                method: req.method,
-                url: req.originalUrl,
-                ip: req.ip,
-                timestamp: new Date().toISOString()
-            }
-        });
 
         //  check email already exists
         const userExists = await User.findOne({ where: { email }, paranoid: false });
@@ -131,13 +115,6 @@ module.exports.register = async (req, res, next) => {
 
         let referrer = null;
         if (referral_code) {
-            // Log referral code lookup
-            logger.logInfo({
-                type: 'referral_lookup',
-                referral_code,
-                timestamp: new Date().toISOString()
-            });
-
             referrer = await User.findOne({
                 where: { referral_code },
                 attributes: ['id', 'referral_code', 'referral_points', 'email']
@@ -163,6 +140,28 @@ module.exports.register = async (req, res, next) => {
             roleId,
             referred_by: referrer ? referrer.id : null
         });
+        const username = user?.first_name ?? user.email.split('@')[0];
+
+        // Handle mail subscription
+        if (mail_subscription === 'true' || mail_subscription === true) {
+            try {
+                // Check if email already exists in mail subscription table
+                const existingSubscription = await MailSubscription.findOne({
+                    where: { email: email }
+                });
+
+                // If not present, insert new subscription
+                if (!existingSubscription) {
+                    await MailSubscription.create({
+                        user_id: user.id,
+                        email: email
+                    });
+                }
+            } catch (subscriptionError) {
+                // Log error but don't fail the registration
+                console.error('Error handling mail subscription:', subscriptionError);
+            }
+        }
 
         // Create notifications for all admin users
         await createNotification({
@@ -179,14 +178,6 @@ module.exports.register = async (req, res, next) => {
 
         // If referral code is provided, find the referrer
         if (referral_code && referrer) {
-            logger.logInfo({
-                type: 'referral_processing_start',
-                user_id: user.id,
-                referrer_id: referrer.id,
-                referral_code,
-                timestamp: new Date().toISOString()
-            });
-            
             const referral_method = await Referral.findOne({
                 where: {
                     email: email,
@@ -199,7 +190,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferralMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
+                    // primary: true,  //primary true and refer_type = 'referral' means it is referred person    //previous is false  
                     refer_type: 'referral'  //new
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -208,7 +199,7 @@ module.exports.register = async (req, res, next) => {
             const activeReferrerMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,
+                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -235,6 +226,18 @@ module.exports.register = async (req, res, next) => {
                         referral_code: referral_code
                     }
                 });
+
+                const welcomeData = {
+                    emailTypes: constants.emailTypes.WELCOME,
+                    to: user.email,
+                    context: {
+                        userName: username,
+                        couponCode: null,
+                        
+                    },
+                    attachments: ""
+                };
+                await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
             }
             else{   //social media referral
                 // Generate unique 8-letter referral coupon code using email and timestamp
@@ -244,19 +247,7 @@ module.exports.register = async (req, res, next) => {
                     .slice(0, 4)                // Take first 4 letters
                     .toUpperCase();             // Convert to uppercase
                 
-                const referral_coupon = `${emailHash}${timestamp.slice(-4)}`;
-
-                // Log social media referral creation
-                logger.logInfo({
-                    type: 'social_referral_creation',
-                    user_id: user.id,
-                    referrer_id: referrer.id,
-                    referral_code,
-                    referral_coupon,
-                    activeReferralMethod,
-                    timestamp: new Date().toISOString()
-                });
-                
+                const referral_coupon = `${emailHash}${timestamp.slice(-4)}`;              
                 await Referral.create({
                     email: email,
                     referrer_id: referrer.id,
@@ -278,9 +269,28 @@ module.exports.register = async (req, res, next) => {
                         refer_type: activeReferrerMethod.refer_type
                     } : null
                 });
+                const welcomeData = {
+                    emailTypes: constants.emailTypes.WELCOME,
+                    to: user.email,
+                    context: {
+                        userName: username,
+                        couponCode: referral_coupon,
+                        discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
+                        minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
+                    },
+                    attachments: ""
+                };
+                await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
             }
-
-
+            
+            // Delete any existing referral data for this email where referred_user_id is null
+            // This ensures only the current referrer-referred pair can use the coupon
+            await Referral.destroy({
+                where: {
+                    email: email,
+                    referred_user_id: null
+                }
+            });
             // Create notification for admin about referral registration
             await createNotification({
                 user_id: null,
@@ -293,9 +303,72 @@ module.exports.register = async (req, res, next) => {
                 url: '/admin/users',  // URL to the admin users list
                 is_admin: true
             });
+           
+        }
+        else{
+            // Create a random coupon code for the new user
+            const generateCouponCode = () => {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
+                let result = '';
+                for (let i = 0; i < 8; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
+            };
+
+            // Generate unique coupon code
+            let couponCode;
+            let isUnique = false;
+            while (!isUnique) {
+                couponCode = generateCouponCode();
+                const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
+                if (!existingCoupon) {
+                    isUnique = true;
+                }
+            }
+            const activeReferrersMethod = await ReferralMethod.findOne({
+                where: { 
+                    status: 'active',
+                    // primary: true,
+                    refer_type: 'referrer'
+                },
+                attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+            });
+            // Create coupon for the new user
+            await Coupon.create({
+                code: couponCode,
+                description: `Welcome coupon for ${username}`,
+                discount_type: 'percentage',
+                discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
+                minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
+                // maximum_discount: 25.00, // Maximum discount of $25
+                usage_limit: 1, // Single use coupon
+                usage_count: 0,
+                is_single_use: true,
+                start_date: new Date(),
+                end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Valid for 30 days
+                status: 'active',
+                coupon_user: user.id, // Assign to the specific user
+                created_by: null // System created
+            });
+
+            // Send welcome email after successful verification
+            const welcomeEmailData = {
+                emailTypes: constants.emailTypes.WELCOME,
+                to: user.email,
+                context: {
+                    userName: username,
+                    couponCode: couponCode,
+                    discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
+                    minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
+                    // maximumDiscount: '$25'
+                },
+                attachments: ""
+            };
+            await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
+        
         }
 
-        const username = user?.first_name ?? user.email.split('@')[0];
 
         const data = {
             emailTypes: constants.emailTypes.REGISTER,
@@ -312,15 +385,6 @@ module.exports.register = async (req, res, next) => {
 
         return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
-        // Log registration error
-        logger.logError({
-            type: 'registration_error',
-            error: error.message,
-            stack: error.stack,
-            email: req.body.email,
-            referral_code: req.query.referral_code,
-            timestamp: new Date().toISOString()
-        });
         return errorResponse(res, error);
     }
 }
@@ -328,27 +392,6 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
-        // Log verification attempt
-        logger.logVerification({
-            type: 'verification_attempt',
-            request: {
-                headers: req.headers,
-                query: req.query,
-                body: req.body,
-                method: req.method,
-                url: req.originalUrl,
-                ip: req.ip,
-                params: req.params,
-                cookies: req.cookies,
-                signedCookies: req.signedCookies,
-                protocol: req.protocol,
-                secure: req.secure,
-                hostname: req.hostname,
-                path: req.path,
-                timestamp: new Date().toISOString()
-            }
-        });
-
         // Additional security checks for browser vs automated requests
         const securityChecks = {
             referer: req.headers.referer || req.headers.referrer,
@@ -363,13 +406,6 @@ module.exports.verifyEmail = async (req, res, next) => {
             host: req.headers.host,
             userAgent: req.headers['user-agent']
         };
-
-        // Log security checks
-        logger.logInfo({
-            type: 'verification_security_checks',
-            securityChecks,
-            timestamp: new Date().toISOString()
-        });
 
         // Check if request is from a browser or valid client
         const userAgent = req.headers['user-agent'];
@@ -407,13 +443,6 @@ module.exports.verifyEmail = async (req, res, next) => {
         });
 
         if (!isValidUserAgent) {
-            logger.logError({
-                type: 'invalid_user_agent',
-                userAgent,
-                headers: req.headers,
-                ip: req.ip,
-                timestamp: new Date().toISOString()
-            });
             throw {
                 message: "Invalid request source",
                 statusCode: 403,
@@ -434,12 +463,6 @@ module.exports.verifyEmail = async (req, res, next) => {
         ];
 
         if (!validAcceptTypes.some(type => acceptHeader.includes(type))) {
-            logger.logError({
-                type: 'invalid_headers',
-                headers: req.headers,
-                ip: req.ip,
-                timestamp: new Date().toISOString()
-            });
             throw {
                 message: "Invalid request format",
                 statusCode: 403,
@@ -485,6 +508,7 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
+        
         // update referral record if referrer exists
         // let referral_code = null;
         // let referrer = null;

@@ -1,11 +1,12 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon, PaymentMethod, ShippingMethod } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
+const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 
 module.exports.listAllOrders = async (req, res, next) => {
     try {
@@ -273,6 +274,11 @@ module.exports.getOrderById = async (req, res, next) => {
                     as: 'coupon',
                     attributes: ['id', 'code', 'discount_type', 'discount_value', 'description', 'createdAt', 'updatedAt'],
                     paranoid: false
+                },
+                {
+                    model: PaymentMethod,
+                    as: 'paymentMethod',
+                    attributes: ['id', 'payment_method', 'status']
                 }
             ]
         });
@@ -303,11 +309,18 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         const user_id = req?.user?.id;
 
         const order = await Order.findByPk(id, {
-            include: [{
-                model: User,
-                as: 'user',
-                attributes: ['id', 'first_name', 'last_name', 'email']
-            }]
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code']
+                }
+            ]
         });
         if (!order) {
             const error = new Error('Order not found');
@@ -362,7 +375,35 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             }
         }
 
-        successResponse(res, order, 'Order status updated successfully');
+        // Handle ShipStation order creation when status is packed
+        let shipStationResponse = null;
+        if (status === orderStatus.PACKED) {
+            try {
+                shipStationResponse = await createShipStationOrder(order);
+            } catch (shipStationError) {
+                console.error("ShipStation order creation failed:", shipStationError);
+                // Don't fail the entire request, just log the error
+                // You might want to add a notification or flag for failed ShipStation creation
+            }
+        }
+
+        // Prepare response data
+        const responseData = {
+            ...order.toJSON(),
+            shipstation_data: shipStationResponse ? {
+                order_id: shipStationResponse.orderResponse?.orderId,
+                label_data: shipStationResponse.labelResponse ? {
+                    shipment_id: shipStationResponse.labelResponse.shipmentId,
+                    tracking_number: shipStationResponse.labelResponse.trackingNumber,
+                    shipment_cost: shipStationResponse.labelResponse.shipmentCost,
+                    insurance_cost: shipStationResponse.labelResponse.insuranceCost,
+                    label_data: shipStationResponse.labelResponse.labelData,
+                    form_data: shipStationResponse.labelResponse.formData
+                } : null
+            } : null
+        };
+
+        successResponse(res, responseData, 'Order status updated successfully');
     } catch (error) {
         console.error("updateOrderStatus error:", error);
         return errorResponse(res, error, error.message);

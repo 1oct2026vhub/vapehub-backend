@@ -27,7 +27,7 @@ const adminAuth = authMiddleware(true);
  *         name: entity_type
  *         schema:
  *           type: string
- *           enum: [brand, category, product, blog, page]
+ *           enum: [brand, category, product, blog, page, deal]
  *         description: Filter by entity type
  *       - in: query
  *         name: label
@@ -66,7 +66,7 @@ router.get('/',
  *         name: entity_type
  *         schema:
  *           type: string
- *           enum: [brand, category, product, blog, page]
+ *           enum: [brand, category, product, blog, page, deal]
  *         description: Filter by entity type
  *       - in: query
  *         name: label
@@ -133,7 +133,7 @@ router.get('/ordered',
  *                 description: ID of parent menu item
  *               entity_type:
  *                 type: string
- *                 enum: [brand, category, product, blog, page]
+ *                 enum: [brand, category, product, blog, page, deal]
  *                 description: Type of linked entity
  *               entity_id:
  *                 type: integer
@@ -206,7 +206,7 @@ router.post('/',
  *                 description: ID of parent menu item
  *               entity_type:
  *                 type: string
- *                 enum: [brand, category, product, blog, page]
+ *                 enum: [brand, category, product, blog, page, deal]
  *                 description: Type of linked entity
  *               entity_id:
  *                 type: integer

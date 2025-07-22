@@ -31,8 +31,16 @@ router.use('/footer', require('./footer/routes/footer.route'));
 router.use('/menus', require('./menu/routes/menu.route'));
 router.use('/seo', require('./seo/routes/seo.route'));
 router.use('/faqs', require('./faq/routes/faq.route'));
+router.use('/deals', require('./deals/routes/deals.route'));
 router.use('/referral-method', require('./referralMethod/routes/referralMethod.route'));
 router.use('/coupons', require('./coupon/routes/coupon.route'));
 router.use('/flash-news', require('./flashNews/routes/flashNews.route'));
+router.use('/review', require('./review/routes/review.route'));
+router.use('/inventory', require('./inventory/routes/inventory.route'));
+router.use('/shipStation', require('./shipStation/routes/shipStation.route'));
+router.use('/shipStationWebhook', require('./shipStationWebhook/routes/shipStationWebhook.route'));
+router.use('/loyalty-points', require('./loyaltyPoints/routes/loyaltyPoints.route'));
+router.use('/mail-subscription-settings', require('./mailSubscriptionSettings/routes/mailSubscriptionSettings.route'));
+router.use('/contactus', require('./contactus/routes/contactus.route'));
 
 module.exports = router;

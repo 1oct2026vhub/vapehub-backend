@@ -47,7 +47,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     user_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'users',
         key: 'id'
@@ -55,7 +55,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     order_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'orders',
         key: 'id'
@@ -63,11 +63,15 @@ module.exports = (sequelize, DataTypes) => {
     },
     product_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'products',
         key: 'id'
       }
+    },
+    user_name: {
+      type: DataTypes.STRING,
+      allowNull: true
     },
     company_name: {
       type: DataTypes.STRING,
@@ -89,6 +93,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true
+    },
+    verified_by: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: 'Indicates if the review was verified by an admin or system'
     },
     created_at: {
       allowNull: false,

@@ -162,9 +162,10 @@ router.delete('/:id', authenticateJWT,
  *     parameters:
  *       - in: path
  *         name: slug
- *         required: true
+ *         required: false
  *         schema:
  *           type: string
+ *         description: Category slug (optional when productId is provided)
  * 
  *       - in: query
  *         name: keyword
@@ -261,13 +262,19 @@ router.delete('/:id', authenticateJWT,
  *           type: integer
  *           default: 0
  *         description: Number of items to skip
+ *       - in: query
+ *         name: productId
+ *         schema:
+ *           type: integer
+ *         description: Product ID to get category and brand information for (optional)
  *     responses:
  *       200:
  *         description: A single category
  */
 router.get('/slug/:slug',
     validateRequest([
-        param('slug').isString().withMessage('slug must be an string'),
+        // param('slug').isString().withMessage('slug must be an string'),
+        query('productId').optional().isInt().withMessage('productId must be an integer'),
     ]),
     categoryController.getCategoryBySlug
 );

@@ -8,6 +8,11 @@ const fs = require('fs/promises')
 const path = require('path')
 const Handlebars = require('handlebars')
 
+// Register Handlebars helpers
+Handlebars.registerHelper('eq', function(a, b) {
+    return a === b;
+});
+
 let transporter;
 
 if (process.env.EMAIL_TEST_MODE !== 'true') {
@@ -37,7 +42,8 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         const data = {
             from: emailConfig.from,
             to,
-            subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
+            subject: context.subject || (context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject),
+            // subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
         };
 
         if (attachments.length > 0) {
@@ -66,7 +72,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
-
             data.text = Handlebars.compile(text)({ 
                 ...context, 
                 host: process.env.HOST_URL, 
@@ -79,7 +84,6 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 FRONTEND_URL: process.env.FRONTEND_URL, 
                 currentYear: new Date().getFullYear()
             });
-
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);

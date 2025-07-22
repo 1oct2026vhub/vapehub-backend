@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Category } = require("../../../models");
+const { Category, Product, ProductCategory, ProductBrand, Brand } = require("../../../models");
 const { fetchProducts } = require("../../product/helper/product.helper");
 
 module.exports.listAllcategories = async (req, res, next) => {
@@ -93,15 +93,52 @@ module.exports.deleteCategory = async (req, res, next) => {
 
 module.exports.getCategoryBySlug = async (req, res, next) => {
     try {
-        const category = await Category.findOne({ where: { slug: req.params.slug } });
-        if (!category) {
-            throw {
-                message: "Category not found",
-                statusCode: 400,
-            };
+        const { productId } = req.query;
+
+        if (productId) {
+            // Get category ID for this product
+            const productCategory = await ProductCategory.findOne({
+                where: { product_id: productId },
+                include: [{
+                    model: Category,
+                    as: 'Category',
+                    attributes: ['id']
+                }]
+            });
+
+            // Get brand ID for this product
+            const productBrand = await ProductBrand.findOne({
+                where: { product_id: productId },
+                include: [{
+                    model: Brand,
+                    as: 'Brand',
+                    attributes: ['id']
+                }]
+            });
+
+            // Set category and brand IDs from the product for fetchProducts
+            if (productCategory?.Category?.id) {
+                req.query.categories = `${productCategory.Category.id}`;
+            }
+            if (productBrand?.Brand?.id) {
+                req.query.brand = `${productBrand.Brand.id}`;
+            }
+            req.query.source = 'product';
+            
+            // Remove variant filtering when fetching by both category and brand
+            // delete req.query.variant;
+        } else {
+            // Original logic when no productId is provided
+            const category = await Category.findOne({ where: { slug: req.params.slug } });
+            if (!category) {
+                throw {
+                    message: "Category not found",
+                    statusCode: 400,
+                };
+            }
+            req.query.categories = `${category.id}`;
+            req.query.source = 'category';
         }
-        req.query.categories = `${category.id}`;
-        req.query.source = 'category';
         // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
         const {additionalData, products, brand_items, attributes, price_ranges, pagination } = await fetchProducts(req.query);
 
@@ -111,8 +148,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             brand: brand_items, 
             attributes,
             price_ranges,
-            pagination,
-             // Since we're querying by slug, there will be only one category
+            pagination
         }, "Success");
     } catch (error) {
         console.log("🚀 ~ module.exports.getCategoryBySlug= ~ error:", error)

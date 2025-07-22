@@ -25,6 +25,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'referred_by', 
                 as: 'referrer' 
             });
+            this.hasMany(models.LoyaltyPointsHistory, { 
+                foreignKey: 'user_id', 
+                as: 'loyaltyPointsHistory' 
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -138,6 +142,12 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 0
+        },
+        loyalty_points: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            comment: 'Total loyalty points earned by the user'
         },
         receive_promotions: {
             type: DataTypes.BOOLEAN,

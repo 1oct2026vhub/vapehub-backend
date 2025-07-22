@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon } = require('../../../../models');
+const { Transaction, User, Order, OrderItem, Product, ProductVariant, ShippingMethod, UserAddress, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon, PaymentMethod } = require('../../../../models');
 const { Op } = require('sequelize');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -159,12 +159,17 @@ exports.getTransactionDetails = async (req, res) => {
               as: 'coupon',
               attributes: ['id', 'code', 'description', 'discount_type', 'discount_value', 'minimum_purchase', 'maximum_discount'],
               required: false
+            },
+            {
+              model: PaymentMethod,
+              as: 'paymentMethod',
+              attributes: ['id', 'payment_method', 'status'],
+              required: false
             }
           ]
         }
       ]
     });
-
     if (!transaction) {
       const error = new Error('Transaction not found');
       error.statusCode = 404;

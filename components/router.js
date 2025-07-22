@@ -32,4 +32,6 @@ router.use("/menu", require("./menu/routes/menu.route"))
 router.use("/footer", require("./footer/routes/footer.route"))
 router.use("/review", require("./review/routes/review.route"))
 router.use("/seo", require("./seo/routes/seo.route"))
+router.use("/loyalty-points", require("./loyaltyPoints/routes/loyaltyPoints.route"))
+
 module.exports = router;

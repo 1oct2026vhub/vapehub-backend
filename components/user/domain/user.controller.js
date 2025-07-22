@@ -1,13 +1,235 @@
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Referral, ReferralMethod } = require("../../../models");
+const { User, UserAddress, Referral, ReferralMethod, Role, Connect } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const { Op } = require('sequelize');
 const { Order, Transaction } = require('../../../models');
-const logger = require('../../../utils/logger');
+
+// Contact us API - Get admin contact information
+const getContactInfo = async (req, res) => {
+    try {
+        // Get admin users with contact information
+        const adminUsers = await User.findAll({
+            include: [{
+                model: Role,
+                as: "roles",
+                where: { is_admin_panel: true },
+                attributes: ["role", "permission"]
+            }],
+            attributes: [
+                "id", 
+                "first_name", 
+                "last_name", 
+                "email", 
+                "phone",
+                "super_user"
+            ],
+            where: {
+                blocked: false, // Only active admin users
+                email_verified_at: { [Op.ne]: null } // Only verified users
+            },
+            order: [
+                ['super_user', 'DESC'] // Super users first
+            ]
+        });
+
+        // Get primary admin contact (super user or first admin)
+        const primaryAdmin = adminUsers.find(user => user.super_user) || adminUsers[0];
+
+        // Get all admin contacts
+        const adminContacts = adminUsers.map(user => ({
+            id: user.id,
+            name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Admin',
+            email: user.email,
+            phone: user.phone,
+            role: user.roles?.role || 'Admin',
+            is_primary: user.super_user || false
+        }));
+
+        // Get company contact information from environment variables
+        const companyInfo = {
+            name: process.env.COMPANY_NAME || 'VapeHub',
+            email: process.env.COMPANY_EMAIL || primaryAdmin?.email,
+            phone: process.env.COMPANY_PHONE || primaryAdmin?.phone,
+            address: process.env.COMPANY_ADDRESS || '',
+            website: process.env.COMPANY_WEBSITE || process.env.FRONTEND_URL,
+            support_email: process.env.SUPPORT_EMAIL || primaryAdmin?.email,
+            support_phone: process.env.SUPPORT_PHONE || primaryAdmin?.phone
+        };
+
+        // Business hours (can be customized)
+        const businessHours = {
+            monday: { open: '09:00', close: '18:00', closed: false },
+            tuesday: { open: '09:00', close: '18:00', closed: false },
+            wednesday: { open: '09:00', close: '18:00', closed: false },
+            thursday: { open: '09:00', close: '18:00', closed: false },
+            friday: { open: '09:00', close: '18:00', closed: false },
+            saturday: { open: '10:00', close: '16:00', closed: false },
+            sunday: { open: '00:00', close: '00:00', closed: true }
+        };
+
+        // Social media links (can be customized)
+        const socialMedia = {
+            facebook: process.env.FACEBOOK_URL || '',
+            twitter: process.env.TWITTER_URL || '',
+            instagram: process.env.INSTAGRAM_URL || '',
+            linkedin: process.env.LINKEDIN_URL || ''
+        };
+
+        const contactInfo = {
+            company: companyInfo,
+            primary_contact: primaryAdmin ? {
+                name: `${primaryAdmin.first_name || ''} ${primaryAdmin.last_name || ''}`.trim() || 'Admin',
+                email: primaryAdmin.email,
+                phone: primaryAdmin.phone,
+                role: primaryAdmin.roles?.role || 'Admin'
+            } : null,
+            admin_contacts: adminContacts,
+            business_hours: businessHours,
+            social_media: socialMedia,
+            support: {
+                email: companyInfo.support_email,
+                phone: companyInfo.support_phone,
+                response_time: '24-48 hours',
+                available_hours: 'Monday to Friday, 9 AM - 6 PM'
+            }
+        };
+
+        successResponse(res, contactInfo, 'Contact information retrieved successfully');
+    } catch (error) {
+        console.error('Error fetching contact information:', error);
+        return errorResponse(res, error, 'Failed to fetch contact information', 500);
+    }
+};
+
+// Submit contact form
+const submitContactForm = async (req, res) => {
+    try {
+        const { 
+            name, 
+            email, 
+            phone, 
+            subject, 
+            message, 
+            contact_type = 'general' // general, support, sales, technical
+        } = req.body;
+
+        // Validate required fields
+        if (!name || !email || !subject || !message) {
+            return errorResponse(res, {}, 'Name, email, subject, and message are required', 400);
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return errorResponse(res, {}, 'Please provide a valid email address', 400);
+        }
+
+        // Get admin users to send notification
+        const adminUsers = await User.findAll({
+            include: [{
+                model: Role,
+                as: "roles",
+                where: { is_admin_panel: true },
+                attributes: ["role"]
+            }],
+            attributes: ["id", "email", "first_name", "super_user"],
+            where: {
+                blocked: false,
+                email_verified_at: { [Op.ne]: null }
+            }
+        });
+
+        // Get primary admin for email
+        const primaryAdmin = adminUsers.find(user => user.super_user) || adminUsers[0];
+
+        if (!primaryAdmin) {
+            return errorResponse(res, {}, 'No admin contact found', 500);
+        }
+
+        // Prepare email data
+        const emailData = {
+            emailTypes: 'CONTACT_FORM',
+            to: primaryAdmin.email,
+            context: {
+                adminName: primaryAdmin.first_name || 'Admin',
+                customerName: name,
+                customerEmail: email,
+                customerPhone: phone || 'Not provided',
+                subject: subject,
+                message: message,
+                contactType: contact_type,
+                submittedAt: new Date().toLocaleString(),
+                adminEmail: primaryAdmin.email
+            },
+            attachments: ""
+        };
+
+        // Send email to admin
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context, emailData.attachments);
+
+        // Send confirmation email to customer
+        const customerEmailData = {
+            emailTypes: 'CONTACT_CONFIRMATION',
+            to: email,
+            context: {
+                customerName: name,
+                subject: subject,
+                message: message,
+                adminEmail: primaryAdmin.email,
+                adminPhone: primaryAdmin.phone || 'Available on request',
+                responseTime: '24-48 hours',
+                submittedAt: new Date().toLocaleString(),
+                reference: `CF-${Date.now()}`
+            },
+            attachments: ""
+        };
+
+        await sendEmail(customerEmailData.to, customerEmailData.emailTypes, customerEmailData.context, customerEmailData.attachments);
+
+        // Create notifications for all admin users
+        const notificationPromises = adminUsers.map(admin => 
+            createNotification({
+                userId: admin.id,
+                type: 'contact',
+                action: 'received',
+                data: {
+                    customerName: name,
+                    customerEmail: email,
+                    subject: subject,
+                    contactType: contact_type,
+                    message: message.length > 100 ? message.substring(0, 100) + '...' : message
+                },
+                title: `New Contact Form: ${subject}`,
+                url: '/admin/contacts'
+            })
+        );
+
+        await Promise.all(notificationPromises);
+
+        // Log the contact form submission
+        console.info('Contact form submitted:', {
+            customerName: name,
+            customerEmail: email,
+            subject: subject,
+            contactType: contact_type,
+            adminNotified: adminUsers.length
+        });
+
+        successResponse(res, {
+            message: 'Contact form submitted successfully',
+            reference: `CF-${Date.now()}`,
+            response_time: '24-48 hours'
+        }, 'Contact form submitted successfully');
+
+    } catch (error) {
+        console.error('Error submitting contact form:', error);
+        return errorResponse(res, error, 'Failed to submit contact form', 500);
+    }
+};
 
 const userProfile = async (req, res, next) => {
     try {
@@ -304,7 +526,7 @@ const referFriend = async (req, res, next) => {
         const referralMethod = await ReferralMethod.findOne({
             where: { 
                 status: 'active',
-                primary: true,  //previous is false
+                // primary: true,  //previous is false
                 refer_type: 'referral'  //new
             },
             attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'minimum_purchase', 'maximum_purchase']
@@ -327,7 +549,7 @@ const referFriend = async (req, res, next) => {
             const activeReferrerMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    primary: true,
+                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
@@ -363,7 +585,7 @@ const referFriend = async (req, res, next) => {
                 context: {
                     userName: username,
                     referralLink: referralLink,
-                    token: referral_coupon_code,
+                    token: referralMethod ? referral_coupon_code : null,
                     referralValue: referralMethod ? referralMethod.referral_value : '0',
                     referralValueType: referralMethod ? referralMethod.referral_value_type === 'percentage' ? '%' : '' : '',
                     minimumPurchase: referralMethod ? referralMethod.minimum_purchase : '0',
@@ -663,9 +885,9 @@ const getReferralStats = async (req, res) => {
 
         // Get active referral methods
         const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active'},
-            order: [['primary', 'DESC'], ['created_at', 'DESC']],
-            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status', 'primary']
+            where: { status: 'active'}, //, primary: true
+            order: [['created_at', 'DESC']],
+            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status']
         });
 
         // Separate referral methods based on refer_type
@@ -712,7 +934,7 @@ const getReferralStats = async (req, res) => {
                 referral_value: referralMethod.referral_value,
                 refer_type: referralMethod.refer_type,
                 status: referralMethod.status,
-                primary: referralMethod.primary
+                // primary: referralMethod.primary
             } : null,
             referrer_user_method: referrerMethod ? {
                 id: referrerMethod.id,
@@ -720,7 +942,7 @@ const getReferralStats = async (req, res) => {
                 referral_value: referrerMethod.referral_value,
                 refer_type: referrerMethod.refer_type,
                 status: referrerMethod.status,
-                primary: referrerMethod.primary
+                // primary: referrerMethod.primary
             } : null,
             recent_referrals: {
                 data: recentReferrals.length > 0 ? recentReferrals.map(referral => ({
@@ -750,22 +972,6 @@ const getReferralStats = async (req, res) => {
             }
         };
 
-        // Log successful response
-        logger.logInfo({
-            type: 'referral_stats_response',
-            user_id: userId,
-            response_summary: {
-                total_referrals: response.total_referrals,
-                pending_referrals: response.pending_referrals,
-                has_referrer: !!response.referrer,
-                active_methods_count: response.referral_methods.length,
-                referrer: referrer ? referrer : null,
-                recent_referrals_count: response.recent_referrals.data.length,
-                pagination: response.recent_referrals.pagination
-            },
-            timestamp: new Date().toISOString()
-        });
-
         successResponse(res, response, 'Referral statistics retrieved successfully');
     } catch (error) {
         // Log error
@@ -773,136 +979,165 @@ const getReferralStats = async (req, res) => {
     }
 };
 
-const createReferralMethod = async (req, res) => {
+// const createReferralMethod = async (req, res) => {
+//     try {
+//         const { referral_value_type, referral_value, status, primary } = req.body;
+
+//         // Validate required fields
+//         if (!referral_value_type || !referral_value) {
+//             throw {
+//                 statusCode: 400,
+//                 message: 'Referral value type and value are required'
+//             };
+//         }
+
+//         // Validate referral_value_type
+//         if (!['percentage', 'fixed'].includes(referral_value_type)) {
+//             throw {
+//                 statusCode: 400,
+//                 message: 'Referral value type must be either percentage or fixed'
+//             };
+//         }
+
+//         // If this is set as primary, unset any existing primary methods
+//         if (primary) {
+//             await ReferralMethod.update(
+//                 { primary: false },
+//                 { where: { primary: true } }
+//             );
+//         }
+
+//         // Create new referral method
+//         const referralMethod = await ReferralMethod.create({
+//             referral_value_type,
+//             referral_value,
+//             status: status || 'active',
+//             primary: primary || false
+//         });
+
+//         // Create notification for new referral method
+//         await createNotification({
+//             userId: req.user.id,
+//             type: 'system',
+//             action: 'alert',
+//             data: {
+//                 message: 'New referral method has been created successfully'
+//             },
+//             title: 'Referral Method Created',
+//             url: '/admin/referral-methods'
+//         });
+
+//         successResponse(res, referralMethod, 'Referral method created successfully');
+//     } catch (error) {
+//         console.error('Error creating referral method:', error);
+//         return errorResponse(res, error, error.message);
+//     }
+// };
+
+// const updateReferralMethod = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const { referral_value_type, referral_value, status, primary } = req.body;
+
+//         // Find the referral method
+//         const referralMethod = await ReferralMethod.findByPk(id);
+//         if (!referralMethod) {
+//             throw {
+//                 statusCode: 404,
+//                 message: 'Referral method not found'
+//             };
+//         }
+
+//         // Validate referral_value_type if provided
+//         if (referral_value_type && !['percentage', 'fixed'].includes(referral_value_type)) {
+//             throw {
+//                 statusCode: 400,
+//                 message: 'Referral value type must be either percentage or fixed'
+//             };
+//         }
+
+//         // If setting as primary, unset any existing primary methods
+//         if (primary) {
+//             await ReferralMethod.update(
+//                 { primary: false },
+//                 { 
+//                     where: { 
+//                         primary: true,
+//                         id: { [Op.ne]: id } // Exclude current method
+//                     }
+//                 }
+//             );
+//         }
+
+//         // Update the referral method
+//         const updateData = {};
+//         if (referral_value_type) updateData.referral_value_type = referral_value_type;
+//         if (referral_value) updateData.referral_value = referral_value;
+//         if (status) updateData.status = status;
+//         if (typeof primary === 'boolean') updateData.primary = primary;
+
+//         await referralMethod.update(updateData);
+
+//         // Create notification for referral method update
+//         await createNotification({
+//             userId: req.user.id,
+//             type: 'system',
+//             action: 'alert',
+//             data: {
+//                 message: 'Referral method has been updated successfully'
+//             },
+//             title: 'Referral Method Updated',
+//             url: '/admin/referral-methods'
+//         });
+
+//         // Fetch updated record
+//         const updatedMethod = await ReferralMethod.findByPk(id);
+
+//         successResponse(res, updatedMethod, 'Referral method updated successfully');
+//     } catch (error) {
+//         console.error('Error updating referral method:', error);
+//         return errorResponse(res, error, error.message);
+//     }
+// };
+
+// const getReferralMethods = async (req, res) => {
+//     try {
+//         const referralMethods = await ReferralMethod.findAll({
+//             order: [['created_at', 'DESC']]
+//         });
+
+//         successResponse(res, referralMethods, 'Referral methods retrieved successfully');
+//     } catch (error) {
+//         console.error('Error fetching referral methods:', error);
+//         return errorResponse(res, error, error.message);
+//     }
+// };
+
+// Get public contact us info for user side
+const getContactUsInfo = async (req, res) => {
     try {
-        const { referral_value_type, referral_value, status, primary } = req.body;
-
-        // Validate required fields
-        if (!referral_value_type || !referral_value) {
-            throw {
-                statusCode: 400,
-                message: 'Referral value type and value are required'
-            };
+        const connect = await Connect.findOne({ order: [['updated_at', 'DESC']] });
+        if (!connect) {
+            return errorResponse(res, {}, 'Contact info not found', 404);
         }
-
-        // Validate referral_value_type
-        if (!['percentage', 'fixed'].includes(referral_value_type)) {
-            throw {
-                statusCode: 400,
-                message: 'Referral value type must be either percentage or fixed'
-            };
-        }
-
-        // If this is set as primary, unset any existing primary methods
-        if (primary) {
-            await ReferralMethod.update(
-                { primary: false },
-                { where: { primary: true } }
-            );
-        }
-
-        // Create new referral method
-        const referralMethod = await ReferralMethod.create({
-            referral_value_type,
-            referral_value,
-            status: status || 'active',
-            primary: primary || false
-        });
-
-        // Create notification for new referral method
-        await createNotification({
-            userId: req.user.id,
-            type: 'system',
-            action: 'alert',
-            data: {
-                message: 'New referral method has been created successfully'
-            },
-            title: 'Referral Method Created',
-            url: '/admin/referral-methods'
-        });
-
-        successResponse(res, referralMethod, 'Referral method created successfully');
+        return successResponse(res, connect, 'Contact info retrieved successfully');
     } catch (error) {
-        console.error('Error creating referral method:', error);
         return errorResponse(res, error, error.message);
     }
 };
 
-const updateReferralMethod = async (req, res) => {
+// Get only social/contact info for user side
+const getConnectSocialInfo = async (req, res) => {
     try {
-        const { id } = req.params;
-        const { referral_value_type, referral_value, status, primary } = req.body;
-
-        // Find the referral method
-        const referralMethod = await ReferralMethod.findByPk(id);
-        if (!referralMethod) {
-            throw {
-                statusCode: 404,
-                message: 'Referral method not found'
-            };
-        }
-
-        // Validate referral_value_type if provided
-        if (referral_value_type && !['percentage', 'fixed'].includes(referral_value_type)) {
-            throw {
-                statusCode: 400,
-                message: 'Referral value type must be either percentage or fixed'
-            };
-        }
-
-        // If setting as primary, unset any existing primary methods
-        if (primary) {
-            await ReferralMethod.update(
-                { primary: false },
-                { 
-                    where: { 
-                        primary: true,
-                        id: { [Op.ne]: id } // Exclude current method
-                    }
-                }
-            );
-        }
-
-        // Update the referral method
-        const updateData = {};
-        if (referral_value_type) updateData.referral_value_type = referral_value_type;
-        if (referral_value) updateData.referral_value = referral_value;
-        if (status) updateData.status = status;
-        if (typeof primary === 'boolean') updateData.primary = primary;
-
-        await referralMethod.update(updateData);
-
-        // Create notification for referral method update
-        await createNotification({
-            userId: req.user.id,
-            type: 'system',
-            action: 'alert',
-            data: {
-                message: 'Referral method has been updated successfully'
-            },
-            title: 'Referral Method Updated',
-            url: '/admin/referral-methods'
+        const connect = await Connect.findOne({
+            order: [['updated_at', 'DESC']],
+            attributes: ['instagram', 'whatsapp', 'facebook', 'email', 'phone_number']
         });
-
-        // Fetch updated record
-        const updatedMethod = await ReferralMethod.findByPk(id);
-
-        successResponse(res, updatedMethod, 'Referral method updated successfully');
+        if (!connect) {
+            return errorResponse(res, {}, 'Contact info not found', 404);
+        }
+        return successResponse(res, connect, 'Social contact info retrieved successfully');
     } catch (error) {
-        console.error('Error updating referral method:', error);
-        return errorResponse(res, error, error.message);
-    }
-};
-
-const getReferralMethods = async (req, res) => {
-    try {
-        const referralMethods = await ReferralMethod.findAll({
-            order: [['created_at', 'DESC']]
-        });
-
-        successResponse(res, referralMethods, 'Referral methods retrieved successfully');
-    } catch (error) {
-        console.error('Error fetching referral methods:', error);
         return errorResponse(res, error, error.message);
     }
 };
@@ -921,7 +1156,11 @@ module.exports = {
     awardProfileCompletionPoints, 
     deleteAccount, 
     getReferralStats,
-    createReferralMethod,
-    updateReferralMethod,
-    getReferralMethods
+    getContactInfo,
+    submitContactForm,
+    getContactUsInfo,
+    getConnectSocialInfo,
+    // createReferralMethod,
+    // updateReferralMethod,
+    // getReferralMethods
 };

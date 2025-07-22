@@ -1,5 +1,7 @@
 'use strict';
-const { Model } = require('sequelize');
+const { Model, Op } = require('sequelize');
+const cron = require('node-cron');
+const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
   class Coupon extends Model {
@@ -8,6 +10,62 @@ module.exports = (sequelize, DataTypes) => {
       Coupon.belongsTo(models.User, {  foreignKey: 'created_by',  as: 'creator'  });
       
       Coupon.belongsTo(models.User, {  foreignKey: 'updated_by',  as: 'updater'   });
+
+      // Association for coupon_user (specific user assigned to this coupon)
+      Coupon.belongsTo(models.User, { foreignKey: 'coupon_user', as: 'assignedUser' });
+
+      // Dynamic associations based on entity_type
+      Coupon.belongsTo(models.Product, { 
+        foreignKey: 'entity_id', 
+        as: 'product',
+        constraints: false,
+        scope: {
+          entity_type: 'product'
+        }
+      });
+
+      Coupon.belongsTo(models.Brand, { 
+        foreignKey: 'entity_id', 
+        as: 'brand',
+        constraints: false,
+        scope: {
+          entity_type: 'brand'
+        }
+      });
+
+      Coupon.belongsTo(models.Category, { 
+        foreignKey: 'entity_id', 
+        as: 'category',
+        constraints: false,
+        scope: {
+          entity_type: 'category'
+        }
+      });
+    }
+
+    // Static method to update expired coupons
+    static async updateExpiredCoupons() {
+      try {
+        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+        
+        const result = await this.update(
+          { status: 'expired' },
+          {
+            where: {
+              status: 'active',
+              end_date: { 
+                [Op.and]: [
+                  { [Op.lt]: currentUkTime }
+                ]
+              }
+            }
+          }
+        );
+        // Log performance metrics
+        console.log(`Coupon expiration check completed. Updated ${result[0]} coupons. Current UK time: ${currentUkTime.format()}. subtract: ${moment(currentUkTime).subtract(1, 'minute').format()}`);
+      } catch (error) {
+        console.error('Error updating expired coupons:', error);
+      }
     }
   }
 
@@ -42,18 +100,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       validate: {
         notEmpty: true,
-        min: 0,
-        max: {
-          args: [100],
-          msg: "Percentage discount cannot be more than 100%",
-          // Custom validator to only apply max 100 rule for percentage type
-          validator: function(value) {
-            if (this.discount_type === 'percentage' && value > 100) {
-              throw new Error('Percentage discount cannot be more than 100%');
-            }
-            return true;
-          }
-        }
+        min: 0
       }
     },
     minimum_purchase: {
@@ -116,6 +163,25 @@ module.exports = (sequelize, DataTypes) => {
         isIn: [['active', 'inactive', 'expired']]
       }
     },
+    entity_type: {
+      type: DataTypes.ENUM('product', 'brand', 'category'),
+      allowNull: true,
+      validate: {
+        isIn: [['product', 'brand', 'category']]
+      }
+    },
+    entity_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true
+    },
+    coupon_user: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
     created_by: {
       type: DataTypes.INTEGER,
       allowNull: true
@@ -155,6 +221,13 @@ module.exports = (sequelize, DataTypes) => {
         }
       }
     }
+  });
+
+  // Schedule the cron job to run at midnight (12:15 AM) every day
+  cron.schedule('15 0 * * *', async () => {
+    await Coupon.updateExpiredCoupons();
+  }, {
+    timezone: process.env.UK_TIMEZONE || 'Europe/London'
   });
 
   return Coupon;

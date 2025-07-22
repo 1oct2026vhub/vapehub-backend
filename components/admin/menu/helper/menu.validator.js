@@ -31,7 +31,7 @@ const validateMenuCreate = [
 
     body('entity_type')
         .optional()
-        .isIn(['brand', 'category', 'product', 'blog', 'page'])
+        .isIn(['brand', 'category', 'product', 'blog', 'page', 'deal'])
         .withMessage('Invalid entity type'),
 
     body('entity_id')
@@ -115,7 +115,7 @@ const validateMenuUpdate = [
 
     body('entity_type')
         .optional()
-        .isIn(['brand', 'category', 'product', 'blog', 'page'])
+        .isIn(['brand', 'category', 'product', 'blog', 'page', 'deal'])
         .withMessage('Invalid entity type'),
 
     body('entity_id')
@@ -210,7 +210,7 @@ const validateMenuFilters = [
 
     query('entity_type')
         .optional()
-        .isIn(['brand', 'category', 'product', 'blog', 'page'])
+        .isIn(['brand', 'category', 'product', 'blog', 'page', 'deal'])
         .withMessage('Invalid entity type'),
 
     query('label')

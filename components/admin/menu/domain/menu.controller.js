@@ -1,5 +1,5 @@
 const db = require('../../../../models');
-const { Menu, Brand, Category, Product, Blog } = db;
+const { Menu, Brand, Category, Product, Blog, Deal, ProductImage } = db;
 const { getEntitySlug } = require('../helper/menu.helper');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
 const { Op } = require('sequelize');
@@ -23,7 +23,7 @@ const getMenus = async (req, res) => {
             where.entity_type = filters.entity_type;
         }
         if (filters.label) {
-            where.label = { [Op.iLike]: `%${filters.label}%` };
+            where.label = { [Op.like]: `%${filters.label}%` };
         }
 
         // Get all menu items with associations
@@ -174,7 +174,7 @@ const updateMenu = async (req, res) => {
             ...(menuData.icon_position && { icon_position: menuData.icon_position }),
             ...(menuData.updated_by && { updated_by: menuData.updated_by })
         };
-
+        console.log(updatedFields);
         await menu.update(updatedFields, { transaction });
 
         // Fetch the updated menu with associations

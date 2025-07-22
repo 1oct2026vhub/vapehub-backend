@@ -81,6 +81,14 @@ passportConfig(passport);
 // Serve Swagger API Docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions'), false, { docExpansion: 'none' }));
 
+// Add raw body parser for Worldpay webhook
+app.use('/api/payment/worldpay/webhook', express.raw({
+    type: 'application/vnd.worldpay.events-v1.hal+json',
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
+
 // Routes
 app.get("/", (req, res) => {
     res.send("Hello World");
@@ -96,5 +104,9 @@ app.use("/api", require('./components/router'));
 // Static files
 app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/logs", express.static(path.join(__dirname, "public/logs")));
+app.use("/logs", express.static(path.join(__dirname, "logs")));
+
+// Initialize cron jobs
+require('./cron/init');
 
 module.exports = app;

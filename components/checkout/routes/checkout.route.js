@@ -189,6 +189,10 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                 type: integer
  *                 description: ID of the selected shipping method. Defaults to 0 if not provided.
  *                 example: 2
+ *               loyalty:
+ *                 type: boolean
+ *                 description: Flag indicating if loyalty points should be used. Defaults to false if not provided.
+ *                 example: true
  *     responses:
  *       "200":
  *         description: Coupon successfully applied.
@@ -215,6 +219,10 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                     subTotal:
  *                       type: number
  *                       example: 100.0
+ *                     loyalty:
+ *                       type: boolean
+ *                       example: true
+ *                       description: Flag indicating if loyalty points were used
  *                     total:
  *                       type: number
  *                       example: 90.0
@@ -259,6 +267,6 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                   type: string
  *                   example: "Internal server error"
  */
-router.post("/apply-coupon", authenticateJWT,  validateRequest(applyCouponValidate),  checkoutController.applyCoupon)
+router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  // validateRequest(applyCouponValidate),
 
 module.exports = router

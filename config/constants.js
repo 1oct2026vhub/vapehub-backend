@@ -7,6 +7,11 @@ module.exports = {
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
+        REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
+        WELCOME: 'WELCOME',
+        INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
+        PRODUCT_UPDATES: 'PRODUCT_UPDATES',
+        PROMOTIONAL: 'PROMOTIONAL',
     },
     emailTypeData: {
         REGISTER: {
@@ -43,6 +48,31 @@ module.exports = {
             from: process.env.EMAIL_FROM,
             subject: 'Account Deletion Confirmation',
             folderName: 'account_deletion'
+        },
+        REFUND_CONFIRMATION: {
+            folderName: 'refund_confirmation',
+            subject: 'Refund Confirmation',
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        WELCOME: {
+            folderName: 'welcome',
+            subject: 'Welcome to VapeHub! 🎉',
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        INVENTORY_LOW_STOCK: {
+            folderName: 'inventory',
+            subject: 'Low Stock Alert: Product Variants',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        PRODUCT_UPDATES: {
+            folderName: 'product_updates',
+            subject: 'New Products Alert! 🆕 Latest Additions to VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        PROMOTIONAL: {
+            folderName: 'promotional',
+            subject: 'Special Offer from VapeHub! 🎉',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },
     orderStatus: {
@@ -145,5 +175,21 @@ module.exports = {
         'draft',
         'published',
         'archived'
+    ],
+    
+    // Deal related constants
+    DEAL_TYPES: {
+        BUY_N_FOR_FIXED: 'BUY_N_FOR_FIXED',       // Buy any N for fixed price
+        BUY_X_GET_Y_FREE: 'BUY_X_GET_Y_FREE',     // Buy X get Y free
+        BUY_MORE_SAVE_MORE: 'BUY_MORE_SAVE_MORE', // Tiered discounts
+        BUNDLE: 'BUNDLE',                         // Fixed price for product combo
+        QUANTITY_DISCOUNT: 'QUANTITY_DISCOUNT'    // Volume-based price drops
+    },
+    DEAL_TYPE_ENUMS: [
+        'BUY_N_FOR_FIXED',
+        'BUY_X_GET_Y_FREE',
+        'BUY_MORE_SAVE_MORE',
+        'BUNDLE',
+        'QUANTITY_DISCOUNT'
     ]
 }

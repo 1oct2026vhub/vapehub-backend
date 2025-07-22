@@ -26,6 +26,12 @@ module.exports = (sequelize, DataTypes) => {
         email: {
             type: DataTypes.STRING,
             allowNull: false,
+        },
+        isDiscountUsed: {
+            type: DataTypes.BOOLEAN,
+            allowNull: true,
+            defaultValue: false,
+            comment: 'Flag to indicate if any discount (coupon, referral, loyalty) was used by this subscriber'
         }
     }, {
         sequelize,

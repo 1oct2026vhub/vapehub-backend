@@ -7,6 +7,7 @@ const hbs = require('handlebars')
 
 const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
+const utilsLogger = require('../../utils/logger');
 
 /**
  * Function to render a new email, save it as file and add it to index file
@@ -33,7 +34,6 @@ exports.newEmail = async(email) => {
         dir: emailsDir,
         id: fileId,
     })
-
     let oldIndexText;
     try {
         oldIndexText = await fs.readFile(indexFilePath, 'utf8');
@@ -47,11 +47,26 @@ exports.newEmail = async(email) => {
     const oldIndex = oldIndexText.split('\n').filter(i => i);
     if(oldIndex.length >= 50) {
         const toDel = oldIndex.splice(49);
-        for(let i of toDel) {
-            await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
+        try{
+            for(let i of toDel) {
+                await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
+            }
+        }
+        catch(error){
+            utilsLogger.logError(`Error in newEmail: ${error}`);
         }
     }
-    await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`)
+    const updatedIndexContent = `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`;
+    
+    try {
+        await fs.writeFile(indexFilePath, updatedIndexContent);
+        
+        // Verify the file was written
+        const verifyContent = await fs.readFile(indexFilePath, 'utf8');
+    } catch (writeError) {
+        throw writeError;
+    }
+    
 }
 
 /**

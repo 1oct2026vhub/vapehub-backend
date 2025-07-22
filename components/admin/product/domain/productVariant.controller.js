@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Category, Brand, SlugRelation } = require("../../../../models");
+const { Product, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Category, Brand, SlugRelation, StockMovement } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -14,7 +14,7 @@ const ERROR_MESSAGES = {
     PRODUCT_NOT_FOUND: "Product not found",
     DUPLICATE_SLUG: (slug) => `Slug ${slug} already exists`,
     DUPLICATE_BARCODE: (barcode) => `Barcode ${barcode} already exists`,
-    INVALID_DISCOUNT: "Discount price must be less than regular price",
+    INVALID_DISCOUNT: "Sale price must be less than regular price",
     ATTRIBUTE_TERM_NOT_FOUND: "Attribute term not found",
     ATTRIBUTE_TERM_IN_USE: "Cannot remove attribute term as it is associated with existing product variants",
     ATTRIBUTE_TERM_COMBINATION_EXISTS: "Attribute term combination already exists for this product",
@@ -794,6 +794,20 @@ module.exports.updateProductVariant = async (req, res) => {
 
         // Update basic info
         const updatedVariant = await updateVariantRecord(variant_id, variantData, updated_by, transaction);
+        // Separate stock from other variant data to avoid double updates
+        const { stock, ...otherVariantData } = variantData;
+
+        // If stock was updated, create a stock movement record
+        if (stock !== undefined && stock !== null && stock !== 0) {
+            await StockMovement.create({
+                variant_id: variant_id,
+                change_type: 'adjustment',
+                quantity: stock,
+                reference: 'Variant stock update from product variant',
+                updated_by,
+                stock_update_from: 'overwrite'
+            }, { transaction });
+        }
 
         // Update attributes if provided
         if (Array.isArray(variantData.attributes)) {
@@ -1380,13 +1394,15 @@ module.exports.getVariantById = async (req, res) => {
                     include: [
                         {
                             model: Category,
-                            as: 'Category',
-                            attributes: ['id', 'name', 'slug']
+                            as: 'Categories',
+                            attributes: ['id', 'name', 'slug'],
+                            through: { attributes: ['is_primary'] }
                         },
                         {
                             model: Brand,
-                            as: 'Brand',
-                            attributes: ['id', 'name', 'slug']
+                            as: 'Brands',
+                            attributes: ['id', 'name', 'slug'],
+                            through: { attributes: ['is_primary'] }
                         }
                     ]
                 },
@@ -2327,4 +2343,3 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
-

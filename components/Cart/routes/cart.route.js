@@ -13,10 +13,58 @@ const { validateBulkCartUpdate } = require("../helper/cart.validator");
  *       - Cart
  *     security:
  *       - bearerAuth: []
- *     summary: Get all items in cart
+ *     summary: Get all items in cart with applicable deals
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/CartItem'
+ *                     deals:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           deal_id:
+ *                             type: integer
+ *                             example: 1
+ *                           deal_name:
+ *                             type: string
+ *                             example: "Buy 3 for ₹99"
+ *                           discount_amount:
+ *                             type: number
+ *                             format: float
+ *                             example: 50.00
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         subtotal:
+ *                           type: number
+ *                           format: float
+ *                           example: 199.98
+ *                         total_discount:
+ *                           type: number
+ *                           format: float
+ *                           example: 50.00
+ *                         total:
+ *                           type: number
+ *                           format: float
+ *                           example: 149.98
+ *                 message:
+ *                   type: string
+ *                   example: "Cart items retrieved successfully"
  */
 router.get('/', authenticateJWT, cartController.listCartItems);
 

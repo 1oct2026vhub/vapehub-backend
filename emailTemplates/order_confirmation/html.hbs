@@ -5,121 +5,137 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
+            background: #f4f6fb;
         }
-
         .email-container {
             max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #ffffff;
+            margin: 30px auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.10);
+            overflow: hidden;
         }
-
         .header {
-            background-color: #2e8b57;
-            padding: 15px;
+            background: linear-gradient(90deg, #2e8b57 0%, #3cb371 100%);
+            padding: 32px 0 16px 0;
             text-align: center;
-            color: white;
         }
-
         .logo {
-            max-width: 200px;
-            height: auto;
-            margin: 10px 0;
-        }
-
-        .content {
-            padding: 30px 20px;
-        }
-
-        .order-details {
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
-
-        .item {
+            max-width: 160px;
             margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
         }
-
+        .content {
+            padding: 32px 24px 24px 24px;
+        }
+        h2 {
+            color: #2e8b57;
+            margin-bottom: 8px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .order-details {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            box-shadow: 0 2px 8px rgba(44, 62, 80, 0.04);
+        }
+        .order-details h3 {
+            margin-top: 0;
+            color: #222;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .order-details p {
+            margin: 6px 0;
+            color: #444;
+            font-size: 15px;
+        }
         .status-badge {
             display: inline-block;
-            padding: 5px 10px;
-            background-color: #2e8b57;
-            color: white;
-            border-radius: 3px;
-            font-size: 14px;
+            padding: 6px 18px;
+            background: #2e8b57;
+            color: #fff;
+            border-radius: 20px;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 1px;
             margin-left: 10px;
+            text-transform: capitalize;
         }
-
-        .tracking-info {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 5px;
-        }
-
-        .footer {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-            font-size: 12px;
-        }
-
-        /* Table Styles */
         .items-table {
             width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 24px 0 0 0;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(44, 62, 80, 0.06);
         }
-
-        .items-table th {
-            background-color: #f2f2f2;
-            padding: 12px;
+        .items-table th, .items-table td {
+            padding: 14px 12px;
             text-align: left;
-            border-bottom: 2px solid #ddd;
         }
-
+        .items-table th {
+            background: #f2f6f9;
+            color: #2e8b57;
+            font-size: 15px;
+            font-weight: 700;
+            border-bottom: 2px solid #e0e6ed;
+        }
         .items-table td {
-            padding: 12px;
-            border-bottom: 1px solid #ddd;
+            font-size: 15px;
+            color: #333;
+            border-bottom: 1px solid #f0f0f0;
         }
-
         .items-table tr:last-child td {
             border-bottom: none;
         }
-
-        .items-table .item-name {
-            font-weight: bold;
+        .item-name {
+            font-weight: 600;
         }
-
-        .items-table .item-quantity {
+        .item-quantity, .item-price {
             text-align: center;
         }
-
-        .items-table .item-price {
-            text-align: right;
+        .total-row td {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #222;
         }
-
-        .items-table .total-row {
-            background-color: #f9f9f9;
-            font-weight: bold;
-        }
-
-        .items-table .total-label {
+        .total-label {
             text-align: right;
-            padding-right: 20px;
+            padding-right: 16px;
         }
-
-        .items-table .total-price {
-            text-align: right;
+        .total-price {
             color: #2e8b57;
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .tracking-info {
+            margin: 32px 0 0 0;
+            padding: 20px;
+            background: #eafaf1;
+            border-radius: 10px;
+            color: #2e8b57;
+            font-size: 15px;
+        }
+        .footer {
+            background: #f2f6f9;
+            text-align: center;
+            padding: 24px 10px;
+            color: #888;
+            font-size: 13px;
+            border-top: 1px solid #e0e6ed;
+        }
+        @media (max-width: 650px) {
+            .email-container { margin: 10px; }
+            .content, .order-details { padding: 16px; }
+            .items-table th, .items-table td { padding: 10px 6px; }
         }
     </style>
 </head>
@@ -130,20 +146,17 @@
                 <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
             </a>
         </div>
-        
         <div class="content">
             <h2>Order Confirmation</h2>
-            <p>Hello {{userName}},</p>
-            <p>Thank you for shopping with VapeHub! We're excited to confirm that we've received your order and it's being processed.</p>
-            
+            <p style="font-size:16px; color:#222;">Hello {{userName}},</p>
+            <p style="font-size:15px; color:#444;">Thank you for shopping with VapeHub! We're excited to confirm that we've received your order and it's being processed.</p>
             <div class="order-details">
                 <h3>Order Summary</h3>
                 <p><strong>Order Number:</strong> #{{orderCode}}</p>
                 <p><strong>Order ID:</strong> {{orderUniqueId}}</p>
                 <p><strong>Order Date:</strong> {{orderDate}}</p>
                 <p><strong>Order Status:</strong> <span class="status-badge">{{status}}</span></p>
-                
-                <h3>Your Items</h3>
+                <h3 style="margin-top:24px;">Your Items</h3>
                 <table class="items-table">
                     <thead>
                         <tr>
@@ -171,7 +184,13 @@
                         {{#if discountPrice}}
                         <tr class="total-row">
                             <td colspan="2" class="total-label">Coupon Discount</td>
-                            <td class="discount-price">-£{{discountPrice}}</td>
+                            <td class="discount-price" style="color:#e74c3c;">-£{{discountPrice}}</td>
+                        </tr>
+                        {{/if}}
+                        {{#if loyaltyDiscount}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Loyalty Points Discount</td>
+                            <td class="loyalty-discount" style="color:#e74c3c;">-£{{loyaltyDiscount}}</td>
                         </tr>
                         {{/if}}
                         <tr class="total-row">
@@ -181,14 +200,12 @@
                     </tbody>
                 </table>
             </div>
-
             <div class="tracking-info">
-                <h3>Next Steps</h3>
+                <h3 style="margin-top:0;">Next Steps</h3>
                 <p>We'll send you another email when your order is shipped with tracking information.</p>
                 <p>You can also check your order status anytime by visiting your account dashboard.</p>
             </div>
         </div>
-        
         <div class="footer">
             <p>Need help with your order? Our customer service team is here to assist you.</p>
             <p>Email: support@vapehub.com | Phone: +44 123 456 7890</p>
