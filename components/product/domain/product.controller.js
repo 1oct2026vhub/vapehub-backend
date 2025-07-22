@@ -23,6 +23,7 @@ module.exports.listAllproducts = async (req, res, next) => {
             price_ranges, 
             pagination
         }, 'Success');
+        
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
