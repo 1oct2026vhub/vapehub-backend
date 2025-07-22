@@ -678,6 +678,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             throw new Error('Invalid input parameters');
         }
 
+        // Get loyalty settings
+        const loyaltySettings = await LoyaltyPointsSettings.findOne({
+            where: { status: true },
+            order: [['createdAt', 'DESC']]
+        });
+
         // Find product with all necessary relations
         const product = await Product.findOne({
             where: { 
@@ -876,6 +882,29 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         };
 
         // Prepare variant information with images
+        const product_category = product.Categories && product.Categories.length > 0 ? {
+            id: product.Categories[0].id,
+            name: product.Categories[0].name,
+            slug: product.Categories[0].slug
+        } : null;
+        const product_brand = product.Brands && product.Brands.length > 0 ? {
+            id: product.Brands[0].id,
+            name: product.Brands[0].name,
+            slug: product.Brands[0].slug
+        } : null;
+        // Prepare all categories and brands
+        const all_product_categories = product.Categories ? product.Categories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug
+        })) : [];
+        const all_product_brands = product.Brands ? product.Brands.map(brand => ({
+            id: brand.id,
+            name: brand.name,
+            slug: brand.slug
+        })) : [];
+        const product_description = product.description;
+
         const variants = filteredVariants.map(variant => {
             // Get primary image or first image
             const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
@@ -912,7 +941,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     term_slug: va.term.slug
                 })),
                 created_at: variant.created_at,
-                updated_at: variant.updated_at
+                updated_at: variant.updated_at,
+                product_categories: all_product_categories,
+                product_brands: all_product_brands,
+                product_description
             };
         });
 
@@ -981,13 +1013,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             return null;
         }).filter(Boolean);
 
-        // console.log("description>>>>",product.variants[0].description);
         const response = {
             product: {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
-                description: product.variants && product.variants.length > 0 ? product.variants[0].description : product.description,
+                description: product.variants && product.variants.length && product.variants[0].description ? product.variants[0].description : product.description,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: product.Categories && product.Categories.length > 0 ? {
@@ -1000,6 +1031,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     name: product.Brands[0].name,
                     slug: product.Brands[0].slug
                 } : null,
+                product_categories: all_product_categories,
+                product_brands: all_product_brands,
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
                     url: primaryProductImage.image_url,
@@ -1007,7 +1040,17 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
-                deals: product.deals
+                deals: product.deals,
+                loyaltySettings: loyaltySettings ? {
+                    program_name: loyaltySettings.program_name,
+                    points_value: parseFloat(loyaltySettings.points_value),
+                    loyalty_amount: loyaltySettings.loyalty_amount,
+                    loyalty_amount_type: loyaltySettings.loyalty_amount_type,
+                    minimum_points_redemption: loyaltySettings.minimum_points_redemption,
+                    minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
+                    min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                    status: loyaltySettings.status
+                } : null
             },
             variants: variants.map(variant => ({
                 ...variant,
