@@ -372,6 +372,7 @@ module.exports.getProductById = async (req, res, next) => {
                         "product_id",
                         "slug",
                         "price",
+                        "regular_price",
                         "discount_price",
                         "purchase_price",
                         "weight",
