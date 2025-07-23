@@ -422,24 +422,42 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             transaction
         });
 
-        if (existingDealProducts.length > 0) {
-            await transaction.rollback();
-            const error = new Error('Selected product is already assigned to an existing deal.');
-            error.statusCode = 400;
-            error.data = {
-                products_already_in_deals: existingDealProducts.map(dp => ({
-                    product_id: dp.product_id,
-                    existing_deal: {
-                        id: dp.deal.id,
-                        name: dp.deal.name,
-                        slug: dp.deal.slug,
-                        is_active: dp.deal.is_active,
-                        valid_from: dp.deal.valid_from,
-                        valid_to: dp.deal.valid_to
-                    }
-                }))
-            };
-            throw error;
+        if (existingDealProducts.length > 0) {            
+            // Check if any products are already in the current deal
+            const productsInCurrentDeal = existingDealProducts.filter(dp => dp.deal_id === parseInt(id));
+            const productsInOtherDeals = existingDealProducts.filter(dp => dp.deal_id !== parseInt(id));
+            
+            if (productsInCurrentDeal.length > 0) {
+                await transaction.rollback();
+                const error = new Error('Selected product is already added to this deal.');
+                error.statusCode = 400;
+                error.data = {
+                    products_already_in_current_deal: productsInCurrentDeal.map(dp => ({
+                        product_id: dp.product_id
+                    }))
+                };
+                throw error;
+            }
+            
+            if (productsInOtherDeals.length > 0) {
+                await transaction.rollback();
+                const error = new Error('Selected product is already assigned to an existing deal.');
+                error.statusCode = 400;
+                error.data = {
+                    products_already_in_deals: productsInOtherDeals.map(dp => ({
+                        product_id: dp.product_id,
+                        existing_deal: {
+                            id: dp.deal.id,
+                            name: dp.deal.name,
+                            slug: dp.deal.slug,
+                            is_active: dp.deal.is_active,
+                            valid_from: dp.deal.valid_from,
+                            valid_to: dp.deal.valid_to
+                        }
+                    }))
+                };
+                throw error;
+            }
         }
 
         // Check stock levels for each product
