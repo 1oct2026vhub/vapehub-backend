@@ -13,8 +13,10 @@
         }
         /* Constrain all images in the email */
         .email-container img {
-            max-width: 100%;
+            max-width: 350px;
+            max-height: 200px;
             height: auto;
+            width: 100%;
             display: block;
             margin-left: auto;
             margin-right: auto;
@@ -26,6 +28,8 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             overflow: hidden;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         .header {
             background: linear-gradient(135deg, #2e8b57 0%, #3cb371 100%);
@@ -60,6 +64,8 @@
         .content {
             padding: 40px 30px;
             text-align: center;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         h1 {
             color: #2d3748;
@@ -85,6 +91,8 @@
             padding: 30px;
             margin: 30px 0;
             border-left: 4px solid #2e8b57;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         .promo-content h3 {
             color: #2e8b57;
