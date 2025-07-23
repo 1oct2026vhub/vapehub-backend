@@ -137,12 +137,67 @@
             margin-bottom: 10px;
             font-size: 18px;
         }
+        .highlight-text {
+            font-weight: bold;
+            font-size: 18px;
+            color: #b7791f;
+            line-height: 1.6;
+            margin: 0 0 10px 0;
+            display: block;
+        }
+        
+        .promo-images-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            max-width: 100%;
+        }
+        
+        .promo-image-item {
+            flex: 1;
+            min-width: 200px;
+            max-width: 280px;
+            margin-bottom: 15px;
+        }
+        
+        .promo-image {
+            width: 100%;
+            max-width: 280px;
+            height: auto;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+            display: block;
+        }
         @media (max-width: 650px) {
             .email-container { margin: 10px; }
             .content { padding: 20px; }
             .promo-content { padding: 20px; }
             h1 { font-size: 24px; }
             h2 { font-size: 20px; }
+            
+            /* Mobile image adjustments */
+            .promo-content img {
+                max-width: 100% !important;
+                max-height: 250px !important;
+                width: 100% !important;
+                height: auto !important;
+            }
+            
+            .promo-content > div > div {
+                min-width: 100% !important;
+                max-width: 100% !important;
+                margin-bottom: 20px !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .promo-content img {
+                max-height: 200px !important;
+            }
         }
     </style>
 </head>
@@ -161,7 +216,7 @@
             {{#if highlightText}}
             <div class="highlight">
                 <h4>🎯 Special Offer!</h4>
-                <p>{{highlightText}}</p>
+                <p class="highlight-text">{{highlightText}}</p>
             </div>
             {{/if}}
             
@@ -169,10 +224,10 @@
             {{#if images}}
             <div class="promo-content" style="margin-bottom: 30px;">
                 <h3>🖼️ Promotional Images</h3>
-                <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px;">
+                <div class="promo-images-container">
                     {{#each images}}
-                    <div style="flex: 1; min-width: 250px; max-width: 300px;">
-                        <img src="{{url}}" alt="{{alt}}" style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 10px;" />
+                    <div class="promo-image-item">
+                        <img src="{{url}}" alt="{{alt}}" class="promo-image" />
                         {{#if alt}}
                         <p style="font-size: 14px; color: #666; font-style: italic; text-align: center; margin: 0;">{{alt}}</p>
                         {{/if}}
