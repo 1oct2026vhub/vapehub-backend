@@ -563,17 +563,43 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             let detailedMessage = '';
             const productSummaries = stockIssues.map(issue => {
                 let summary = `${issue.product_name}`;
+                
                 if (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) {
-                    const slugs = issue.out_of_stock_variant_details.map(v => v.variant_slug).join(', ');
-                    summary += ` (out of stock variants: ${slugs})`;
+                    const validSlugs = issue.out_of_stock_variant_details
+                        .map(v => v.variant_slug)
+                        .filter(slug => slug && slug.trim() !== '');
+                    
+                    if (validSlugs.length > 0) {
+                        if (validSlugs.length <= 3) {
+                            summary += ` (out of stock variants: ${validSlugs.join(', ')})`;
+                        } else {
+                            summary += ` (out of stock variants: ${validSlugs.length} variants)`;
+                        }
+                    } else {
+                        summary += ` (out of stock variants: ${issue.out_of_stock_variant_details.length} variants)`;
+                    }
                 }
+                
                 if (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0) {
-                    const slugs = issue.low_stock_variant_details.map(v => v.variant_slug).join(', ');
-                    summary += ` (low stock variants: ${slugs})`;
+                    const validSlugs = issue.low_stock_variant_details
+                        .map(v => v.variant_slug)
+                        .filter(slug => slug && slug.trim() !== '');
+                    
+                    if (validSlugs.length > 0) {
+                        if (validSlugs.length <= 3) {
+                            summary += ` (low stock variants: ${validSlugs.join(', ')})`;
+                        } else {
+                            summary += ` (low stock variants: ${validSlugs.length} variants)`;
+                        }
+                    } else {
+                        summary += ` (low stock variants: ${issue.low_stock_variant_details.length} variants)`;
+                    }
                 }
+                
                 if (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0) {
                     summary += ` (product out of stock)`;
                 }
+                
                 return summary;
             });
             if (productSummaries.length > 0) {
@@ -833,17 +859,43 @@ module.exports.addProductToDeals = async (req, res) => {
             let detailedMessage = '';
             const productSummaries = stockIssues.map(issue => {
                 let summary = `${issue.product_name}`;
+                
                 if (issue.out_of_stock_variant_details && issue.out_of_stock_variant_details.length > 0) {
-                    const slugs = issue.out_of_stock_variant_details.map(v => v.variant_slug).join(', ');
-                    summary += ` (out of stock variants: ${slugs})`;
+                    const validSlugs = issue.out_of_stock_variant_details
+                        .map(v => v.variant_slug)
+                        .filter(slug => slug && slug.trim() !== '');
+                    
+                    if (validSlugs.length > 0) {
+                        if (validSlugs.length <= 3) {
+                            summary += ` (out of stock variants: ${validSlugs.join(', ')})`;
+                        } else {
+                            summary += ` (out of stock variants: ${validSlugs.length} variants)`;
+                        }
+                    } else {
+                        summary += ` (out of stock variants: ${issue.out_of_stock_variant_details.length} variants)`;
+                    }
                 }
+                
                 if (issue.low_stock_variant_details && issue.low_stock_variant_details.length > 0) {
-                    const slugs = issue.low_stock_variant_details.map(v => v.variant_slug).join(', ');
-                    summary += ` (low stock variants: ${slugs})`;
+                    const validSlugs = issue.low_stock_variant_details
+                        .map(v => v.variant_slug)
+                        .filter(slug => slug && slug.trim() !== '');
+                    
+                    if (validSlugs.length > 0) {
+                        if (validSlugs.length <= 3) {
+                            summary += ` (low stock variants: ${validSlugs.join(', ')})`;
+                        } else {
+                            summary += ` (low stock variants: ${validSlugs.length} variants)`;
+                        }
+                    } else {
+                        summary += ` (low stock variants: ${issue.low_stock_variant_details.length} variants)`;
+                    }
                 }
+                
                 if (issue.out_of_stock_product_details && issue.out_of_stock_product_details.length > 0) {
                     summary += ` (product out of stock)`;
                 }
+                
                 return summary;
             });
             if (productSummaries.length > 0) {
