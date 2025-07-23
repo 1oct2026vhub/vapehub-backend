@@ -2091,7 +2091,8 @@ module.exports.generateVariants = async (req, res) => {
             
             return {
                 product_id,
-                price: 0,
+                // price: 0,
+                regular_price: 0,
                 stock: 0,
                 status: 'active',
                 updated_by: req.user.id,
