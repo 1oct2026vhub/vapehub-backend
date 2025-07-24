@@ -159,12 +159,12 @@ module.exports.register = async (req, res, next) => {
                         where: { id: existingSubscription.id }
                     });
                 }
-                // else{
-                //     await MailSubscription.create({
-                //         user_id: user.id,
-                //         email: email
-                //     });
-                // }
+                else{
+                    await MailSubscription.create({
+                        user_id: user.id,
+                        email: email
+                    });
+                }
             } catch (subscriptionError) {
                 // Log error but don't fail the registration
                 console.error('Error handling mail subscription:', subscriptionError);
