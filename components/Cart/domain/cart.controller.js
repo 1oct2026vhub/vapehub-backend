@@ -371,11 +371,11 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
             
             let message = '';
             if (isOutOfStock) {
-                message = `${variant ? variant.slug : product.name} is out of stock`;
+                message = `Varient is out of stock`;    //${variant ? variant.slug : product.name}
             } else if (isQuantityExceeded) {
                 message = `Only ${availableStock} item(s) available in stock for ${variant ? variant.slug : product.name}`;
             } else {
-                message = `${variant ? variant.slug : product.name} is in stock`;
+                message = `Variant is in stock`;   //${variant ? variant.slug : product.name}
             }
 
             return {

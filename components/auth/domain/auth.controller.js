@@ -151,10 +151,37 @@ module.exports.register = async (req, res, next) => {
                 });
 
                 // If not present, insert new subscription
-                if (!existingSubscription) {
+                if (existingSubscription) {
+                    await MailSubscription.update({
+                        user_id: user.id,
+                        // email: email
+                    }, {
+                        where: { id: existingSubscription.id }
+                    });
+                }
+                else{
                     await MailSubscription.create({
                         user_id: user.id,
                         email: email
+                    });
+                }
+            } catch (subscriptionError) {
+                // Log error but don't fail the registration
+                console.error('Error handling mail subscription:', subscriptionError);
+            }
+        }
+        else{
+            try {
+                // Check if email already exists in mail subscription table
+                const existingSubscription = await MailSubscription.findOne({
+                    where: { email: email }
+                });
+                if (existingSubscription) {
+                    await MailSubscription.update({
+                        user_id: user.id,
+                        // email: email
+                    }, {
+                        where: { id: existingSubscription.id }
                     });
                 }
             } catch (subscriptionError) {

@@ -2,7 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, LoyaltyPointsSettings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
-const { getTrendingProducts, generateUniqueFileName, fetchProducts } = require("../helper/product.helper");
+const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
 
@@ -121,6 +121,7 @@ module.exports.getProductByid = async (req, res, next) => {
             }, 
             include: includeClause
         });
+        console.log("product>", product);
         if (!product) {
             throw new Error("Product not found");
         }
@@ -306,8 +307,12 @@ module.exports.getProductByid = async (req, res, next) => {
         });
         
         // Prepare the response
+        const minPriceVariant = getMinPriceVariant(product);
         const response = {
             ...product.toJSON(),
+            price: minPriceVariant ? minPriceVariant.price : product.price,
+            regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
+            discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
             attributeTerms,
             attributeCombinations,
             variantStockMap: Object.fromEntries(variantStockMap),
@@ -329,7 +334,8 @@ module.exports.getProductByid = async (req, res, next) => {
                 minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
                 min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                 status: loyaltySettings.status
-            } : null
+            } : null,
+            min_price_variant: minPriceVariant
         };
 
         successResponse(res, response, 'Success');
@@ -625,6 +631,19 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     model: Flavor, as: 'Flavors', through: {
                         model: ProductFlavor,
                     }
+                },
+                {   // for min price variant
+                    model: ProductVariant,
+                    as: 'variants',
+                    where: { status: 'active' },
+                    required: false,
+                    include: [
+                        {
+                            model: ProductVariantImage,
+                            as: 'variantImages',
+                            attributes: ['id', 'variant_id', 'image_url', 'is_primary']
+                        }
+                    ]
                 }
             ]
         });
@@ -655,12 +674,18 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             });
         });
 
+        // Get min price variant
+        const minPriceVariant = getMinPriceVariant(product);
 
     //    Convert Map to array
        const attributeTerms = Array.from(attributeTermsMap.values());
        // **Modify the response**
        const response = {
            ...product.toJSON(),  // Convert Sequelize object to plain JSON
+           price: minPriceVariant ? minPriceVariant.price : product.price,
+           regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
+           discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+           min_price_variant: minPriceVariant,
            attributeTerms
        };
         successResponse(res, response, 'Success');
@@ -916,6 +941,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         })) : [];
         const product_description = product.description;
 
+        // Get min price variant
+        const minPriceVariant = getMinPriceVariant(product);
+
         const variants = filteredVariants.map(variant => {
             // Get primary image or first image
             const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
@@ -924,6 +952,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 id: variant.id,
                 slug: variant.slug,
                 price: variant.price,
+                regular_price: variant.regular_price,
                 discount_price: variant.discount_price,
                 stock: variant.stock,
                 stock_status: variant.stock_status,
@@ -958,7 +987,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 product_description
             };
         });
-
         // Prepare product images
         const productImages = product.ProductImages.map(img => ({
             id: img.id,
@@ -1067,7 +1095,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     name: flavor.name,
                     description: flavor.description
                 })) : [],
-                flavor_count: product.Flavors ? product.Flavors.length : 0
+                flavor_count: product.Flavors ? product.Flavors.length : 0,
+                price: minPriceVariant ? minPriceVariant.price : product.price,
+                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
+                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+                min_price_variant: minPriceVariant
             },
             variants: variants.map(variant => ({
                 ...variant,

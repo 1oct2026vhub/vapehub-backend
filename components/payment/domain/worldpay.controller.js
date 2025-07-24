@@ -2572,6 +2572,18 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             });
 
             if (mailSettings) {
+                // Calculate the discount amount
+                let discount = 0;
+                if (mailSettings.discount_type === 'percentage') {
+                    discount = (order.sub_total * parseFloat(mailSettings.discount_amount)) / 100;
+                } else if (mailSettings.discount_type === 'fixed') {
+                    discount = parseFloat(mailSettings.discount_amount);
+                }
+                // Ensure discount does not exceed order sub_total
+                discount = Math.min(discount, order.sub_total);
+                order.mailSubscription_discount = discount;
+                await order.save();
+
                 // Mark discount as used
                 await mailSubscription.update({
                     isDiscountUsed: true
@@ -2930,7 +2942,8 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 paymentMethod: 'Worldpay',
                 transactionId: orderCode || '',
                 amount: amount,
-                currency: currency
+                currency: currency,
+                ...(order.mailSubscription_discount > 0 && { mailSubscriptionDiscount: order.mailSubscription_discount })
             }
         };
 
