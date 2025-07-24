@@ -1,6 +1,6 @@
 'use strict';
 
-const { Coupon } = require('../../../../models');
+const { Coupon, Product, Brand, Category } = require('../../../../models');
 const { Op } = require('sequelize');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const logger = require('../../../../library/logger');
@@ -110,11 +110,38 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        logger.warn('Coupon not found', { couponId: id });
+        logger.warn('Coupon not found', { couponId: req.params.id });
         return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
-      return successResponse(res, { coupon }, "Coupon retrieved successfully");
+      let entity = null;
+      if (coupon.entity_type && coupon.entity_id) {
+        let entityModel = null;
+        if (coupon.entity_type === 'product') {
+          entityModel = Product;
+        } else if (coupon.entity_type === 'brand') {
+          entityModel = Brand;
+        } else if (coupon.entity_type === 'category') {
+          entityModel = Category;
+        }
+        if (entityModel) {
+          const foundEntity = await entityModel.findByPk(coupon.entity_id, { attributes: ['name', 'slug'] });
+          if (foundEntity) {
+            entity = {
+              entity_name: foundEntity.name,
+              entity_slug: foundEntity.slug
+            };
+          }
+        }
+      }
+
+      // Flatten entity fields into coupon object
+      const couponWithEntity = {
+        ...coupon.toJSON(),
+        ...(entity || {})
+      };
+
+      return successResponse(res, { coupon: couponWithEntity }, "Coupon retrieved successfully");
     } catch (error) {
       logger.error('Error fetching coupon by ID', { 
         error: error.message,
