@@ -723,6 +723,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0.0,
       comment: 'Loyalty discount amount applied to the order'
     },
+    mailSubscription_discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: 0.00,
+      comment: 'Discount amount from mail subscription'
+    },
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false,

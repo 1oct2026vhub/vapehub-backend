@@ -525,7 +525,28 @@ const fetchProducts = async (query, status = 'published') => {
         
         if (availableVariants.length > 0) {
           const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
+          const minPriceVariant = availableVariants.reduce((minV, v) => {
+            const vPrice = parseFloat(v.price) || 0;
+            return vPrice === minPrice ? v : minV;
+          }, null);
+          // Only include id, slug, price, and first variant image
+          let minPriceVariantData = null;
+          if (minPriceVariant) {
+            let variantImage = (minPriceVariant.variantImages && minPriceVariant.variantImages.length > 0)
+              ? minPriceVariant.variantImages[0]
+              : null;
+            if (!variantImage && product.ProductImages && product.ProductImages.length > 0) {
+              variantImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
+            }
+            minPriceVariantData = {
+              id: minPriceVariant.id,
+              slug: minPriceVariant.slug,
+              price: minPriceVariant.price,
+              variant_image: variantImage || null
+            };
+          }
           product.price = minPrice;
+          product.min_price_variant = minPriceVariantData;
           return true;
         }
       }
@@ -539,7 +560,8 @@ const fetchProducts = async (query, status = 'published') => {
           name: flavor.name,
           description: flavor.description
         })) : [],
-        flavor_count: product.Flavors ? product.Flavors.length : 0
+        flavor_count: product.Flavors ? product.Flavors.length : 0,
+        min_price_variant: product.min_price_variant || null
       };
     });
 
@@ -946,4 +968,30 @@ const fetchProducts = async (query, status = 'published') => {
   }
 };
 
-module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts };
+// Helper to get the minimum price variant for a product
+function getMinPriceVariant(product) {
+  if (!product || !product.variants || product.variants.length === 0) return null;
+  const availableVariants = product.variants.filter(variant => variant.status === 'active');
+  if (availableVariants.length === 0) return null;
+  const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
+  const minPriceVariant = availableVariants.reduce((minV, v) => {
+    const vPrice = parseFloat(v.price) || 0;
+    return vPrice === minPrice ? v : minV;
+  }, null);
+  let variantImage = (minPriceVariant.variantImages && minPriceVariant.variantImages.length > 0)
+    ? minPriceVariant.variantImages[0]
+    : null;
+  if (!variantImage && product.ProductImages && product.ProductImages.length > 0) {
+    variantImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
+  }
+  return {
+    id: minPriceVariant.id,
+    slug: minPriceVariant.slug,
+    price: minPriceVariant.price,
+    regular_price: minPriceVariant.regular_price,
+    discount_price: minPriceVariant.discount_price,
+    variant_image: variantImage || null
+  };
+}
+
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant };

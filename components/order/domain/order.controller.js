@@ -846,7 +846,8 @@ module.exports.getOrderById = async (req, res) => {
             attributes: [
                 'id', 'order_code', 'order_unique_id', 'total', 'discount_price', 'status', 
                 'createdAt', 'email', 'phone', 'referral_id', 'sub_total', 'discount_type',
-                'deals_discount', 'applicable_deals', 'loyalty_flag', 'loyalty_discount'
+                'deals_discount', 'applicable_deals', 'loyalty_flag', 'loyalty_discount',
+                'mailSubscription_discount'
             ],
             include: [
                 {

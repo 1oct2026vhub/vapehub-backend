@@ -230,6 +230,18 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         });
 
                         if (mailSettings) {
+                            // Calculate the discount amount
+                            let discount = 0;
+                            if (mailSettings.discount_type === 'percentage') {
+                                discount = (order.sub_total * parseFloat(mailSettings.discount_amount)) / 100;
+                            } else if (mailSettings.discount_type === 'fixed') {
+                                discount = parseFloat(mailSettings.discount_amount);
+                            }
+                            // Ensure discount does not exceed order sub_total
+                            discount = Math.min(discount, order.sub_total);
+                            // Update the order's mailSubscription_discount field
+                            await order.update({ mailSubscription_discount: discount });
+
                             // Mark discount as used
                             await mailSubscription.update({
                                 isDiscountUsed: true
@@ -556,6 +568,10 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             transactionId: TransactionId
                         }
                     };
+                    // Add mail subscription discount if applied
+                    if (order.mailSubscription_discount && parseFloat(order.mailSubscription_discount) > 0) {
+                        emailData.context.mailSubscriptionDiscount = order.mailSubscription_discount;
+                    }
 
                     await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
 
