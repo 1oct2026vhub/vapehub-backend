@@ -34,7 +34,8 @@ module.exports.createMailSubscription = async (req, res, next) => {
         // else, set null for user_id
         const mailList = await MailSubscription.create({
             email,
-            ...(user_id ? user_id : null)
+            ...(user_id ? user_id : null),
+            subscribed: true
         });
         successResponse(res, mailList, 'Mail subscription added successfully', 200);
 
@@ -83,6 +84,38 @@ module.exports.deleteMailSubscription = async (req, res, next) => {
         await mailList.destroy({ force: true });
         successResponse(res, { message: 'mailList deleted successfully' });
     } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.toggleMailSubscription = async (req, res, next) => {
+    try {
+        const user_id = req.user.id;
+        // Find the mail subscription by user_id
+        const mailSubscription = await MailSubscription.findOne({ where: { user_id } });
+        
+        if (!mailSubscription) {
+            throw {
+                statusCode: 404,
+                message: 'User subscription not found'
+            }
+        }
+        // Toggle the subscribed status
+        const newStatus = !mailSubscription.subscribed;
+        mailSubscription.subscribed = newStatus;
+        await mailSubscription.save();
+
+        const action = newStatus ? 'subscribed' : 'unsubscribed';
+        const message = `Successfully ${action} from mail subscription`;
+
+        successResponse(res, { 
+            message: message,
+            user_id: user_id,
+            email: mailSubscription.email,
+            subscribed: newStatus
+        }, `${action.charAt(0).toUpperCase() + action.slice(1)} successfully`);
+    } catch (error) {
+        console.log("🚀 ~ module.exports.toggleMailSubscription= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }

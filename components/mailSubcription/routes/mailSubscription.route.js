@@ -2,6 +2,7 @@ const router = require("express").Router();
 const mailSubscriptionController = require("../domain/mailSubscription.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, param } = require("express-validator");
+const authenticateJWT = require("../../auth/middleware/authMiddleware");
 
 
 /**
@@ -111,6 +112,47 @@ router.delete('/:id',
         param('id').isNumeric().withMessage('ID must be a number'),
     ]),
     mailSubscriptionController.deleteMailSubscription
+);
+
+/**
+ * @swagger
+ * /api/mailSubscription/toggle:
+ *   post:
+ *     tags:
+ *       - MailSubscription
+ *     summary: Toggle mail subscription status (subscribe/unsubscribe)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully toggled subscription
+ *         content:
+ *           application/json:
+ *            schema:
+ *             type: object
+ *             properties:
+ *              message:
+ *               type: string
+ *               example: Successfully subscribed from mail subscription
+ *              user_id:
+ *               type: integer
+ *               example: 123
+ *              email:
+ *               type: string
+ *               example: user@example.com
+ *              subscribed:
+ *               type: boolean
+ *               example: true
+ *       401:
+ *         description: Unauthorized - User not authenticated
+ *       404:
+ *         description: Not Found - User subscription not found
+ *       500:
+ *         description: Internal Server Error
+ */
+router.post('/toggle',
+    authenticateJWT,
+    mailSubscriptionController.toggleMailSubscription
 );
 
 module.exports = router;
