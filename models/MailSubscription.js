@@ -27,6 +27,12 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: false,
         },
+        subscribed: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true,
+            comment: 'Flag to indicate if the user is currently subscribed'
+        },
         isDiscountUsed: {
             type: DataTypes.BOOLEAN,
             allowNull: true,

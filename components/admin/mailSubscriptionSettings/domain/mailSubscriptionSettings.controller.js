@@ -304,6 +304,7 @@ module.exports = {
                     const chunkSubscribers = await MailSubscription.findAll({
                         where: {
                             email: emailChunk,
+                            subscribed: true,
                             deletedAt: null
                         },
                         attributes: ['id', 'email', 'user_id']
@@ -419,7 +420,8 @@ module.exports = {
             const offset = (page - 1) * limit;
             
             const whereClause = {
-                deletedAt: null
+                deletedAt: null,
+                subscribed: true
             };
 
             if (search) {
@@ -430,7 +432,7 @@ module.exports = {
 
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
-                attributes: ['id', 'email', 'user_id', 'createdAt'],
+                attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
                 order: [['createdAt', 'DESC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset)
@@ -458,7 +460,7 @@ module.exports = {
     async getSubscriberStats(req, res) {
         try {
             const totalSubscribers = await MailSubscription.count({
-                where: { deletedAt: null }
+                where: { deletedAt: null, subscribed: true }
             });
 
             const recentSubscribers = await MailSubscription.count({
@@ -466,7 +468,8 @@ module.exports = {
                     deletedAt: null,
                     createdAt: {
                         [require('sequelize').Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-                    }
+                    },
+                    subscribed: true
                 }
             });
 
@@ -486,7 +489,8 @@ module.exports = {
                 where: {
                     createdAt: {
                         [require('sequelize').Op.between]: [startOfWeek, endOfWeek]
-                    }
+                    },
+                    subscribed: true
                 }
             });
             const frequencyStats = { weekly: weeklyCount };

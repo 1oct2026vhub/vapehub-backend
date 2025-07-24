@@ -142,7 +142,8 @@ async function sendProductUpdateEmails(frequency) {
         while (hasMore) {
             const batch = await MailSubscription.findAll({
                 where: {
-                    deletedAt: null
+                    deletedAt: null,
+                    subscribed: true
                 },
                 attributes: ['id', 'email', 'user_id'],
                 limit: SUBSCRIBER_BATCH_SIZE,
