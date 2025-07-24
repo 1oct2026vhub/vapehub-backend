@@ -439,6 +439,20 @@ module.exports.getProductById = async (req, res, next) => {
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
+        // Process variants to update stock_status based on low stock threshold
+        if (product.variants && product.variants.length > 0) {
+            product.variants.forEach(variant => {
+                // Update stock_status based on stock level and low_stock_threshold
+                if (variant.stock <= 0) {
+                    variant.stock_status = 'out_of_stock';
+                } else if (variant.stock <= variant.low_stock_threshold) {
+                    variant.stock_status = 'low_stock';
+                } else {
+                    variant.stock_status = 'in_stock';
+                }
+            });
+        }
+
         // Return success response with the retrieved product data
         return successResponse(res, product, "Product retrieved successfully");
     } catch (error) {
