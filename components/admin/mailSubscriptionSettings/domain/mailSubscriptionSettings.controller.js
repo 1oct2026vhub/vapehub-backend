@@ -71,6 +71,12 @@ module.exports = {
 
             const userId = req?.user?.id;
 
+            // Check if mail subscription settings already exist with status true
+            const existingSettings = await MailSubscriptionSettings.findOne();
+            if (existingSettings) {
+                return errorResponse(res, {}, 'Mail subscription settings already exist. You can only create settings once. Use update endpoint to modify existing settings.', 409);
+            }
+
             // Validate email frequency
             if (email_frequency && !['daily', 'weekly', 'monthly', 'never'].includes(email_frequency)) {
                 return errorResponse(res, {}, 'Email frequency must be daily, weekly, monthly, or never', 400);
@@ -93,7 +99,7 @@ module.exports = {
                 discount_notifications: discount_notifications !== undefined ? discount_notifications : true,
                 discount_amount: discount_amount !== undefined ? discount_amount : 0.00,
                 discount_type: discount_type || 'percentage',
-                status: status !== undefined ? status : true
+                status: true
             });
 
             logger.info('Mail subscription setting created', {
@@ -464,11 +470,26 @@ module.exports = {
                 }
             });
 
-            const mailSettings = await MailSubscriptionSettings.findAll();
-            const frequencyStats = mailSettings.reduce((acc, setting) => {
-                acc[setting.email_frequency] = (acc[setting.email_frequency] || 0) + 1;
-                return acc;
-            }, {});
+            // Calculate the start and end of the current week (Monday to Sunday)
+            const now = new Date();
+            const dayOfWeek = now.getDay(); // 0 (Sun) - 6 (Sat)
+            const diffToMonday = (dayOfWeek + 6) % 7; // 0 (Mon) - 6 (Sun)
+            const startOfWeek = new Date(now);
+            startOfWeek.setDate(now.getDate() - diffToMonday);
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+
+            // Count subscribers created this week in the format { weekly: <count> }
+            const weeklyCount = await MailSubscription.count({
+                where: {
+                    createdAt: {
+                        [require('sequelize').Op.between]: [startOfWeek, endOfWeek]
+                    }
+                }
+            });
+            const frequencyStats = { weekly: weeklyCount };
 
             return successResponse(res, {
                 totalSubscribers,
