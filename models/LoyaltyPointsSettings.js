@@ -70,6 +70,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0.0,
       comment: 'Minimum order amount required to earn loyalty points'
     },
+    // Amount divisor for points calculation
+    amount_divisor: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      comment: 'Divides the amount for points calculation. If 1, use full amount; if 2, divide by 2, etc. Can be fractional.'
+    },
     // Program status
     status: {
       type: DataTypes.BOOLEAN,

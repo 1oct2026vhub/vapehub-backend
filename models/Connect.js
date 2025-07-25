@@ -23,7 +23,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    whatsapp: {
+    twitter: {
       type: DataTypes.STRING,
       allowNull: true
     },
