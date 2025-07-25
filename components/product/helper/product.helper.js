@@ -434,8 +434,8 @@ const fetchProducts = async (query, status = 'published') => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
-        required: attributeTermConditions.length > 0,
+        // where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
+        // required: attributeTermConditions.length > 0,
         include: [
           {
             model: Attribute,
@@ -445,7 +445,7 @@ const fetchProducts = async (query, status = 'published') => {
           {
             model: AttributeTerm,
             as: 'term',
-            attributes: ['id', 'name', 'slug']
+            attributes: ['id', 'name', 'slug', 'count']
           }
         ]
       },
@@ -515,7 +515,6 @@ const fetchProducts = async (query, status = 'published') => {
       offset: parsedOffset,
       distinct: true
     });
-
     // Filter out products with no available variants and set prices
     const availableProducts = products.filter(product => {
       if (product.variants && product.variants.length > 0) {
@@ -552,15 +551,58 @@ const fetchProducts = async (query, status = 'published') => {
       }
       return false;
     }).map(product => {
+      // Extract largest puff count from number-of-puffs attribute
+      let puffCount = null;
+      if (product.productAttributeTerms) {
+        const puffAttributes = product.productAttributeTerms.filter(pat => 
+          pat.attribute && pat.attribute.name === 'number-of-puffs'
+        );
+        
+        if (puffAttributes.length > 0) {
+          let maxPuffCount = 0;
+          let maxPuffTerm = null;
+          
+          puffAttributes.forEach(pat => {
+            if (pat.term) {
+              // Find all numbers in the string
+              const puffMatches = pat.term.name.match(/(\d+)/g);
+              if (puffMatches) {
+                // Use the largest number in the string
+                const count = Math.max(...puffMatches.map(Number));
+                if (count > maxPuffCount) {
+                  maxPuffCount = count;
+                  maxPuffTerm = pat.term.name;
+                }
+              }
+            }
+          });
+          if (maxPuffCount > 0) {
+            if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+              puffCount = `~${maxPuffCount} puffs`;
+            } else {
+              puffCount = maxPuffTerm;
+            }
+          }
+        }
+      }
+
       // Add flavors and flavor_count to each product
+      let flavorTerms = [];
+      if (product.productAttributeTerms) {
+        flavorTerms = product.productAttributeTerms
+          .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+          .map(pat => ({
+            id: pat.term.id,
+            name: pat.term.name,
+            slug: pat.term.slug
+          }));
+      }
+      const flavor_count = flavorTerms.length;
       return {
         ...product.toJSON(),
-        flavors: product.Flavors ? product.Flavors.map(flavor => ({
-          id: flavor.id,
-          name: flavor.name,
-          description: flavor.description
-        })) : [],
-        flavor_count: product.Flavors ? product.Flavors.length : 0,
+        puff_count: puffCount,
+        flavors: flavorTerms,
+        flavor_count,
         min_price_variant: product.min_price_variant || null
       };
     });
