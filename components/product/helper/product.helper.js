@@ -511,7 +511,7 @@ const fetchProducts = async (query, status = 'published') => {
     // Fetch products with filters
     const products = await Product.findAll({
       where: productWhereClause,
-      // attributes: productAttributes, // Exclude description
+      attributes: productAttributes, // Exclude description
       include: includeClause,
       order: [
         [sort_by, order],
@@ -526,7 +526,7 @@ const fetchProducts = async (query, status = 'published') => {
     const availableProducts = products.filter(product => {
       if (product.variants && product.variants.length > 0) {
         const availableVariants = product.variants.filter(variant => 
-          variant.status === 'active'
+          variant.status === 'active' && parseFloat(variant.price) > 0
         );
         
         if (availableVariants.length > 0) {
@@ -1020,7 +1020,7 @@ const fetchProducts = async (query, status = 'published') => {
 // Helper to get the minimum price variant for a product
 function getMinPriceVariant(product) {
   if (!product || !product.variants || product.variants.length === 0) return null;
-  const availableVariants = product.variants.filter(variant => variant.status === 'active');
+  const availableVariants = product.variants.filter(variant => variant.status === 'active' && parseFloat(variant.price) > 0);
   if (availableVariants.length === 0) return null;
   const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
   const minPriceVariant = availableVariants.reduce((minV, v) => {
