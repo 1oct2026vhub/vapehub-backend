@@ -48,6 +48,10 @@ module.exports.listAllProducts = async (req, res, next) => {
         if (status) {
             whereClause[Op.and].push({ status });
         }
+        else {
+            whereClause[Op.and].push({ status: 'published' });
+        }
+
 
         // Price range filter based on product variants or product price
         if (price_range) {

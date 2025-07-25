@@ -434,8 +434,8 @@ const fetchProducts = async (query, status = 'published') => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        // where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
-        // required: attributeTermConditions.length > 0,
+        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
+        required: attributeTermConditions.length > 0,
         include: [
           {
             model: Attribute,
@@ -445,7 +445,7 @@ const fetchProducts = async (query, status = 'published') => {
           {
             model: AttributeTerm,
             as: 'term',
-            attributes: ['id', 'name', 'slug', 'count']
+            attributes: ['id', 'name', 'slug']
           }
         ]
       },
@@ -453,13 +453,6 @@ const fetchProducts = async (query, status = 'published') => {
         model: ProductImage,
         as: 'ProductImages',
         attributes: ['id', 'product_id', 'image_url', 'is_primary']
-      },
-      {
-        model: Flavor,
-        as: 'Flavors',
-        through: { model: ProductFlavor, attributes: [] },
-        required: false,
-        attributes: ['id', 'name', 'description']
       },
       {
         model: Deal,
@@ -498,14 +491,27 @@ const fetchProducts = async (query, status = 'published') => {
       include: includeClause,
       distinct: true
     });
+    console.log(totalCount);
 
     // Calculate pagination
     const totalPages = Math.ceil(totalCount / parsedLimit);
     const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
-
+    console.log(totalPages, currentPage, parsedLimit, parsedOffset);
+    
+    // Define attributes to select for Product, excluding 'description'
+    const productAttributes = [
+      'id', 'updated_by', 'name', 'slug', 'price', 'discount_price', 
+      'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
+      'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
+      'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 
+      'vg_ratio', 'vaping_style', 'bottle_size', 'status', 'createdAt', 
+      'updatedAt', 'deletedAt'
+    ];
+    
     // Fetch products with filters
     const products = await Product.findAll({
       where: productWhereClause,
+      // attributes: productAttributes, // Exclude description
       include: includeClause,
       order: [
         [sort_by, order],
@@ -515,6 +521,7 @@ const fetchProducts = async (query, status = 'published') => {
       offset: parsedOffset,
       distinct: true
     });
+    // console.log(products);
     // Filter out products with no available variants and set prices
     const availableProducts = products.filter(product => {
       if (product.variants && product.variants.length > 0) {
