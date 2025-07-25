@@ -1,6 +1,6 @@
 const bcrypt = require('bcrypt');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Referral, ReferralMethod, Role, Connect } = require("../../../models");
+const { User, UserAddress, Referral, ReferralMethod, Role, Connect, MailSubscription } = require("../../../models");
 const jwt = require("jsonwebtoken")
 const sendEmail = require("../../../library/sendEmail");
 const constants = require('../../../config/constants');
@@ -244,8 +244,17 @@ const userProfile = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        // Fetch MailSubscription data for this user
+        const subscription = await MailSubscription.findOne({
+            where: { user_id },
+            attributes: ['email', 'subscribed', 'isDiscountUsed', 'createdAt', 'updatedAt']
+        });
+
         // return res.status(200).json({ success: true, data: user });
-        successResponse(res, user,  'Success');
+        successResponse(res, {
+            ...user.toJSON(),
+            subscription: subscription ? subscription.toJSON() : null
+        },  'Success');
 
     } catch (error) {
         console.error('Error fetching user profile:', error);
