@@ -487,6 +487,7 @@ module.exports.createProductVariants = async (req, res) => {
         // Handle variants data
         const variantsData = parseVariantsData(req.body.variants);
         if (!Array.isArray(variantsData)) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Variants must be an array" }, "Invalid variants format", 400);
         }
 
@@ -495,18 +496,25 @@ module.exports.createProductVariants = async (req, res) => {
 
         const createdVariants = await Promise.all(variantsData.map(async (variant) => {
             if (variant.purchase_price && variant.purchase_price >= variant.regular_price) {
-                return errorResponse(res, { message: "Purchase price must be less than selling price"}, "Purchase price must be less than selling price" , 400);
-                // throw new Error("Purchase price must be less than selling price");
+                throw new Error("Purchase price must be less than selling price");
             }
             await validateVariantData(variant, product_id, transaction);
             return await createVariantAndAttributes(variant, product_id, updated_by, transaction);
         }));
 
         await transaction.commit();
-        const newVariants = await fetchCreatedVariants(createdVariants);
-        return successResponse(res, newVariants, "Product variants created successfully", 201);
+        
+        try {
+            const newVariants = await fetchCreatedVariants(createdVariants);
+            return successResponse(res, newVariants, "Product variants created successfully", 201);
+        } catch (fetchError) {
+            logger.error('Fetch Created Variants Error:', fetchError);
+            return errorResponse(res, fetchError, fetchError.message);
+        }
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Create Product Variants Error:', error);
         return errorResponse(res, error, error.message);
     }

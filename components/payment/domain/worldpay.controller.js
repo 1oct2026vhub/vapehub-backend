@@ -2562,7 +2562,8 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
         const mailSubscription = await MailSubscription.findOne({
             where: { 
                 email: order.user.email,
-                isDiscountUsed: false
+                isDiscountUsed: false,
+                subscribed: true
             }
         });
 
