@@ -205,14 +205,21 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             const minAmountForLoyaltyPoints = loyaltySettings.min_amount_for_loyalty_points || 0;
                             
                             if (parseFloat(orderSubtotal) >= parseFloat(minAmountForLoyaltyPoints)) {
-                                await User.update({
-                                    loyalty_points: sequelize.literal(`loyalty_points + ${loyaltySettings.points_value}`)
+                                let pointsToAdd;
+                                if (loyaltySettings.amount_divisor && parseFloat(loyaltySettings.amount_divisor) > 0) {
+                                    pointsToAdd = Math.floor(parseFloat(orderSubtotal) / parseFloat(loyaltySettings.amount_divisor));
+                                } else {
+                                    pointsToAdd = parseFloat(loyaltySettings.points_value);
+                                }
+                                if (pointsToAdd > 0) {
+                                    await User.update({
+                                        loyalty_points: sequelize.literal(`loyalty_points + ${pointsToAdd}`)
                                     }, {
-                                      where: {
-                                        id: order.user_id
-                                      }
-                                });
-                                
+                                        where: {
+                                            id: order.user_id
+                                        }
+                                    });
+                                }
                             }
                         }
                     }

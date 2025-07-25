@@ -3,8 +3,8 @@ const { successResponse, errorResponse } = require('../../../../utils/responseUt
 
 module.exports.createConnect = async (req, res) => {
   try {
-    const { send_us_a_message, call_us, social_media, facebook, whatsapp, instagram, email, phone_number } = req.body;
-    const connect = await Connect.create({ send_us_a_message, call_us, social_media, facebook, whatsapp, instagram, email, phone_number });
+    const { send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number } = req.body;
+    const connect = await Connect.create({ send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number });
     return successResponse(res, connect, 'Connect info created successfully');
   } catch (error) {
     return errorResponse(res, error, error.message);
@@ -34,10 +34,10 @@ module.exports.getConnectById = async (req, res) => {
 module.exports.updateConnect = async (req, res) => {
   try {
     const { id } = req.params;
-    const { send_us_a_message, call_us, social_media, facebook, whatsapp, instagram, email, phone_number } = req.body;
+    const { send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number } = req.body;
     const connect = await Connect.findByPk(id);
     if (!connect) return errorResponse(res, {}, 'Connect info not found', 404);
-    await connect.update({ send_us_a_message, call_us, social_media, facebook, whatsapp, instagram, email, phone_number });
+    await connect.update({ send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number });
     return successResponse(res, connect, 'Connect info updated successfully');
   } catch (error) {
     return errorResponse(res, error, error.message);

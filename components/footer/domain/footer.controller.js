@@ -1,4 +1,4 @@
-const { FooterSection, FooterLink } = require('../../../models');
+const { FooterSection, FooterLink, Connect } = require('../../../models');
 
 const getFooterSections = async (req, res) => {
   try {
@@ -25,10 +25,24 @@ const getFooterSections = async (req, res) => {
         section.links.sort((a, b) => a.order - b.order);
       }
     });
+
+    // Fetch latest Connect row for social links
+    const connect = await Connect.findOne({
+      order: [['updated_at', 'DESC']]
+    });
+
+    const socialLinks = connect ? {
+      facebook: connect.facebook || null,
+      instagram: connect.instagram || null,
+      twitter: connect.twitter || null,
+      phone_number: connect.phone_number || null,
+      email: connect.email || null
+    } : { facebook: null, instagram: null, twitter: null, phone_number: null, email: null };
     
     res.json({
       success: true,
-      data: sections
+      data: sections,
+      socialLinks
     });
   } catch (error) {
     res.status(500).json({
