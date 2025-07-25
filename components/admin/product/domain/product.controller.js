@@ -453,8 +453,49 @@ module.exports.getProductById = async (req, res, next) => {
             });
         }
 
+        // Extract largest puff count from number-of-puffs attribute
+        let puffCount = null;
+        if (product.productAttributeTerms) {
+            const puffAttributes = product.productAttributeTerms.filter(pat => 
+                pat.attribute && pat.attribute.name === 'number-of-puffs'
+            );
+            
+            if (puffAttributes.length > 0) {
+                let maxPuffCount = 0;
+                let maxPuffTerm = null;
+                
+                puffAttributes.forEach(puffAttribute => {
+                    if (puffAttribute.term) {
+                        // Find all numbers in the string
+                        const puffMatches = puffAttribute.term.name.match(/(\d+)/g);
+                        if (puffMatches) {
+                            // Use the largest number in the string
+                            const count = Math.max(...puffMatches.map(Number));
+                            if (count > maxPuffCount) {
+                                maxPuffCount = count;
+                                maxPuffTerm = puffAttribute.term.name;
+                            }
+                        }
+                    }
+                });
+                if (maxPuffCount > 0) {
+                    if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                        puffCount = `~${maxPuffCount} puffs`;
+                    } else {
+                        puffCount = maxPuffTerm;
+                    }
+                }
+            }
+        }
+
+        // Add puff count to the product response
+        const productResponse = {
+            ...product.toJSON(),
+            puff_count: puffCount
+        };
+
         // Return success response with the retrieved product data
-        return successResponse(res, product, "Product retrieved successfully");
+        return successResponse(res, productResponse, "Product retrieved successfully");
     } catch (error) {
         // Handle any unexpected errors and return an appropriate error response
         return errorResponse(res, error, error.message);
