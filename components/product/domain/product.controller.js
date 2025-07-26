@@ -1325,6 +1325,18 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                     attributes: ['id', 'name']
                 },
                 {
+                    model: ProductVariant,
+                    as: 'variants',
+                    where: { status: 'active' },
+                    include: [
+                        {
+                            model: ProductVariantImage,
+                            as: 'variantImages',
+                            attributes: ['id', 'image_url', 'is_primary']
+                        }
+                    ]
+                },
+                {
                     model: Deal,
                     as: 'deals',
                     through: { 
@@ -1352,7 +1364,7 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 'id', 
                 'name', 
                 'slug', 
-                'description', 
+                // 'description', 
                 'price', 
                 'discount_price',
                 'stock_quantity',
@@ -1395,6 +1407,9 @@ module.exports.getDealsByCategory = async (req, res, next) => {
 
         // Transform the response
         const transformedProducts = productsWithActiveDeals.map(product => {
+            // Get minimum price variant using the helper function
+            const minPriceVariant = getMinPriceVariant(product);
+            
             const primaryImage = product.ProductImages && product.ProductImages.length > 0 
                 ? product.ProductImages[0] 
                 : null;
@@ -1404,8 +1419,9 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 name: product.name,
                 slug: product.slug,
                 description: product.description,
-                price: product.price,
-                discount_price: product.discount_price,
+                price: minPriceVariant ? minPriceVariant.price : product.price,
+                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
+                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 stock_quantity: product.stock_quantity,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
@@ -1819,6 +1835,18 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     required: false
                 },
                 {
+                    model: ProductVariant,
+                    as: 'variants',
+                    where: { status: 'active' },
+                    include: [
+                        {
+                            model: ProductVariantImage,
+                            as: 'variantImages',
+                            attributes: ['id', 'image_url', 'is_primary']
+                        }
+                    ]
+                },
+                {
                     model: ProductAttributeTerm,
                     as: 'productAttributeTerms',
                     include: [
@@ -1839,7 +1867,6 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 'id', 
                 'name', 
                 'slug', 
-                'description', 
                 'price', 
                 'discount_price',
                 'stock_quantity',
@@ -1924,6 +1951,9 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 ? product.ProductImages[0] 
                 : null;
 
+            // Get minimum price variant using the helper function
+            const minPriceVariant = getMinPriceVariant(product);
+
             // Group attributes for the response
             const attributeTermsMap = new Map();
             product.productAttributeTerms.forEach((pat) => {
@@ -1950,9 +1980,9 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
-                description: product.description,
-                price: product.price,
-                discount_price: product.discount_price,
+                price: minPriceVariant ? minPriceVariant.price : product.price,
+                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
+                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 stock_quantity: product.stock_quantity,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
@@ -2056,7 +2086,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 valid_from: { [Op.lte]: new Date() },
                 valid_to: { [Op.gte]: new Date() }
             },
-            attributes: ['id', 'name', 'slug']
+            attributes: ['id', 'name', 'slug', 'fixed_price', 'discount_percent', 'tiered_qty_json', 'bundle_product_ids_json']
         });
   
         if (!deal) {
