@@ -1337,6 +1337,22 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                     ]
                 },
                 {
+                    model: ProductAttributeTerm,
+                    as: 'productAttributeTerms',
+                    include: [
+                        { 
+                            model: Attribute, 
+                            as: 'attribute',
+                            attributes: ['id', 'name', 'type', 'image_url'] 
+                        },
+                        { 
+                            model: AttributeTerm, 
+                            as: 'term',
+                            attributes: ['id', 'name', 'slug'] 
+                        }
+                    ]
+                },
+                {
                     model: Deal,
                     as: 'deals',
                     through: { 
@@ -1410,6 +1426,50 @@ module.exports.getDealsByCategory = async (req, res, next) => {
             // Get minimum price variant using the helper function
             const minPriceVariant = getMinPriceVariant(product);
             
+            // Puff count extraction logic (copied from product.helper.js)
+            let puffCount = null;
+            if (product.productAttributeTerms) {
+                const puffAttributes = product.productAttributeTerms.filter(pat => 
+                    pat.attribute && pat.attribute.name === 'number-of-puffs'
+                );
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    puffAttributes.forEach(pat => {
+                        if (pat.term) {
+                            const puffMatches = pat.term.name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = pat.term.name;
+                                }
+                            }
+                        }
+                    });
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
+                    }
+                }
+            }
+
+            // Flavor count extraction logic (copied from product.helper.js)
+            let flavorTerms = [];
+            if (product.productAttributeTerms) {
+                flavorTerms = product.productAttributeTerms
+                    .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+                    .map(pat => ({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug
+                    }));
+            }
+            const flavor_count = flavorTerms.length;
+            
             const primaryImage = product.ProductImages && product.ProductImages.length > 0 
                 ? product.ProductImages[0] 
                 : null;
@@ -1423,6 +1483,8 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
                 discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 stock_quantity: product.stock_quantity,
+                puff_count: puffCount,
+                flavor_count: flavor_count,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: product.Categories && product.Categories.length > 0 ? {
@@ -1954,6 +2016,50 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             // Get minimum price variant using the helper function
             const minPriceVariant = getMinPriceVariant(product);
 
+            // Puff count extraction logic (copied from product.helper.js)
+            let puffCount = null;
+            if (product.productAttributeTerms) {
+                const puffAttributes = product.productAttributeTerms.filter(pat => 
+                    pat.attribute && pat.attribute.name === 'number-of-puffs'
+                );
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    puffAttributes.forEach(pat => {
+                        if (pat.term) {
+                            const puffMatches = pat.term.name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = pat.term.name;
+                                }
+                            }
+                        }
+                    });
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
+                    }
+                }
+            }
+
+            // Flavor count extraction logic (copied from product.helper.js)
+            let flavorTerms = [];
+            if (product.productAttributeTerms) {
+                flavorTerms = product.productAttributeTerms
+                    .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+                    .map(pat => ({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug
+                    }));
+            }
+            const flavor_count = flavorTerms.length;
+
             // Group attributes for the response
             const attributeTermsMap = new Map();
             product.productAttributeTerms.forEach((pat) => {
@@ -1984,6 +2090,8 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
                 discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 stock_quantity: product.stock_quantity,
+                puff_count: puffCount,
+                flavor_count: flavor_count,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: product.Categories && product.Categories.length > 0 ? {
