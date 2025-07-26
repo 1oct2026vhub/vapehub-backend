@@ -1446,7 +1446,10 @@ module.exports = {
           include: [{
             model: Product,
             as: 'product',
-            where: { deletedAt: null }
+            where: { 
+              deletedAt: null,
+              status: 'published'
+            }
           }]
         }),
         
@@ -1456,7 +1459,10 @@ module.exports = {
           include: [{
             model: Product,
             as: 'product',
-            where: { deletedAt: null }
+            where: { 
+              deletedAt: null,
+              status: 'published'
+            }
           }]
         }),
         
@@ -1466,7 +1472,10 @@ module.exports = {
           include: [{
             model: Product,
             as: 'product',
-            where: { deletedAt: null }
+            where: { 
+              deletedAt: null,
+              status: 'published'
+            }
           }]
         }),
         
@@ -1478,7 +1487,10 @@ module.exports = {
           include: [{
             model: Product,
             as: 'product',
-            where: { deletedAt: null }
+            where: { 
+              deletedAt: null,
+              status: 'published'
+            }
           }],
           attributes: ['id', 'stock', 'low_stock_threshold']
         }).then(variants => {
@@ -1584,7 +1596,7 @@ module.exports = {
             COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
             COALESCE(SUM(oi.quantity), 0) as totalSales
           FROM product_variants pv
-          INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+          INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
           LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('completed', 'delivered')
@@ -1633,7 +1645,10 @@ module.exports = {
               model: Product,
               as: 'product',
               attributes: ['id', 'name', 'slug'],
-              where: { deletedAt: null }
+              where: { 
+                deletedAt: null,
+                status: 'published'
+              }
             },
             {
               model: ProductVariantImage,
@@ -1727,7 +1742,7 @@ module.exports = {
               pvi.id as 'variantImages.id',
               pvi.image_url as 'variantImages.image_url'
             FROM product_variants pv
-            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
             LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
             WHERE pv.deleted_at IS NULL 
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
@@ -1768,7 +1783,7 @@ module.exports = {
           const countSql = `
             SELECT COUNT(*) as total
             FROM product_variants pv
-            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL
+            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
             WHERE pv.deleted_at IS NULL 
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
             ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
@@ -1790,7 +1805,10 @@ module.exports = {
                 model: Product,
                 as: 'product',
                 attributes: ['id', 'name', 'slug'],
-                where: { deletedAt: null }
+                where: { 
+                  deletedAt: null,
+                  status: 'published'
+                }
               },
               {
                 model: ProductVariantImage,
@@ -1933,7 +1951,7 @@ module.exports = {
           where: { deleted_at: { [Op.ne]: null } }
         })
       ]);
-
+      console.log(totalDeletedVariants, deletedProducts, deletedVariants);
       // Build WHERE clause for filtering
       const whereClause = {
         deleted_at: { [Op.ne]: null }
