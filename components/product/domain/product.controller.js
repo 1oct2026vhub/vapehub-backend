@@ -2033,3 +2033,226 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
     }
 };
 
+module.exports.getDealProducts = async (req, res, next) => {
+    try {
+        const { deal_id } = req.params;
+        const { limit = 10, offset = 0 } = req.query;
+  
+        // Parse limit and offset as integers
+        const parsedLimit = parseInt(limit);
+        const parsedOffset = parseInt(offset);
+  
+        // Validate deal_id
+        if (!deal_id || isNaN(parseInt(deal_id))) {
+            return errorResponse(res, null, 'Invalid deal ID provided');
+        }
+  
+        // First, check if the deal exists and is active
+        const deal = await Deal.findOne({
+            where: {
+                id: deal_id,
+                is_active: true,
+                is_deleted: false,
+                valid_from: { [Op.lte]: new Date() },
+                valid_to: { [Op.gte]: new Date() }
+            },
+            attributes: ['id', 'name', 'slug']
+        });
+  
+        if (!deal) {
+            return errorResponse(res, null, 'Deal not found or not active');
+        }
+  
+        // Get total count of products in this deal
+        const totalCount = await DealProduct.count({
+            where: { deal_id: parseInt(deal_id) }
+        });
+  
+        // Fetch deal products with full product details
+        const dealProducts = await DealProduct.findAll({
+            where: { deal_id: parseInt(deal_id) },
+            include: [
+                {
+                    model: Product,
+                    as: 'product',
+                    attributes: ['id', 'name', 'slug', 'price'],
+                    where: { status: 'published' },
+                    include: [
+                        {
+                            model: Category,
+                            as: 'Categories',
+                            through: { attributes: ['is_primary'] }
+                        },
+                        {
+                            model: Brand,
+                            as: 'Brands',
+                            through: { attributes: ['is_primary'] }
+                        },
+                        {
+                            model: ProductVariant,
+                            as: 'variants',
+                            where: { status: 'active' },
+                            include: [
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    include: [
+                                        { 
+                                            model: Attribute, 
+                                            as: 'attribute', 
+                                            attributes: ['id', 'name', 'type', 'image_url'] 
+                                        },
+                                        { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
+                                    ]
+                                },
+                                {
+                                    model: ProductVariantImage,
+                                    as: 'variantImages',
+                                    attributes: ['id', 'variant_id', 'image_url', 'is_primary']
+                                }
+                            ]
+                        },
+                        {
+                            model: ProductImage,
+                            as: 'ProductImages',
+                            attributes: ['id', 'product_id', 'image_url', 'is_primary']
+                        }
+                    ]
+                }
+            ],
+            limit: parsedLimit,
+            offset: parsedOffset,
+            order: [['createdAt', 'DESC']]
+        });
+  
+        // Transform the data to include deal information and use getMinPriceVariant for pricing with Promise.all for speed
+        const transformedProducts = await Promise.all(dealProducts.map(async (dealProduct) => {
+            const product = dealProduct.product;
+            
+            // Get minimum price variant using the helper function (this runs in parallel)
+            const minPriceVariant = getMinPriceVariant(product);
+            
+            // Get primary category and brand
+            const primaryCategory = product.Categories && product.Categories.length > 0 
+                ? product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0]
+                : null;
+            
+            const primaryBrand = product.Brands && product.Brands.length > 0
+                ? product.Brands.find(brand => brand.ProductBrand?.is_primary) || product.Brands[0]
+                : null;
+  
+            // Get primary product image
+            const primaryImage = product.ProductImages && product.ProductImages.length > 0
+                ? product.ProductImages.find(img => img.is_primary) || product.ProductImages[0]
+                : null;
+  
+            return {
+                id: product.id,
+                name: product.name,
+                slug: product.slug,
+                price: minPriceVariant ? minPriceVariant.price : product.price,
+                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
+                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+                stock_quantity: product.stock_quantity,
+                puff_count: product.puff_count,
+                is_new: product.is_new,
+                battery_capacity: product.battery_capacity,
+                coil_style: product.coil_style,
+                device_style: product.device_style,
+                eliquid_capacity: product.eliquid_capacity,
+                pod_coil_style: product.pod_coil_style,
+                pod_fill_style: product.pod_fill_style,
+                power_supply: product.power_supply,
+                nicotine_strength: product.nicotine_strength,
+                nicotine_type: product.nicotine_type,
+                vg_ratio: product.vg_ratio,
+                vaping_style: product.vaping_style,
+                bottle_size: product.bottle_size,
+                status: product.status,
+                created_at: product.createdAt,
+                updated_at: product.updatedAt,
+                category: primaryCategory ? {
+                    id: primaryCategory.id,
+                    name: primaryCategory.name,
+                    slug: primaryCategory.slug
+                } : null,
+                brand: primaryBrand ? {
+                    id: primaryBrand.id,
+                    name: primaryBrand.name,
+                    slug: primaryBrand.slug
+                } : null,
+                primary_image: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    is_primary: primaryImage.is_primary
+                } : null,
+                min_price_variant: minPriceVariant,
+                variants: product.variants.map(variant => ({
+                    id: variant.id,
+                    slug: variant.slug,
+                    price: variant.price,
+                    regular_price: variant.regular_price,
+                    discount_price: variant.discount_price,
+                    stock: variant.stock,
+                    stock_status: variant.stock_status,
+                    status: variant.status,
+                    attributes: variant.variantAttributes.map(va => ({
+                        attribute: {
+                            id: va.attribute.id,
+                            name: va.attribute.name,
+                            type: va.attribute.type,
+                            image_url: va.attribute.image_url
+                        },
+                        term: {
+                            id: va.term.id,
+                            name: va.term.name,
+                            slug: va.term.slug
+                        }
+                    })),
+                    images: variant.variantImages.map(img => ({
+                        id: img.id,
+                        url: img.image_url,
+                        is_primary: img.is_primary
+                    }))
+                }))
+            };
+        }));
+  
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+        const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
+  
+        const response = {
+            deal: {
+                id: deal.id,
+                name: deal.name,
+                slug: deal.slug
+            },
+            products: transformedProducts.map(product => ({
+                id: product.id,
+                name: product.name,
+                slug: product.slug,
+                price: product.price,
+                regular_price: product.regular_price,
+                discount_price: product.discount_price,
+                image: product.min_price_variant?.variant_image || product.primary_image
+            })),
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parsedLimit,
+                offset: parsedOffset,
+                has_next: currentPage < totalPages,
+                has_prev: currentPage > 1
+            }
+        };
+  
+        return successResponse(res, response, 'Deal products retrieved successfully');
+    } catch (error) {
+        console.log(error);
+        logger.error('Error getting deal products:', error);
+        return errorResponse(res, error, error.message);
+    }
+  };
+
