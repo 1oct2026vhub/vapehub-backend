@@ -491,12 +491,10 @@ const fetchProducts = async (query, status = 'published') => {
       include: includeClause,
       distinct: true
     });
-    console.log(totalCount);
 
     // Calculate pagination
     const totalPages = Math.ceil(totalCount / parsedLimit);
     const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
-    console.log(totalPages, currentPage, parsedLimit, parsedOffset);
     
     // Define attributes to select for Product, excluding 'description'
     const productAttributes = [
@@ -521,7 +519,6 @@ const fetchProducts = async (query, status = 'published') => {
       offset: parsedOffset,
       distinct: true
     });
-    // console.log(products);
     // Filter out products with no available variants and set prices
     const availableProducts = products.filter(product => {
       if (product.variants && product.variants.length > 0) {
