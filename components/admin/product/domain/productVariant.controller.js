@@ -742,7 +742,7 @@ module.exports.updateProductVariant = async (req, res) => {
         const { product_id } = req.params;
         const variantData = req.body;
         const { id: updated_by } = req.user;
-
+        console.log(variantData);
         // Fetch the existing variant
         const existingVariant = await ProductVariant.findByPk(variant_id, { transaction });
         if (!existingVariant) {
@@ -798,8 +798,12 @@ module.exports.updateProductVariant = async (req, res) => {
                     throw new Error("This exact attribute combination already exists for another variant of this product");
                 }
             }
+        }        
+        // If variant data price is not present, null, 0, or undefined, set it to existing variant price
+        if (!variantData.regular_price || variantData.regular_price === 0 || variantData.regular_price === null || variantData.regular_price === undefined) {
+            variantData.regular_price = existingVariant.regular_price;
         }
-
+        
         // Update basic info
         const updatedVariant = await updateVariantRecord(variant_id, variantData, updated_by, transaction);
         // Separate stock from other variant data to avoid double updates
