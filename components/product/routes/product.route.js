@@ -1979,4 +1979,393 @@ router.get('/more-like-this',
     productController.getMoreLikeThisProducts
 );
 
+/**
+ * @swagger
+ * /api/product/deal/{deal_id}/products:
+ *   get:
+ *     summary: Get all products associated with a specific deal
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: path
+ *         name: deal_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the deal to get products for
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of products to return per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           minimum: 0
+ *         description: Number of products to skip for pagination
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved deal products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deal:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Deal ID
+ *                         name:
+ *                           type: string
+ *                           description: Deal name
+ *                         slug:
+ *                           type: string
+ *                           description: Deal slug
+ *                         image_url:
+ *                           type: string
+ *                           description: Deal image URL
+ *                           nullable: true
+ *                         deal_type:
+ *                           type: string
+ *                           description: Type of deal
+ *                         required_qty:
+ *                           type: integer
+ *                           description: Required quantity for deal
+ *                           nullable: true
+ *                         get_qty:
+ *                           type: integer
+ *                           description: Quantity to get in deal
+ *                           nullable: true
+ *                         fixed_price:
+ *                           type: number
+ *                           format: decimal
+ *                           description: Fixed price for deal
+ *                           nullable: true
+ *                         discount_percent:
+ *                           type: integer
+ *                           description: Discount percentage
+ *                           nullable: true
+ *                         tiered_qty_json:
+ *                           type: object
+ *                           description: JSON object for tiered quantity deals
+ *                           nullable: true
+ *                         bundle_product_ids_json:
+ *                           type: array
+ *                           description: Array of product IDs for bundle deals
+ *                           nullable: true
+ *                         valid_from:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Deal start date
+ *                         valid_to:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Deal end date
+ *                     products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             description: Product ID
+ *                           name:
+ *                             type: string
+ *                             description: Product name
+ *                           slug:
+ *                             type: string
+ *                             description: Product slug
+ *                           price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Minimum variant price
+ *                           regular_price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Regular price from minimum variant
+ *                           discount_price:
+ *                             type: number
+ *                             format: decimal
+ *                             description: Discount price from minimum variant
+ *                             nullable: true
+ *                           stock_quantity:
+ *                             type: integer
+ *                             description: Product stock quantity
+ *                           puff_count:
+ *                             type: integer
+ *                             description: Number of puffs
+ *                             nullable: true
+ *                           is_new:
+ *                             type: boolean
+ *                             description: Whether product is new
+ *                           battery_capacity:
+ *                             type: string
+ *                             description: Battery capacity
+ *                             nullable: true
+ *                           coil_style:
+ *                             type: string
+ *                             description: Coil style
+ *                             nullable: true
+ *                           device_style:
+ *                             type: string
+ *                             description: Device style
+ *                             nullable: true
+ *                           eliquid_capacity:
+ *                             type: string
+ *                             description: E-liquid capacity
+ *                             nullable: true
+ *                           pod_coil_style:
+ *                             type: string
+ *                             description: Pod coil style
+ *                             nullable: true
+ *                           pod_fill_style:
+ *                             type: string
+ *                             description: Pod fill style
+ *                             nullable: true
+ *                           power_supply:
+ *                             type: string
+ *                             description: Power supply
+ *                             nullable: true
+ *                           nicotine_strength:
+ *                             type: string
+ *                             description: Nicotine strength
+ *                             nullable: true
+ *                           nicotine_type:
+ *                             type: string
+ *                             description: Nicotine type
+ *                             nullable: true
+ *                           vg_ratio:
+ *                             type: string
+ *                             description: VG ratio
+ *                             nullable: true
+ *                           vaping_style:
+ *                             type: string
+ *                             description: Vaping style
+ *                             nullable: true
+ *                           bottle_size:
+ *                             type: string
+ *                             description: Bottle size
+ *                             nullable: true
+ *                           status:
+ *                             type: string
+ *                             description: Product status
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product creation date
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                             description: Product last update date
+ *                           category:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           brand:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               slug:
+ *                                 type: string
+ *                           primary_image:
+ *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               url:
+ *                                 type: string
+ *                               is_primary:
+ *                                 type: boolean
+ *                           min_price_variant:
+ *                             type: object
+ *                             nullable: true
+ *                             description: Minimum price variant information
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               slug:
+ *                                 type: string
+ *                               price:
+ *                                 type: number
+ *                               regular_price:
+ *                                 type: number
+ *                               discount_price:
+ *                                 type: number
+ *                                 nullable: true
+ *                               variant_image:
+ *                                 type: object
+ *                                 nullable: true
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   url:
+ *                                     type: string
+ *                                   is_primary:
+ *                                     type: boolean
+ *                           variants:
+ *                             type: array
+ *                             description: All product variants
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 slug:
+ *                                   type: string
+ *                                 price:
+ *                                   type: number
+ *                                 regular_price:
+ *                                   type: number
+ *                                 discount_price:
+ *                                   type: number
+ *                                   nullable: true
+ *                                 stock:
+ *                                   type: integer
+ *                                 stock_status:
+ *                                   type: string
+ *                                 status:
+ *                                   type: string
+ *                                 attributes:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       attribute:
+ *                                         type: object
+ *                                         properties:
+ *                                           id:
+ *                                             type: integer
+ *                                           name:
+ *                                             type: string
+ *                                           type:
+ *                                             type: string
+ *                                           image_url:
+ *                                             type: string
+ *                                             nullable: true
+ *                                       term:
+ *                                         type: object
+ *                                         properties:
+ *                                           id:
+ *                                             type: integer
+ *                                           name:
+ *                                             type: string
+ *                                           slug:
+ *                                             type: string
+ *                                 images:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       id:
+ *                                         type: integer
+ *                                       url:
+ *                                         type: string
+ *                                       is_primary:
+ *                                         type: boolean
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of products in the deal
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *                         has_next:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         has_prev:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
+ *                 message:
+ *                   type: string
+ *                   example: "Deal products retrieved successfully"
+ *       400:
+ *         description: Bad request - Invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid deal ID provided"
+ *                 error:
+ *                   type: string
+ *       404:
+ *         description: Deal not found or not active
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Deal not found or not active"
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/deal/:deal_id/products',
+    validateRequest([
+        param('deal_id').isInt({ min: 1 }).withMessage('Deal ID must be a positive integer'),
+        query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+    ]),
+    productController.getDealProducts
+);
+
 module.exports = router;
