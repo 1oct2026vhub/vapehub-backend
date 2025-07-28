@@ -9,7 +9,7 @@ const { productStatus } = require("../../../config/constants");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
             ...req.query,
             status: productStatus.PUBLISHED
         });
@@ -20,8 +20,8 @@ module.exports.listAllproducts = async (req, res, next) => {
             // allAttributes,
             category:category_items,
             brand:brand_items,
-            deal:deal_items,
-            price_ranges, 
+al_items,
+es, 
             pagination
         }, 'Success');
         
@@ -2229,7 +2229,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
 module.exports.getDealProducts = async (req, res, next) => {
     try {
         const { deal_id } = req.params;
-        const { limit = 10, offset = 0 } = req.query;
+        const { limit = 10, offset = 0, product_id } = req.query;
   
         // Parse limit and offset as integers
         const parsedLimit = parseInt(limit);
@@ -2258,7 +2258,10 @@ module.exports.getDealProducts = async (req, res, next) => {
   
         // Get total count of products in this deal
         const totalCount = await DealProduct.count({
-            where: { deal_id: parseInt(deal_id) },
+            where: {
+                deal_id: parseInt(deal_id),
+                ...(product_id ? { product_id: { [Op.ne]: parseInt(product_id) } } : {})
+            },
             include: [{
                 model: Product,
                 as: 'product',
@@ -2269,7 +2272,10 @@ module.exports.getDealProducts = async (req, res, next) => {
   
         // Fetch deal products with full product details
         const dealProducts = await DealProduct.findAll({
-            where: { deal_id: parseInt(deal_id) },
+            where: {
+                deal_id: parseInt(deal_id),
+                ...(product_id ? { product_id: { [Op.ne]: parseInt(product_id) } } : {})
+            },
             include: [
                 {
                     model: Product,
@@ -2323,7 +2329,6 @@ module.exports.getDealProducts = async (req, res, next) => {
             offset: parsedOffset,
             order: [['createdAt', 'DESC']]
         });
-  
         // Transform the data to include deal information and use getMinPriceVariant for pricing with Promise.all for speed
         const transformedProducts = await Promise.all(dealProducts.map(async (dealProduct) => {
             const product = dealProduct.product;
