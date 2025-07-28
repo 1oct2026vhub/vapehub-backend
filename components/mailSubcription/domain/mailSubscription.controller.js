@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { MailSubscription } = require("../../../models");
+const { MailSubscription, User } = require("../../../models");
 
 
 
@@ -92,18 +92,36 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
     try {
         const user_id = req.user.id;
         // Find the mail subscription by user_id
-        const mailSubscription = await MailSubscription.findOne({ where: { user_id } });
+        let mailSubscription = await MailSubscription.findOne({ where: { user_id } });
+        
+        let isNewlyCreated = false;
         
         if (!mailSubscription) {
-            throw {
-                statusCode: 404,
-                message: 'User subscription not found'
+            // Get user details to create new subscription
+            const user = await User.findByPk(user_id);
+            if (!user) {
+                throw {
+                    statusCode: 404,
+                    message: 'User not found'
+                }
             }
+            // Create new mail subscription with isDiscountUsed set to true
+            mailSubscription = await MailSubscription.create({
+                user_id: user_id,
+                email: user.email,
+                subscribed: true,
+                isDiscountUsed: true
+            });
+            isNewlyCreated = true;
         }
-        // Toggle the subscribed status
-        const newStatus = !mailSubscription.subscribed;
-        mailSubscription.subscribed = newStatus;
-        await mailSubscription.save();
+        
+        // Only toggle the subscribed status if it's not newly created
+        let newStatus = mailSubscription.subscribed;
+        if (!isNewlyCreated) {
+            newStatus = !mailSubscription.subscribed;
+            mailSubscription.subscribed = newStatus;
+            await mailSubscription.save();
+        }
 
         const action = newStatus ? 'subscribed' : 'unsubscribed';
         const message = `Successfully ${action} from mail subscription`;
