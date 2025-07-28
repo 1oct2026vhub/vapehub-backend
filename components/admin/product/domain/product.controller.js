@@ -45,10 +45,9 @@ module.exports.listAllProducts = async (req, res, next) => {
         }
 
         // Status filter
-        if (status) {
+        if (status && status !== 'all') {
             whereClause[Op.and].push({ status });
-        }
-        else {
+        } else if (!status) {
             whereClause[Op.and].push({ status: 'published' });
         }
 
