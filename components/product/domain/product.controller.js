@@ -2257,7 +2257,13 @@ module.exports.getDealProducts = async (req, res, next) => {
   
         // Get total count of products in this deal
         const totalCount = await DealProduct.count({
-            where: { deal_id: parseInt(deal_id) }
+            where: { deal_id: parseInt(deal_id) },
+            include: [{
+                model: Product,
+                as: 'product',
+                required: true,
+                where: { status: 'published' }
+            }]
         });
   
         // Fetch deal products with full product details

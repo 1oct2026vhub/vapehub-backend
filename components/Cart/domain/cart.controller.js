@@ -70,7 +70,6 @@ module.exports.listCartItems = async (req, res, next) => {
         // Get applicable deals and calculate discounts
         const deals = await dealService.getApplicableDeals(carts);
         const { totalDiscount, appliedDeals, itemDiscounts } = dealService.calculateDealDiscounts(carts, deals);
-
         // 1. Build a map: deal_id => total quantity in cart for that deal
         const dealQuantities = {};
         carts.forEach(item => {

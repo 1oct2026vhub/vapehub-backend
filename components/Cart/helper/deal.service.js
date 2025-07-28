@@ -81,7 +81,6 @@ class DealService {
         const eligibleItems = cartItems.filter(item => 
             deal.products.some(p => p.id === item.product_id)
         );
-
         if (eligibleItems.length === 0) {
             return { discount: 0, items: [] };
         }
@@ -106,7 +105,6 @@ class DealService {
             const dealPricePerItem = deal.fixed_price / deal.required_qty;
             const dealSubtotal = (itemsInDealSets * dealPricePerItem) + (remainingQty * unitPrice);
             const itemDiscount = originalSubtotal - dealSubtotal;
-          
             return {
                 cart_item_id: item.id,
                 product_id: item.product_id,
@@ -121,11 +119,9 @@ class DealService {
                 applied_deals: [`${deal.name} (${completeSets} sets)`]
             };
         });
-
         // Calculate totals
         const totalDiscount = itemDetails.reduce((sum, item) => sum + item.total_discount, 0);
         const totalPrice = itemDetails.reduce((sum, item) => sum + item.subtotal, 0);
-
         return {
             discount: totalDiscount,
             items: itemDetails.map(item => ({
