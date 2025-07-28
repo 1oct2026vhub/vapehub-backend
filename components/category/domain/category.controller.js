@@ -140,13 +140,14 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             req.query.source = 'category';
         }
         // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
-        const {additionalData, products, brand_items, attributes, price_ranges, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
 
         return successResponse(res, { 
             ...additionalData,
             products,
             brand: brand_items, 
             attributes,
+            deal:deal_items,
             price_ranges,
             pagination
         }, "Success");

@@ -9,7 +9,7 @@ const { productStatus } = require("../../../config/constants");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+        const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
             ...req.query,
             status: productStatus.PUBLISHED
         });
@@ -20,6 +20,7 @@ module.exports.listAllproducts = async (req, res, next) => {
             // allAttributes,
             category:category_items,
             brand:brand_items,
+            deal:deal_items,
             price_ranges, 
             pagination
         }, 'Success');
@@ -2257,7 +2258,13 @@ module.exports.getDealProducts = async (req, res, next) => {
   
         // Get total count of products in this deal
         const totalCount = await DealProduct.count({
-            where: { deal_id: parseInt(deal_id) }
+            where: { deal_id: parseInt(deal_id) },
+            include: [{
+                model: Product,
+                as: 'product',
+                required: true,
+                where: { status: 'published' }
+            }]
         });
   
         // Fetch deal products with full product details

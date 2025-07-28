@@ -99,13 +99,14 @@ module.exports.getBrandBySlug = async (req, res, next) => {
         }
         req.query.brand = `${brand.id}`;
         req.query.source = 'brand';
-        const {additionalData, products, attributes, category_items, price_ranges, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, attributes, category_items, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
 
         return successResponse(res, { 
             ...additionalData, 
             products, 
             attributes,  
             category:category_items,
+            deal:deal_items,
             price_ranges, 
             pagination 
         }, "Success");
