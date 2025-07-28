@@ -2022,6 +2022,12 @@ router.get('/more-like-this',
  *           default: 0
  *           minimum: 0
  *         description: Number of products to skip for pagination
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Product ID to exclude from the results (e.g., the current product being viewed)
  *     responses:
  *       200:
  *         description: Successfully retrieved deal products
@@ -2376,7 +2382,8 @@ router.get('/deal/:deal_id/products',
     validateRequest([
         param('deal_id').isInt({ min: 1 }).withMessage('Deal ID must be a positive integer'),
         query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
-        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
+        query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
+        query('product_id').optional().isInt().withMessage('Product ID must be an integer')
     ]),
     productController.getDealProducts
 );
