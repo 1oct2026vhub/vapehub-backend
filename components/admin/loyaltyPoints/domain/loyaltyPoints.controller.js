@@ -82,6 +82,7 @@ module.exports = {
                 minimum_points_redemption,
                 minimum_purchase_amount,
                 min_amount_for_loyalty_points,
+                amount_divisor,
                 status
             } = req.body;
 
@@ -116,6 +117,10 @@ module.exports = {
                 return errorResponse(res, {}, 'Minimum amount for loyalty points cannot be negative', 400);
             }
 
+            if (amount_divisor !== undefined && amount_divisor <= 0) {
+                return errorResponse(res, {}, 'Amount divisor must be greater than 0', 400);
+            }
+
             // Create new setting
             const newSetting = await LoyaltyPointsSettings.create({
                 program_name: program_name.trim(),
@@ -125,6 +130,7 @@ module.exports = {
                 minimum_points_redemption: minimum_points_redemption !== undefined ? minimum_points_redemption : 100,
                 minimum_purchase_amount: minimum_purchase_amount !== undefined ? minimum_purchase_amount : 0.0,
                 min_amount_for_loyalty_points: min_amount_for_loyalty_points !== undefined ? min_amount_for_loyalty_points : 0.0,
+                amount_divisor: amount_divisor !== undefined ? amount_divisor : 1.0,
                 status: status !== undefined ? status : true,
                 updated_by: userId
             });
@@ -165,6 +171,7 @@ module.exports = {
                 minimum_points_redemption,
                 minimum_purchase_amount,
                 min_amount_for_loyalty_points,
+                amount_divisor,
                 status
             } = req.body;
 
@@ -205,6 +212,10 @@ module.exports = {
                 return errorResponse(res, {}, 'Minimum amount for loyalty points cannot be negative', 400);
             }
 
+            if (amount_divisor !== undefined && amount_divisor !== null && amount_divisor <= 0) {
+                return errorResponse(res, {}, 'Amount divisor must be greater than 0', 400);
+            }
+
             // Update setting
             const updateData = {};
             
@@ -215,6 +226,7 @@ module.exports = {
             if (minimum_points_redemption !== undefined) updateData.minimum_points_redemption = minimum_points_redemption;
             if (minimum_purchase_amount !== undefined) updateData.minimum_purchase_amount = minimum_purchase_amount;
             if (min_amount_for_loyalty_points !== undefined) updateData.min_amount_for_loyalty_points = min_amount_for_loyalty_points;
+            if (amount_divisor !== undefined) updateData.amount_divisor = amount_divisor;
             if (status !== undefined) updateData.status = status;
             
             updateData.updated_by = userId;

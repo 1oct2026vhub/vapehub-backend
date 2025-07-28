@@ -679,6 +679,18 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                             attributes: ['id', 'variant_id', 'image_url', 'is_primary']
                         }
                     ]
+                },
+                {
+                    model: Deal,
+                    as: 'deals',
+                    through: { attributes: [] },
+                    where: {
+                        is_active: true,
+                        is_deleted: false,
+                        valid_from: { [Op.lte]: new Date() },
+                        valid_to: { [Op.gte]: new Date() }
+                    },
+                    required: false
                 }
             ]
         });
@@ -758,7 +770,22 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
            regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
            discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
            min_price_variant: minPriceVariant,
-           attributeTerms
+           attributeTerms,
+           deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
+               id: deal.id,
+               name: deal.name,
+               slug: deal.slug,
+               image_url: deal.image_url,
+               deal_type: deal.deal_type,
+               required_qty: deal.required_qty,
+               get_qty: deal.get_qty,
+               fixed_price: deal.fixed_price,
+               discount_percent: deal.discount_percent,
+               tiered_qty_json: deal.tiered_qty_json,
+               bundle_product_ids_json: deal.bundle_product_ids_json,
+               valid_from: deal.valid_from,
+               valid_to: deal.valid_to
+           })) : []
        };
         successResponse(res, response, 'Success');
     } catch (error) {
@@ -1923,6 +1950,18 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                             attributes: ['id', 'name', 'slug'] 
                         }
                     ]
+                },
+                {
+                    model: Deal,
+                    as: 'deals',
+                    through: { attributes: [] },
+                    where: {
+                        is_active: true,
+                        is_deleted: false,
+                        valid_from: { [Op.lte]: new Date() },
+                        valid_to: { [Op.gte]: new Date() }
+                    },
+                    required: false
                 }
             ],
             attributes: [
@@ -2110,6 +2149,21 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     is_primary: primaryImage.is_primary
                 } : null,
                 attribute_terms: Array.from(attributeTermsMap.values()),
+                deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
+                    id: deal.id,
+                    name: deal.name,
+                    slug: deal.slug,
+                    image_url: deal.image_url,
+                    deal_type: deal.deal_type,
+                    required_qty: deal.required_qty,
+                    get_qty: deal.get_qty,
+                    fixed_price: deal.fixed_price,
+                    discount_percent: deal.discount_percent,
+                    tiered_qty_json: deal.tiered_qty_json,
+                    bundle_product_ids_json: deal.bundle_product_ids_json,
+                    valid_from: deal.valid_from,
+                    valid_to: deal.valid_to
+                })) : [],
                 similarity: {
                     score: Math.round(similarityScore * 100) / 100, // Round to 2 decimal places
                     category_matches: categoryMatches,
