@@ -222,6 +222,22 @@ const fetchProducts2 = async (query) => {
   }
 }
 
+/**
+ * Enhanced fetchProducts function with comprehensive filtering including deal filtering
+ * @param {Object} query - Query parameters for filtering products
+ * @param {string} status - Product status filter (default: 'published')
+ * @returns {Object} Object containing products, filter options, and pagination
+ * 
+ * Query parameters:
+ * - deal_id: Filter products by specific deal ID
+ * - categories: Filter by category IDs (comma-separated)
+ * - brand: Filter by brand IDs (comma-separated)
+ * - price_range: Filter by price range (format: "min-max" or "200+")
+ * - keyword: Search products by name
+ * - variant: Filter by variant attributes
+ * - is_new: Filter for new products (last 30 days)
+ * - source: Source context ("category", "brand", "deal")
+ */
 const fetchProducts = async (query, status = 'published') => {
   try {
     const {
@@ -694,7 +710,7 @@ const fetchProducts = async (query, status = 'published') => {
       : "";
 
     // 1. Fetch categories with product counts - WITH category filter
-    // For category_items: Filters by keyword, price_range, brand, variant, and is_new
+    // For category_items: Filters by keyword, price_range, brand, variant, is_new, and deal_id
     // Updated: Use product_categories junction table
     const categoryResults = await sequelize.query(`
       WITH product_price_ranges AS (
@@ -712,9 +728,11 @@ const fetchProducts = async (query, status = 'published') => {
           products p
         WHERE
           p.deletedAt IS NULL
+          AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
+          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
       )
       SELECT 
         c.id, 
@@ -735,7 +753,7 @@ const fetchProducts = async (query, status = 'published') => {
     });
 
     // 2. Fetch brands with product counts - WITH brand filter
-    // For brand_items: Filters by keyword, price_range, category, variant, and is_new
+    // For brand_items: Filters by keyword, price_range, category, variant, is_new, and deal_id
     // Updated: Use product_brands junction table
     const brandResults = await sequelize.query(`
       WITH product_price_ranges AS (
@@ -753,9 +771,11 @@ const fetchProducts = async (query, status = 'published') => {
           products p
         WHERE
           p.deletedAt IS NULL
+          AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
+          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
       )
       SELECT 
         b.id, 
@@ -779,8 +799,16 @@ const fetchProducts = async (query, status = 'published') => {
     const attributeFilterConditions = [...productFilterConditions];
     const attributeFilterParams = {...productFilterParams};
     
-    // Note: Brand and category filtering for attributes is now handled through the junction tables
-    // in the main product filtering logic, so we don't need to add them here
+    // Add brand and category filtering for attributes
+    if (brand) {
+      attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (:brandIds))");
+      attributeFilterParams.brandIds = brand.split(',').map(Number);
+    }
+    
+    if (categories) {
+      attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (:categoryIds))");
+      attributeFilterParams.categoryIds = categories.split(',').map(Number);
+    }
 
     const attributeResults = await sequelize.query(`
       WITH filtered_products AS (
@@ -788,6 +816,7 @@ const fetchProducts = async (query, status = 'published') => {
         FROM products p
         LEFT JOIN product_attribute_terms pat ON p.id = pat.product_id
         WHERE p.deletedAt IS NULL
+        AND p.status = 'published'
         ${priceRange ? `
           AND EXISTS (
             SELECT 1
@@ -911,7 +940,7 @@ const fetchProducts = async (query, status = 'published') => {
     ];
 
     // 3. Fetch price ranges with product counts - WITH price range filter
-    // For price_ranges: Filters by keyword, brand, categories, variant, and is_new
+    // For price_ranges: Filters by keyword, brand, categories, variant, is_new, and deal_id
     // Note: priceRangeFilterConditions, priceRangeFilterParams, and priceRangeWhereClause are already defined above
     
     const priceRangeResults = await sequelize.query(`
@@ -930,9 +959,12 @@ const fetchProducts = async (query, status = 'published') => {
           products p
         WHERE
           p.deletedAt IS NULL
+          AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
+          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
       )
       SELECT 
         CASE 
@@ -976,6 +1008,64 @@ const fetchProducts = async (query, status = 'published') => {
         value: range.value
       };
     });
+
+    // 4. Fetch deals with product counts - WITH deal filter
+    // For deal_items: Filters by keyword, brand, categories, variant, is_new, and price_range
+    const dealResults = await sequelize.query(`
+      WITH product_price_ranges AS (
+        SELECT 
+          p.id as product_id,
+          (
+            SELECT MIN(pv2.price)
+            FROM product_variants pv2
+            WHERE 
+              pv2.product_id = p.id
+              AND pv2.status = 'active'
+              AND pv2.deleted_at IS NULL
+          ) as min_price
+        FROM 
+          products p
+        WHERE
+          p.deletedAt IS NULL
+          AND p.status = 'published'
+          ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
+          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
+          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+      )
+      SELECT 
+        d.id, 
+        d.name, 
+        d.slug, 
+        d.deal_type,
+        d.required_qty,
+        d.get_qty,
+        d.fixed_price,
+        d.discount_percent,
+        d.tiered_qty_json,
+        d.valid_from,
+        d.valid_to,
+        COUNT(DISTINCT dp.product_id) as product_count
+      FROM 
+        deals d
+      JOIN deal_products dp ON dp.deal_id = d.id
+      JOIN product_price_ranges ppr ON ppr.product_id = dp.product_id
+      WHERE
+        d.is_active = true 
+        AND d.is_deleted = false 
+        AND d.valid_from <= NOW() 
+        AND d.valid_to >= NOW()
+        AND ppr.min_price IS NOT NULL
+        ${deal_id ? `AND d.id = ${parseInt(deal_id)}` : ''}
+      GROUP BY 
+        d.id, d.name, d.slug, d.deal_type, d.required_qty, d.get_qty, d.fixed_price, d.discount_percent, d.tiered_qty_json, d.valid_from, d.valid_to
+      ORDER BY 
+        d.name
+    `, {
+      replacements: priceRangeFilterParams,
+      type: sequelize.QueryTypes.SELECT
+    });
+
     // Prepare additional data based on source
     const additionalData = {};
     if (source === "category" && availableProducts[0]?.Categories && availableProducts[0].Categories.length > 0) {
@@ -992,12 +1082,28 @@ const fetchProducts = async (query, status = 'published') => {
         name: primaryBrand.name,
         slug: primaryBrand.slug
       });
+    } else if (source === "deal" && dealResults && dealResults.length > 0) {
+      const deal = dealResults[0];
+      Object.assign(additionalData, {
+        id: deal.id,
+        name: deal.name,
+        slug: deal.slug,
+        deal_type: deal.deal_type,
+        required_qty: deal.required_qty,
+        get_qty: deal.get_qty,
+        fixed_price: deal.fixed_price,
+        discount_percent: deal.discount_percent,
+        tiered_qty_json: deal.tiered_qty_json,
+        valid_from: deal.valid_from,
+        valid_to: deal.valid_to
+      });
     }
     return {
       additionalData,
       products: availableProducts,
       category_items: categoryResults,
       brand_items: brandResults,
+      deal_items: dealResults,
       attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {
