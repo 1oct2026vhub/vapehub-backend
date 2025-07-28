@@ -105,7 +105,6 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
                     message: 'User not found'
                 }
             }
-            console.log("mailSubscription>>>", mailSubscription);
             // Create new mail subscription with isDiscountUsed set to true
             mailSubscription = await MailSubscription.create({
                 user_id: user_id,
@@ -113,7 +112,6 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
                 subscribed: true,
                 isDiscountUsed: true
             });
-            console.log("mailSubscription>>>", mailSubscription);
             isNewlyCreated = true;
         }
         
