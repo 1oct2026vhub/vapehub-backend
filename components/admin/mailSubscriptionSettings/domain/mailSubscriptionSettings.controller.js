@@ -421,7 +421,7 @@ module.exports = {
             
             const whereClause = {
                 deletedAt: null,
-                subscribed: true
+                // subscribed: true
             };
 
             if (search) {
