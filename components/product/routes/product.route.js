@@ -242,6 +242,19 @@ const multer = require("multer");
  *                                   type: string
  *                                 product_count:
  *                                   type: integer
+ *                     deal_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           deal_type:
+ *                             type: string
  *                     price_ranges:
  *                       type: array
  *                       items:

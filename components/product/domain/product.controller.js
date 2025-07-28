@@ -9,7 +9,7 @@ const { productStatus } = require("../../../config/constants");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const {additionalData, products, category_items, brand_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+        const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
             ...req.query,
             status: productStatus.PUBLISHED
         });
@@ -20,6 +20,7 @@ module.exports.listAllproducts = async (req, res, next) => {
             // allAttributes,
             category:category_items,
             brand:brand_items,
+            deal:deal_items,
             price_ranges, 
             pagination
         }, 'Success');
