@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { MailSubscription, User } = require("../../../models");
+const { MailSubscription, MailSubscriptionSettings, User } = require("../../../models");
 
 
 
@@ -137,3 +137,21 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+module.exports.getOneMailSubscriptionSetting = async (req, res, next) => {
+    try {
+        const setting = await MailSubscriptionSettings.findOne({
+            where: { status: true }
+        });
+
+        if (!setting) {
+            throw {
+                message: "No active mail subscription setting found"
+            };
+        }
+
+        successResponse(res, setting, 'Success');
+    } catch (error) {
+        errorResponse(res, error, error.message || 'Error retrieving subscription setting');
+    }
+};
