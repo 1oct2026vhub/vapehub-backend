@@ -445,7 +445,7 @@ module.exports.placeOrder = async (req, res, next) => {
                                 }
                             } else {
                                 // No entity restriction - apply to entire cart
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * calculatedTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
                             }
                             totalDiscount +=discount
@@ -520,7 +520,7 @@ module.exports.placeOrder = async (req, res, next) => {
                                 }
                             } else {
                                 // No entity restriction - apply to entire cart
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * calculatedTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
                             }
                             totalDiscount +=discount
