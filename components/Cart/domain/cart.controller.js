@@ -86,6 +86,7 @@ module.exports.listCartItems = async (req, res, next) => {
             const subtotal = price * item.quantity;
             const itemDiscount = itemDiscounts[item.id] || 0;
             const total = subtotal - itemDiscount;
+            const out_of_stock = item.variant ? item.variant.stock <= 0 : false;
 
             // Find the best deal for this item (if any)
             let show_deal_toast = false;
@@ -105,6 +106,7 @@ module.exports.listCartItems = async (req, res, next) => {
                 subtotal,
                 discount: itemDiscount,
                 total,
+                out_of_stock,
                 show_deal_toast,
                 deal_required_qty,
                 deal_qty_needed,
@@ -117,12 +119,13 @@ module.exports.listCartItems = async (req, res, next) => {
                 }))
             };
         });
-
+        const proceed_to_checkout = items.every(item=>!item.out_of_stock) 
         const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
         const total = subtotal - totalDiscount;
 
         const response = {
             items,
+            proceed_to_checkout,
             deals: appliedDeals.map(deal => ({
                 deal_id: deal.deal_id,
                 deal_name: deal.deal_name,
