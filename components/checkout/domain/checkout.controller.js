@@ -325,6 +325,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
         let loyaltyRedeem = false;
+        let totalDiscount = 0
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
@@ -399,7 +400,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                     discount_amount = referralDiscount;
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, total);
-                    total = Math.max(0, total - referralDiscount);
+                    totalDiscount += referralDiscount
+                    // total = Math.max(0, total - referralDiscount);
                     responseMessage = 'Referral code applied successfully';
                 }
                 coupon = referral.referral_coupon_code;
@@ -575,14 +577,15 @@ module.exports.applyCoupon = async (req, res, next) => {
                         discount_amount = applicableSubtotal;
                     }
                     // Apply discount to total
-                    total = Math.max(0, total - discount);
+                    totalDiscount+=discount
+                    // total = Math.max(0, total - discount);
                     referral_value = parseFloat(discount);
                     referral_value_type = discount_type;
                     responseMessage = `Coupon applied successfully to ${coupon.entity_type} items`;
                 } else {
                     // No entity restriction - apply to entire cart
                     if (coupon.discount_type === "percentage") {
-                        discount = (coupon.discount_value / 100) * subTotal;
+                        discount = (coupon.discount_value / 100) * total;
                         coupon_discount_value = coupon.discount_value;
                         discount_type = 'percentage';
                         discount_amount = (coupon.discount_value / 100) * total;
@@ -595,13 +598,14 @@ module.exports.applyCoupon = async (req, res, next) => {
 
                     // Apply maximum discount limit if set
                     if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                        discount = coupon.maximum_discount;
+                        discount = parseFloat(coupon.maximum_discount);
                     }
 
                     if (parseFloat(discount) > parseFloat(total)) {
                         discount = total;
                     }
-                    total = Math.max(0, total - discount);
+                    totalDiscount += discount
+                    // total = Math.max(0, total - discount);
                     referral_value = parseFloat(discount);
                     referral_value_type = discount_type;
                     responseMessage = 'Coupon applied successfully';
@@ -622,16 +626,19 @@ module.exports.applyCoupon = async (req, res, next) => {
                     const loyaltyAmountType = settings.loyalty_amount_type;
                     if(loyaltyAmountType === 'percentage'){
                         loyaltyDiscount = (loyaltyAmount / 100) * total;
-                        total = Math.max(0, total - loyaltyDiscount);
+                        totalDiscount += loyaltyDiscount
+                        // total = Math.max(0, total - loyaltyDiscount);
                     }else{
                         // Only apply loyalty discount if total is greater than loyalty amount
                         if(total > loyaltyAmount){
-                            total = Math.max(0, total - loyaltyAmount);
+                            // total = Math.max(0, total - loyaltyAmount);
+                            totalDiscount+=loyaltyAmount
                             loyaltyDiscount = loyaltyAmount;
                         }else{
                             // If total is less than or equal to loyalty amount, apply only the total
                             loyaltyDiscount = total;
-                            total = 0;
+                            // total = 0;
+                            totalDiscount = totalDiscount
                             throw {
                                 statusCode: 400,
                                 message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${total}).`
@@ -681,16 +688,22 @@ module.exports.applyCoupon = async (req, res, next) => {
 
                     if (discountType === 'percentage') {
                         mailSubscriptionDiscount = (discountAmount / 100) * total;
-                        total = Math.max(0, total - mailSubscriptionDiscount);
+                        totalDiscount += mailSubscriptionDiscount
+                        // total = Math.max(0, total - mailSubscriptionDiscount);
                     } else {
                         mailSubscriptionDiscount = Math.min(discountAmount, total);
-                        total = Math.max(0, total - mailSubscriptionDiscount);
+                        totalDiscount += mailSubscriptionDiscount
+                        // total = Math.max(0, total - mailSubscriptionDiscount);
                     }
                     mailSubscriptionDiscountType = discountType;
                 }
             }
         }
         
+        // Apply totalDiscount to total before adding shippingCost
+        if (totalDiscount > 0) {
+            total = Math.max(0, total - totalDiscount);
+        }
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
@@ -766,5 +779,6 @@ module.exports.applyCoupon = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
 
 

@@ -301,6 +301,8 @@ module.exports.placeOrder = async (req, res, next) => {
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
         let loyalty_flag = false;
+        let totalDiscount = 0
+
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -360,7 +362,8 @@ module.exports.placeOrder = async (req, res, next) => {
                         : referralValue;
                     // Ensure discount doesn't exceed subtotal
                     referralDiscount = Math.min(referralDiscount, calculatedTotal);
-                    calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    // calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    totalDiscount +=referralDiscount
                     referral_flag = true;
                     referralId = referral.id;
                 }
@@ -445,8 +448,8 @@ module.exports.placeOrder = async (req, res, next) => {
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
                             }
-
-                            calculatedTotal = Math.max(0, calculatedTotal - discount);
+                            totalDiscount +=discount
+                            // calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
@@ -520,8 +523,8 @@ module.exports.placeOrder = async (req, res, next) => {
                             discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
                             discount = Math.min(discount, coupon.maximum_discount || subTotal);
                             }
-
-                            calculatedTotal = Math.max(0, calculatedTotal - discount);
+                            totalDiscount +=discount
+                            // calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
                             referralDiscount = discount;
                             coupon_count_flag = true;
@@ -554,12 +557,14 @@ module.exports.placeOrder = async (req, res, next) => {
                     const loyaltyAmountType = settings.loyalty_amount_type;
                     if(loyaltyAmountType === 'percentage'){
                         loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
-                        calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+                        // calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+                        totalDiscount +=loyaltyDiscount
                     }else{
                         // Only apply loyalty discount if calculated total is greater than loyalty amount
                         if(calculatedTotal > loyaltyAmount){
                             loyaltyDiscount = loyaltyAmount;
-                            calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                            // calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                            totalDiscount += loyaltyDiscount
                             loyalty_flag = true;
                         }
                         // else{
@@ -611,17 +616,20 @@ module.exports.placeOrder = async (req, res, next) => {
 
                     if (discountType === 'percentage') {
                         mailSubscriptionDiscount = (discountAmount / 100) * calculatedTotal;
-                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                        // calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
                     } else {
                         mailSubscriptionDiscount = Math.min(discountAmount, calculatedTotal);
-                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                        // calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
                     }
+                    totalDiscount+=mailSubscriptionDiscount
                     mailSubscriptionDiscountType = discountType;
                     mailSubscription_flag = true;
                 }
             }
         }
-        
+        if (calculatedTotal > 0) {
+            calculatedTotal = calculatedTotal-totalDiscount
+        }
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
