@@ -155,4 +155,42 @@ router.post('/toggle',
     mailSubscriptionController.toggleMailSubscription
 );
 
+/**
+ * @swagger
+ * /api/mailSubscription/settings:
+ *   get:
+ *     tags:
+ *       - MailSubscriptionSettings
+ *     summary: Get a single mail subscription setting
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                 email_frequency:
+ *                   type: string
+ *                   enum: [daily, weekly, monthly, never]
+ *                 product_updates:
+ *                   type: boolean
+ *                 discount_notifications:
+ *                   type: boolean
+ *                 discount_amount:
+ *                   type: number
+ *                   format: float
+ *                 discount_type:
+ *                   type: string
+ *                   enum: [percentage, fixed]
+ *                 status:
+ *                   type: boolean
+ *       404:
+ *         description: Mail subscription setting not found
+ */
+router.get('/settings', mailSubscriptionController.getOneMailSubscriptionSetting);
+
+
 module.exports = router;
