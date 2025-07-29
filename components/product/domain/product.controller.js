@@ -21,7 +21,7 @@ module.exports.listAllproducts = async (req, res, next) => {
             category:category_items,
             brand:brand_items,
             deal:deal_items,
-            deals_text:deals_text,
+            // deals_text:deals_text,
             price_ranges, 
             pagination
         }, 'Success');
