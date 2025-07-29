@@ -1045,6 +1045,7 @@ const fetchProducts = async (query, status = 'published') => {
         d.tiered_qty_json,
         d.valid_from,
         d.valid_to,
+        d.image_url,
         COUNT(DISTINCT dp.product_id) as product_count
       FROM 
         deals d
