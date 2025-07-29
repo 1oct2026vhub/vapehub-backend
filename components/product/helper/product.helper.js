@@ -1066,10 +1066,10 @@ const fetchProducts = async (query, status = 'published') => {
       replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
-    let deals_text = ""
-    if(dealResults.length>0){
-      deals_text = `Get the most for your money with our amazing ${dealResults[0].required_qty} for £${dealResults[0].fixed_price} deal and ${dealResults[1].required_qty} for £${dealResults[1].fixed_price} offer on ${products[0].Categories[0].name} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They’re not our only multibuy deals, we have plenty more!`
-    }
+    // let deals_text = ""
+    // if(dealResults.length>0){
+    //   deals_text = `Get the most for your money with our amazing ${dealResults[0].required_qty} for £${dealResults[0].fixed_price} deal and ${dealResults[1].required_qty} for £${dealResults[1].fixed_price} offer on ${products[0].Categories[0].name} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They’re not our only multibuy deals, we have plenty more!`
+    // }
     
     // Prepare additional data based on source
     const additionalData = {};
@@ -1109,7 +1109,7 @@ const fetchProducts = async (query, status = 'published') => {
       category_items: categoryResults,
       brand_items: brandResults,
       deal_items: dealResults,
-      deals_text: deals_text,
+      // deals_text: deals_text,
       attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {
