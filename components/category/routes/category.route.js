@@ -263,6 +263,13 @@ router.delete('/:id', authenticateJWT,
  *           default: 0
  *         description: Number of items to skip
  *       - in: query
+ *         name: deal_id
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         required: false
+ *         description: Filter products by specific deal ID
+ *       - in: query
  *         name: productId
  *         schema:
  *           type: integer
@@ -274,6 +281,7 @@ router.delete('/:id', authenticateJWT,
 router.get('/slug/:slug',
     validateRequest([
         // param('slug').isString().withMessage('slug must be an string'),
+        query('deal_id').optional().isInt({ min: 1 }).withMessage('Deal ID must be a positive integer'),
         query('productId').optional().isInt().withMessage('productId must be an integer'),
     ]),
     categoryController.getCategoryBySlug

@@ -599,7 +599,7 @@ module.exports.placeOrder = async (req, res, next) => {
                 where: { 
                     email: user.email,
                     isDiscountUsed: false,
-                    subscribed: true
+                    // subscribed: true
                 }
             });
 
