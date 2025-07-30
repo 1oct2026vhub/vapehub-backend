@@ -212,7 +212,7 @@ module.exports.getSalesChart = async (req, res) => {
         const avgGrossDailySales = grossSales / days;
 
         // Net sales = gross sales - coupons used - refunded orders - shipping charged
-        const netSales = (grossSales || 0) - (couponsUsed || 0) - (refundedOrders || 0) - (shippingCharged || 0) - (loyaltyDiscount || 0) - (mailSubscriptionDiscount || 0);
+        const netSales = (grossSales || 0) - (couponsUsed || 0) - (refundedOrders || 0) - (shippingCharged || 0) ;       //- (loyaltyDiscount || 0) - (mailSubscriptionDiscount || 0)
         const avgNetDailySales = netSales / days;
         // Format summary
         const summary = {
