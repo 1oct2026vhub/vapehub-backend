@@ -97,6 +97,7 @@ module.exports.listAllDeals = async (req, res, next) => {
                 'bundle_product_ids_json',
                 'valid_from',
                 'valid_to',
+                'image_url',
                 'createdAt',
                 'updatedAt'
             ],
@@ -131,6 +132,7 @@ module.exports.getDealById = async (req, res, next) => {
                 'bundle_product_ids_json',
                 'valid_from',
                 'valid_to',
+                'image_url',
                 'createdAt',
                 'updatedAt'
             ]
