@@ -2402,8 +2402,11 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
 
-        // Update order status to processing
-        await order.update({ status: 'processing' });
+        // Update order status to processing and set ordered to true
+        await order.update({ 
+            status: 'processing',
+            ordered: true
+        });
 
         // Create order log for successful payment
         const existingOrderLog = await sequelize.models.OrderLog.findOne({

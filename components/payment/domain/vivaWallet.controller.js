@@ -10,7 +10,6 @@ const axios = require("axios");
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
-            console.log("webhookData>>>", req.body);
             const webhookData = req.body;
             // Handle Successfull transaction payment event (EventTypeId: 1796)
             if (webhookData.EventTypeId === 1796) {
@@ -96,15 +95,17 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         }
                     ]
                 });
-                console.log("order>>>", order);
                 if (!order) {
                     return errorResponse(res, {}, 'Order not found in database', 404);
                 }
                 let referenceNumber = parseInt(OrderCode).toString();
                 // Handle successful payment (StatusId: F)
                 if (StatusId === "F") {
-                    // Update order status to processing
-                    await order.update({ status: 'processing' });
+                    // Update order status to processing and set ordered to true
+                    await order.update({ 
+                        status: 'processing',
+                        ordered: true
+                    });
 
                     // Create order log for successful payment
                     await sequelize.models.OrderLog.create({
