@@ -257,7 +257,6 @@ const fetchProducts = async (query, status = 'published') => {
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
-
     // Validate price range format
     let priceRange = null;
     if (price_range) {
@@ -283,6 +282,17 @@ const fetchProducts = async (query, status = 'published') => {
         }
       } catch (error) {
         throw new Error('Invalid variant filter format: must be valid JSON');
+      }
+    }
+    
+    // Also check for attributes parameter (used by deals route)
+    if (!variant && query.attributes) {
+      try {
+        const attributesData = typeof query.attributes === 'string' ? JSON.parse(query.attributes) : query.attributes;
+        variantFilters = { attributes: attributesData };
+        console.log('Product helper - using attributes parameter:', attributesData);
+      } catch (error) {
+        throw new Error('Invalid attributes filter format: must be valid JSON');
       }
     }
     
