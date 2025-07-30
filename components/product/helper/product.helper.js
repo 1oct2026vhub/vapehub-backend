@@ -730,6 +730,20 @@ const fetchProducts = async (query, status = 'published') => {
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+          ${Object.keys(selectedAttributes).length > 0 ? `
+            AND EXISTS (
+              SELECT 1
+              FROM product_attribute_terms pat2
+              WHERE pat2.product_id = p.id
+              AND (
+                ${Object.entries(selectedAttributes)
+                  .map(([attrId, termIds]) => 
+                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
+                  )
+                  .join(' OR ')}
+              )
+            )
+          ` : ''}
       )
       SELECT 
         c.id, 
@@ -772,6 +786,20 @@ const fetchProducts = async (query, status = 'published') => {
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${Object.keys(selectedAttributes).length > 0 ? `
+            AND EXISTS (
+              SELECT 1
+              FROM product_attribute_terms pat2
+              WHERE pat2.product_id = p.id
+              AND (
+                ${Object.entries(selectedAttributes)
+                  .map(([attrId, termIds]) => 
+                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
+                  )
+                  .join(' OR ')}
+              )
+            )
+          ` : ''}
       )
       SELECT 
         b.id, 
@@ -1027,6 +1055,20 @@ const fetchProducts = async (query, status = 'published') => {
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${Object.keys(selectedAttributes).length > 0 ? `
+            AND EXISTS (
+              SELECT 1
+              FROM product_attribute_terms pat2
+              WHERE pat2.product_id = p.id
+              AND (
+                ${Object.entries(selectedAttributes)
+                  .map(([attrId, termIds]) => 
+                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
+                  )
+                  .join(' OR ')}
+              )
+            )
+          ` : ''}
       )
       SELECT 
         d.id, 
