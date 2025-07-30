@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -38,122 +38,160 @@ const getDealsForEntity = async (entityType, entityId) => {
         valid_to: { [Op.gte]: new Date() }
     };
 
-    let productsWithDeals;
+    let deals = [];
+    let categoryName = 'products';
 
     if (entityType === 'category') {
-        // Get deals for products in this category
-        productsWithDeals = await Product.findAll({
-            where: {
-                status: 'published'
-            },
-            include: [
-                {
-                    model: Category,
-                    as: 'Categories',
-                    where: { id: entityId },
-                    through: { attributes: ['is_primary'] },
-                    required: true
-                },
-                {
-                    model: Deal,
-                    as: 'deals',
-                    through: { 
-                        model: DealProduct,
-                        attributes: []
-                    },
-                    where: dealFilter,
-                    required: false,
-                    attributes: [
-                        'id', 
-                        'name', 
-                        'slug', 
-                        'deal_type', 
-                        'required_qty', 
-                        'get_qty', 
-                        'fixed_price', 
-                        'discount_percent', 
-                        'tiered_qty_json',
-                        'bundle_product_ids_json',
-                        'valid_from',
-                        'valid_to',
-                        'image_url',
-                        'createdAt'
-                    ]
-                }
-            ],
-            attributes: ['id', 'name', 'slug']
+        // Step 1: Get category details
+        const category = await Category.findByPk(entityId);
+        if (!category) {
+            return { deals: [], deals_text: '' };
+        }
+        categoryName = category.name;
+
+        // Step 2: Get product IDs from ProductCategory using category ID
+        const productCategories = await ProductCategory.findAll({
+            where: { category_id: entityId },
+            attributes: ['product_id']
         });
-    } else if (entityType === 'brand') {
-        // Get deals for products in this brand
-        productsWithDeals = await Product.findAll({
-            where: {
-                status: 'published'
-            },
+
+        if (productCategories.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const productIds = productCategories.map(pc => pc.product_id);
+
+        // Step 3: Get deal IDs from DealProduct using product IDs
+        const dealProducts = await DealProduct.findAll({
+            where: { product_id: { [Op.in]: productIds } },
+            attributes: ['deal_id'],
             include: [
                 {
-                    model: Brand,
-                    as: 'Brands',
-                    where: { id: entityId },
-                    through: { attributes: ['is_primary'] },
-                    required: true
-                },
-                {
-                    model: Deal,
-                    as: 'deals',
-                    through: { 
-                        model: DealProduct,
-                        attributes: []
-                    },
-                    where: dealFilter,
-                    required: false,
-                    attributes: [
-                        'id', 
-                        'name', 
-                        'slug', 
-                        'deal_type', 
-                        'required_qty', 
-                        'get_qty', 
-                        'fixed_price', 
-                        'discount_percent', 
-                        'tiered_qty_json',
-                        'bundle_product_ids_json',
-                        'valid_from',
-                        'valid_to',
-                        'image_url',
-                        'createdAt'
-                    ]
+                    model: Product,
+                    as: 'product',
+                    where: { status: 'published' },
+                    attributes: ['id', 'name', 'slug']
                 }
-            ],
-            attributes: ['id', 'name', 'slug']
+            ]
+        });
+
+        if (dealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(dealProducts.map(dp => dp.deal_id))];
+
+        // Step 4: Get deal data from Deal using deal IDs
+        deals = await Deal.findAll({
+            where: {
+                id: { [Op.in]: dealIds },
+                ...dealFilter
+            },
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'deal_type', 
+                'required_qty', 
+                'get_qty', 
+                'fixed_price', 
+                'discount_percent', 
+                'tiered_qty_json',
+                'bundle_product_ids_json',
+                'valid_from',
+                'valid_to',
+                'image_url',
+                'createdAt'
+            ]
+        });
+
+        // Add product count to each deal
+        deals = deals.map(deal => {
+            const dealProductCount = dealProducts.filter(dp => dp.deal_id === deal.id).length;
+            return {
+                ...deal.toJSON(),
+                product_count: dealProductCount
+            };
+        });
+
+    } else if (entityType === 'brand') {
+        // Step 1: Get brand details
+        const brand = await Brand.findByPk(entityId);
+        if (!brand) {
+            return { deals: [], deals_text: '' };
+        }
+        categoryName = brand.name;
+
+        // Step 2: Get product IDs from ProductBrand using brand ID
+        const productBrands = await ProductBrand.findAll({
+            where: { brand_id: entityId },
+            attributes: ['product_id']
+        });
+
+        if (productBrands.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const productIds = productBrands.map(pb => pb.product_id);
+
+        // Step 3: Get deal IDs from DealProduct using product IDs
+        const dealProducts = await DealProduct.findAll({
+            where: { product_id: { [Op.in]: productIds } },
+            attributes: ['deal_id'],
+            include: [
+                {
+                    model: Product,
+                    as: 'product',
+                    where: { status: 'published' },
+                    attributes: ['id', 'name', 'slug']
+                }
+            ]
+        });
+
+        if (dealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(dealProducts.map(dp => dp.deal_id))];
+
+        // Step 4: Get deal data from Deal using deal IDs
+        deals = await Deal.findAll({
+            where: {
+                id: { [Op.in]: dealIds },
+                ...dealFilter
+            },
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'deal_type', 
+                'required_qty', 
+                'get_qty', 
+                'fixed_price', 
+                'discount_percent', 
+                'tiered_qty_json',
+                'bundle_product_ids_json',
+                'valid_from',
+                'valid_to',
+                'image_url',
+                'createdAt'
+            ]
+        });
+
+        // Add product count to each deal
+        deals = deals.map(deal => {
+            const dealProductCount = dealProducts.filter(dp => dp.deal_id === deal.id).length;
+            return {
+                ...deal.toJSON(),
+                product_count: dealProductCount
+            };
         });
     }
-
-    // Extract unique deals from products
-    const dealMap = new Map();
-    productsWithDeals.forEach(product => {
-        if (product.deals && product.deals.length > 0) {
-            product.deals.forEach(deal => {
-                if (!dealMap.has(deal.id)) {
-                    dealMap.set(deal.id, {
-                        ...deal.toJSON(),
-                        product_count: 1
-                    });
-                } else {
-                    dealMap.get(deal.id).product_count++;
-                }
-            });
-        }
-    });
-
-    const deals = Array.from(dealMap.values());
 
     // Generate deals text
     let dealsText = '';
     if (deals.length > 0) {
         const dealResults = deals.slice(0, 2); // Take first 2 deals
-        const categoryName = entityType === 'category' ? 
-            (productsWithDeals[0]?.Categories?.[0]?.name || 'products') :
-            (productsWithDeals[0]?.Brands?.[0]?.name || 'products');
 
         if (dealResults.length === 1) {
             const deal = dealResults[0];
@@ -313,7 +351,6 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     .join(',')})`)]
             ]
         });
-
         // Handle no matches
         if (!slugRelations.length) {
             return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
