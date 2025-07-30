@@ -127,9 +127,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
                     for (const item of order.orderItems) {
                         if (item.variant) {
+                            // Get current variant to check stock levels
+                            const variant = await ProductVariant.findByPk(item.variant.id);
+                            if (!variant) continue;
+
+                            // Calculate new stock level
+                            const newStock = variant.stock - item.quantity;
+                            
                             // Update variant stock
+                            const updateData = { stock: newStock };
+                            
+                            // Only update stock_status when stock is 0 or less
+                            if (newStock <= 0) {
+                                updateData.stock_status = 'out_of_stock';
+                            }
+
+                            // Update variant stock and status (if needed)
                             await ProductVariant.update(
-                                { stock: sequelize.literal(`stock - ${item.quantity}`) },
+                                updateData,
                                 { 
                                     where: { 
                                         id: item.variant.id,
@@ -1236,9 +1251,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     // Restore stock for refunded items
                     for (const item of order.orderItems) {
                         if (item.variant) {
-                            // Restore variant stock
+                            // Get current variant to check stock levels
+                            const variant = await ProductVariant.findByPk(item.variant.id);
+                            if (!variant) continue;
+
+                            // Calculate new stock level after restoration
+                            const newStock = variant.stock + item.quantity;
+                            
+                            // Update variant stock
+                            const updateData = { stock: newStock };
+                            
+                            // Only update stock_status when stock is 0 or less
+                            if (newStock <= 0) {
+                                updateData.stock_status = 'out_of_stock';
+                            }
+
+                            // Update variant stock and status (if needed)
                             await ProductVariant.update(
-                                { stock: sequelize.literal(`stock + ${item.quantity}`) },
+                                updateData,
                                 { 
                                     where: { 
                                         id: item.variant.id
