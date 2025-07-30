@@ -691,24 +691,23 @@ const fetchProducts = async (query, status = 'published') => {
     const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
       ? sqlAttributeFilterConditions.join(" OR ") 
       : "";
-
     // Prepare price range filter conditions for category and brand queries
-    const priceRangeFilterConditions = productFilterConditions.filter(condition => 
-      !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
-    );
+    // const priceRangeFilterConditions = productFilterConditions.filter(condition => 
+    //   !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
+    // );
+    const priceRangeFilterConditions = productFilterConditions;
     const priceRangeFilterParams = {...productFilterParams};
     
     // Add variant filter for price_ranges
-    let priceRangeVariantWhereClauseForPriceRange = "";
-    if (variantFilters.id) {
-      priceRangeVariantWhereClauseForPriceRange = "AND pv.id = :variantId";
-      priceRangeFilterParams.variantId = variantFilters.id;
-    }
+    // let priceRangeVariantWhereClauseForPriceRange = "";
+    // if (variantFilters.id) {
+    //   priceRangeVariantWhereClauseForPriceRange = "AND pv.id = :variantId";
+    //   priceRangeFilterParams.variantId = variantFilters.id;
+    // }
     
     const priceRangeWhereClause = priceRangeFilterConditions.length > 0 
       ? "WHERE " + priceRangeFilterConditions.join(" AND ") 
       : "";
-
     // 1. Fetch categories with product counts - WITH category filter
     // For category_items: Filters by keyword, price_range, brand, variant, is_new, and deal_id
     // Updated: Use product_categories junction table
@@ -730,8 +729,6 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
-          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
       )
       SELECT 
@@ -749,9 +746,10 @@ const fetchProducts = async (query, status = 'published') => {
         c.id, c.name, c.slug
     `, {
       replacements: priceRangeFilterParams,
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     });
-
+//  ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
+// ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
     // 2. Fetch brands with product counts - WITH brand filter
     // For brand_items: Filters by keyword, price_range, category, variant, is_new, and deal_id
     // Updated: Use product_brands junction table
@@ -773,8 +771,6 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
-          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
       )
       SELECT 
@@ -794,7 +790,8 @@ const fetchProducts = async (query, status = 'published') => {
       replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
-
+//  ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
+// ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
     // 3. Fetch attributes and terms with product counts - WITH attribute filter
     const attributeFilterConditions = [...productFilterConditions];
     const attributeFilterParams = {...productFilterParams};
@@ -961,8 +958,6 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
-          ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
       )
@@ -1066,11 +1061,16 @@ const fetchProducts = async (query, status = 'published') => {
       replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
+<<<<<<< HEAD
+    // ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
+    // ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
+=======
     // let deals_text = ""
     // if(dealResults.length>0){
     //   deals_text = `Get the most for your money with our amazing ${dealResults[0].required_qty} for £${dealResults[0].fixed_price} deal and ${dealResults[1].required_qty} for £${dealResults[1].fixed_price} offer on ${products[0].Categories[0].name} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They’re not our only multibuy deals, we have plenty more!`
     // }
     
+>>>>>>> 8c6c8bfa05621ed9bc3419a73a88b50c1e639773
     // Prepare additional data based on source
     const additionalData = {};
     if (source === "category" && availableProducts[0]?.Categories && availableProducts[0].Categories.length > 0) {
