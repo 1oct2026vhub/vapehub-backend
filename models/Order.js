@@ -729,6 +729,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0.00,
       comment: 'Discount amount from mail subscription'
     },
+    ordered: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: 'Flag to indicate if order has been processed'
+    },
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false,

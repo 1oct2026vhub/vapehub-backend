@@ -113,7 +113,8 @@ module.exports.getSalesChart = async (req, res) => {
         const whereClause = {
             createdAt: {
                 [Op.between]: [start, end]
-            }
+            },
+            ordered: true
         };
 
         // Build product filter condition
@@ -126,7 +127,6 @@ module.exports.getSalesChart = async (req, res) => {
                 )`)
             }
         } : {};
-
         // Chart data
         const salesData = await Order.findAll({
             attributes: [
@@ -144,7 +144,7 @@ module.exports.getSalesChart = async (req, res) => {
         });
 
         // Summary data
-        const [grossSales, ordersPlaced, itemsPurchased, refundedOrders, shippingCharged, couponsUsed] = await Promise.all([
+        const [grossSales, ordersPlaced, itemsPurchased, refundedOrders, shippingCharged, couponsUsed, loyaltyDiscount, mailSubscriptionDiscount] = await Promise.all([
             // Gross sales
             Order.sum('total', { 
                 where: {
@@ -163,7 +163,8 @@ module.exports.getSalesChart = async (req, res) => {
             sequelize.models.OrderItem.sum('quantity', {
                 where: {
                     order_id: {
-                        [Op.in]: sequelize.literal(`(SELECT id FROM orders WHERE createdAt BETWEEN '${start.toISOString()}' AND '${end.toISOString()}')`)
+                        [Op.in]: sequelize.literal(`(SELECT id FROM orders WHERE createdAt BETWEEN '${start.toISOString()}' AND '${end.toISOString()}' AND ordered = true)`)
+                        // [Op.in]: sequelize.literal(`(SELECT id FROM orders WHERE createdAt BETWEEN '${start.toISOString()}' AND '${end.toISOString()}')`)
                     },
                     ...(productId && productId !== '' ? { product_id: parseInt(productId) } : {})
                 }
@@ -189,6 +190,20 @@ module.exports.getSalesChart = async (req, res) => {
                     ...whereClause,
                     ...productFilter
                 }
+            }),
+            // Loyalty discount
+            Order.sum('loyalty_discount', { 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
+            }),
+            // Mail subscription discount
+            Order.sum('mailSubscription_discount', { 
+                where: {
+                    ...whereClause,
+                    ...productFilter
+                }
             })
         ]);
 
@@ -197,9 +212,8 @@ module.exports.getSalesChart = async (req, res) => {
         const avgGrossDailySales = grossSales / days;
 
         // Net sales = gross sales - coupons used - refunded orders - shipping charged
-        const netSales = (grossSales || 0) - (couponsUsed || 0) - (refundedOrders || 0) - (shippingCharged || 0);
+        const netSales = (grossSales || 0) - (couponsUsed || 0) - (refundedOrders || 0) - (shippingCharged || 0) - (loyaltyDiscount || 0) - (mailSubscriptionDiscount || 0);
         const avgNetDailySales = netSales / days;
-
         // Format summary
         const summary = {
             grossSales: grossSales || 0,
