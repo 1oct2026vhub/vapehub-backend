@@ -29,9 +29,9 @@ const adminAuth = [authMiddleware(true)];
  *               facebook:
  *                 type: string
  *                 example: "https://facebook.com/example"
- *               whatsapp:
+ *               twitter:
  *                 type: string
- *                 example: "https://wa.me/1234567890"
+ *                 example: "https://twitter.com/example"
  *               instagram:
  *                 type: string
  *                 example: "https://instagram.com/example"
@@ -115,9 +115,9 @@ router.get('/:id', adminAuth, contactusController.getConnectById);
  *               facebook:
  *                 type: string
  *                 example: "https://facebook.com/example"
- *               whatsapp:
+ *               twitter:
  *                 type: string
- *                 example: "https://wa.me/1234567890"
+ *                 example: "https://twitter.com/example"
  *               instagram:
  *                 type: string
  *                 example: "https://instagram.com/example"

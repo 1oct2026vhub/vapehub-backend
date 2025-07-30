@@ -1,5 +1,5 @@
+<!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,8 +13,7 @@
 
     .email-container {
       max-width: 600px;
-      margin:
-        0 auto;
+      margin: 0 auto;
       padding: 20px;
       background-color: #ffffff;
     }
@@ -23,8 +22,7 @@
       background-color: #2e8b57;
       padding: 15px;
       text-align: center;
-      color:
-        white;
+      color: white;
     }
 
     .logo {
@@ -39,16 +37,14 @@
     }
 
     .button {
-      display:
-        inline-block;
+      display: inline-block;
       padding: 12px 30px;
       background-color: #2e8b57;
       color: white;
       text-decoration: none;
       border-radius: 5px;
       margin: 20px 0;
-      font-weight:
-        bold;
+      font-weight: bold;
     }
 
     .footer {
@@ -58,48 +54,85 @@
       font-size: 12px;
     }
 
-    .referal-code {
-      margin: 20px 0 0 0;
+    .referral-code {
+      margin: 20px 0;
       font-size: 18px;
       font-weight: bold;
       color: #2e8b57;
-      text-align: center;
+      background-color: #f0f0f0;
       padding: 10px;
       border-radius: 5px;
-      background-color: #f5f5f5;
+      display: inline-block;
+    }
+
+    .steps {
+      text-align: left;
+      margin-top: 30px;
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    .steps h3 {
+      color: #2e8b57;
+    }
+
+    .steps ol {
+      padding-left: 20px;
+      line-height: 1.8;
     }
   </style>
 </head>
-
 <body>
   <div class="email-container">
     <div class="header">
-      <a href="{{FRONTEND_URL}}">
+      <a href="{{FRONTEND_URL}}" style="text-decoration: none; color: white;">
         <img src="{{host}}/public/images/logo.svg" alt="VapeHub Logo" class="logo" />
       </a>
     </div>
+
     <div class="content">
-      <h2>Invite Your Friends to Join VapeHub!</h2>
-      {{!-- <p>Hello {{userName}},</p> --}}
+      <h2>You've Been Invited to Join VapeHub!</h2>
+
       <p>
-        Hi there!
-        {{emailContent1}}
+        Hi there!<br />
+        {{emailContent1}}<br />
         {{emailContent2}}
       </p>
 
       {{#if token}}
-      <div class="referal-code">{{token}}</div>
+        <div class="referral-code">Your Referral Code: <strong>{{token}}</strong></div>
       {{/if}}
-      <a href="{{referralLink}}" target="_blank" class="button">Shop Now</a>
 
-      <p>Thank you for being part of our community!</p>
+      <a href="{{referralLink}}" target="_blank" class="button">Join & Get Your Discount</a>
+
+      {{#if emailContent2}}
+        <div class="steps">
+          <h3>How to Claim Your Referral Reward:</h3>
+          <ol>
+            <li>Click the "Join" button above or visit our registration page.</li>
+            <li>Fill in your email and password to create a free account.</li>
+            <li>Paste the referral code in the Coupon Code area at checkout to get your discount!</li>
+          </ol>
+        </div>
+      {{else}}
+        <div class="steps">
+          <h3>How to Create Your VapeHub Account:</h3>
+          <ol>
+            <li>Click the "Join" button above or go to our registration page.</li>
+            <li>Fill in your email and create a secure password.</li>
+            <li>Start shopping and enjoy our exclusive products!</li>
+          </ol>
+        </div>
+      {{/if}}
+
+      <p>Thanks for joining our community. Happy vaping! 💨</p>
     </div>
+
     <div class="footer">
       <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
       <p>If you have any questions, feel free to contact us.</p>
     </div>
   </div>
-
 </body>
-
 </html>

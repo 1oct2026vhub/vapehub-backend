@@ -301,6 +301,8 @@ module.exports.placeOrder = async (req, res, next) => {
         let loyaltyDiscount = 0;
         let loyaltyDiscountType = null;
         let loyalty_flag = false;
+        let totalDiscount = 0
+
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -354,13 +356,14 @@ module.exports.placeOrder = async (req, res, next) => {
                     }
                 }
 
-                if (referralValue && !isNaN(referralValue)) {
+                if (referralValue && !isNaN(parseFloat(referralValue))) {
                     referralDiscount = referralValueType === 'percentage' 
-                        ? (referralValue / 100) * calculatedTotal 
+                        ? (parseFloat(referralValue) / 100) * calculatedTotal 
                         : referralValue;
                     // Ensure discount doesn't exceed subtotal
-                    referralDiscount = Math.min(referralDiscount, calculatedTotal);
-                    calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    referralDiscount = Math.min(parseFloat(referralDiscount), parseFloat(calculatedTotal));
+                    // calculatedTotal = Math.max(0, calculatedTotal - referralDiscount);
+                    totalDiscount +=parseFloat(referralDiscount)
                     referral_flag = true;
                     referralId = referral.id;
                 }
@@ -433,7 +436,7 @@ module.exports.placeOrder = async (req, res, next) => {
 
                                 // Apply maximum discount limit if set
                                 if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                                    discount = coupon.maximum_discount;
+                                    discount = parseFloat(coupon.maximum_discount);
                                 }
 
                                 // Ensure discount doesn't exceed applicable subtotal
@@ -442,13 +445,13 @@ module.exports.placeOrder = async (req, res, next) => {
                                 }
                             } else {
                                 // No entity restriction - apply to entire cart
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            discount = coupon.discount_type === "percentage" ? (parseFloat(coupon.discount_value) / 100) * calculatedTotal : parseFloat(coupon.discount_value);
+                            discount = Math.min(parseFloat(discount), parseFloat(coupon.maximum_discount) || parseFloat(calculatedTotal));
                             }
-
-                            calculatedTotal = Math.max(0, calculatedTotal - discount);
+                            totalDiscount +=parseFloat(discount)
+                            // calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
-                            referralDiscount = discount;
+                            referralDiscount = parseFloat(discount);
                             coupon_count_flag = true;
                         }
                         // For non-single-use coupons, calculate normally
@@ -508,7 +511,7 @@ module.exports.placeOrder = async (req, res, next) => {
 
                                 // Apply maximum discount limit if set
                                 if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                                    discount = coupon.maximum_discount;
+                                    discount = parseFloat(coupon.maximum_discount);
                                 }
 
                                 // Ensure discount doesn't exceed applicable subtotal
@@ -517,13 +520,13 @@ module.exports.placeOrder = async (req, res, next) => {
                                 }
                             } else {
                                 // No entity restriction - apply to entire cart
-                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * subTotal : coupon.discount_value;
-                            discount = Math.min(discount, coupon.maximum_discount || subTotal);
+                            discount = coupon.discount_type === "percentage" ? (coupon.discount_value / 100) * calculatedTotal : coupon.discount_value;
+                            discount = Math.min(discount, coupon.maximum_discount || calculatedTotal);
                             }
-
-                            calculatedTotal = Math.max(0, calculatedTotal - discount);
+                            totalDiscount +=parseFloat(discount)
+                            // calculatedTotal = Math.max(0, calculatedTotal - discount);
                             discountType = discount_type;
-                            referralDiscount = discount;
+                            referralDiscount = parseFloat(discount);
                             coupon_count_flag = true;
                         }
                         else {
@@ -548,18 +551,20 @@ module.exports.placeOrder = async (req, res, next) => {
                 const user = await User.findOne({
                     where: { id: user_id }
                 });
-                if(user.loyalty_points >= settings.minimum_points_redemption){  // && total >= settings.minimum_purchase_amount
+                if(user.loyalty_points >= parseFloat(settings.minimum_points_redemption)){  // && total >= settings.minimum_purchase_amount
                     const points = user.loyalty_points;
-                    const loyaltyAmount = settings.loyalty_amount;
+                    const loyaltyAmount = parseFloat(settings.loyalty_amount);
                     const loyaltyAmountType = settings.loyalty_amount_type;
                     if(loyaltyAmountType === 'percentage'){
-                        loyaltyDiscount = (loyaltyAmount / 100) * calculatedTotal;
-                        calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+                        loyaltyDiscount = (parseFloat(loyaltyAmount) / 100) * calculatedTotal;
+                        // calculatedTotal = Math.max(0, calculatedTotal - loyaltyDiscount);
+                        totalDiscount +=parseFloat(loyaltyDiscount)
                     }else{
                         // Only apply loyalty discount if calculated total is greater than loyalty amount
                         if(calculatedTotal > loyaltyAmount){
-                            loyaltyDiscount = loyaltyAmount;
-                            calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                            loyaltyDiscount = parseFloat(loyaltyAmount);
+                            // calculatedTotal = Math.max(0, calculatedTotal - loyaltyAmount);
+                            totalDiscount += parseFloat(loyaltyDiscount)
                             loyalty_flag = true;
                         }
                         // else{
@@ -593,7 +598,8 @@ module.exports.placeOrder = async (req, res, next) => {
             const mailSubscription = await MailSubscription.findOne({
                 where: { 
                     email: user.email,
-                    isDiscountUsed: false
+                    isDiscountUsed: false,
+                    // subscribed: true
                 }
             });
 
@@ -610,18 +616,21 @@ module.exports.placeOrder = async (req, res, next) => {
                     const discountType = mailSettings.discount_type;
 
                     if (discountType === 'percentage') {
-                        mailSubscriptionDiscount = (discountAmount / 100) * calculatedTotal;
-                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                        mailSubscriptionDiscount = (parseFloat(discountAmount) / 100) * calculatedTotal;
+                        // calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
                     } else {
-                        mailSubscriptionDiscount = Math.min(discountAmount, calculatedTotal);
-                        calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
+                        mailSubscriptionDiscount = Math.min(parseFloat(discountAmount), parseFloat(calculatedTotal));
+                        // calculatedTotal = Math.max(0, calculatedTotal - mailSubscriptionDiscount);
                     }
+                    totalDiscount+=parseFloat(mailSubscriptionDiscount)
                     mailSubscriptionDiscountType = discountType;
                     mailSubscription_flag = true;
                 }
             }
         }
-        
+        if (calculatedTotal > 0) {
+            calculatedTotal = calculatedTotal-totalDiscount
+        }
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
         if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;

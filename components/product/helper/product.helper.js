@@ -1003,7 +1003,7 @@ const fetchProducts = async (query, status = 'published') => {
         value: range.value
       };
     });
-
+    
     // 4. Fetch deals with product counts - WITH deal filter
     // For deal_items: Filters by keyword, brand, categories, variant, is_new, and price_range
     const dealResults = await sequelize.query(`
@@ -1040,6 +1040,7 @@ const fetchProducts = async (query, status = 'published') => {
         d.tiered_qty_json,
         d.valid_from,
         d.valid_to,
+        d.image_url,
         COUNT(DISTINCT dp.product_id) as product_count
       FROM 
         deals d
@@ -1060,8 +1061,16 @@ const fetchProducts = async (query, status = 'published') => {
       replacements: priceRangeFilterParams,
       type: sequelize.QueryTypes.SELECT
     });
+<<<<<<< HEAD
     // ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
     // ${deal_id ? `AND EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = ${parseInt(deal_id)} AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())` : ''}
+=======
+    // let deals_text = ""
+    // if(dealResults.length>0){
+    //   deals_text = `Get the most for your money with our amazing ${dealResults[0].required_qty} for £${dealResults[0].fixed_price} deal and ${dealResults[1].required_qty} for £${dealResults[1].fixed_price} offer on ${products[0].Categories[0].name} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They’re not our only multibuy deals, we have plenty more!`
+    // }
+    
+>>>>>>> 8c6c8bfa05621ed9bc3419a73a88b50c1e639773
     // Prepare additional data based on source
     const additionalData = {};
     if (source === "category" && availableProducts[0]?.Categories && availableProducts[0].Categories.length > 0) {
@@ -1100,6 +1109,7 @@ const fetchProducts = async (query, status = 'published') => {
       category_items: categoryResults,
       brand_items: brandResults,
       deal_items: dealResults,
+      // deals_text: deals_text,
       attributes: Array.from(attributeMap.values()),
       price_ranges: priceRangeCounts,
       pagination: {

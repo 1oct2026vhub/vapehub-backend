@@ -162,7 +162,8 @@ module.exports.register = async (req, res, next) => {
                 else{
                     await MailSubscription.create({
                         user_id: user.id,
-                        email: email
+                        email: email,
+                        subscribed: true
                     });
                 }
             } catch (subscriptionError) {

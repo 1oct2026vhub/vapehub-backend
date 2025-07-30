@@ -141,7 +141,7 @@ const listAllProductsValidation = [
     check('limit').optional().isInt({ min: 1 }).withMessage('Limit must be a positive integer'),
     check('sort').optional().isString().withMessage('Sort must be a string'),
     check('filter').optional().isString().withMessage('Filter must be a string'),
-    check('status').optional().isIn(['draft', 'published', 'archived']).withMessage('Status must be one of: draft, published, archived'),
+    check('status').optional().isIn(['all','draft', 'published', 'archived']).withMessage('Status must be one of: draft, published, archived'),
 ];
 
 // Configure multer for handling Excel file uploads

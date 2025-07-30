@@ -248,7 +248,7 @@ const { productIdValidation, createProductValidation, updateProductValidations, 
  *         name: status
  *         schema:
  *           type: string
- *           enum: [draft, published, archived]
+ *           enum: [all, draft, published, archived]
  *         description: Filter products by status
  *     responses:
  *       200:
