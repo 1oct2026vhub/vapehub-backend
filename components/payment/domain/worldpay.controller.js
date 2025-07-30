@@ -2022,11 +2022,20 @@ const handleSentForRefund = async (order, webhookData) => {
         // Restore stock for refunded items
         for (const item of order.orderItems) {
             if (item.variant) {
-                // Restore variant stock
+                const variant = await ProductVariant.findByPk(item.variant.id);
+                if (!variant) continue;
+
+                const newStock = variant.stock + item.quantity;
+                const updateData = { stock: newStock };
+
+                if (newStock <= 0) {
+                    updateData.stock_status = 'out_of_stock';
+                }
+
                 await ProductVariant.update(
-                    { stock: sequelize.literal(`stock + ${item.quantity}`) },
-                    { 
-                        where: { 
+                    updateData,
+                    {
+                        where: {
                             id: item.variant.id
                         }
                     }
@@ -2448,11 +2457,20 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
 
         for (const item of order.orderItems) {
             if (item.variant) {
-                // Update variant stock
+                const variant = await ProductVariant.findByPk(item.variant.id);
+                if (!variant) continue;
+
+                const newStock = variant.stock - item.quantity;
+                const updateData = { stock: newStock };
+
+                if (newStock <= 0) {
+                    updateData.stock_status = 'out_of_stock';
+                }
+
                 await ProductVariant.update(
-                    { stock: sequelize.literal(`stock - ${item.quantity}`) },
-                    { 
-                        where: { 
+                    updateData,
+                    {
+                        where: {
                             id: item.variant.id,
                             stock: { [Op.gte]: item.quantity }
                         }
