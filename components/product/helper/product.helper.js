@@ -459,7 +459,7 @@ const fetchProducts = async (query, status = 'published') => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: attributeTermConditions.length > 0 ? { [Op.and]: attributeTermConditions } : {},
+        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
         required: attributeTermConditions.length > 0,
         include: [
           {
