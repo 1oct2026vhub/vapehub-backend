@@ -303,7 +303,6 @@ const fetchProducts = async (query, status = 'published') => {
       const isAttributeFormat = Object.entries(variantFilters).every(([key, value]) => {
         return !isNaN(key) && Array.isArray(value);
       });
-      
       if (isAttributeFormat) {
         variantFilters = { attributes: variantFilters };
         selectedAttributes = variantFilters.attributes;
@@ -460,7 +459,7 @@ const fetchProducts = async (query, status = 'published') => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
+        where: attributeTermConditions.length > 0 ? { [Op.and]: attributeTermConditions } : {},
         required: attributeTermConditions.length > 0,
         include: [
           {
