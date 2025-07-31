@@ -10,7 +10,6 @@ const axios = require("axios");
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
-            console.log("webhookData>>>", req.body);
             const webhookData = req.body;
             // Handle Successfull transaction payment event (EventTypeId: 1796)
             if (webhookData.EventTypeId === 1796) {
@@ -96,15 +95,17 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                         }
                     ]
                 });
-                console.log("order>>>", order);
                 if (!order) {
                     return errorResponse(res, {}, 'Order not found in database', 404);
                 }
                 let referenceNumber = parseInt(OrderCode).toString();
                 // Handle successful payment (StatusId: F)
                 if (StatusId === "F") {
-                    // Update order status to processing
-                    await order.update({ status: 'processing' });
+                    // Update order status to processing and set ordered to true
+                    await order.update({ 
+                        status: 'processing',
+                        ordered: true
+                    });
 
                     // Create order log for successful payment
                     await sequelize.models.OrderLog.create({
@@ -127,9 +128,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
 
                     for (const item of order.orderItems) {
                         if (item.variant) {
+                            // Get current variant to check stock levels
+                            const variant = await ProductVariant.findByPk(item.variant.id);
+                            if (!variant) continue;
+
+                            // Calculate new stock level
+                            const newStock = variant.stock - item.quantity;
+                            
                             // Update variant stock
+                            const updateData = { stock: newStock };
+                            
+                            // Only update stock_status when stock is 0 or less
+                            if (newStock <= 0) {
+                                updateData.stock_status = 'out_of_stock';
+                            }
+
+                            // Update variant stock and status (if needed)
                             await ProductVariant.update(
-                                { stock: sequelize.literal(`stock - ${item.quantity}`) },
+                                updateData,
                                 { 
                                     where: { 
                                         id: item.variant.id,
@@ -1236,9 +1252,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     // Restore stock for refunded items
                     for (const item of order.orderItems) {
                         if (item.variant) {
-                            // Restore variant stock
+                            // Get current variant to check stock levels
+                            const variant = await ProductVariant.findByPk(item.variant.id);
+                            if (!variant) continue;
+
+                            // Calculate new stock level after restoration
+                            const newStock = variant.stock + item.quantity;
+                            
+                            // Update variant stock
+                            const updateData = { stock: newStock };
+                            
+                            // Only update stock_status when stock is 0 or less
+                            if (newStock <= 0) {
+                                updateData.stock_status = 'out_of_stock';
+                            }
+
+                            // Update variant stock and status (if needed)
                             await ProductVariant.update(
-                                { stock: sequelize.literal(`stock + ${item.quantity}`) },
+                                updateData,
                                 { 
                                     where: { 
                                         id: item.variant.id
