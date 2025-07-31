@@ -4,7 +4,9 @@ const { fetchProducts } = require("../../product/helper/product.helper");
 
 module.exports.listAllcategories = async (req, res, next) => {
     try {
-        const Categories = await Category.findAll();
+        const Categories = await Category.findAll({
+            order: [['createdAt', 'DESC']]
+        });
         successResponse(res, Categories, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);

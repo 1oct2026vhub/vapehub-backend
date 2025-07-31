@@ -206,6 +206,36 @@ module.exports.checkout = async (req, res, next) => {
             validityMessage = ''
         }
 
+        // Get mail subscription data
+        let mailSubscriptionData = null;
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'email']
+        });
+        if (user && user.email) {
+            // Get user's mail subscription
+            const mailSubscription = await MailSubscription.findOne({
+                where: { 
+                    email: user.email
+                }
+            });
+            if (mailSubscription) {
+                // Get active mail subscription settings
+                const mailSettings = await MailSubscriptionSettings.findOne({
+                    where: { 
+                        status: true
+                    }
+                });
+                if (mailSettings) {
+                    mailSubscriptionData = {
+                        isDiscountUsed: mailSubscription.isDiscountUsed,
+                        discount_amount: parseFloat(mailSettings.discount_amount),
+                        discount_type: mailSettings.discount_type
+                    };
+                }
+            }
+        }
+
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
@@ -227,6 +257,7 @@ module.exports.checkout = async (req, res, next) => {
             validityMessage,
             referralDiscount,
             referralMessage,
+            mail_subscription_data: mailSubscriptionData,
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
@@ -660,6 +691,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         // Check for mail subscription discount (first purchase)
         let mailSubscriptionDiscount = 0;
         let mailSubscriptionDiscountType = null;
+        let mailSubscriptionData = null;
         const user = await User.findOne({
             where: { id: userId },
             attributes: ['id', 'email']
@@ -686,6 +718,13 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (mailSettings && mailSettings.discount_amount > 0) {
                     const discountAmount = mailSettings.discount_amount;
                     const discountType = mailSettings.discount_type;
+
+                    // Set mail_subscription_data
+                    mailSubscriptionData = {
+                        isDiscountUsed: false,
+                        discount_amount: parseFloat(discountAmount),
+                        discount_type: discountType
+                    };
 
                     if (discountType === 'percentage') {
                         mailSubscriptionDiscount = (parseFloat(discountAmount) / 100) * total;
@@ -770,6 +809,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             loyalty_redeem: loyaltyRedeem,
             mail_subscription_discount: mailSubscriptionDiscount,
             mail_subscription_discount_type: mailSubscriptionDiscountType,
+            mail_subscription_data: mailSubscriptionData,
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
