@@ -450,9 +450,10 @@ module.exports.getProductById = async (req, res, next) => {
                     variant.stock_status = 'out_of_stock';
                 } else if (variant.stock <= variant.low_stock_threshold) {
                     variant.stock_status = 'low_stock';
-                } else {
-                    variant.stock_status = 'in_stock';
                 }
+                //  else {
+                //     variant.stock_status = 'in_stock';
+                // }
             });
         }
 
@@ -496,7 +497,6 @@ module.exports.getProductById = async (req, res, next) => {
             ...product.toJSON(),
             puff_count: puffCount
         };
-
         // Return success response with the retrieved product data
         return successResponse(res, productResponse, "Product retrieved successfully");
     } catch (error) {

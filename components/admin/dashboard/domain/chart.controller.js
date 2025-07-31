@@ -11,9 +11,11 @@ const getDateRange = (period, startDate, endDate) => {
 
     // If custom date range is provided
     if (period === 'custom' && startDate && endDate) {
+        const endDateWithExtraDay = new Date(endDate);
+        endDateWithExtraDay.setDate(endDateWithExtraDay.getDate() + 1);
         return {
             start: new Date(startDate),
-            end: new Date(endDate)
+            end: endDateWithExtraDay
         };
     }
 
@@ -109,7 +111,6 @@ module.exports.getSalesChart = async (req, res) => {
         const period = req.query.period || 'daily';
         const productId = req.query.productId;
         const { start, end } = getDateRange(period, req.query.startDate, req.query.endDate);
-
         const whereClause = {
             createdAt: {
                 [Op.between]: [start, end]
