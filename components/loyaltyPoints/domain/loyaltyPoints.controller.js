@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
-const { LoyaltyPointsSettings, User, LoyaltyPointsHistory } = require('../../../models');
+const { LoyaltyPointsSettings, User, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require('../../../models');
 const logger = require('../../../library/logger');
 
 module.exports = {
@@ -45,6 +45,34 @@ module.exports = {
                 }
             // }
 
+            // Get mail subscription data
+            let mailSubscriptionData = null;
+            const userWithEmail = await User.findOne({
+                where: { id: userId },
+                attributes: ['id', 'email']
+            });
+            if (userWithEmail && userWithEmail.email) {
+                const mailSubscription = await MailSubscription.findOne({
+                    where: {
+                        email: userWithEmail.email
+                    }
+                });
+                if (mailSubscription) {
+                    const mailSettings = await MailSubscriptionSettings.findOne({
+                        where: {
+                            status: true
+                        }
+                    });
+                    if (mailSettings) {
+                        mailSubscriptionData = {
+                            isDiscountUsed: mailSubscription.isDiscountUsed,
+                            discount_amount: parseFloat(mailSettings.discount_amount),
+                            discount_type: mailSettings.discount_type
+                        };
+                    }
+                }
+            }
+
             const response = {
                 user_points: user.loyalty_points || 0,
                 minimum_points_required: settings.minimum_points_redemption,
@@ -54,6 +82,7 @@ module.exports = {
                 redemption_type: redemptionType,
                 points_value: settings.points_value,
                 min_amount_for_loyalty_points: settings.min_amount_for_loyalty_points,
+                mail_subscription_data: mailSubscriptionData,
                 // total_points_value: (user.loyalty_points || 0) * settings.points_value
             };
 

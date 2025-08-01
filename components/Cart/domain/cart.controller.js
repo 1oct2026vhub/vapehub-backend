@@ -364,18 +364,13 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
             
             // Get available stock (variant stock if exists, otherwise product stock)
             const availableStock = variant ? variant.stock : (product.stock_quantity || 0);
-            console.log("variant", variant.stock_status);
             // Check if item is out of stock
             let isOutOfStock = false;
             if(availableStock == 0 || variant.stock_status == 'out_of_stock'){
-                console.log("variant", variant.stock_status);
                 isOutOfStock = true;
             }
-            console.log("isOutOfStock", isOutOfStock);
             // Check if requested quantity exceeds available stock
             const isQuantityExceeded = cart.quantity > availableStock;
-            console.log("availableStock", availableStock);
-            console.log("isQuantityExceeded", isQuantityExceeded);
             let message = '';
             if (isOutOfStock) {
                 message = `Varient is out of stock`;    //${variant ? variant.slug : product.name}
