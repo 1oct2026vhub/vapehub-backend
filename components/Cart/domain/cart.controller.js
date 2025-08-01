@@ -86,7 +86,7 @@ module.exports.listCartItems = async (req, res, next) => {
             const subtotal = price * item.quantity;
             const itemDiscount = itemDiscounts[item.id] || 0;
             const total = subtotal - itemDiscount;
-            const out_of_stock = item.variant ? item.variant.stock <= 0 : false;
+            const out_of_stock = item.variant ? item.variant.stock <= 0 || item.variant.stock_status == 'out_of_stock' : false;
 
             // Find the best deal for this item (if any)
             let show_deal_toast = false;
@@ -364,19 +364,24 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
             
             // Get available stock (variant stock if exists, otherwise product stock)
             const availableStock = variant ? variant.stock : (product.stock_quantity || 0);
-            
+            console.log("variant", variant.stock_status);
             // Check if item is out of stock
-            const isOutOfStock = availableStock === 0;
-            
+            let isOutOfStock = false;
+            if(availableStock == 0 || variant.stock_status == 'out_of_stock'){
+                console.log("variant", variant.stock_status);
+                isOutOfStock = true;
+            }
+            console.log("isOutOfStock", isOutOfStock);
             // Check if requested quantity exceeds available stock
             const isQuantityExceeded = cart.quantity > availableStock;
-            
+            console.log("availableStock", availableStock);
+            console.log("isQuantityExceeded", isQuantityExceeded);
             let message = '';
             if (isOutOfStock) {
                 message = `Varient is out of stock`;    //${variant ? variant.slug : product.name}
             } else if (isQuantityExceeded) {
                 message = `Only ${availableStock} item(s) available in stock for ${variant ? variant.slug : product.name}`;
-            } else {
+            }else {
                 message = `Variant is in stock`;   //${variant ? variant.slug : product.name}
             }
 
