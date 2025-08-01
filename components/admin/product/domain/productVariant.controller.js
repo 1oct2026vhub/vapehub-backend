@@ -1391,6 +1391,7 @@ module.exports.getVariantById = async (req, res) => {
                 'discount_price',
                 'purchase_price',
                 'stock',
+                'stock_status',
                 'low_stock_threshold',
                 'weight',
                 'length',
