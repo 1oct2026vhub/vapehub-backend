@@ -357,6 +357,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         let loyaltyDiscountType = null;
         let loyaltyRedeem = false;
         let totalDiscount = 0
+        let coupon_type = null;
         if(couponCode){
             // Process referral discount if referral coupon code is provided
             const referral = await Referral.findOne({
@@ -435,7 +436,13 @@ module.exports.applyCoupon = async (req, res, next) => {
                     // total = Math.max(0, total - referralDiscount);
                     responseMessage = 'Referral code applied successfully';
                 }
-                coupon = referral.referral_coupon_code;
+                // coupon = referral.referral_coupon_code;
+                coupon = {
+                    code : referral.referral_coupon_code,
+                    discount_type : referralValueType,
+                    discount_value : referralValue
+                }
+                coupon_type = 'referral';
                 referral_value = parseFloat(referralValue);
                 referral_value_type = referralValueType;
             } 
@@ -641,6 +648,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                     referral_value_type = discount_type;
                     responseMessage = 'Coupon applied successfully';
                 }
+                coupon_type = 'coupon';
             }
         }
         if(loyalty){
@@ -799,6 +807,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             subTotal,
             total,
             coupon,
+            coupon_type,
             coupon_entity: couponEntityDetails,
             coupon_applicable_items: applicableItems,
             referral_value: referral_value,
