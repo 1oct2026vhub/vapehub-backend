@@ -44,7 +44,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     ResponseCode,
                     ResponseEventId
                 } = EventData;
-
                 // Find the order in our database
                 const order = await Order.findOne({
                     where: { 
@@ -394,7 +393,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             await referral.update({
                                 status: 'completed'
                             });
-
                             // Get the referral method to get discount details
                             // const referralMethod = await sequelize.models.ReferralMethod.findOne({
                             //     where: { 
@@ -404,54 +402,57 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             //     }
                             // });
                             const referralMethod = referral.referrer_data;
-                            const discountText = referralMethod.referral_value_type === 'percentage' 
-                                ? `${referralMethod.referral_value}%` 
-                                : `£${referralMethod.referral_value}`;
-
-                            // Send email to referrer about their reward
-                            const referrerEmail = referral.referrer.email;
-                            const username = referrerEmail.split('@')[0];
-
-                            const data = {
-                                emailTypes: 'REFERRER_REWARD',
-                                to: referrerEmail,
-                                context: {
-                                    userName: username,
-                                    referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
-                                    token: referral.referral_coupon_code,
-                                    referralValue: referralMethod.referral_value,
-                                    referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
-                                    emailContent1: "Congratulations! Your referral has made their first purchase.",
-                                    emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
-                                },
-                                referralMethod: referralMethod,
-                                attachments: ""
-                            };
                             
-                            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+                            // Only execute referral reward code if referralMethod is not null
+                            if (referralMethod) {
+                                const discountText = referralMethod.referral_value_type === 'percentage' 
+                                    ? `${referralMethod.referral_value}%` 
+                                    : `£${referralMethod.referral_value}`;
 
-                            // Create notification for referrer
-                            await createNotification({
-                                userId: referral.referrer_id,
-                                type: 'system',
-                                action: 'alert',
-                                data: {
-                                    message: `You have a new referral code ${referral.referral_coupon_code} with ${discountText} discount waiting to be claimed`
-                                },
-                                title: 'Referral',
-                                url: '/my-account/referrals'
-                            });
-                            // Create notification for admin about successful referral purchase
-                            await createNotification({
-                                type: 'system',
-                                action: 'alert',
-                                data: {
-                                    message: `Referred user ${order.user.email} has made their first purchase using referral code from ${referral.referrer.email}. Order #${order.order_unique_id}`
-                                },
-                                title: 'Referral Purchase Completed',
-                                url: '/admin/orders',
-                                is_admin: true
-                            });
+                                // Send email to referrer about their reward
+                                const referrerEmail = referral.referrer.email;
+                                const username = referrerEmail.split('@')[0];
+                                const data = {
+                                    emailTypes: 'REFERRER_REWARD',
+                                    to: referrerEmail,
+                                    context: {
+                                        userName: username,
+                                        referralLink: `${process.env.FRONTEND_URL}/my-account/referrals`,
+                                        token: referral.referral_coupon_code,
+                                        referralValue: referralMethod.referral_value,
+                                        referralValueType: referralMethod.referral_value_type === 'percentage' ? '%' : '',
+                                        emailContent1: "Congratulations! Your referral has made their first purchase.",
+                                        emailContent2: `You've earned a ${discountText} discount! Use the coupon code below to claim your reward.`
+                                    },
+                                    referralMethod: referralMethod,
+                                    attachments: ""
+                                };
+                                
+                                await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
+                                // Create notification for referrer
+                                await createNotification({
+                                    userId: referral.referrer_id,
+                                    type: 'system',
+                                    action: 'alert',
+                                    data: {
+                                        message: `You have a new referral code ${referral.referral_coupon_code} with ${discountText} discount waiting to be claimed`
+                                    },
+                                    title: 'Referral',
+                                    url: '/my-account/referrals'
+                                });
+                                // Create notification for admin about successful referral purchase
+                                await createNotification({
+                                    type: 'system',
+                                    action: 'alert',
+                                    data: {
+                                        message: `Referred user ${order.user.email} has made their first purchase using referral code from ${referral.referrer.email}. Order #${order.order_unique_id}`
+                                    },
+                                    title: 'Referral Purchase Completed',
+                                    url: '/admin/orders',
+                                    is_admin: true
+                                });
+                            }
                         }
                         else if (referral && referral.status === 'completed' && referral.referrer_id === order.user_id) {
                             // Update referral record
