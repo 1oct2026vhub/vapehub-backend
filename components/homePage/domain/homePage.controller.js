@@ -235,6 +235,121 @@ const getDealsForEntity = async (entityType, entityId) => {
     };
 };
 
+/**
+ * Get the latest 3 active deals
+ * @returns {Object} Object containing deals array and descriptive text
+ */
+const getLatestDeals = async () => {
+    const dealFilter = {
+        is_active: true,
+        is_deleted: false,
+        valid_from: { [Op.lte]: new Date() },
+        valid_to: { [Op.gte]: new Date() }
+    };
+
+    const deals = await Deal.findAll({
+        where: dealFilter,
+        attributes: [
+            'id', 
+            'name', 
+            'slug', 
+            'deal_type', 
+            'required_qty', 
+            'get_qty', 
+            'fixed_price', 
+            'discount_percent', 
+            'tiered_qty_json',
+            'bundle_product_ids_json',
+            'valid_from',
+            'valid_to',
+            'image_url',
+            'createdAt'
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: 3
+    });
+
+    // Generate descriptive text based on deals
+    let dealsText = '';
+    if (deals.length > 0) {
+        if (deals.length === 1) {
+            const deal = deals[0];
+            if (deal.fixed_price) {
+                dealsText = `Get the most for your money with our amazing ${deal.required_qty} for £${deal.fixed_price} deal! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else if (deal.discount_percent) {
+                dealsText = `Get the most for your money with our amazing ${deal.discount_percent}% off deal! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else {
+                dealsText = `Get the most for your money with our amazing deals! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            }
+        } else if (deals.length === 2) {
+            const deal1 = deals[0];
+            const deal2 = deals[1];
+            
+            let deal1Text = '';
+            let deal2Text = '';
+
+            if (deal1.fixed_price) {
+                deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+            } else if (deal1.discount_percent) {
+                deal1Text = `${deal1.discount_percent}% off`;
+            } else {
+                deal1Text = 'amazing deal';
+            }
+
+            if (deal2.fixed_price) {
+                deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+            } else if (deal2.discount_percent) {
+                deal2Text = `${deal2.discount_percent}% off`;
+            } else {
+                deal2Text = 'amazing offer';
+            }
+
+            dealsText = `Get the most for your money with our amazing ${deal1Text} deal and ${deal2Text} offer! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+        } else {
+            const deal1 = deals[0];
+            const deal2 = deals[1];
+            const deal3 = deals[2];
+            
+            let deal1Text = '';
+            let deal2Text = '';
+            let deal3Text = '';
+
+            if (deal1.fixed_price) {
+                deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+            } else if (deal1.discount_percent) {
+                deal1Text = `${deal1.discount_percent}% off`;
+            } else {
+                deal1Text = 'amazing deal';
+            }
+
+            if (deal2.fixed_price) {
+                deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+            } else if (deal2.discount_percent) {
+                deal2Text = `${deal2.discount_percent}% off`;
+            } else {
+                deal2Text = 'amazing offer';
+            }
+
+            if (deal3.fixed_price) {
+                deal3Text = `${deal3.required_qty} for £${deal3.fixed_price}`;
+            } else if (deal3.discount_percent) {
+                deal3Text = `${deal3.discount_percent}% off`;
+            } else {
+                deal3Text = 'amazing offer';
+            }
+
+            dealsText = `Get the most for your money with our amazing ${deal1Text} deal, ${deal2Text} offer, and ${deal3Text} offer! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+        }
+    } else {
+        dealsText = 'No active deals available at the moment';
+    }
+
+    return {
+        deals: deals,
+        deals_text: dealsText
+    };
+};
+
 module.exports.getHomeCarousel = async (req, res, next) => {
     try {
         const carousels = await Carousel.findAll({
@@ -378,6 +493,13 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 );
                 response.deals = dealsData.deals;
                 response.deals_text = dealsData.deals_text;
+            }
+
+            // Include latest 3 deals if entity is deal
+            if (slugRelations[0].entity_type === 'deal') {
+                const latestDealsData = await getLatestDeals();
+                response.latest_deals = latestDealsData.deals;
+                response.deals_text = latestDealsData.deals_text;
             }
 
             return successResponse(res, response, 'Success');
