@@ -1783,6 +1783,7 @@ module.exports.getAllDeals = async (req, res, next) => {
                 'bundle_product_ids_json',
                 'valid_from',
                 'valid_to',
+                'image_url',
                 'createdAt',
                 'updatedAt'
             ],
@@ -1810,6 +1811,7 @@ module.exports.getAllDeals = async (req, res, next) => {
             bundle_product_ids_json: deal.bundle_product_ids_json,
             valid_from: deal.valid_from,
             valid_to: deal.valid_to,
+            image_url: deal.image_url,
             created_at: deal.createdAt,
             updated_at: deal.updatedAt
         }));
