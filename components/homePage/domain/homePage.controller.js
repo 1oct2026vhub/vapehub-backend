@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -61,16 +61,28 @@ const getDealsForEntity = async (entityType, entityId) => {
 
         const productIds = productCategories.map(pc => pc.product_id);
 
-        // Step 3: Get deal IDs from DealProduct using product IDs
+        // Step 3: Get deal IDs from DealProduct using product IDs with stock check
         const dealProducts = await DealProduct.findAll({
             where: { product_id: { [Op.in]: productIds } },
-            attributes: ['deal_id'],
+            attributes: ['deal_id', 'product_id'],
             include: [
                 {
                     model: Product,
                     as: 'product',
                     where: { status: 'published' },
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug'],
+                    include: [
+                        {
+                            model: ProductVariant,
+                            as: 'variants',
+                            attributes: ['id', 'stock', 'stock_status'],
+                            where: { 
+                                stock: { [Op.gt]: 0 },
+                                deleted_at: null
+                            },
+                            required: false
+                        }
+                    ]
                 }
             ]
         });
@@ -79,7 +91,18 @@ const getDealsForEntity = async (entityType, entityId) => {
             return { deals: [], deals_text: '' };
         }
 
-        const dealIds = [...new Set(dealProducts.map(dp => dp.deal_id))];
+        // Filter deals to only include those where all products have available variants
+        const availableDealProducts = dealProducts.filter(dp => {
+            const product = dp.product;
+            // Check if product has at least one variant with stock > 0
+            return product.variants && product.variants.length > 0;
+        });
+
+        if (availableDealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(availableDealProducts.map(dp => dp.deal_id))];
 
         // Step 4: Get deal data from Deal using deal IDs
         deals = await Deal.findAll({
@@ -105,9 +128,9 @@ const getDealsForEntity = async (entityType, entityId) => {
             ]
         });
 
-        // Add product count to each deal
+        // Add product count to each deal (only counting products with available variants)
         deals = deals.map(deal => {
-            const dealProductCount = dealProducts.filter(dp => dp.deal_id === deal.id).length;
+            const dealProductCount = availableDealProducts.filter(dp => dp.deal_id === deal.id).length;
             return {
                 ...deal.toJSON(),
                 product_count: dealProductCount
@@ -134,16 +157,28 @@ const getDealsForEntity = async (entityType, entityId) => {
 
         const productIds = productBrands.map(pb => pb.product_id);
 
-        // Step 3: Get deal IDs from DealProduct using product IDs
+        // Step 3: Get deal IDs from DealProduct using product IDs with stock check
         const dealProducts = await DealProduct.findAll({
             where: { product_id: { [Op.in]: productIds } },
-            attributes: ['deal_id'],
+            attributes: ['deal_id', 'product_id'],
             include: [
                 {
                     model: Product,
                     as: 'product',
                     where: { status: 'published' },
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug'],
+                    include: [
+                        {
+                            model: ProductVariant,
+                            as: 'variants',
+                            attributes: ['id', 'stock', 'stock_status'],
+                            where: { 
+                                stock: { [Op.gt]: 0 },
+                                deleted_at: null
+                            },
+                            required: false
+                        }
+                    ]
                 }
             ]
         });
@@ -152,7 +187,18 @@ const getDealsForEntity = async (entityType, entityId) => {
             return { deals: [], deals_text: '' };
         }
 
-        const dealIds = [...new Set(dealProducts.map(dp => dp.deal_id))];
+        // Filter deals to only include those where all products have available variants
+        const availableDealProducts = dealProducts.filter(dp => {
+            const product = dp.product;
+            // Check if product has at least one variant with stock > 0
+            return product.variants && product.variants.length > 0;
+        });
+
+        if (availableDealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(availableDealProducts.map(dp => dp.deal_id))];
 
         // Step 4: Get deal data from Deal using deal IDs
         deals = await Deal.findAll({
@@ -178,9 +224,9 @@ const getDealsForEntity = async (entityType, entityId) => {
             ]
         });
 
-        // Add product count to each deal
+        // Add product count to each deal (only counting products with available variants)
         deals = deals.map(deal => {
-            const dealProductCount = dealProducts.filter(dp => dp.deal_id === deal.id).length;
+            const dealProductCount = availableDealProducts.filter(dp => dp.deal_id === deal.id).length;
             return {
                 ...deal.toJSON(),
                 product_count: dealProductCount
