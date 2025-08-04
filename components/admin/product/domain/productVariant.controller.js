@@ -2094,6 +2094,7 @@ module.exports.generateVariants = async (req, res) => {
                 }
             }
         }
+        
         if (newCombinations.length === 0) {
             await transaction.rollback();
             return res.status(400).json({
