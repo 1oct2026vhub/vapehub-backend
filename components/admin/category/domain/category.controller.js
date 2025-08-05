@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category, SlugRelation, sequelize, Product } = require("../../../../models");
+const { Category, SlugRelation, sequelize, Product, Menu } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
@@ -227,7 +227,10 @@ module.exports.updateCategory = async (req, res, next) => {
         if (slug && category.slug !== slug) {
             await seoService.updateSeoSlug('category', id, slug);
         }
-        
+        // Update slug if provided
+        if (slug && slug !== category.slug) {
+            await slugManager.createOrUpdateSlug(slug, 'category', id, t);
+        }
          // Update category
          await category.update({
             name: name?.trim() || category.name,
@@ -237,15 +240,17 @@ module.exports.updateCategory = async (req, res, next) => {
             updated_by,
             parent_id
         }, { transaction: t });
+        const menu = await Menu.findOne({ where: { entity_id: id} });
+        if (menu) {
+            await Menu.update({
+                original: `/${slug?.trim()}`,
+                // name: name?.trim() || menu.name,
+                // slug: slug?.trim() || menu.slug
 
+            }, { where: { entity_id: id } }, { transaction: t });
+        }
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
-
-        // Update slug if provided
-        if (slug && slug !== category.slug) {
-            await slugManager.createOrUpdateSlug(slug, 'category', id, t);
-        }
-
         await t.commit();
         return successResponse(res, category, "Category updated successfully");
     } catch (error) {

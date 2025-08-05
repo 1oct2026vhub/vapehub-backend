@@ -34,7 +34,6 @@ class SlugManager {
       },
       ...options
     });
-
     if (existingSlug) {
       throw new Error(`Slug '${normalizedSlug}' is already taken`);
     }

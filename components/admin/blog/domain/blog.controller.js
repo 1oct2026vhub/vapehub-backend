@@ -1,6 +1,6 @@
 const { Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag, SlugRelation, sequelize } = require("../../../../models");
+const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);  
@@ -299,7 +299,6 @@ module.exports.updateBlog = async (req, res) => {
         const { title, content, slug, categories, tags, published_at } = req.body;
         const { id: updated_by } = req.user;
         const status = req.body.status;
-
         const blog = await Blog.findByPk(id, { transaction });
         if (!blog) {
             await transaction.rollback();
@@ -337,7 +336,15 @@ module.exports.updateBlog = async (req, res) => {
 
         // Update blog
         await blog.update(updateData, { transaction });
+        const menu = await Menu.findOne({ where: { entity_id: id} });
+        if (menu) {
+            await Menu.update({
+                original: `/${slug?.trim()}`,
+                // name: name?.trim() || menu.name,
+                // slug: slug?.trim() || menu.slug
 
+            }, { where: { entity_id: id } }, { transaction });
+        }
         // Parse categories and tags
         const parsedCategories = categories ? 
             categories.split(',').map(id => parseInt(id.trim())) : [];
@@ -364,6 +371,7 @@ module.exports.updateBlog = async (req, res) => {
         await transaction.commit();
         return successResponse(res, updatedBlog, "Blog post updated successfully");
     } catch (error) {
+        console.log("error", error);
         await transaction.rollback();
         return errorResponse(res, error, error.message);
     }

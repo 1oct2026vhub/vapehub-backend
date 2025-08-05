@@ -1,6 +1,6 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Deal, Product, SlugRelation, DealProduct, ProductVariant } = require("../../../../models");
+const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant } = require("../../../../models");
 const { DEAL_TYPES } = require('../../../../config/constants');
 const { Op } = require('sequelize');
 const SlugManager = require('../../../../utils/slugManager');
@@ -12,7 +12,6 @@ module.exports.createDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
         const dealData = req.body;
-        
         // Handle image upload if file is provided
         if (req.file) {
             try {
@@ -128,13 +127,24 @@ module.exports.updateDeal = async (req, res, next) => {
                 throw error;
             }
         }
-
-        // Update the deal
-        await deal.update(dealData, { transaction });
-
+        let slug;
         // Update slug if name has changed
         if (dealData.name && dealData.name !== deal.name || dealData.slug && dealData.slug !== deal.slug) {
-            await slugManager.createOrUpdateSlug(dealData.name, 'deal', id, transaction);
+            const slugData = await slugManager.createOrUpdateSlug(dealData.name, 'deal', id, transaction);
+            slug = slugData.slug;
+            dealData.slug = slug;
+        }
+        // dealData.slug = slug.slug;
+        // Update the deal
+        await deal.update(dealData, { transaction });
+        const menu = await Menu.findOne({ where: { entity_id: id} });
+        if (menu) {
+            await Menu.update({
+                original: `/${slug?.trim()}`,
+                // name: name?.trim() || menu.name,
+                // slug: slug?.trim() || menu.slug
+
+            }, { where: { entity_id: id } }, { transaction });
         }
 
         // Fetch the updated deal with associations
@@ -153,6 +163,7 @@ module.exports.updateDeal = async (req, res, next) => {
         await transaction.commit();
         successResponse(res, updatedDeal, 'Deal updated successfully');
     } catch (error) {
+        console.log("error", error);
         await transaction.rollback();
         return errorResponse(res, error, error.message);
     }
