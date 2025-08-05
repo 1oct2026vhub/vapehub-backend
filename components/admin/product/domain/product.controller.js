@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -797,7 +797,13 @@ module.exports.updateProduct = async (req, res, next) => {
         if (cleanSlug) {
             await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
         }
+        const menu = await Menu.findOne({ where: { entity_id: id} });
+        if (menu) {
+            await Menu.update({
+                original: `/${slug?.trim()}`,
 
+            }, { where: { entity_id: id } }, { transaction });
+        }
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
             include: [

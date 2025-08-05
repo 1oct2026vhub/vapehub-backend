@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Menu, MenuItem, Product, Brand, Blog, Category, Deal, sequelize, ProductImage } = require("../../../models");
 const logger = require("../../../library/logger");
 const { Op } = require("sequelize");
+const { getNewProducts, getHotProducts, getProductsByEntity, isProductNew, isProductHot } = require("../helper/menu.helper");
 
 module.exports = {
 
@@ -121,6 +122,40 @@ module.exports = {
                             item.entity_data = null;
                         }
                     }
+
+                    // Handle new and hot products for menu items
+                    // Check if the specific product in entity_data is new or hot
+                    let isNew = false;
+                    let isHot = false;
+                    
+                    if (item.entity_type === 'product' && item.entity_data && item.entity_data.id) {
+                        try {
+                            isNew = await isProductNew(item.entity_data.id);
+                        } catch (error) {
+                            logger.error('Error checking if product is new:', error);
+                        }
+
+                        try {
+                            isHot = await isProductHot(item.entity_data.id);
+                        } catch (error) {
+                            logger.error('Error checking if product is hot:', error);
+                        }
+                    }
+                    
+                    // Add is_new and is_hot flags to menu items
+                    item.is_new = isNew;
+                    item.is_hot = isHot;
+
+                    // Handle products based on entity type for mega menu
+                    if (item.entity_type && item.entity_id && ['category', 'brand', 'deal'].includes(item.entity_type)) {
+                        try {
+                            item.related_products = await getProductsByEntity(item.entity_type, item.entity_id, 10);
+                        } catch (error) {
+                            logger.error(`Error fetching products for ${item.entity_type}:`, error);
+                            item.related_products = [];
+                        }
+                    }
+
                     if (item.children && item.children.length > 0) {
                         // Process children with show_image check
                         for (const child of item.children) {
@@ -224,6 +259,38 @@ module.exports = {
                                 } catch (error) {
                                     logger.error(`Error fetching ${child.entity_type} data:`, error);
                                     child.entity_data = null;
+                                }
+                            }
+
+                            // Handle new and hot products for child menu items
+                            let isChildNew = false;
+                            let isChildHot = false;
+                            
+                            if (child.entity_type === 'product' && child.entity_data && child.entity_data.id) {
+                                try {
+                                    isChildNew = await isProductNew(child.entity_data.id);
+                                } catch (error) {
+                                    logger.error('Error checking if child product is new:', error);
+                                }
+
+                                try {
+                                    isChildHot = await isProductHot(child.entity_data.id);
+                                } catch (error) {
+                                    logger.error('Error checking if child product is hot:', error);
+                                }
+                            }
+                            
+                            // Add is_new and is_hot flags to child menu items
+                            child.is_new = isChildNew;
+                            child.is_hot = isChildHot;
+
+                            // Handle products based on entity type for child menu items
+                            if (child.entity_type && child.entity_id && ['category', 'brand', 'deal'].includes(child.entity_type)) {
+                                try {
+                                    child.related_products = await getProductsByEntity(child.entity_type, child.entity_id, 10);
+                                } catch (error) {
+                                    logger.error(`Error fetching products for child ${child.entity_type}:`, error);
+                                    child.related_products = [];
                                 }
                             }
                         }
