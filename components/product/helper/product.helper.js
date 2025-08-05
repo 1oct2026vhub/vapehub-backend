@@ -388,6 +388,8 @@ const fetchProducts = async (query, status = 'published') => {
                 pv2.product_id = Product.id
                 AND pv2.status = 'active'
                 AND pv2.deleted_at IS NULL
+                AND pv2.price IS NOT NULL
+                AND pv2.price > 0
             ) AS min_price_table
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )`)
@@ -669,6 +671,8 @@ const fetchProducts = async (query, status = 'published') => {
             pv2.product_id = p.id
             AND pv2.status = 'active'
             AND pv2.deleted_at IS NULL
+            AND pv2.price IS NOT NULL
+            AND pv2.price > 0
         ) AS min_price_table
         WHERE min_price BETWEEN :minPrice AND :maxPrice
       )`);
@@ -731,6 +735,8 @@ const fetchProducts = async (query, status = 'published') => {
               pv2.product_id = p.id
               AND pv2.status = 'active'
               AND pv2.deleted_at IS NULL
+              AND pv2.price IS NOT NULL
+              AND pv2.price > 0
           ) as min_price
         FROM 
           products p
@@ -787,6 +793,8 @@ const fetchProducts = async (query, status = 'published') => {
               pv2.product_id = p.id
               AND pv2.status = 'active'
               AND pv2.deleted_at IS NULL
+              AND pv2.price IS NOT NULL
+              AND pv2.price > 0
           ) as min_price
         FROM 
           products p
@@ -861,6 +869,8 @@ const fetchProducts = async (query, status = 'published') => {
                 pv2.product_id = p.id
                 AND pv2.status = 'active'
                 AND pv2.deleted_at IS NULL
+                AND pv2.price IS NOT NULL
+                AND pv2.price > 0
             ) AS min_price_table
             WHERE min_price BETWEEN ${priceRange.min} AND ${priceRange.max}
           )
@@ -988,6 +998,8 @@ const fetchProducts = async (query, status = 'published') => {
               pv2.product_id = p.id
               AND pv2.status = 'active'
               AND pv2.deleted_at IS NULL
+              AND pv2.price IS NOT NULL
+              AND pv2.price > 0
           ) as min_price
         FROM 
           products p
@@ -1054,6 +1066,8 @@ const fetchProducts = async (query, status = 'published') => {
               pv2.product_id = p.id
               AND pv2.status = 'active'
               AND pv2.deleted_at IS NULL
+              AND pv2.price IS NOT NULL
+              AND pv2.price > 0
           ) as min_price
         FROM 
           products p
