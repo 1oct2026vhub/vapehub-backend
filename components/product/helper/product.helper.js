@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
+const { productVariants: { stockStatus } } = require("../../../config/constants");
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -617,6 +618,15 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
+      // Add out_of_stock flag
+      const hasInStockVariant = product.variants && product.variants.some(variant =>
+        variant.status === 'active' &&
+        variant.stock > 0 &&
+        variant.stock_status === stockStatus.IN_STOCK &&
+        variant.price !== null &&
+        parseFloat(variant.price) > 0
+      );
+
       // Add flavors and flavor_count to each product
       let flavorTerms = [];
       if (product.productAttributeTerms) {
@@ -634,6 +644,7 @@ const fetchProducts = async (query, status = 'published') => {
         puff_count: puffCount,
         flavors: flavorTerms,
         flavor_count,
+        out_of_stock: !hasInStockVariant,
         min_price_variant: product.min_price_variant || null
       };
     });
