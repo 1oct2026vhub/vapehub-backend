@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Brand, SlugRelation, sequelize, Product } = require("../../../../models");
+const { Brand, SlugRelation, sequelize, Product, Menu } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
@@ -210,7 +210,6 @@ module.exports.updateBrand = async (req, res, next) => {
                 return errorResponse(res, { message: "File upload failed" }, "File upload failed", 500);
             }
         }
-
         // Update slug if provided
         if (slug && slug !== brand.slug) {
             await slugManager.createOrUpdateSlug(slug, 'brand', id, t);
@@ -227,7 +226,15 @@ module.exports.updateBrand = async (req, res, next) => {
             logo_url,
             updated_by
         }, { transaction: t });
+        const menu = await Menu.findOne({ where: { entity_id: id} });
+        if (menu) {
+            await Menu.update({
+                original: `/${slug?.trim()}`,
+                // name: name?.trim() || menu.name,
+                // slug: slug?.trim() || menu.slug
 
+            }, { where: { entity_id: id } }, { transaction: t });
+        }
         // Update SEO noIndex based on brand status
         await seoService.updateBrandNoIndex(id);
 
@@ -235,6 +242,7 @@ module.exports.updateBrand = async (req, res, next) => {
         await t.commit();
         return successResponse(res, brand, "Brand updated successfully");
     } catch (error) {
+        console.log("error", error);
         await t.rollback();
         return errorResponse(res, error, error.message);
     }
