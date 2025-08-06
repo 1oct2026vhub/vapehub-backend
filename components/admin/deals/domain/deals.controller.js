@@ -176,6 +176,7 @@ module.exports.listDeals = async (req, res, next) => {
             type, 
             validNow,
             deleted,
+            product_id,
             page = 1,
             limit = 10
         } = req.query;
@@ -219,6 +220,37 @@ module.exports.listDeals = async (req, res, next) => {
             whereCondition.valid_to = { [Op.gte]: now };
         }
 
+        // Handle product_id filter
+        if (product_id) {
+            // Find deal IDs that contain the specified product
+            const dealProducts = await DealProduct.findAll({
+                where: {
+                    product_id: parseInt(product_id)
+                },
+                attributes: ['deal_id']
+            });
+
+            const dealIds = dealProducts.map(dp => dp.deal_id);
+
+            if (dealIds.length > 0) {
+                whereCondition.id = { [Op.in]: dealIds };
+            } else {
+                // If no deals found for this product, return empty result
+                const response = {
+                    deals: [],
+                    pagination: {
+                        total: 0,
+                        page: parseInt(page),
+                        limit: parseInt(limit),
+                        total_pages: 0,
+                        has_next: false,
+                        has_prev: parseInt(page) > 1
+                    }
+                };
+                return successResponse(res, response, 'Success');
+            }
+        }
+
         // Get total count without includes for accurate pagination
         const countQuery = {
             where: whereCondition,
@@ -230,8 +262,6 @@ module.exports.listDeals = async (req, res, next) => {
         const currentPage = parseInt(page);
         const pageLimit = parseInt(limit);
         const totalPages = Math.ceil(totalCount / pageLimit);
-
-
 
         // If page is beyond total pages, return empty result with proper pagination info
         if (currentPage > totalPages) {
