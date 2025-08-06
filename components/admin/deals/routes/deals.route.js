@@ -236,6 +236,11 @@ router.put('/:id', [authMiddleware(true), upload.single('image'), validateReques
  *           type: boolean
  *         description: Filter deals by deletion status. true = only deleted deals, false = only active deals, undefined = all deals
  *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: integer
+ *         description: Filter deals that contain the specified product ID
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer

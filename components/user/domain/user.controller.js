@@ -861,7 +861,6 @@ const getReferralStats = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
-        // Get total referrals count
         const referrer = await Referral.findOne({
             where: {
                 referred_user_id: userId
