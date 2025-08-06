@@ -460,7 +460,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
 
 const updateVariantRecord = async (variantId, updateData, updated_by, transaction) => {
     // Calculate the price based on regular_price and discount_price
-    const price = updateData.discount_price && updateData.discount_price < updateData.regular_price 
+    const price = updateData.discount_price && parseFloat(updateData.discount_price) < parseFloat(updateData.regular_price) 
         ? updateData.discount_price 
         : updateData.regular_price;
     // Handle stock_status based on stock value
@@ -469,7 +469,6 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
             updateData.stock_status = 'out_of_stock';
         }
     }
-    
     // MySQL does not return updated rows, only affected count
     await ProductVariant.update({
         ...updateData,
@@ -808,6 +807,9 @@ module.exports.updateProductVariant = async (req, res) => {
         // If variant data price is not present, null, 0, or undefined, set it to existing variant price
         if (!variantData.regular_price || variantData.regular_price === 0 || variantData.regular_price === null || variantData.regular_price === undefined) {
             variantData.regular_price = existingVariant.regular_price;
+        }
+        if (!variantData.discount_price || variantData.discount_price === 0 || variantData.discount_price === null || variantData.discount_price === undefined) {
+            variantData.discount_price = existingVariant.discount_price;
         }
         // Update basic info
         const updatedVariant = await updateVariantRecord(variant_id, variantData, updated_by, transaction);
