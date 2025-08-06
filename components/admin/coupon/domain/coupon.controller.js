@@ -37,6 +37,7 @@ const couponController = {
         status,
         discount_type,
         entity_type,
+        entity_id,
         start_date,
         end_date
       } = req.query;
@@ -69,6 +70,11 @@ const couponController = {
         where.entity_type = entity_type;
       }
 
+      // Add entity ID filter
+      if (entity_id) {
+        where.entity_id = entity_id;
+      }
+
       // Add date range filter
       if (start_date || end_date) {
         where.start_date = {};
@@ -87,11 +93,71 @@ const couponController = {
         order: [['created_at', 'DESC']]
       });
 
-      return successResponse(res, { coupons, pagination: {
-          total: count,
+      // Filter out coupons that reference deleted entities and get entity details
+      const validCoupons = [];
+      
+      for (const coupon of coupons) {
+        let isValid = true;
+        let entity = null;
+
+        // Check if coupon has entity association
+        if (coupon.entity_type && coupon.entity_id) {
+          let entityModel = null;
+          
+          switch (coupon.entity_type) {
+            case 'product':
+              entityModel = Product;
+              break;
+            case 'brand':
+              entityModel = Brand;
+              break;
+            case 'category':
+              entityModel = Category;
+              break;
+          }
+
+          if (entityModel) {
+            try {
+              // Check if entity exists and is not deleted
+              const foundEntity = await entityModel.findByPk(coupon.entity_id, {
+                attributes: ['id', 'name', 'slug'],
+                paranoid: false // Include soft-deleted entities to check if they exist
+              });
+
+              if (foundEntity && !foundEntity.deleted_at) {
+                // Entity exists and is not deleted
+                entity = {
+                  entity_name: foundEntity.name,
+                  entity_slug: foundEntity.slug
+                };
+              } else {
+                // Entity is deleted or doesn't exist
+                isValid = false;
+              }
+            } catch (error) {
+              // Entity doesn't exist
+              isValid = false;
+            }
+          }
+        }
+
+        // Only include valid coupons
+        if (isValid) {
+          const couponWithEntity = {
+            ...coupon.toJSON(),
+            ...(entity || {})
+          };
+          validCoupons.push(couponWithEntity);
+        }
+      }
+
+      return successResponse(res, { 
+        coupons: validCoupons, 
+        pagination: {
+          total: validCoupons.length,
           page: parseInt(page),
           limit: parseInt(limit),
-          pages: Math.ceil(count / limit)
+          pages: Math.ceil(validCoupons.length / limit)
         }
       }, "Coupons retrieved successfully");
     } catch (error) {
