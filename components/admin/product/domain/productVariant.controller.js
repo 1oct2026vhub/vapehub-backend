@@ -808,7 +808,7 @@ module.exports.updateProductVariant = async (req, res) => {
         if (!variantData.regular_price || variantData.regular_price === 0 || variantData.regular_price === null || variantData.regular_price === undefined) {
             variantData.regular_price = existingVariant.regular_price;
         }
-        if (!variantData.discount_price || variantData.discount_price === 0 || variantData.discount_price === null || variantData.discount_price === undefined) {
+        if ( variantData.discount_price === null || variantData.discount_price === undefined) {   //!variantData.discount_price || variantData.discount_price === 0 || 
             variantData.discount_price = existingVariant.discount_price;
         }
         // Update basic info
