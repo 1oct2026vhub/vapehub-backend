@@ -2681,19 +2681,20 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
         });
         
         if(!inactiveReferralMethod && ReferralUser && ReferralUser.status === 'pending' && ReferralUser.referred_user_id === order.user_id){
-            await ReferralUser.update({
-                status: 'completed'
-            });
-            const referrerUserMethod = ReferralUser.referrer_data;
-            const discountText = referrerUserMethod.referral_value_type === 'percentage' 
-                ? `${referrerUserMethod.referral_value}%` 
-                : `£${referrerUserMethod.referral_value}`;
+            if (order.referral_id) {
+                await ReferralUser.update({
+                    status: 'completed'
+                });
+                const referrerUserMethod = ReferralUser.referrer_data;
+                const discountText = referrerUserMethod.referral_value_type === 'percentage' 
+                    ? `${referrerUserMethod.referral_value}%` 
+                    : `£${referrerUserMethod.referral_value}`;
 
-            // Send email to referrer about their reward
-            const referrerEmail = ReferralUser.referrer.email;
-            const username = referrerEmail.split('@')[0];
+                // Send email to referrer about their reward
+                const referrerEmail = ReferralUser.referrer.email;
+                const username = referrerEmail.split('@')[0];
 
-            const data = {
+                const data = {
                 emailTypes: 'REFERRER_REWARD',
                 to: referrerEmail,
                 context: {
@@ -2707,32 +2708,32 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 },
                 referralMethod: referrerUserMethod,
                 attachments: ""
-            };
+                };
             
-            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-            // Create notification for referrer
-            await createNotification({
-                userId: ReferralUser.referrer_id,
-                type: 'system',
-                action: 'alert',
-                data: {
-                    message: `You have a new referral code ${ReferralUser.referral_coupon_code} with ${discountText} discount waiting to be claimed`
-                },
-                title: 'Referral',
-                url: '/my-account/referrals'
-            });
-            // Create notification for admin about successful referral purchase
-            await createNotification({
-                type: 'system',
-                action: 'alert',
-                data: {
-                    message: `Referred user ${order.user.email} has made their first purchase using referral code from ${ReferralUser.referrer.email}. Order #${order.order_unique_id}`
-                },
-                title: 'Referral Purchase Completed',
-                url: '/admin/orders',
-                is_admin: true
-            });
-
+                await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+                // Create notification for referrer
+                await createNotification({
+                    userId: ReferralUser.referrer_id,
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `You have a new referral code ${ReferralUser.referral_coupon_code} with ${discountText} discount waiting to be claimed`
+                    },
+                    title: 'Referral',
+                    url: '/my-account/referrals'
+                });
+                // Create notification for admin about successful referral purchase
+                await createNotification({
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Referred user ${order.user.email} has made their first purchase using referral code from ${ReferralUser.referrer.email}. Order #${order.order_unique_id}`
+                    },
+                    title: 'Referral Purchase Completed',
+                    url: '/admin/orders',
+                    is_admin: true
+                });
+            }
         }
         else if (referral && referral.status === 'pending' && referral.referred_user_id === order.user_id) {
             // Update referral record
