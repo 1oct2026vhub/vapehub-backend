@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'shipping_methods' || table.tableName === 'ShippingMethods')
+    );
+    
+    if (tableExists) {
+      console.log('shipping_methods table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating shipping_methods table...');
     await queryInterface.createTable('shipping_methods', {
       id: {
         type: Sequelize.INTEGER,
@@ -63,10 +74,27 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('shipping_methods', ['shipping_method']);
-    await queryInterface.addIndex('shipping_methods', ['updated_by']);
-    await queryInterface.addIndex('shipping_methods', ['deleted_at']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('shipping_methods', ['shipping_method']);
+      console.log('Added shipping_method index to shipping_methods');
+    } catch (error) {
+      console.log('shipping_method index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('shipping_methods', ['updated_by']);
+      console.log('Added updated_by index to shipping_methods');
+    } catch (error) {
+      console.log('updated_by index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('shipping_methods', ['deleted_at']);
+      console.log('Added deleted_at index to shipping_methods');
+    } catch (error) {
+      console.log('deleted_at index might already exist:', error.message);
+    }
   },
 
   async down(queryInterface, Sequelize) {

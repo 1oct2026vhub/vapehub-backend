@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'products' || table.tableName === 'Products')
+    );
+    
+    if (tableExists) {
+      console.log('products table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating products table...');
     await queryInterface.createTable('products', {
       id: {
         type: Sequelize.INTEGER,
@@ -123,12 +134,41 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('products', ['slug']);
-    await queryInterface.addIndex('products', ['status']);
-    await queryInterface.addIndex('products', ['is_new']);
-    await queryInterface.addIndex('products', ['updated_by']);
-    await queryInterface.addIndex('products', ['deleted_at']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('products', ['slug']);
+      console.log('Added slug index to products');
+    } catch (error) {
+      console.log('slug index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('products', ['status']);
+      console.log('Added status index to products');
+    } catch (error) {
+      console.log('status index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('products', ['is_new']);
+      console.log('Added is_new index to products');
+    } catch (error) {
+      console.log('is_new index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('products', ['updated_by']);
+      console.log('Added updated_by index to products');
+    } catch (error) {
+      console.log('updated_by index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('products', ['deleted_at']);
+      console.log('Added deleted_at index to products');
+    } catch (error) {
+      console.log('deleted_at index might already exist:', error.message);
+    }
   },
 
   async down(queryInterface, Sequelize) {

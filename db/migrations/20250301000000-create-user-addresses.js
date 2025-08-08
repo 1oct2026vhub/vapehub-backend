@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'user_addresses' || table.tableName === 'UserAddresses')
+    );
+    
+    if (tableExists) {
+      console.log('user_addresses table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating user_addresses table...');
     await queryInterface.createTable('user_addresses', {
       id: {
         type: Sequelize.INTEGER,
@@ -94,10 +105,27 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('user_addresses', ['user_id']);
-    await queryInterface.addIndex('user_addresses', ['updated_by']);
-    await queryInterface.addIndex('user_addresses', ['deleted_at']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('user_addresses', ['user_id']);
+      console.log('Added user_id index to user_addresses');
+    } catch (error) {
+      console.log('user_id index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('user_addresses', ['updated_by']);
+      console.log('Added updated_by index to user_addresses');
+    } catch (error) {
+      console.log('updated_by index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('user_addresses', ['deleted_at']);
+      console.log('Added deleted_at index to user_addresses');
+    } catch (error) {
+      console.log('deleted_at index might already exist:', error.message);
+    }
   },
 
   async down(queryInterface, Sequelize) {
