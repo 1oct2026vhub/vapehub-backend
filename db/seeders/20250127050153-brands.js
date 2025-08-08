@@ -4,6 +4,7 @@ const { Brand } = require('../../models');
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     const brands = [
       { name: 'AISU BY ZAP!', slug: 'aisu-by-zap', logo_url: 'https://zapjuice.co.uk/cdn/shop/files/ZAP_Juice_logo_2023.png?v=1697714935&width=150' },
       { name: 'AROMA KING', slug: 'aroma-king', logo_url: 'https://zapjuice.co.uk/cdn/shop/files/ZAP_Juice_logo_2023.png?v=1697714935&width=150' },
@@ -41,6 +42,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     await Brand.destroy({ truncate: true });
     console.log('Brands deleted successfully');
   }

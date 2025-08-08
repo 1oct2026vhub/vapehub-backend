@@ -2,6 +2,7 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     const flavors = [
       { name: 'Atomic Fireballs', description: 'A fiery, cinnamon-flavoured delight that packs a punch with every bite, leaving a warm and spicy sensation.' },
       { name: 'Banana Ice', description: 'Smooth banana flavour with an icy finish, offering a refreshing twist to the classic banana taste.' },
@@ -59,6 +60,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     return queryInterface.bulkDelete('Flavors', null, {});
   }
 };

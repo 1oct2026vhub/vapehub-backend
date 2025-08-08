@@ -2,6 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     try {
       console.log('Starting migration of existing product category and brand data...');
 
@@ -54,6 +55,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     try {
       console.log('Rolling back product category and brand data migration...');
 

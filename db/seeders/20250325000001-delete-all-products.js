@@ -5,6 +5,7 @@ const url = require('url');
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     console.log('Starting to delete all products without variants and associated data...');
     
     // Start a transaction
@@ -183,6 +184,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     // This is a destructive operation, so there's no way to restore the data
     console.log('This seeder cannot be reverted as it permanently deletes data');
   }
