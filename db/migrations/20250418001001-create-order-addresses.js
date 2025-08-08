@@ -2,6 +2,17 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'order_addresses' || table.tableName === 'OrderAddresses')
+    );
+    
+    if (tableExists) {
+      console.log('order_addresses table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating order_addresses table...');
     await queryInterface.createTable('order_addresses', {
       id: {
         type: Sequelize.INTEGER,
@@ -99,11 +110,34 @@ module.exports = {
       }
     });
 
-    // Add indexes
-    await queryInterface.addIndex('order_addresses', ['order_id']);
-    await queryInterface.addIndex('order_addresses', ['user_id']);
-    await queryInterface.addIndex('order_addresses', ['updated_by']);
-    await queryInterface.addIndex('order_addresses', ['deleted_at']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('order_addresses', ['order_id']);
+      console.log('Added order_id index to order_addresses');
+    } catch (error) {
+      console.log('order_id index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('order_addresses', ['user_id']);
+      console.log('Added user_id index to order_addresses');
+    } catch (error) {
+      console.log('user_id index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('order_addresses', ['updated_by']);
+      console.log('Added updated_by index to order_addresses');
+    } catch (error) {
+      console.log('updated_by index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('order_addresses', ['deleted_at']);
+      console.log('Added deleted_at index to order_addresses');
+    } catch (error) {
+      console.log('deleted_at index might already exist:', error.message);
+    }
   },
 
   down: async (queryInterface, Sequelize) => {

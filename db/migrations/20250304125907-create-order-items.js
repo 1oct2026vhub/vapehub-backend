@@ -28,7 +28,7 @@ module.exports = {
         onUpdate: 'CASCADE',
       },
       variant_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.BIGINT,
         allowNull: true,
         references: {
           model: 'product_variants',

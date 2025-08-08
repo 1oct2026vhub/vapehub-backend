@@ -669,4 +669,65 @@ router.get('/trustpilot-product-reviews',
     homePageController.getTrustpilotProductReviews
 );
 
+/**
+ * @swagger
+ * /api/home/welcome-content:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get active welcome content
+ *     description: Retrieve the currently active welcome content for the homepage
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved welcome content
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     welcomeContent:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         title:
+ *                           type: string
+ *                         content:
+ *                           type: string
+ *                         image_url:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                           enum: [active, inactive]
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updater:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             first_name:
+ *                               type: string
+ *                             last_name:
+ *                               type: string
+ *                             email:
+ *                               type: string
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: No active welcome content found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/welcome-content', homePageController.getWelcomeContent);
+
 module.exports = router
