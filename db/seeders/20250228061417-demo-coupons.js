@@ -3,6 +3,7 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     const now = new Date();
     const oneMonthFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000));
     const threeDaysFromNow = new Date(now.getTime() + (3 * 24 * 60 * 60 * 1000));
@@ -81,6 +82,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     await queryInterface.bulkDelete('coupons', null, {});
   }
 };

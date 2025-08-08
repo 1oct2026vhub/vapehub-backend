@@ -2,6 +2,7 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     // Create footer sections
     await queryInterface.bulkInsert('footer_sections', [
       {
@@ -163,6 +164,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     await queryInterface.bulkDelete('footer_links', null, {});
     await queryInterface.bulkDelete('footer_sections', null, {});
   }

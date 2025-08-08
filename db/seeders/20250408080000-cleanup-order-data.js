@@ -2,6 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     try {
       const { sequelize } = queryInterface;
       console.log('Starting order data cleanup...');
@@ -108,6 +109,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     // This seeder cannot be undone as it's a cleanup operation
     console.log('This seeder cannot be undone as it\'s a cleanup operation');
   }

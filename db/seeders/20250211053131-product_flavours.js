@@ -3,6 +3,7 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     await queryInterface.bulkInsert('ProductFlavors', [
       // Product ID: 3
       {
@@ -191,6 +192,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     await queryInterface.bulkDelete('ProductFlavors', null, {});
   }
 };

@@ -3,6 +3,7 @@ const { User } = require("../../models");
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     const users = await User.findAll();
 
     for (const user of users) {
@@ -12,6 +13,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     // Reset referral_code for all users
     await queryInterface.bulkUpdate("users", { referral_code: null }, {});
   },
