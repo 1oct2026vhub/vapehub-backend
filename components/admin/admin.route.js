@@ -43,5 +43,6 @@ router.use('/loyalty-points', require('./loyaltyPoints/routes/loyaltyPoints.rout
 router.use('/mail-subscription-settings', require('./mailSubscriptionSettings/routes/mailSubscriptionSettings.route'));
 router.use('/contactus', require('./contactus/routes/contactus.route'));
 router.use('/welcome-content', require('./welcomeContent/routes/welcomeContent.route'));
+router.use('/feature-content', require('./featureContent/routes/featureContent.route'));
 
 module.exports = router;
