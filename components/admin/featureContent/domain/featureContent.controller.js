@@ -446,3 +446,41 @@ module.exports.addIcon = async (req, res) => {
     return errorResponse(res, error, error.message || 'Failed to add icon');
   }
 };
+
+// Delete icon by ID
+module.exports.deleteIcon = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find the icon
+    const icon = await FeatureContentIcon.findByPk(id, {
+      paranoid: false
+    });
+
+    if (!icon) {
+      return errorResponse(res, { message: 'Icon not found' }, 'Icon not found', 404);
+    }
+
+    // Check if icon is being used by any feature content
+    const featureContentUsingIcon = await FeatureContent.findOne({
+      where: { icon_id: id }
+    });
+
+    if (featureContentUsingIcon) {
+      return errorResponse(res, { 
+        message: 'Cannot delete icon. It is currently being used by feature content.' 
+      }, 'Icon is in use', 400);
+    }
+
+    // Delete icon from S3
+    await deleteIconFromS3(icon.icon_url);
+
+    // Delete icon record
+    await icon.destroy();
+
+    return successResponse(res, {}, 'Icon deleted successfully');
+  } catch (error) {
+    console.error('Error in deleteIcon:', error);
+    return errorResponse(res, error, error.message || 'Failed to delete icon');
+  }
+};
