@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant, WelcomeContent } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1176,5 +1176,36 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
         }
 
         return errorResponse(res, error, error.message || 'Failed to fetch product reviews');
+    }
+};
+
+/**
+ * Get active welcome content for homepage
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getWelcomeContent = async (req, res, next) => {
+    try {
+        const welcomeContent = await WelcomeContent.findOne({
+            where: { status: 'active' },
+            include: [
+                {
+                    model: User,
+                    as: 'updater',
+                    attributes: ['id', 'first_name', 'last_name', 'email'],
+                    required: false
+                }
+            ]
+        });
+
+        if (!welcomeContent) {
+            return errorResponse(res, { message: 'No active welcome content found' }, 'No active welcome content found', 404);
+        }
+
+        return successResponse(res, { welcomeContent }, 'Welcome content retrieved successfully');
+    } catch (error) {
+        console.error('Error in getWelcomeContent:', error);
+        return errorResponse(res, error, error.message || 'Failed to retrieve welcome content');
     }
 };
