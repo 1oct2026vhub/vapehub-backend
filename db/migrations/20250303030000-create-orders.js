@@ -4,7 +4,7 @@ module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.createTable('orders', {
       id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         primaryKey: true,
         autoIncrement: true,
         unique: true,
@@ -21,7 +21,7 @@ module.exports = {
         onUpdate: 'CASCADE'
       },
       coupon_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.BIGINT,
         allowNull: true,
         references: {
           model: 'coupons', // References the coupons table
@@ -77,4 +77,4 @@ module.exports = {
   down: async (queryInterface, Sequelize) => {
     await queryInterface.dropTable('orders');
   }
-};
+}; 

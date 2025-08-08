@@ -20,13 +20,19 @@ module.exports = {
       allowNull: false,
       defaultValue: 0
     });
+
+    // Add indexes for referral fields
+    await queryInterface.addIndex('users', ['referred_by']);
+    await queryInterface.addIndex('users', ['referral_points']);
   },
 
   down: async (queryInterface, Sequelize) => {
-    // Remove referral_points column
-    await queryInterface.removeColumn('users', 'referral_points');
+    // Remove indexes
+    await queryInterface.removeIndex('users', ['referred_by']);
+    await queryInterface.removeIndex('users', ['referral_points']);
 
-    // Remove referred_by column
+    // Remove columns
+    await queryInterface.removeColumn('users', 'referral_points');
     await queryInterface.removeColumn('users', 'referred_by');
   }
 }; 

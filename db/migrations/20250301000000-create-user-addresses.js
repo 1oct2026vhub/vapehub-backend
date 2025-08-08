@@ -1,31 +1,14 @@
 'use strict';
 
+/** @type {import('sequelize-cli').Migration} */
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
-    await queryInterface.createTable('order_addresses', {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.createTable('user_addresses', {
       id: {
         type: Sequelize.INTEGER,
         primaryKey: true,
         autoIncrement: true,
         unique: true
-      },
-      order_id: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        references: {
-          model: 'orders',
-          key: 'id'
-        },
-        onDelete: 'CASCADE',
-        onUpdate: 'CASCADE'
-      },
-      user_id: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        references: {
-          model: 'users',
-          key: 'id'
-        }
       },
       updated_by: {
         type: Sequelize.INTEGER,
@@ -33,7 +16,19 @@ module.exports = {
         references: {
           model: 'users',
           key: 'id'
-        }
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
+      },
+      user_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
       },
       name: {
         type: Sequelize.STRING,
@@ -91,7 +86,7 @@ module.exports = {
       updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
       },
       deleted_at: {
         type: Sequelize.DATE,
@@ -99,14 +94,13 @@ module.exports = {
       }
     });
 
-    // Add indexes
-    await queryInterface.addIndex('order_addresses', ['order_id']);
-    await queryInterface.addIndex('order_addresses', ['user_id']);
-    await queryInterface.addIndex('order_addresses', ['updated_by']);
-    await queryInterface.addIndex('order_addresses', ['deleted_at']);
+    // Add indexes for better query performance
+    await queryInterface.addIndex('user_addresses', ['user_id']);
+    await queryInterface.addIndex('user_addresses', ['updated_by']);
+    await queryInterface.addIndex('user_addresses', ['deleted_at']);
   },
 
-  down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('order_addresses');
+  async down(queryInterface, Sequelize) {
+    await queryInterface.dropTable('user_addresses');
   }
-}; 
+};
