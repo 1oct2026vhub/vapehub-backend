@@ -4,6 +4,7 @@ const { Category } = require('../../models');
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     try {
       const categories = [
         {
@@ -63,6 +64,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     await Category.destroy({ truncate: true });
   }
 };

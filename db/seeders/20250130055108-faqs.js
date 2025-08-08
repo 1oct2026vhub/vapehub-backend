@@ -2,6 +2,7 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     return queryInterface.bulkInsert('FAQs', [
       {
         question: "What are disposable vape kits?",
@@ -79,6 +80,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     return queryInterface.bulkDelete('FAQs', null, {});
   }
 };

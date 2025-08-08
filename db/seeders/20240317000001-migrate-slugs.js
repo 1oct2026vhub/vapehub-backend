@@ -6,6 +6,7 @@ const models = require('../../models');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return;
     const transaction = await queryInterface.sequelize.transaction();
     const slugManager = new SlugManager(models.SlugRelation);
     const logger = console;
@@ -176,6 +177,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     const transaction = await queryInterface.sequelize.transaction();
     try {
       // Remove all slug relations
