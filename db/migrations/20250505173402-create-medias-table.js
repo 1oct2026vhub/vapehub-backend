@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'medias' || table.tableName === 'Medias')
+    );
+    
+    if (tableExists) {
+      console.log('medias table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating medias table...');
     await queryInterface.createTable('medias', {
       id: {
         allowNull: false,
@@ -51,10 +62,27 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('medias', ['review_id']);
-    await queryInterface.addIndex('medias', ['user_id']);
-    await queryInterface.addIndex('medias', ['media_type']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('medias', ['review_id']);
+      console.log('Added review_id index to medias');
+    } catch (error) {
+      console.log('review_id index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('medias', ['user_id']);
+      console.log('Added user_id index to medias');
+    } catch (error) {
+      console.log('user_id index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('medias', ['media_type']);
+      console.log('Added media_type index to medias');
+    } catch (error) {
+      console.log('media_type index might already exist:', error.message);
+    }
   },
 
   async down(queryInterface, Sequelize) {

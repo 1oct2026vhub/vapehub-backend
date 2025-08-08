@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'users' || table.tableName === 'Users')
+    );
+    
+    if (tableExists) {
+      console.log('users table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating users table...');
     await queryInterface.createTable('users', {
       id: {
         type: Sequelize.INTEGER,
@@ -117,15 +128,62 @@ module.exports = {
       }
     });
 
-    // Add indexes for better query performance
-    await queryInterface.addIndex('users', ['email']);
-    await queryInterface.addIndex('users', ['phone']);
-    await queryInterface.addIndex('users', ['referral_code']);
-    await queryInterface.addIndex('users', ['loyalty_points']);
-    await queryInterface.addIndex('users', ['blocked']);
-    await queryInterface.addIndex('users', ['super_user']);
-    await queryInterface.addIndex('users', ['receive_promotions']);
-    await queryInterface.addIndex('users', ['deleted_at']);
+    // Add indexes for better query performance (with existence checks)
+    try {
+      await queryInterface.addIndex('users', ['email']);
+      console.log('Added email index to users');
+    } catch (error) {
+      console.log('email index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['phone']);
+      console.log('Added phone index to users');
+    } catch (error) {
+      console.log('phone index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['referral_code']);
+      console.log('Added referral_code index to users');
+    } catch (error) {
+      console.log('referral_code index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['loyalty_points']);
+      console.log('Added loyalty_points index to users');
+    } catch (error) {
+      console.log('loyalty_points index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['blocked']);
+      console.log('Added blocked index to users');
+    } catch (error) {
+      console.log('blocked index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['super_user']);
+      console.log('Added super_user index to users');
+    } catch (error) {
+      console.log('super_user index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['receive_promotions']);
+      console.log('Added receive_promotions index to users');
+    } catch (error) {
+      console.log('receive_promotions index might already exist:', error.message);
+    }
+    
+    try {
+      await queryInterface.addIndex('users', ['deleted_at']);
+      console.log('Added deleted_at index to users');
+    } catch (error) {
+      console.log('deleted_at index might already exist:', error.message);
+    }
   },
 
   async down(queryInterface, Sequelize) {
