@@ -730,4 +730,73 @@ router.get('/trustpilot-product-reviews',
  */
 router.get('/welcome-content', homePageController.getWelcomeContent);
 
+/**
+ * @swagger
+ * /api/home/feature-content:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get active feature content
+ *     description: Retrieve all active feature content for the homepage
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved feature content
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     featureContent:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           title:
+ *                             type: string
+ *                           subtitle:
+ *                             type: string
+ *                           status:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           updatedAt:
+ *                             type: string
+ *                             format: date-time
+ *                           updater:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               first_name:
+ *                                 type: string
+ *                               last_name:
+ *                                 type: string
+ *                               email:
+ *                                 type: string
+ *                           icon:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               icon_url:
+ *                                 type: string
+ *                               file_name:
+ *                                 type: string
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: No active feature content found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/feature-content', homePageController.getFeatureContent);
+
 module.exports = router
