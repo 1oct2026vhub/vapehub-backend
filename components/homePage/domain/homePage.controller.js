@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant, WelcomeContent } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant, WelcomeContent, FeatureContent, FeatureContentIcon } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1207,5 +1207,43 @@ module.exports.getWelcomeContent = async (req, res, next) => {
     } catch (error) {
         console.error('Error in getWelcomeContent:', error);
         return errorResponse(res, error, error.message || 'Failed to retrieve welcome content');
+    }
+};
+
+/**
+ * Get active feature content for homepage
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getFeatureContent = async (req, res, next) => {
+    try {
+        const featureContent = await FeatureContent.findAll({
+            where: { status: 'active' },
+            include: [
+                {
+                    model: User,
+                    as: 'updater',
+                    attributes: ['id', 'first_name', 'last_name', 'email'],
+                    required: false
+                },
+                {
+                    model: FeatureContentIcon,
+                    as: 'icon',
+                    attributes: ['id', 'icon_url', 'file_name'],
+                    required: false
+                }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        if (!featureContent || featureContent.length === 0) {
+            return errorResponse(res, { message: 'No active feature content found' }, 'No active feature content found', 404);
+        }
+
+        return successResponse(res, { featureContent }, 'Feature content retrieved successfully');
+    } catch (error) {
+        console.error('Error in getFeatureContent:', error);
+        return errorResponse(res, error, error.message || 'Failed to retrieve feature content');
     }
 };
