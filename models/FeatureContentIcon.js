@@ -9,8 +9,11 @@ module.exports = (sequelize, DataTypes) => {
      * The `models/index` file will call this method automatically.
      */
     static associate(models) {
-      // Icons are independent and can be used by multiple feature content
-      // No direct association needed
+      // Define associations here
+      FeatureContentIcon.hasMany(models.FeatureContent, {
+        foreignKey: 'icon_id',
+        as: 'featureContents'
+      });
     }
   }
   
