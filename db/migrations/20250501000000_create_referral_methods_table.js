@@ -3,6 +3,17 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // Check if table already exists
+    const tableExists = await queryInterface.showAllTables().then(tables => 
+      tables.some(table => table.tableName === 'referral_methods' || table.tableName === 'ReferralMethods')
+    );
+    
+    if (tableExists) {
+      console.log('referral_methods table already exists, skipping creation');
+      return;
+    }
+    
+    console.log('Creating referral_methods table...');
     await queryInterface.createTable('referral_methods', {
       id: {
         allowNull: false,

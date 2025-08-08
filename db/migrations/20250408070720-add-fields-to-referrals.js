@@ -2,16 +2,17 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.addColumn('referrals', 'referred_user_id', {
-      type: Sequelize.INTEGER,
-      allowNull: true,
-      references: {
-        model: 'users',
-        key: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL'
-    });
+    // referred_user_id is already defined in create-referrals-table migration
+    // await queryInterface.addColumn('referrals', 'referred_user_id', {
+    //   type: Sequelize.INTEGER,
+    //   allowNull: true,
+    //   references: {
+    //     model: 'users',
+    //     key: 'id'
+    //   },
+    //   onUpdate: 'CASCADE',
+    //   onDelete: 'SET NULL'
+    // });
 
     await queryInterface.addColumn('referrals', 'referral_value_type', {
       type: Sequelize.ENUM('percentage', 'fixed'),
@@ -26,7 +27,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.removeColumn('referrals', 'referred_user_id');
+    // await queryInterface.removeColumn('referrals', 'referred_user_id');
     await queryInterface.removeColumn('referrals', 'referral_value_type');
     await queryInterface.removeColumn('referrals', 'referral_value');
   }
