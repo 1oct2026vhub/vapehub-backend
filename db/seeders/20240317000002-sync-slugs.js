@@ -5,7 +5,7 @@ const models = require('../../models');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    
+    return;
     const transaction = await queryInterface.sequelize.transaction();
     const logger = console;
     return;
@@ -194,6 +194,7 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
+    return;
     // No down migration needed as this is a data synchronization
     logger.log('No down migration needed for slug synchronization');
   }

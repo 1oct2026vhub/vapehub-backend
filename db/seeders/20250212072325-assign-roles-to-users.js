@@ -4,6 +4,7 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     // Fetch the admin role ID
     const customerRole = await queryInterface.sequelize.query(
       `SELECT id FROM roles WHERE role = 'customer' LIMIT 1;`,
@@ -21,6 +22,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     // Revert all users who were assigned the admin role
     // await queryInterface.bulkUpdate("users", { roleId: null }, { });
   },

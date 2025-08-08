@@ -3,6 +3,7 @@ const constants = require('../../config/constants');
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
+    return;
     const orders = await Order.findAll({ attributes: ['id', 'user_id'] });
     let transactionsData = [];
 
@@ -32,6 +33,7 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    return;
     await queryInterface.bulkDelete('transactions', null, {});
   }
 }; 
