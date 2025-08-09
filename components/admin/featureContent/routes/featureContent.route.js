@@ -343,7 +343,7 @@ router.delete("/icons/:id",
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             required:
@@ -358,10 +358,9 @@ router.delete("/icons/:id",
  *                 type: string
  *                 maxLength: 500
  *                 description: Feature content subtitle
- *               icon:
- *                 type: string
- *                 format: binary
- *                 description: Icon image file (max 5MB)
+ *               icon_id:
+ *                 type: integer
+ *                 description: ID of the icon from FeatureContentIcon table
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
@@ -381,16 +380,62 @@ router.delete("/icons/:id",
  *                   type: object
  *                   properties:
  *                     featureContent:
- *                       $ref: '#/components/schemas/FeatureContent'
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         title:
+ *                           type: string
+ *                         subtitle:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                           enum: [active, inactive]
+ *                         icon_id:
+ *                           type: integer
+ *                           nullable: true
+ *                         updated_by:
+ *                           type: integer
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updater:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             first_name:
+ *                               type: string
+ *                             last_name:
+ *                               type: string
+ *                             email:
+ *                               type: string
+ *                         icon:
+ *                           type: object
+ *                           nullable: true
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             file_name:
+ *                               type: string
+ *                             icon_url:
+ *                               type: string
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
  *       400:
  *         description: Bad request - validation error
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Icon not found (if invalid icon_id provided)
  *       500:
  *         description: Internal server error
  */
 router.post("/",
-    uploadFileValidation,
     [authMiddleware(true), validateRequest(featureContentValidation)],
     featureContentController.createFeatureContent
 );
@@ -425,7 +470,52 @@ router.post("/",
  *                   type: object
  *                   properties:
  *                     featureContent:
- *                       $ref: '#/components/schemas/FeatureContent'
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         title:
+ *                           type: string
+ *                         subtitle:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                           enum: [active, inactive]
+ *                         icon_id:
+ *                           type: integer
+ *                           nullable: true
+ *                         updated_by:
+ *                           type: integer
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updater:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             first_name:
+ *                               type: string
+ *                             last_name:
+ *                               type: string
+ *                             email:
+ *                               type: string
+ *                         icon:
+ *                           type: object
+ *                           nullable: true
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             file_name:
+ *                               type: string
+ *                             icon_url:
+ *                               type: string
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
  *       404:
  *         description: Feature content not found
  *       401:
@@ -457,7 +547,7 @@ router.get("/:id",
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             properties:
@@ -469,10 +559,9 @@ router.get("/:id",
  *                 type: string
  *                 maxLength: 500
  *                 description: Feature content subtitle
- *               icon:
- *                 type: string
- *                 format: binary
- *                 description: Icon image file (max 5MB)
+ *               icon_id:
+ *                 type: integer
+ *                 description: ID of the icon from FeatureContentIcon table
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
@@ -493,7 +582,7 @@ router.get("/:id",
  *                     featureContent:
  *                       $ref: '#/components/schemas/FeatureContent'
  *       404:
- *         description: Feature content not found
+ *         description: Feature content not found or icon not found (if invalid icon_id provided)
  *       400:
  *         description: Bad request - validation error
  *       401:
@@ -502,7 +591,6 @@ router.get("/:id",
  *         description: Internal server error
  */
 router.put("/:id",
-    uploadFileValidation,
     [authMiddleware(true), validateRequest([...featureContentIdValidation, ...featureContentUpdateValidation])],
     featureContentController.updateFeatureContent
 );
@@ -568,7 +656,52 @@ router.delete("/:id",
  *                   type: object
  *                   properties:
  *                     featureContent:
- *                       $ref: '#/components/schemas/FeatureContent'
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         title:
+ *                           type: string
+ *                         subtitle:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                           enum: [active, inactive]
+ *                         icon_id:
+ *                           type: integer
+ *                           nullable: true
+ *                         updated_by:
+ *                           type: integer
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                         updater:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             first_name:
+ *                               type: string
+ *                             last_name:
+ *                               type: string
+ *                             email:
+ *                               type: string
+ *                         icon:
+ *                           type: object
+ *                           nullable: true
+ *                           properties:
+ *                             id:
+ *                               type: integer
+ *                             file_name:
+ *                               type: string
+ *                             icon_url:
+ *                               type: string
+ *                             createdAt:
+ *                               type: string
+ *                               format: date-time
  *       404:
  *         description: Feature content not found
  *       400:
