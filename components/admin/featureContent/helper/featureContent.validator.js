@@ -24,6 +24,11 @@ const featureContentValidation = [
         .isLength({ max: 500 })
         .withMessage('Subtitle must be less than 500 characters'),
     
+    body('icon_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Icon ID must be a positive integer'),
+    
     body('status')
         .optional()
         .isIn(['active', 'inactive'])
@@ -47,6 +52,11 @@ const featureContentUpdateValidation = [
         .withMessage('Subtitle cannot be empty')
         .isLength({ max: 500 })
         .withMessage('Subtitle must be less than 500 characters'),
+    
+    body('icon_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Icon ID must be a positive integer'),
     
     body('status')
         .optional()
