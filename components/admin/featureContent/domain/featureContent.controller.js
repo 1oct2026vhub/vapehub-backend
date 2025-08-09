@@ -151,34 +151,24 @@ module.exports.getFeatureContentById = async (req, res) => {
 
 module.exports.createFeatureContent = async (req, res) => {
   try {
-    const { title, subtitle, status = 'active' } = req.body;
+    const { title, subtitle, status = 'active', icon_id } = req.body;
     const userId = req.user.id;
 
-    // Handle icon upload
-    let iconUrl = null;
-    let fileName = null;
-    if (req.file) {
-      iconUrl = await handleIconUpload(req.file);
-      fileName = req.file.originalname;
+    // Validate icon_id if provided
+    if (icon_id) {
+      const iconExists = await FeatureContentIcon.findByPk(icon_id);
+      if (!iconExists) {
+        return errorResponse(res, { message: 'Icon not found' }, 'Icon not found', 404);
+      }
     }
 
     const featureContent = await FeatureContent.create({
       title,
       subtitle,
       status,
+      icon_id,
       updated_by: userId
     });
-
-    // Create icon record if icon was uploaded
-    if (iconUrl) {
-      const icon = await FeatureContentIcon.create({
-        file_name: fileName,
-        icon_url: iconUrl
-      });
-      
-      // Update feature content with icon_id
-      await featureContent.update({ icon_id: icon.id });
-    }
 
     // Fetch the created content with updater info and icon
     const createdFeatureContent = await FeatureContent.findByPk(featureContent.id, {
@@ -208,7 +198,7 @@ module.exports.createFeatureContent = async (req, res) => {
 module.exports.updateFeatureContent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, subtitle, status } = req.body;
+    const { title, subtitle, status, icon_id } = req.body;
     const userId = req.user.id;
 
     const featureContent = await FeatureContent.findByPk(id, {
@@ -225,29 +215,12 @@ module.exports.updateFeatureContent = async (req, res) => {
       return errorResponse(res, { message: 'Feature content not found' }, 'Feature content not found', 404);
     }
 
-    // Handle icon upload if new file is provided
-    if (req.file) {
-      // Delete old icon from S3 if exists
-      if (featureContent.icon) {
-        await deleteIconFromS3(featureContent.icon.icon_url);
-        // Delete old icon record
-        await FeatureContentIcon.destroy({
-          where: { id: featureContent.icon_id }
-        });
+    // Validate icon_id if provided
+    if (icon_id) {
+      const iconExists = await FeatureContentIcon.findByPk(icon_id);
+      if (!iconExists) {
+        return errorResponse(res, { message: 'Icon not found' }, 'Icon not found', 404);
       }
-      
-      // Upload new icon
-      const iconUrl = await handleIconUpload(req.file);
-      const fileName = req.file.originalname;
-      
-      // Create new icon record
-      const icon = await FeatureContentIcon.create({
-        file_name: fileName,
-        icon_url: iconUrl
-      });
-      
-      // Update feature content with new icon_id
-      await featureContent.update({ icon_id: icon.id });
     }
 
     // Update the feature content
@@ -255,6 +228,7 @@ module.exports.updateFeatureContent = async (req, res) => {
       title,
       subtitle,
       status,
+      icon_id,
       updated_by: userId
     });
 
