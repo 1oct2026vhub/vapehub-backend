@@ -1218,6 +1218,19 @@ module.exports.getWelcomeContent = async (req, res, next) => {
  */
 module.exports.getFeatureContent = async (req, res, next) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        // Get total count for pagination
+        const totalCount = await FeatureContent.count({
+            where: { status: 'active' }
+        });
+
+        // Calculate pagination details
+        const totalPages = totalCount > 0 ? Math.ceil(totalCount / limit) : 1;
+        const currentPage = page;
+
         const featureContent = await FeatureContent.findAll({
             where: { status: 'active' },
             include: [
@@ -1234,14 +1247,25 @@ module.exports.getFeatureContent = async (req, res, next) => {
                     required: false
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'DESC']],
+            limit: limit,
+            offset: offset
         });
 
         if (!featureContent || featureContent.length === 0) {
             return errorResponse(res, { message: 'No active feature content found' }, 'No active feature content found', 404);
         }
 
-        return successResponse(res, { featureContent }, 'Feature content retrieved successfully');
+        const pagination = {
+            currentPage: currentPage,
+            totalPages: totalPages,
+            totalItems: totalCount,
+            itemsPerPage: limit,
+            hasNextPage: currentPage < totalPages,
+            hasPreviousPage: currentPage > 1
+        };
+
+        return successResponse(res, { featureContent, pagination }, 'Feature content retrieved successfully');
     } catch (error) {
         console.error('Error in getFeatureContent:', error);
         return errorResponse(res, error, error.message || 'Failed to retrieve feature content');

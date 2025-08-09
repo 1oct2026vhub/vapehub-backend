@@ -737,7 +737,23 @@ router.get('/welcome-content', homePageController.getWelcomeContent);
  *     tags:
  *       - HomePage
  *     summary: Get active feature content
- *     description: Retrieve all active feature content for the homepage
+ *     description: Retrieve all active feature content for the homepage with pagination
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
  *     responses:
  *       200:
  *         description: Successfully retrieved feature content
@@ -790,6 +806,27 @@ router.get('/welcome-content', homePageController.getWelcomeContent);
  *                                 type: string
  *                               file_name:
  *                                 type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage:
+ *                           type: integer
+ *                           description: Current page number
+ *                         totalPages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         totalItems:
+ *                           type: integer
+ *                           description: Total number of items
+ *                         itemsPerPage:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         hasNextPage:
+ *                           type: boolean
+ *                           description: Whether there is a next page
+ *                         hasPreviousPage:
+ *                           type: boolean
+ *                           description: Whether there is a previous page
  *                 message:
  *                   type: string
  *       404:
