@@ -100,6 +100,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       comment: 'Indicates if the review was verified by an admin or system'
     },
+    testimonial: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Indicates if the review should be displayed as a testimonial'
+    },
     created_at: {
       allowNull: false,
       type: DataTypes.DATE,

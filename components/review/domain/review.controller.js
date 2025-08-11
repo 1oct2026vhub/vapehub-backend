@@ -64,7 +64,7 @@ const createReview = async (req, res, next) => {
 
 const getReviews = async (req, res, next) => {
     try {
-        const { product_id, user_id, is_visible, page = 1, limit = 10 } = req.query;
+        const { product_id, user_id, is_visible, testimonial, page = 1, limit = 10 } = req.query;
         const where = {};
 
         if (product_id) where.product_id = product_id;
@@ -74,6 +74,11 @@ const getReviews = async (req, res, next) => {
         }
         else{
             where.is_visible = false;
+        }
+        
+        // Filter by testimonial if provided
+        if (testimonial !== undefined) {
+            where.testimonial = testimonial === 'true' || testimonial === true || testimonial === 1;
         }
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -113,6 +118,22 @@ const getReviews = async (req, res, next) => {
             ],
             raw: true
         });
+        
+        // Get testimonial statistics if testimonial filter is applied
+        let testimonialStats = null;
+        if (testimonial !== undefined) {
+            const testimonialCount = await Review.count({ 
+                where: { 
+                    ...where,
+                    testimonial: testimonial === 'true' || testimonial === true || testimonial === 1 
+                } 
+            });
+            const totalCount = await Review.count({ where });
+            testimonialStats = {
+                filteredCount: testimonialCount,
+                totalCount: totalCount
+            };
+        }
         return successResponse(res, {
             rows: reviews.rows,
             average_rating: parseFloat(averageRating?.average_rating || 0).toFixed(1),
@@ -121,7 +142,11 @@ const getReviews = async (req, res, next) => {
                 total: reviews.count,
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(reviews.count / parseInt(limit))
-            }
+            },
+            filters: {
+                testimonial: testimonial !== undefined ? testimonial : null
+            },
+            testimonialStats
         }, "Success");
     } catch (error) {
         return errorResponse(res, error);
@@ -261,7 +286,7 @@ const deleteReview = async (req, res, next) => {
 const getReviewsByProductId = async (req, res, next) => {
     try {
         const { product_id } = req.params;
-        let { page = 1, limit = 10, rating, is_visible } = req.query;
+        let { page = 1, limit = 10, rating, is_visible, testimonial } = req.query;
 
         // Validate product_id
         if (!product_id) {
@@ -286,6 +311,11 @@ const getReviewsByProductId = async (req, res, next) => {
         // Add rating filter if provided
         if (rating) {
             where.rating = rating;
+        }
+        
+        // Add testimonial filter if provided
+        if (testimonial !== undefined) {
+            where.testimonial = testimonial === 'true' || testimonial === true || testimonial === 1;
         }
 
         // Calculate pagination
@@ -332,6 +362,23 @@ const getReviewsByProductId = async (req, res, next) => {
             raw: true
         });
 
+        // Get testimonial statistics if testimonial filter is applied
+        let testimonialStats = null;
+        if (testimonial !== undefined) {
+            const testimonialCount = await Review.count({ 
+                where: { 
+                    product_id,
+                    is_visible,
+                    testimonial: testimonial === 'true' || testimonial === true || testimonial === 1 
+                } 
+            });
+            const totalCount = await Review.count({ where: { product_id, is_visible } });
+            testimonialStats = {
+                filteredCount: testimonialCount,
+                totalCount: totalCount
+            };
+        }
+
         return successResponse(res, {
             reviews,
             pagination: {
@@ -341,7 +388,11 @@ const getReviewsByProductId = async (req, res, next) => {
                 totalPages: Math.ceil(total / limit)
             },
             average_rating: parseFloat(averageRating?.average_rating || 0).toFixed(1),
-            total_reviews: parseInt(averageRating?.total_reviews || 0)
+            total_reviews: parseInt(averageRating?.total_reviews || 0),
+            filters: {
+                testimonial: testimonial !== undefined ? testimonial : null
+            },
+            testimonialStats
         });
     } catch (error) {
         return errorResponse(res, error);
