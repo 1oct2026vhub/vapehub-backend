@@ -9,7 +9,7 @@ module.exports = {
       const offset = (page - 1) * limit;
       
       // Extract search and filter parameters
-      const { search, rating, sortBy = 'created_at', sortOrder = 'DESC' } = req.query;
+      const { search, rating, testimonial, sortBy = 'created_at', sortOrder = 'DESC' } = req.query;
       
       // Build where clause for filtering
       const whereClause = {};
@@ -17,6 +17,11 @@ module.exports = {
       // Filter by rating if provided
       if (rating && rating !== 'all') {
         whereClause.rating = parseInt(rating);
+      }
+      
+      // Filter by testimonial if provided
+      if (testimonial !== undefined) {
+        whereClause.testimonial = testimonial === 'true' || testimonial === true;
       }
       
       // Build include clause for searching
@@ -62,7 +67,7 @@ module.exports = {
       }
       
       // Validate sort parameters
-      const validSortFields = ['created_at', 'rating', 'user_name', 'comment'];
+      const validSortFields = ['created_at', 'rating', 'user_name', 'comment', 'testimonial'];
       const validSortOrders = ['ASC', 'DESC'];
       
       const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'created_at';
@@ -111,6 +116,10 @@ module.exports = {
         return acc;
       }, {});
       
+      // Get testimonial statistics
+      const testimonialCount = await Review.count({ where: { testimonial: true } });
+      const nonTestimonialCount = await Review.count({ where: { testimonial: false } });
+      
       res.json({
         total: count,
         page,
@@ -119,12 +128,17 @@ module.exports = {
         filters: {
           search: search || '',
           rating: rating || 'all',
+          testimonial: testimonial !== undefined ? testimonial : 'all',
           sortBy: finalSortBy,
           sortOrder: finalSortOrder
         },
         statistics: {
           ratingDistribution: ratingStatistics,
-          totalReviews: await Review.count()
+          totalReviews: await Review.count(),
+          testimonialStats: {
+            testimonials: testimonialCount,
+            regularReviews: nonTestimonialCount
+          }
         }
       });
     } catch (err) {
@@ -147,7 +161,8 @@ module.exports = {
     try {
       const review = await Review.create({
         ...req.body,
-        verified_by: true // Set default to 1 (true)
+        verified_by: true, // Set default to 1 (true)
+        testimonial: req.body.testimonial || false // Set testimonial based on admin input, default to false
       });
       
       res.status(201).json(review);
