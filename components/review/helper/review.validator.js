@@ -36,7 +36,11 @@ const getReviewsValidation = [
     query('is_visible')
         .optional()
         .isBoolean()
-        .withMessage('is_visible must be a boolean')
+        .withMessage('is_visible must be a boolean'),
+    query('testimonial')
+        .optional()
+        .isBoolean()
+        .withMessage('testimonial must be a boolean')
 ];
 
 const getReviewByIdValidation = [
@@ -96,7 +100,11 @@ const getReviewsByProductIdValidation = [
     query('is_visible')
         .optional()
         .isBoolean()
-        .withMessage('is_visible must be a boolean')
+        .withMessage('is_visible must be a boolean'),
+    query('testimonial')
+        .optional()
+        .isBoolean()
+        .withMessage('testimonial must be a boolean')
 ];
 
 const getReviewsByCompanyNameValidation = [

@@ -30,6 +30,9 @@ const { authMiddleware } = require('../../../../library/middleware');
  *           type: boolean
  *         verified_by:
  *           type: boolean
+ *         testimonial:
+ *           type: boolean
+ *           description: Indicates if the review should be displayed as a testimonial
  *         created_at:
  *           type: string
  *           format: date-time
@@ -70,10 +73,16 @@ const { authMiddleware } = require('../../../../library/middleware');
  *           default: all
  *         description: Filter by star rating (1-5) or 'all' for no filter
  *       - in: query
+ *         name: testimonial
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter by testimonial status (true for testimonials, false for regular reviews)
+ *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
- *           enum: [created_at, rating, user_name, comment]
+ *           enum: [created_at, rating, user_name, comment, testimonial]
  *           default: created_at
  *         description: Field to sort by
  *       - in: query
@@ -234,6 +243,9 @@ router.get('/', [authMiddleware(true)], reviewController.list);
  *                 type: string
  *               is_visible:
  *                 type: boolean
+ *               testimonial:
+ *                 type: boolean
+ *                 description: Set to true if this review should be displayed as a testimonial
  *     responses:
  *       201:
  *         description: Review created
@@ -280,6 +292,9 @@ router.post('/', [authMiddleware(true)], reviewController.create);
  *                 type: string
  *               is_visible:
  *                 type: boolean
+ *               testimonial:
+ *                 type: boolean
+ *                 description: Set to true if this review should be displayed as a testimonial
  *     responses:
  *       200:
  *         description: Review updated

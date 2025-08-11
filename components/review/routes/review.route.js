@@ -77,6 +77,11 @@ router.post('/',
  *         schema:
  *           type: boolean
  *         description: Filter reviews by visibility
+ *       - in: query
+ *         name: testimonial
+ *         schema:
+ *           type: boolean
+ *         description: Filter reviews by testimonial status (true for testimonials, false for regular reviews)
  *     responses:
  *       200:
  *         description: List of reviews
@@ -228,6 +233,11 @@ router.delete('/:id',
  *           type: boolean
  *           default: true
  *         description: Filter by visibility
+ *       - in: query
+ *         name: testimonial
+ *         schema:
+ *           type: boolean
+ *         description: Filter by testimonial status (true for testimonials, false for regular reviews)
  *     responses:
  *       200:
  *         description: List of reviews with pagination and average rating
