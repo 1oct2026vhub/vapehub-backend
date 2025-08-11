@@ -50,8 +50,10 @@ const {
  *       - in: query
  *         name: deleted
  *         schema:
- *           type: boolean
+ *           type: string
+ *           enum: [true, false, 0, 1]
  *           default: false
+ *         description: Filter to show deleted items (true/1) or active items (false/0)
  *       - in: query
  *         name: status
  *         schema:
@@ -135,8 +137,10 @@ router.get("/",
  *       - in: query
  *         name: deleted
  *         schema:
- *           type: boolean
+ *           type: string
+ *           enum: [true, false, 0, 1]
  *           default: false
+ *         description: Filter to show deleted items (true/1) or active items (false/0)
  *     responses:
  *       200:
  *         description: Successfully retrieved feature content icons
@@ -206,7 +210,7 @@ router.get("/icons",
  *               icon:
  *                 type: string
  *                 format: binary
- *                 description: Icon image file (max 5MB)
+ *                 description: Icon image file (max 5MB) - Supports JPEG, JPG, PNG, GIF, WebP, and SVG formats
  *     responses:
  *       201:
  *         description: Icon added successfully

@@ -44,7 +44,7 @@ const deleteIconFromS3 = async (iconUrl) => {
 
 module.exports.listAllFeatureContent = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted = false, status } = req.query;
+    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted, status } = req.query;
     const offset = (page - 1) * limit;
 
     let whereCondition = {};
@@ -63,9 +63,21 @@ module.exports.listAllFeatureContent = async (req, res) => {
       whereCondition.status = status;
     }
 
-    // Convert deleted string to boolean
-    const showDeleted = deleted === 'true' || deleted === true;
-
+    // Convert deleted string to boolean - properly handle undefined, 'true', 'false', '0', '1', true, false
+    const showDeleted = deleted === 'true' || deleted === '1' || deleted === true;
+    console.log("showDeleted>>>", showDeleted);
+    
+    // Add deleted filter to whereCondition
+    if (deleted !== undefined) {
+      if (showDeleted) {
+        // Show only deleted records
+        whereCondition.deletedAt = { [Op.ne]: null };
+      } else {
+        // Show only non-deleted records
+        whereCondition.deletedAt = null;
+      }
+    }
+    
     // Include user who updated the content and icon
     const includeConditions = [
       {
@@ -86,7 +98,7 @@ module.exports.listAllFeatureContent = async (req, res) => {
     const totalCount = await FeatureContent.count({
       where: whereCondition,
       include: includeConditions,
-      paranoid: !showDeleted,
+      paranoid: false, // Always include deleted records when filtering
       distinct: true
     });
 
@@ -97,7 +109,7 @@ module.exports.listAllFeatureContent = async (req, res) => {
       order: [[sort, order]],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      paranoid: !showDeleted,
+      paranoid: false, // Always include deleted records when filtering
       distinct: true
     });
 
@@ -328,7 +340,7 @@ module.exports.restoreFeatureContent = async (req, res) => {
 
 module.exports.getFeatureContentIcons = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted = false } = req.query;
+    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted } = req.query;
     const offset = (page - 1) * limit;
 
     let whereCondition = {};
@@ -344,13 +356,24 @@ module.exports.getFeatureContentIcons = async (req, res) => {
       };
     }
 
-    // Convert deleted string to boolean
-    const showDeleted = deleted === 'true' || deleted === true;
+    // Convert deleted string to boolean - properly handle undefined, 'true', 'false', '0', '1', true, false
+    const showDeleted = deleted === 'true' || deleted === '1' || deleted === true;
+
+    // Add deleted filter to whereCondition
+    if (deleted !== undefined) {
+      if (showDeleted) {
+        // Show only deleted records
+        whereCondition.deletedAt = { [Op.ne]: null };
+      } else {
+        // Show only non-deleted records
+        whereCondition.deletedAt = null;
+      }
+    }
 
     // Get total count
     const totalCount = await FeatureContentIcon.count({
       where: whereCondition,
-      paranoid: !showDeleted
+      paranoid: false // Always include deleted records when filtering
     });
 
     // Get paginated results
@@ -359,7 +382,7 @@ module.exports.getFeatureContentIcons = async (req, res) => {
       order: [[sort, order]],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      paranoid: !showDeleted
+      paranoid: false // Always include deleted records when filtering
     });
 
     return successResponse(res, {

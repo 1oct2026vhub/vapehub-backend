@@ -93,8 +93,8 @@ const filterValidations = [
     
     query('deleted')
         .optional()
-        .isBoolean()
-        .withMessage('Deleted must be a boolean'),
+        .isIn(['true', 'false', '0', '1'])
+        .withMessage('Deleted must be true, false, 0, or 1'),
     
     query('status')
         .optional()
@@ -131,8 +131,8 @@ const iconFilterValidations = [
     
     query('deleted')
         .optional()
-        .isBoolean()
-        .withMessage('Deleted must be a boolean')
+        .isIn(['true', 'false', '0', '1'])
+        .withMessage('Deleted must be true, false, 0, or 1')
 ];
 
 // File upload validation for icons
@@ -142,10 +142,10 @@ const uploadFileValidation = (req, res, next) => {
     
     const fileFilter = (req, file, cb) => {
         // Check file type
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
         
         if (!allowedMimeTypes.includes(file.mimetype)) {
-            return cb(new Error('Invalid file type. Only JPEG, JPG, PNG, GIF, and WebP images are allowed.'), false);
+            return cb(new Error('Invalid file type. Only JPEG, JPG, PNG, GIF, WebP, and SVG images are allowed.'), false);
         }
         
         // Check file size (5MB limit)
