@@ -76,10 +76,10 @@ const uploadFileValidation = (req, res, next) => {
     
     const fileFilter = (req, file, cb) => {
         // Check file type
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
         
         if (!allowedMimeTypes.includes(file.mimetype)) {
-            return cb(new Error('Invalid file type. Only JPEG, JPG, PNG, GIF, and WebP images are allowed.'), false);
+            return cb(new Error('Invalid file type. Only JPEG, JPG, PNG, GIF, WebP, and SVG images are allowed.'), false);
         }
         
         // Check file size (5MB limit)

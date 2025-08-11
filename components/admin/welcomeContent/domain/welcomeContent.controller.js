@@ -45,7 +45,7 @@ const deleteImageFromS3 = async (imageUrl) => {
 
 module.exports.listAllWelcomeContent = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted = false, status } = req.query;
+    const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted, status } = req.query;
     const offset = (page - 1) * limit;
 
     let whereCondition = {};
@@ -64,8 +64,19 @@ module.exports.listAllWelcomeContent = async (req, res) => {
       whereCondition.status = status;
     }
 
-    // Convert deleted string to boolean
-    const showDeleted = deleted === 'true' || deleted === true;
+    // Convert deleted string to boolean - properly handle undefined, 'true', 'false', '0', '1', true, false
+    const showDeleted = deleted === 'true' || deleted === '1' || deleted === true;
+
+    // Add deleted filter to whereCondition
+    if (deleted !== undefined) {
+      if (showDeleted) {
+        // Show only deleted records
+        whereCondition.deletedAt = { [Op.ne]: null };
+      } else {
+        // Show only non-deleted records
+        whereCondition.deletedAt = null;
+      }
+    }
 
     // Include user who updated the content
     const includeConditions = [
@@ -81,7 +92,7 @@ module.exports.listAllWelcomeContent = async (req, res) => {
     const totalCount = await WelcomeContent.count({
       where: whereCondition,
       include: includeConditions,
-      paranoid: !showDeleted,
+      paranoid: false, // Always include deleted records when filtering
       distinct: true
     });
 
@@ -92,7 +103,7 @@ module.exports.listAllWelcomeContent = async (req, res) => {
       order: [[sort, order]],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      paranoid: !showDeleted,
+      paranoid: false, // Always include deleted records when filtering
       distinct: true
     });
 

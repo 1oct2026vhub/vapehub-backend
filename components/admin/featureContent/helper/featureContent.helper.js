@@ -14,9 +14,9 @@ const validateIconFile = (file) => {
   }
 
   // Check file type
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
   if (!allowedTypes.includes(file.mimetype)) {
-    return { success: false, message: 'Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed' };
+    return { success: false, message: 'Invalid file type. Only JPEG, PNG, GIF, WebP, and SVG images are allowed' };
   }
 
   // Check file size (5MB limit)
