@@ -28,6 +28,19 @@ const listAllOrdersValidation = [
             }
             return true;
         }),
+    query('product_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Product ID must be a positive integer'),
+    query('product_name')
+        .optional()
+        .trim()
+        .notEmpty()
+        .withMessage('Product name cannot be empty'),
+    query('variant_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Variant ID must be a positive integer'),
     query('page')
         .optional()
         .isInt({ min: 1 })
