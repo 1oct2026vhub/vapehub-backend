@@ -2340,6 +2340,11 @@ module.exports.getDealProducts = async (req, res, next) => {
             // Get minimum price variant using the helper function (this runs in parallel)
             const minPriceVariant = getMinPriceVariant(product);
             
+            // Skip products that have no available variants (out of stock)
+            if (!minPriceVariant) {
+                return null;
+            }
+            
             // Get primary category and brand
             const primaryCategory = product.Categories && product.Categories.length > 0 
                 ? product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0]
@@ -2358,9 +2363,9 @@ module.exports.getDealProducts = async (req, res, next) => {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
-                price: minPriceVariant ? minPriceVariant.price : product.price,
-                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.price,
-                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+                price: minPriceVariant.price,
+                regular_price: minPriceVariant.regular_price,
+                discount_price: minPriceVariant.discount_price,
                 stock_quantity: product.stock_quantity,
                 puff_count: product.puff_count,
                 is_new: product.is_new,
@@ -2425,6 +2430,9 @@ module.exports.getDealProducts = async (req, res, next) => {
                 }))
             };
         }));
+
+        // Filter out null products (those with no available variants)
+        const availableProducts = transformedProducts.filter(product => product !== null);
   
         // Calculate pagination info
         const totalPages = Math.ceil(totalCount / parsedLimit);
@@ -2436,7 +2444,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 name: deal.name,
                 slug: deal.slug
             },
-            products: transformedProducts.map(product => ({
+            products: availableProducts.map(product => ({
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
@@ -2446,12 +2454,12 @@ module.exports.getDealProducts = async (req, res, next) => {
                 image: product.min_price_variant?.variant_image || product.primary_image
             })),
             pagination: {
-                total_count: totalCount,
-                total_pages: totalPages,
+                total_count: availableProducts.length,
+                total_pages: Math.ceil(availableProducts.length / parsedLimit),
                 current_page: currentPage,
                 limit: parsedLimit,
                 offset: parsedOffset,
-                has_next: currentPage < totalPages,
+                has_next: currentPage < Math.ceil(availableProducts.length / parsedLimit),
                 has_prev: currentPage > 1
             }
         };
