@@ -1858,7 +1858,7 @@ router.post('/shipments/void-label', authMiddleware(true), voidShipStationLabel)
 
 /**
  * @swagger
- * /api/shipping-method/carriers:
+ * /api/admin/shipStation/carriers:
  *   get:
  *     summary: Get ShipStation carriers
  *     description: Retrieve a list of all carriers connected to ShipStation
@@ -1899,7 +1899,7 @@ router.get("/carriers", authMiddleware(true), getShipStationCarriers);
 
 /**
  * @swagger
- * /api/shipping-method/carrier-services:
+ * /api/admin/shipStation/carrier-services:
  *   get:
  *     summary: Get ShipStation carrier services
  *     description: Retrieve a list of all available shipping services for a given carrier from ShipStation
