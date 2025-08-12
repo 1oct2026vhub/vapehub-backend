@@ -168,6 +168,21 @@ router.put('/:id/status', [authMiddleware(true), validateRequest(updateOrderStat
  *           format: date
  *         description: Filter orders until this date
  *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: integer
+ *         description: Filter orders by specific product ID
+ *       - in: query
+ *         name: product_name
+ *         schema:
+ *           type: string
+ *         description: Filter orders by product name (partial match)
+ *       - in: query
+ *         name: variant_id
+ *         schema:
+ *           type: integer
+ *         description: Filter orders by specific product variant ID
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer

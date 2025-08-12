@@ -810,6 +810,9 @@ module.exports.updateProductVariant = async (req, res) => {
         }
         if ( variantData.discount_price === null || variantData.discount_price === undefined) {   //!variantData.discount_price || variantData.discount_price === 0 || 
             variantData.discount_price = existingVariant.discount_price;
+            if(existingVariant.discount_price == 0 || existingVariant.discount_price == null || existingVariant.discount_price == undefined){
+                variantData.discount_price = null;
+            }
         }
         // Update basic info
         const updatedVariant = await updateVariantRecord(variant_id, variantData, updated_by, transaction);

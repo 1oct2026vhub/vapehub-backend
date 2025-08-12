@@ -8,6 +8,17 @@ const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 
+/**
+ * List all orders with filtering and pagination
+ * Supports filtering by:
+ * - status: Order status
+ * - search: Order ID, order unique ID, or customer details (name, email)
+ * - start_date/end_date: Date range filter
+ * - product_id: Filter by specific product ID
+ * - product_name: Filter by product name (partial match)
+ * - variant_id: Filter by specific product variant ID
+ * - page/limit: Pagination
+ */
 module.exports.listAllOrders = async (req, res, next) => {
     try {
         const { 
@@ -15,6 +26,9 @@ module.exports.listAllOrders = async (req, res, next) => {
             search, 
             start_date, 
             end_date,
+            product_id,
+            product_name,
+            variant_id,
             page = 1,
             limit = 10
         } = req.query;
@@ -80,6 +94,81 @@ module.exports.listAllOrders = async (req, res, next) => {
 
             if (userIds.length > 0) {
                 whereCondition[Op.or].push({ user_id: { [Op.in]: userIds } });
+            }
+        }
+        
+        // Product filter
+        if (product_id || product_name || variant_id) {
+            // Find matching product IDs
+            let productWhereCondition = {};
+            
+            if (product_id) {
+                productWhereCondition.id = product_id;
+            }
+            
+            if (product_name) {
+                productWhereCondition.name = { [Op.like]: `%${product_name}%` };
+            }
+            
+            let orderItemWhereCondition = {};
+            
+            if (product_id || product_name) {
+                const matchingProducts = await Product.findAll({
+                    where: productWhereCondition,
+                    attributes: ['id'],
+                    paranoid: false
+                });
+
+                const productIds = matchingProducts.map(product => product.id);
+                
+                if (productIds.length > 0) {
+                    orderItemWhereCondition.product_id = { [Op.in]: productIds };
+                } else {
+                    // No products found, return empty result
+                    return successResponse(res, {
+                        orders: [],
+                        pagination: {
+                            total: 0,
+                            page: parseInt(page),
+                            limit: parseInt(limit),
+                            total_pages: 0
+                        }
+                    }, 'Success');
+                }
+            }
+            
+            if (variant_id) {
+                orderItemWhereCondition.variant_id = variant_id;
+            }
+
+            if (Object.keys(orderItemWhereCondition).length > 0) {
+                // Find order IDs that contain these products/variants
+                const orderItemsWithProducts = await OrderItem.findAll({
+                    where: orderItemWhereCondition,
+                    attributes: ['order_id'],
+                    group: ['order_id']
+                });
+                
+                const orderIds = orderItemsWithProducts.map(item => item.order_id);
+                if (orderIds.length > 0) {
+                    // Add to existing where condition
+                    if (whereCondition[Op.and]) {
+                        whereCondition[Op.and].push({ id: { [Op.in]: orderIds } });
+                    } else {
+                        whereCondition[Op.and] = [{ id: { [Op.in]: orderIds } }];
+                    }
+                } else {
+                    // No orders found with these products/variants, return empty result
+                    return successResponse(res, {
+                        orders: [],
+                        pagination: {
+                            total: 0,
+                            page: parseInt(page),
+                            limit: parseInt(limit),
+                            total_pages: 0
+                        }
+                    }, 'Success');
+                }
             }
         }
         
