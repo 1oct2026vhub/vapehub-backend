@@ -1207,7 +1207,7 @@ function getMinPriceVariant(product) {
   const availableVariants = product.variants.filter(variant => 
     variant.status === 'active' && 
     parseFloat(variant.price) > 0 && 
-    variant.stock_status !== 'outofstock' && 
+    variant.stock_status !== 'out_of_stock' && 
     (variant.stock === null || variant.stock > 0)
   );
   
