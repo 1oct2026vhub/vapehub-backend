@@ -2259,7 +2259,7 @@ module.exports.getDealProducts = async (req, res, next) => {
             return errorResponse(res, null, 'Deal not found or not active');
         }
   
-        // Get total count of products in this deal
+        // Get total count of products in this deal (before filtering out out-of-stock products)
         const totalCount = await DealProduct.count({
             where: { deal_id: parseInt(deal_id),
                 ...(product_id ? { product_id: { [Op.ne]: parseInt(product_id) } } : {})
@@ -2273,9 +2273,8 @@ module.exports.getDealProducts = async (req, res, next) => {
                 }
             ]
         });
-  
-        // Fetch deal products with full product details
-        const dealProducts = await DealProduct.findAll({
+        // Fetch ALL deal products with full product details (without pagination) to calculate total available count
+        const allDealProducts = await DealProduct.findAll({
             where: { deal_id: parseInt(deal_id),
                 ...(product_id ? { product_id: { [Op.ne]: parseInt(product_id) } } : {})
              },
@@ -2328,16 +2327,14 @@ module.exports.getDealProducts = async (req, res, next) => {
                     ]
                 }
             ],
-            limit: parsedLimit,
-            offset: parsedOffset,
             order: [['createdAt', 'DESC']]
         });
-  
-        // Transform the data to include deal information and use getMinPriceVariant for pricing with Promise.all for speed
-        const transformedProducts = await Promise.all(dealProducts.map(async (dealProduct) => {
+
+        // Transform ALL products to filter out out-of-stock ones and get total available count
+        const allTransformedProducts = await Promise.all(allDealProducts.map(async (dealProduct) => {
             const product = dealProduct.product;
             
-            // Get minimum price variant using the helper function (this runs in parallel)
+            // Get minimum price variant using the helper function
             const minPriceVariant = getMinPriceVariant(product);
             
             // Skip products that have no available variants (out of stock)
@@ -2345,20 +2342,6 @@ module.exports.getDealProducts = async (req, res, next) => {
                 return null;
             }
             
-            // Get primary category and brand
-            const primaryCategory = product.Categories && product.Categories.length > 0 
-                ? product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0]
-                : null;
-            
-            const primaryBrand = product.Brands && product.Brands.length > 0
-                ? product.Brands.find(brand => brand.ProductBrand?.is_primary) || product.Brands[0]
-                : null;
-  
-            // Get primary product image
-            const primaryImage = product.ProductImages && product.ProductImages.length > 0
-                ? product.ProductImages.find(img => img.is_primary) || product.ProductImages[0]
-                : null;
-  
             return {
                 id: product.id,
                 name: product.name,
@@ -2384,21 +2367,27 @@ module.exports.getDealProducts = async (req, res, next) => {
                 status: product.status,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
-                category: primaryCategory ? {
-                    id: primaryCategory.id,
-                    name: primaryCategory.name,
-                    slug: primaryCategory.slug
-                } : null,
-                brand: primaryBrand ? {
-                    id: primaryBrand.id,
-                    name: primaryBrand.name,
-                    slug: primaryBrand.slug
-                } : null,
-                primary_image: primaryImage ? {
-                    id: primaryImage.id,
-                    url: primaryImage.image_url,
-                    is_primary: primaryImage.is_primary
-                } : null,
+                category: product.Categories && product.Categories.length > 0 
+                    ? {
+                        id: product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0].id,
+                        name: product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0].name,
+                        slug: product.Categories.find(cat => cat.ProductCategory?.is_primary) || product.Categories[0].slug
+                    }
+                    : null,
+                brand: product.Brands && product.Brands.length > 0
+                    ? {
+                        id: product.Brands.find(brand => brand.ProductBrand?.is_primary) || product.Brands[0].id,
+                        name: product.Brands.find(brand => brand.ProductBrand?.is_primary) || product.Brands[0].name,
+                        slug: product.Brands.find(brand => brand.ProductBrand?.is_primary) || product.Brands[0].slug
+                    }
+                    : null,
+                primary_image: product.ProductImages && product.ProductImages.length > 0
+                    ? {
+                        id: product.ProductImages.find(img => img.is_primary) || product.ProductImages[0].id,
+                        url: product.ProductImages.find(img => img.is_primary) || product.ProductImages[0].image_url,
+                        is_primary: product.ProductImages.find(img => img.is_primary) || product.ProductImages[0].is_primary
+                    }
+                    : null,
                 min_price_variant: minPriceVariant,
                 variants: product.variants.map(variant => ({
                     id: variant.id,
@@ -2431,11 +2420,16 @@ module.exports.getDealProducts = async (req, res, next) => {
             };
         }));
 
-        // Filter out null products (those with no available variants)
-        const availableProducts = transformedProducts.filter(product => product !== null);
+        // Filter out null products and get total available count
+        const allAvailableProducts = allTransformedProducts.filter(product => product !== null);
+        const totalAvailableCount = allAvailableProducts.length;
+
+        // Apply pagination to the available products
+        const dealProducts = allAvailableProducts.slice(parsedOffset, parsedOffset + parsedLimit);
   
-        // Calculate pagination info
-        const totalPages = Math.ceil(totalCount / parsedLimit);
+        // dealProducts now contains the paginated subset of available products        
+        // Calculate pagination info using the total available count
+        const totalPages = Math.ceil(totalAvailableCount / parsedLimit);
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
   
         const response = {
@@ -2444,7 +2438,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 name: deal.name,
                 slug: deal.slug
             },
-            products: availableProducts.map(product => ({
+            products: dealProducts.map(product => ({
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
@@ -2454,12 +2448,12 @@ module.exports.getDealProducts = async (req, res, next) => {
                 image: product.min_price_variant?.variant_image || product.primary_image
             })),
             pagination: {
-                total_count: availableProducts.length,
-                total_pages: Math.ceil(availableProducts.length / parsedLimit),
+                total_count: totalAvailableCount,
+                total_pages: totalPages,
                 current_page: currentPage,
                 limit: parsedLimit,
                 offset: parsedOffset,
-                has_next: currentPage < Math.ceil(availableProducts.length / parsedLimit),
+                has_next: currentPage < totalPages,
                 has_prev: currentPage > 1
             }
         };
