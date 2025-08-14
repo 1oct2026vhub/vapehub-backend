@@ -89,7 +89,14 @@ module.exports = {
                                     item.entity_data = blog;
                                     break;
                                 case 'deal':
-                                    const deal = await Deal.findByPk(item.entity_id, {
+                                    const deal = await Deal.findOne({
+                                        where: {
+                                            id: item.entity_id,
+                                            is_active: true,
+                                            is_deleted: false,
+                                            valid_from: { [Op.lte]: new Date() },
+                                            valid_to: { [Op.gte]: new Date() }
+                                        },
                                         attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'valid_from', 'valid_to'],
                                         include: [{
                                             model: Product,
@@ -105,7 +112,6 @@ module.exports = {
                                             }]
                                         }]
                                     });
-                                    
                                     // Add primary product image to deal if products exist
                                     if (deal && deal.products && deal.products.length > 0) {
                                         const primaryProduct = deal.products[0];
@@ -114,7 +120,13 @@ module.exports = {
                                         }
                                     }
                                     
-                                    item.entity_data = deal;
+                                    // Only include the menu item if the deal is active and not expired
+                                    if (deal) {
+                                        item.entity_data = deal;
+                                    } else {
+                                        // If deal is expired or inactive, set entity_data to null
+                                        item.entity_data = null;
+                                    }
                                     break;
                             }
                         } catch (error) {
@@ -199,7 +211,14 @@ module.exports = {
                                             child.entity_data = blog;
                                             break;
                                         case 'deal':
-                                            const deal = await Deal.findByPk(child.entity_id, {
+                                            const deal = await Deal.findOne({
+                                                where: {
+                                                    id: child.entity_id,
+                                                    is_active: true,
+                                                    is_deleted: false,
+                                                    valid_from: { [Op.lte]: new Date() },
+                                                    valid_to: { [Op.gte]: new Date() }
+                                                },
                                                 attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active'],
                                                 include: [{
                                                     model: Product,
@@ -224,7 +243,13 @@ module.exports = {
                                                 }
                                             }
                                             
-                                            child.entity_data = deal;
+                                            // Only include the child menu item if the deal is active and not expired
+                                            if (deal) {
+                                                child.entity_data = deal;
+                                            } else {
+                                                // If deal is expired or inactive, set entity_data to null
+                                                child.entity_data = null;
+                                            }
                                             break;
                                     }
                                 } catch (error) {
@@ -250,10 +275,23 @@ module.exports = {
                                             child.entity_data = product;
                                             break;
                                         case 'deal':
-                                            const deal = await Deal.findByPk(child.entity_id, {
+                                            const deal = await Deal.findOne({
+                                                where: {
+                                                    id: child.entity_id,
+                                                    is_active: true,
+                                                    is_deleted: false,
+                                                    valid_from: { [Op.lte]: new Date() },
+                                                    valid_to: { [Op.gte]: new Date() }
+                                                },
                                                 attributes: ['id', 'name', 'slug', 'deal_type', 'discount_percent', 'fixed_price', 'is_active']
                                             });
-                                            child.entity_data = deal;
+                                            // Only include the child menu item if the deal is active and not expired
+                                            if (deal) {
+                                                child.entity_data = deal;
+                                            } else {
+                                                // If deal is expired or inactive, set entity_data to null
+                                                child.entity_data = null;
+                                            }
                                             break;
                                     }
                                 } catch (error) {
@@ -300,7 +338,26 @@ module.exports = {
             // Process all menu items
             await processMenuItems(menuTree);
             
-            return successResponse(res, { data: menuTree }, 'Success');
+            // Filter out menu items with expired deals (entity_data is null for deals)
+            const filterExpiredDeals = (items) => {
+                return items.filter(item => {
+                    // If it's a deal and entity_data is null, filter it out
+                    if (item.entity_type === 'deal' && !item.entity_data) {
+                        return false;
+                    }
+                    
+                    // Recursively filter children
+                    if (item.children && item.children.length > 0) {
+                        item.children = filterExpiredDeals(item.children);
+                    }
+                    
+                    return true;
+                });
+            };
+            
+            const filteredMenuTree = filterExpiredDeals(menuTree);
+            
+            return successResponse(res, { data: filteredMenuTree }, 'Success');
         } catch (error) {
             logger.error('Error fetching menus:', error);
             return errorResponse(res, error);
