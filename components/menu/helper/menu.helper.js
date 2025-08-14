@@ -356,26 +356,40 @@ const getProductsByEntity = async (entityType, entityId, limit = 10) => {
             break;
 
         case 'deal':
-            products = await Product.findAll({
-                include: [{
-                    model: require('../../../models').DealProduct,
-                    as: 'deals',
-                    where: { deal_id: entityId },
-                    attributes: []
-                }, {
-                    model: require('../../../models').ProductImage,
-                    as: 'ProductImages',
-                    where: { is_primary: true },
-                    attributes: ['image_url'],
-                    required: false
-                }],
+            // First check if the deal is active and not expired
+            const deal = await require('../../../models').Deal.findOne({
                 where: {
-                    status: true
-                },
-                attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
-                order: [['createdAt', 'DESC']],
-                limit: limit
+                    id: entityId,
+                    is_active: true,
+                    is_deleted: false,
+                    valid_from: { [Op.lte]: new Date() },
+                    valid_to: { [Op.gte]: new Date() }
+                }
             });
+            
+            // Only fetch products if deal is active and not expired
+            if (deal) {
+                products = await Product.findAll({
+                    include: [{
+                        model: require('../../../models').DealProduct,
+                        as: 'deals',
+                        where: { deal_id: entityId },
+                        attributes: []
+                    }, {
+                        model: require('../../../models').ProductImage,
+                        as: 'ProductImages',
+                        where: { is_primary: true },
+                        attributes: ['image_url'],
+                        required: false
+                    }],
+                    where: {
+                        status: true
+                    },
+                    attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
+                    order: [['createdAt', 'DESC']],
+                    limit: limit
+                });
+            }
             break;
     }
 
