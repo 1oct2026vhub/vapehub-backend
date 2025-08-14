@@ -97,7 +97,7 @@ module.exports = {
                                             valid_from: { [Op.lte]: new Date() },
                                             valid_to: { [Op.gte]: new Date() }
                                         },
-                                        attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'valid_from', 'valid_to'],
+                                        attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'valid_from', 'valid_to', 'image_url'],
                                         include: [{
                                             model: Product,
                                             as: 'products',
@@ -112,8 +112,8 @@ module.exports = {
                                             }]
                                         }]
                                     });
-                                    // Add primary product image to deal if products exist
-                                    if (deal && deal.products && deal.products.length > 0) {
+                                    // Use deal's own image_url if available, otherwise fallback to primary product image
+                                    if (deal && !deal.image_url && deal.products && deal.products.length > 0) {
                                         const primaryProduct = deal.products[0];
                                         if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
                                             deal.image_url = primaryProduct.ProductImages[0].image_url;
@@ -219,7 +219,7 @@ module.exports = {
                                                     valid_from: { [Op.lte]: new Date() },
                                                     valid_to: { [Op.gte]: new Date() }
                                                 },
-                                                attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active'],
+                                                attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'image_url'],
                                                 include: [{
                                                     model: Product,
                                                     as: 'products',
@@ -235,8 +235,8 @@ module.exports = {
                                                 }]
                                             });
                                             
-                                            // Add primary product image to deal if products exist
-                                            if (deal && deal.products && deal.products.length > 0) {
+                                            // Use deal's own image_url if available, otherwise fallback to primary product image
+                                            if (deal && !deal.image_url && deal.products && deal.products.length > 0) {
                                                 const primaryProduct = deal.products[0];
                                                 if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
                                                     deal.image_url = primaryProduct.ProductImages[0].image_url;
@@ -283,7 +283,7 @@ module.exports = {
                                                     valid_from: { [Op.lte]: new Date() },
                                                     valid_to: { [Op.gte]: new Date() }
                                                 },
-                                                attributes: ['id', 'name', 'slug', 'deal_type', 'discount_percent', 'fixed_price', 'is_active']
+                                                attributes: ['id', 'name', 'slug', 'deal_type', 'discount_percent', 'fixed_price', 'is_active', 'image_url']
                                             });
                                             // Only include the child menu item if the deal is active and not expired
                                             if (deal) {
