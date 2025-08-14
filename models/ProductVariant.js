@@ -79,9 +79,9 @@ module.exports = (sequelize, DataTypes) => {
         min: 0,
         isLessThanRegularPrice(value) {
           if (
-            value && value !== null && value !== 0 &&
-            this.regular_price && this.regular_price !== null && this.regular_price !== 0 &&
-            value >= this.regular_price
+            parseFloat(value) && parseFloat(value) !== null && parseFloat(value) !== 0 &&
+            parseFloat(this.regular_price) && parseFloat(this.regular_price) !== null && parseFloat(this.regular_price) !== 0 &&
+            parseFloat(value) >= parseFloat(this.regular_price)
           ) {
             throw new Error('Sale price must be less than regular price');
           }
