@@ -285,7 +285,6 @@ const fetchProducts = async (query, status = 'published') => {
         throw new Error('Invalid variant filter format: must be valid JSON');
       }
     }
-    
     // Also check for attributes parameter (used by deals route)
     if (!variant && query.attributes) {
       try {
@@ -519,7 +518,6 @@ const fetchProducts = async (query, status = 'published') => {
       include: includeClause,
       distinct: true
     });
-
     // Calculate pagination
     const totalPages = Math.ceil(totalCount / parsedLimit);
     const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
@@ -553,7 +551,6 @@ const fetchProducts = async (query, status = 'published') => {
         const availableVariants = product.variants.filter(variant => 
           variant.status === 'active' && parseFloat(variant.price) > 0
         );
-        
         if (availableVariants.length > 0) {
           const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
           const minPriceVariant = availableVariants.reduce((minV, v) => {
@@ -648,7 +645,6 @@ const fetchProducts = async (query, status = 'published') => {
         min_price_variant: product.min_price_variant || null
       };
     });
-
     // Build base product filter conditions for SQL queries
     let productFilterConditions = [];
     let productFilterParams = {};
