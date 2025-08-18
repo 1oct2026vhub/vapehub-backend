@@ -45,12 +45,25 @@ module.exports = {
                 for (const item of items) {
                     if (item.entity_type && item.entity_id) {
                         const baseAttributes = ['id', 'name', 'slug'];
-                        const imageAttributes = ['logo_url', 'image_url'];
                         
-                        // Determine which attributes to fetch based on show_image
-                        const attributes = item.show_image === 1 
-                            ? [...baseAttributes, ...imageAttributes]
-                            : baseAttributes;
+                        // Determine which attributes to fetch based on show_image and entity type
+                        let attributes = baseAttributes;
+                        if (item.show_image && item.show_image == 1) {
+                            switch (item.entity_type) {
+                                case 'brand':
+                                case 'category':
+                                    attributes = [...baseAttributes, 'logo_url'];
+                                    break;
+                                case 'blog':
+                                    attributes = [...baseAttributes, 'image_url'];
+                                    break;
+                                case 'product':
+                                case 'deal':
+                                    // These will be handled separately with includes
+                                    attributes = baseAttributes;
+                                    break;
+                            }
+                        }
 
                         try {
                             switch (item.entity_type) {
@@ -118,6 +131,7 @@ module.exports = {
                                     break;
                             }
                         } catch (error) {
+                            console.log(error)
                             logger.error(`Error fetching ${item.entity_type} data:`, error);
                             item.entity_data = null;
                         }
@@ -156,144 +170,9 @@ module.exports = {
                         }
                     }
 
+                    // Process children recursively
                     if (item.children && item.children.length > 0) {
-                        // Process children with show_image check
-                        for (const child of item.children) {
-                            if (child.show_image == 1) {
-                                const baseAttributes = ['id', 'name', 'slug'];
-                                
-                                try {
-                                    switch (child.entity_type) {
-                                        case 'brand':
-                                            const brand = await Brand.findByPk(child.entity_id, {
-                                                attributes: [...baseAttributes, 'logo_url']
-                                            });
-                                            child.entity_data = brand;
-                                            break;
-                                        case 'category':
-                                            const category = await Category.findByPk(child.entity_id, {
-                                                attributes: [...baseAttributes, 'logo_url']
-                                            });
-                                            child.entity_data = category;
-                                            break;
-                                        case 'product':
-                                            const product = await Product.findByPk(child.entity_id, {
-                                                attributes: [...baseAttributes, 'price', 'discount_price'],
-                                                include: [{
-                                                    model: ProductImage,
-                                                    as: 'ProductImages',
-                                                    where: { is_primary: true },
-                                                    attributes: ['image_url'],
-                                                    required: false
-                                                }]
-                                            });
-                                            if (product && product.ProductImages && product.ProductImages.length > 0) {
-                                                product.image_url = product.ProductImages[0].image_url;
-                                            }
-                                            child.entity_data = product;
-                                            break;
-                                        case 'blog':
-                                            const blog = await Blog.findByPk(child.entity_id, {
-                                                attributes: [...baseAttributes, 'image_url']
-                                            });
-                                            child.entity_data = blog;
-                                            break;
-                                        case 'deal':
-                                            const deal = await Deal.findByPk(child.entity_id, {
-                                                attributes: [...baseAttributes, 'deal_type', 'discount_percent', 'fixed_price', 'is_active'],
-                                                include: [{
-                                                    model: Product,
-                                                    as: 'products',
-                                                    through: { attributes: [] },
-                                                    attributes: ['id', 'name', 'slug'],
-                                                    include: [{
-                                                        model: ProductImage,
-                                                        as: 'ProductImages',
-                                                        where: { is_primary: true },
-                                                        attributes: ['image_url'],
-                                                        required: false
-                                                    }]
-                                                }]
-                                            });
-                                            
-                                            // Add primary product image to deal if products exist
-                                            if (deal && deal.products && deal.products.length > 0) {
-                                                const primaryProduct = deal.products[0];
-                                                if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
-                                                    deal.image_url = primaryProduct.ProductImages[0].image_url;
-                                                }
-                                            }
-                                            
-                                            child.entity_data = deal;
-                                            break;
-                                    }
-                                } catch (error) {
-                                    logger.error(`Error fetching ${child.entity_type} data:`, error);
-                                    child.entity_data = null;
-                                }
-                            } else {
-                                // For children with show_image !== 1, only fetch base attributes
-                                try {
-                                    switch (child.entity_type) {
-                                        case 'brand':
-                                        case 'category':
-                                        case 'blog':
-                                            const entity = await Brand.findByPk(child.entity_id, {
-                                                attributes: ['id', 'name', 'slug']
-                                            });
-                                            child.entity_data = entity;
-                                            break;
-                                        case 'product':
-                                            const product = await Product.findByPk(child.entity_id, {
-                                                attributes: ['id', 'name', 'slug', 'price', 'discount_price']
-                                            });
-                                            child.entity_data = product;
-                                            break;
-                                        case 'deal':
-                                            const deal = await Deal.findByPk(child.entity_id, {
-                                                attributes: ['id', 'name', 'slug', 'deal_type', 'discount_percent', 'fixed_price', 'is_active']
-                                            });
-                                            child.entity_data = deal;
-                                            break;
-                                    }
-                                } catch (error) {
-                                    logger.error(`Error fetching ${child.entity_type} data:`, error);
-                                    child.entity_data = null;
-                                }
-                            }
-
-                            // Handle new and hot products for child menu items
-                            let isChildNew = false;
-                            let isChildHot = false;
-                            
-                            if (child.entity_type === 'product' && child.entity_data && child.entity_data.id) {
-                                try {
-                                    isChildNew = await isProductNew(child.entity_data.id);
-                                } catch (error) {
-                                    logger.error('Error checking if child product is new:', error);
-                                }
-
-                                try {
-                                    isChildHot = await isProductHot(child.entity_data.id);
-                                } catch (error) {
-                                    logger.error('Error checking if child product is hot:', error);
-                                }
-                            }
-                            
-                            // Add is_new and is_hot flags to child menu items
-                            child.is_new = isChildNew;
-                            child.is_hot = isChildHot;
-
-                            // Handle products based on entity type for child menu items
-                            if (child.entity_type && child.entity_id && ['category', 'brand', 'deal'].includes(child.entity_type)) {
-                                try {
-                                    child.related_products = await getProductsByEntity(child.entity_type, child.entity_id, 10);
-                                } catch (error) {
-                                    logger.error(`Error fetching products for child ${child.entity_type}:`, error);
-                                    child.related_products = [];
-                                }
-                            }
-                        }
+                        await processMenuItems(item.children);
                     }
                 }
             };
