@@ -18,7 +18,6 @@ class SlugManager {
    */
   async createOrUpdateSlug(slug, entityType, entityId, transaction = null) {
     const normalizedSlug = this.normalizeSlug(slug);
-    
     const options = { transaction };
     
     // Check if slug already exists for a different entity
@@ -49,7 +48,6 @@ class SlugManager {
       },
       ...options
     });
-
     // Update slug if it has changed
     if (slugRelation.slug !== normalizedSlug) {
       await slugRelation.update({ slug: normalizedSlug }, options);

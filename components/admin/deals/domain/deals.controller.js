@@ -129,7 +129,9 @@ module.exports.updateDeal = async (req, res, next) => {
         }
         let slug;
         // Update slug if name has changed
-        if (dealData.name && dealData.name !== deal.name || dealData.slug && dealData.slug !== deal.slug) {
+        const nameChanged = dealData.name && dealData.name !== undefined && dealData.name !== deal.name;
+        const slugChanged = dealData.slug && dealData.slug !== undefined && dealData.slug !== deal.slug;
+        if (nameChanged || slugChanged) {
             const slugData = await slugManager.createOrUpdateSlug(dealData.name, 'deal', id, transaction);
             slug = slugData.slug;
             dealData.slug = slug;
@@ -139,12 +141,30 @@ module.exports.updateDeal = async (req, res, next) => {
         await deal.update(dealData, { transaction });
         const menu = await Menu.findOne({ where: { entity_id: id} });
         if (menu) {
-            await Menu.update({
-                original: `/${slug?.trim()}`,
-                // name: name?.trim() || menu.name,
-                // slug: slug?.trim() || menu.slug
-
-            }, { where: { entity_id: id } }, { transaction });
+            // If slug is undefined, extract it from menu's original field
+            let finalSlug = slug;
+            if (!finalSlug && menu.original) {
+                // Extract slug from original (remove leading slash if present)
+                finalSlug = menu.original.replace(/^\//, '');
+            }
+            
+            // Prepare menu update data
+            const menuUpdateData = {};
+            
+            // Update slug if available
+            if (finalSlug) {
+                menuUpdateData.original = `/${finalSlug.trim()}`;
+            }
+            
+            // Sync deal's is_active status with menu's status
+            if (dealData.is_active !== undefined) {
+                menuUpdateData.status = dealData.is_active ? true : false;
+            }
+            
+            // Update menu if there are changes
+            if (Object.keys(menuUpdateData).length > 0) {
+                await Menu.update(menuUpdateData, { where: { entity_id: id } }, { transaction });
+            }
         }
 
         // Fetch the updated deal with associations
