@@ -63,6 +63,11 @@ module.exports = {
                                     attributes = baseAttributes;
                                     break;
                             }
+                        } else {
+                            // Even if show_image is false, we need logo_url for mapping
+                            if (item.entity_type === 'brand' || item.entity_type === 'category') {
+                                attributes = [...baseAttributes, 'logo_url'];
+                            }
                         }
 
                         try {
@@ -71,13 +76,32 @@ module.exports = {
                                     const brand = await Brand.findByPk(item.entity_id, {
                                         attributes: attributes
                                     });
-                                    item.entity_data = brand;
+                                    if (brand) {
+                                        const brandData = brand.toJSON();
+                                        if (brandData.logo_url && (item.show_image && item.show_image == 1)) {
+                                            brandData.image_url = brandData.logo_url;
+                                            delete brandData.logo_url;
+                                        }
+                                        item.entity_data = brandData;
+                                    } else {
+                                        item.entity_data = null;
+                                    }
                                     break;
                                 case 'category':
                                     const category = await Category.findByPk(item.entity_id, {
                                         attributes: attributes
                                     });
-                                    item.entity_data = category;
+                                    // Map logo_url to image_url for consistency (regardless of show_image)
+                                    if (category) {
+                                        const categoryData = category.toJSON();
+                                        if (categoryData.logo_url && (item.show_image && item.show_image == 1)) {
+                                            categoryData.image_url = categoryData.logo_url;
+                                            delete categoryData.logo_url;
+                                        }
+                                        item.entity_data = categoryData;
+                                    } else {
+                                        item.entity_data = null;
+                                    }
                                     break;
                                 case 'product':
                                     const product = await Product.findByPk(item.entity_id, {
@@ -143,10 +167,11 @@ module.exports = {
                                     break;
                             }
                         } catch (error) {
-                            console.log(error)
                             logger.error(`Error fetching ${item.entity_type} data:`, error);
                             item.entity_data = null;
                         }
+                        
+
                     }
 
                     // Handle new and hot products for menu items
@@ -191,6 +216,24 @@ module.exports = {
             // Process all menu items
             await processMenuItems(menuTree);
             
+            // Helper function to ensure consistent field mapping (backup)
+            const ensureConsistentFields = (items) => {
+                items.forEach(item => {
+                    // Ensure brands and categories use image_url instead of logo_url
+                    if (item.entity_data && (item.entity_type === 'brand' || item.entity_type === 'category')) {
+                        if (item.entity_data.logo_url && !item.entity_data.image_url) {
+                            item.entity_data.image_url = item.entity_data.logo_url;
+                            delete item.entity_data.logo_url;
+                        }
+                    }
+                    
+                    // Process children recursively
+                    if (item.children && item.children.length > 0) {
+                        ensureConsistentFields(item.children);
+                    }
+                });
+            };
+            
             // Filter out menu items with expired deals (entity_data is null for deals)
             const filterExpiredDeals = (items) => {
                 return items.filter(item => {
@@ -209,6 +252,9 @@ module.exports = {
             };
             
             const filteredMenuTree = filterExpiredDeals(menuTree);
+            
+            // Ensure consistent field mapping after filtering
+            ensureConsistentFields(filteredMenuTree);
             
             return successResponse(res, { data: filteredMenuTree }, 'Success');
         } catch (error) {
