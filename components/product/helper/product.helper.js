@@ -721,9 +721,10 @@ const fetchProducts = async (query, status = 'published') => {
       ? "WHERE " + productFilterConditions.join(" AND ") 
       : "";
     
-    const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
-      ? sqlAttributeFilterConditions.join(" OR ") 
-      : "";
+    // Note: sqlAttributeWhereClause is no longer used as we now use AND logic for attribute filtering
+    // const sqlAttributeWhereClause = sqlAttributeFilterConditions.length > 0 
+    //   ? sqlAttributeFilterConditions.join(" OR ") 
+    //   : "";
     // Prepare price range filter conditions for category and brand queries
     // const priceRangeFilterConditions = productFilterConditions.filter(condition => 
     //   !condition.includes('min_price BETWEEN :minPrice AND :maxPrice')
@@ -766,18 +767,17 @@ const fetchProducts = async (query, status = 'published') => {
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
-            AND EXISTS (
-              SELECT 1
-              FROM product_attribute_terms pat2
-              WHERE pat2.product_id = p.id
-              AND (
-                ${Object.entries(selectedAttributes)
-                  .map(([attrId, termIds]) => 
-                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
-                  )
-                  .join(' OR ')}
+            ${Object.entries(selectedAttributes)
+              .map(([attrId, termIds]) => 
+                `AND EXISTS (
+                  SELECT 1
+                  FROM product_attribute_terms pat2
+                  WHERE pat2.product_id = p.id
+                  AND pat2.attribute_id = ${parseInt(attrId)}
+                  AND pat2.term_id IN (${termIds.join(',')})
+                )`
               )
-            )
+              .join('')}
           ` : ''}
       )
       SELECT 
@@ -824,18 +824,17 @@ const fetchProducts = async (query, status = 'published') => {
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
-            AND EXISTS (
-              SELECT 1
-              FROM product_attribute_terms pat2
-              WHERE pat2.product_id = p.id
-              AND (
-                ${Object.entries(selectedAttributes)
-                  .map(([attrId, termIds]) => 
-                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
-                  )
-                  .join(' OR ')}
+            ${Object.entries(selectedAttributes)
+              .map(([attrId, termIds]) => 
+                `AND EXISTS (
+                  SELECT 1
+                  FROM product_attribute_terms pat2
+                  WHERE pat2.product_id = p.id
+                  AND pat2.attribute_id = ${parseInt(attrId)}
+                  AND pat2.term_id IN (${termIds.join(',')})
+                )`
               )
-            )
+              .join('')}
           ` : ''}
       )
       SELECT 
@@ -897,18 +896,17 @@ const fetchProducts = async (query, status = 'published') => {
         ` : ''}
         ${attributeFilterConditions.length > 0 ? `AND ${attributeFilterConditions.join(" AND ")}` : ''}
         ${Object.keys(selectedAttributes).length > 0 ? `
-          AND EXISTS (
-            SELECT 1
-            FROM product_attribute_terms pat2
-            WHERE pat2.product_id = p.id
-            AND (
-              ${Object.entries(selectedAttributes)
-                .map(([attrId, termIds]) => 
-                  `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
-                )
-                .join(' OR ')}
+          ${Object.entries(selectedAttributes)
+            .map(([attrId, termIds]) => 
+              `AND EXISTS (
+                SELECT 1
+                FROM product_attribute_terms pat2
+                WHERE pat2.product_id = p.id
+                AND pat2.attribute_id = ${parseInt(attrId)}
+                AND pat2.term_id IN (${termIds.join(',')})
+              )`
             )
-          )
+            .join('')}
         ` : ''}
         ${deal_id ? `
           AND EXISTS (
@@ -1029,6 +1027,19 @@ const fetchProducts = async (query, status = 'published') => {
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${Object.keys(selectedAttributes).length > 0 ? `
+            ${Object.entries(selectedAttributes)
+              .map(([attrId, termIds]) => 
+                `AND EXISTS (
+                  SELECT 1
+                  FROM product_attribute_terms pat2
+                  WHERE pat2.product_id = p.id
+                  AND pat2.attribute_id = ${parseInt(attrId)}
+                  AND pat2.term_id IN (${termIds.join(',')})
+                )`
+              )
+              .join('')}
+          ` : ''}
       )
       SELECT 
         CASE 
@@ -1043,12 +1054,8 @@ const fetchProducts = async (query, status = 'published') => {
         COUNT(*) as count
       FROM 
         product_price_ranges ppr
-      ${sqlAttributeWhereClause ? `
-      JOIN product_attribute_terms pat ON pat.product_id = ppr.product_id
-      ` : ''}
       WHERE
         min_price IS NOT NULL
-        ${sqlAttributeWhereClause ? `AND (${sqlAttributeWhereClause})` : ''}
       GROUP BY 
         CASE 
           WHEN min_price < 10 THEN '0-9.99'
@@ -1099,18 +1106,17 @@ const fetchProducts = async (query, status = 'published') => {
           ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
           ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
-            AND EXISTS (
-              SELECT 1
-              FROM product_attribute_terms pat2
-              WHERE pat2.product_id = p.id
-              AND (
-                ${Object.entries(selectedAttributes)
-                  .map(([attrId, termIds]) => 
-                    `(pat2.attribute_id = ${parseInt(attrId)} AND pat2.term_id IN (${termIds.join(',')}))`
-                  )
-                  .join(' OR ')}
+            ${Object.entries(selectedAttributes)
+              .map(([attrId, termIds]) => 
+                `AND EXISTS (
+                  SELECT 1
+                  FROM product_attribute_terms pat2
+                  WHERE pat2.product_id = p.id
+                  AND pat2.attribute_id = ${parseInt(attrId)}
+                  AND pat2.term_id IN (${termIds.join(',')})
+                )`
               )
-            )
+              .join('')}
           ` : ''}
       )
       SELECT 
