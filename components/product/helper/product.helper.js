@@ -290,7 +290,6 @@ const fetchProducts = async (query, status = 'published') => {
       try {
         const attributesData = typeof query.attributes === 'string' ? JSON.parse(query.attributes) : query.attributes;
         variantFilters = { attributes: attributesData };
-        console.log('Product helper - using attributes parameter:', attributesData);
       } catch (error) {
         throw new Error('Invalid attributes filter format: must be valid JSON');
       }
@@ -402,7 +401,7 @@ const fetchProducts = async (query, status = 'published') => {
     };
 
 
-    // Attribute term conditions
+    // Attribute term conditions - need to ensure products have ALL specified attributes
     let attributeTermConditions = [];
     if (variantFilters.attributes) {
       for (const [attributeId, termIds] of Object.entries(variantFilters.attributes)) {
@@ -415,6 +414,23 @@ const fetchProducts = async (query, status = 'published') => {
       }
     }
 
+    // Add attribute filtering to ensure products have ALL specified attributes
+    if (attributeTermConditions.length > 0) {
+      // Create subquery conditions for each attribute to ensure ALL attributes are present
+      const attributeSubqueries = attributeTermConditions.map(condition => {
+        return Sequelize.literal(`EXISTS (
+          SELECT 1 FROM product_attribute_terms pat
+          WHERE pat.product_id = Product.id
+          AND pat.attribute_id = ${condition.attribute_id}
+          AND pat.term_id IN (${condition.term_id[Op.in].join(',')})
+          AND pat.deleted_at IS NULL
+        )`);
+      });
+      
+      // Use AND to ensure all conditions are met
+      productWhereClause[Op.and] = productWhereClause[Op.and] || [];
+      productWhereClause[Op.and].push(...attributeSubqueries);
+    }
     // Build include clause with optimized associations
     const includeClause = [
       {
@@ -461,8 +477,6 @@ const fetchProducts = async (query, status = 'published') => {
       {
         model: ProductAttributeTerm,
         as: 'productAttributeTerms',
-        where: attributeTermConditions.length > 0 ? { [Op.or]: attributeTermConditions } : {},
-        required: attributeTermConditions.length > 0,
         include: [
           {
             model: Attribute,
@@ -511,7 +525,6 @@ const fetchProducts = async (query, status = 'published') => {
         ]
       }
     ];
-
     // Get total count with filters
     const totalCount = await Product.count({
       where: productWhereClause,
