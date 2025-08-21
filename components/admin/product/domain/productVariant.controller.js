@@ -2268,8 +2268,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
             // Calculate final price
             const regularPrice = updateData.regular_price || variant.regular_price;
             const discountPrice = updateData.discount_price || variant.discount_price;
-            
-            if (discountPrice && discountPrice >= regularPrice) {
+            if (parseFloat(discountPrice) && parseFloat(discountPrice) >= parseFloat(regularPrice)) {
                 throw new Error('Discount price must be less than regular price');
             }
             
