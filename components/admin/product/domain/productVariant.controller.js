@@ -2241,6 +2241,9 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
                     throw new Error('Regular price cannot be negative');
                 }
                 updateData.regular_price = newRegularPrice;
+                if(!updateData.discount_price){
+                    updateData.discount_price = variant.discount_price;
+                }
             }
 
             if (updates.discount_price) {
@@ -2263,6 +2266,9 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
                     throw new Error('Discount price cannot be negative');
                 }
                 updateData.discount_price = newDiscountPrice;
+                if(!updateData.regular_price){
+                    updateData.regular_price = variant.regular_price;
+                }
             }
 
             // Calculate final price
