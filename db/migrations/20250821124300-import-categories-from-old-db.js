@@ -5,6 +5,8 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
+      console.log('Starting category migration from live database...');
+      
       // Step 1: Create temporary table for category data
       await queryInterface.sequelize.query(`
         CREATE TEMPORARY TABLE temp_categories (
@@ -15,31 +17,71 @@ module.exports = {
           description TEXT,
           parent_id INT DEFAULT NULL,
           logo_url TEXT,
-          created_at DATETIME,
-          updated_at DATETIME,
+          createdAt DATETIME,
+          updatedAt DATETIME,
           old_parent_term_id BIGINT DEFAULT NULL
         )
       `, { transaction });
 
       // Step 2: Extract categories from product_cat taxonomy
       await queryInterface.sequelize.query(`
-        INSERT INTO temp_categories (old_term_id, old_taxonomy_id, name, slug, description, parent_id, created_at, updated_at, old_parent_term_id)
+        INSERT INTO temp_categories (old_term_id, old_taxonomy_id, name, slug, description, parent_id, createdAt, updatedAt, old_parent_term_id)
         SELECT 
-          t.term_id,
-          tt.term_taxonomy_id,
-          t.name,
-          t.slug,
-          tt.description,
-          NULL,
-          NOW(),
-          NOW(),
+          t.term_id, 
+          tt.term_taxonomy_id, 
+          t.name, 
+          t.slug, 
+          tt.description, 
+          NULL, 
+          NOW(), 
+          NOW(), 
           tt.parent
         FROM ${process.env.OLD_DB_NAME}.vh_terms t
         JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON t.term_id = tt.term_id
         WHERE tt.taxonomy = 'product_cat'
       `, { transaction });
 
-      // Step 3: Extract category images from termmeta
+      // Step 3: Create a mapping table for parent-child relationships
+      await queryInterface.sequelize.query(`
+        CREATE TEMPORARY TABLE category_mapping (
+          old_term_id BIGINT,
+          new_category_id INT
+        )
+      `, { transaction });
+
+      // Step 4: Insert categories and capture mapping
+      await queryInterface.sequelize.query(`
+        INSERT INTO categories (name, description, slug, parent_id, logo_url, createdAt, updatedAt)
+        SELECT 
+          tc.name, 
+          tc.description, 
+          tc.slug, 
+          NULL as parent_id, 
+          tc.logo_url, 
+          tc.createdAt, 
+          tc.updatedAt
+        FROM temp_categories tc
+        ORDER BY tc.old_parent_term_id ASC, tc.name ASC
+      `, { transaction });
+
+      // Step 5: Populate category mapping table
+      await queryInterface.sequelize.query(`
+        INSERT INTO category_mapping (old_term_id, new_category_id)
+        SELECT tc.old_term_id, c.id
+        FROM temp_categories tc
+        JOIN categories c ON tc.slug = c.slug
+      `, { transaction });
+
+      // Step 6: Update parent-child relationships
+      await queryInterface.sequelize.query(`
+        UPDATE categories c
+        JOIN temp_categories tc ON c.slug = tc.slug
+        JOIN category_mapping cm ON tc.old_parent_term_id = cm.old_term_id
+        SET c.parent_id = cm.new_category_id
+        WHERE tc.old_parent_term_id IS NOT NULL
+      `, { transaction });
+
+      // Step 7: Extract category images from termmeta
       await queryInterface.sequelize.query(`
         UPDATE temp_categories tc
         JOIN ${process.env.OLD_DB_NAME}.vh_termmeta tm ON tc.old_term_id = tm.term_id
@@ -48,93 +90,26 @@ module.exports = {
         AND tm.meta_value IS NOT NULL
       `, { transaction });
 
-      // Step 4: Insert parent categories first (no parent_id)
-      await queryInterface.sequelize.query(`
-        INSERT INTO categories (name, description, slug, parent_id, logo_url, createdAt, updatedAt)
-        SELECT 
-          tc.name,
-          tc.description,
-          tc.slug,
-          NULL,
-          tc.logo_url,
-          tc.created_at,
-          tc.updated_at
-        FROM temp_categories tc
-        WHERE tc.old_parent_term_id IS NULL OR tc.old_parent_term_id = 0
-        ORDER BY tc.name ASC
-      `, { transaction });
-
-      // Step 5: Create mapping table for old_term_id to new category_id
-      await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE category_mapping (
-          old_term_id BIGINT,
-          new_category_id INT
-        )
-      `, { transaction });
-
-      // Step 6: Populate mapping table with parent categories
-      await queryInterface.sequelize.query(`
-        INSERT INTO category_mapping (old_term_id, new_category_id)
-        SELECT tc.old_term_id, c.id
-        FROM temp_categories tc
-        JOIN categories c ON tc.slug = c.slug
-        WHERE tc.old_parent_term_id IS NULL OR tc.old_parent_term_id = 0
-      `, { transaction });
-
-      // Step 7: Insert child categories with proper parent_id mapping
-      await queryInterface.sequelize.query(`
-        INSERT INTO categories (name, description, slug, parent_id, logo_url, createdAt, updatedAt)
-        SELECT 
-          tc.name,
-          tc.description,
-          tc.slug,
-          cm.new_category_id,
-          tc.logo_url,
-          tc.created_at,
-          tc.updated_at
-        FROM temp_categories tc
-        JOIN category_mapping cm ON tc.old_parent_term_id = cm.old_term_id
-        WHERE tc.old_parent_term_id IS NOT NULL AND tc.old_parent_term_id != 0
-        ORDER BY tc.name ASC
-      `, { transaction });
-
-      // Step 8: Update mapping table with child categories
-      await queryInterface.sequelize.query(`
-        INSERT INTO category_mapping (old_term_id, new_category_id)
-        SELECT tc.old_term_id, c.id
-        FROM temp_categories tc
-        JOIN categories c ON tc.slug = c.slug
-        WHERE tc.old_parent_term_id IS NOT NULL AND tc.old_parent_term_id != 0
-      `, { transaction });
-
-      // Step 9: Create product-category relationships
+      // Step 8: Create product-category relationships
       await queryInterface.sequelize.query(`
         INSERT INTO product_categories (product_id, category_id, is_primary)
-        SELECT DISTINCT
-          tr.object_id as product_id,
-          cm.new_category_id as category_id,
-          CASE 
-            WHEN ROW_NUMBER() OVER (PARTITION BY tr.object_id ORDER BY tt.count DESC) = 1 
-            THEN 1 
-            ELSE 0 
-          END as is_primary
+        SELECT DISTINCT 
+          tr.object_id as product_id, 
+          c.id as category_id, 
+          CASE WHEN ROW_NUMBER() OVER (PARTITION BY tr.object_id ORDER BY tt.count DESC) = 1 THEN 1 ELSE 0 END as is_primary
         FROM ${process.env.OLD_DB_NAME}.vh_term_relationships tr
         JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-        JOIN category_mapping cm ON tt.term_id = cm.old_term_id
+        JOIN temp_categories tc ON tt.term_id = tc.old_term_id
+        JOIN categories c ON tc.slug = c.slug
         WHERE tt.taxonomy = 'product_cat'
         AND tr.object_id IN (SELECT id FROM products)
       `, { transaction });
 
-      // Step 10: Clean up temporary tables
-      await queryInterface.sequelize.query(`
-        DROP TEMPORARY TABLE IF EXISTS temp_categories
-      `, { transaction });
+      // Step 9: Clean up temporary tables
+      await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_categories`, { transaction });
+      await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS category_mapping`, { transaction });
 
-      await queryInterface.sequelize.query(`
-        DROP TEMPORARY TABLE IF EXISTS category_mapping
-      `, { transaction });
-
-      // Step 11: Verify the migration
+      // Step 10: Verification queries
       const [categoriesCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM categories
       `, { transaction });
@@ -143,45 +118,9 @@ module.exports = {
         SELECT COUNT(*) as count FROM product_categories
       `, { transaction });
 
-      // Step 12: Get detailed verification data
-      const [categoryHierarchy] = await queryInterface.sequelize.query(`
-        SELECT 
-          c1.name as category_name,
-          c2.name as parent_category,
-          c1.slug,
-          c1.createdAt
-        FROM categories c1
-        LEFT JOIN categories c2 ON c1.parent_id = c2.id
-        ORDER BY c1.parent_id ASC, c1.name ASC
-      `, { transaction });
-
-      const [productsWithCategories] = await queryInterface.sequelize.query(`
-        SELECT 
-          p.name as product_name,
-          GROUP_CONCAT(c.name SEPARATOR ', ') as categories,
-          COUNT(pc.category_id) as category_count
-        FROM products p
-        LEFT JOIN product_categories pc ON p.id = pc.product_id
-        LEFT JOIN categories c ON pc.category_id = c.id
-        GROUP BY p.id, p.name
-        ORDER BY p.name
-        LIMIT 20
-      `, { transaction });
-
       console.log('Category migration completed successfully!');
       console.log(`Categories migrated: ${categoriesCount[0].count}`);
       console.log(`Product-category relationships: ${productCategoriesCount[0].count}`);
-      
-      console.log('\nCategory hierarchy:');
-      categoryHierarchy.forEach(cat => {
-        const parent = cat.parent_category ? ` (Parent: ${cat.parent_category})` : ' (Root Category)';
-        console.log(`- ${cat.category_name}${parent}`);
-      });
-
-      console.log('\nSample products with categories:');
-      productsWithCategories.forEach(product => {
-        console.log(`- ${product.product_name}: ${product.categories || 'No categories'} (${product.category_count} categories)`);
-      });
 
       await transaction.commit();
     } catch (error) {
@@ -195,20 +134,9 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      // Remove all imported category data
-      await queryInterface.sequelize.query(`
-        DELETE FROM product_categories 
-        WHERE category_id IN (
-          SELECT id FROM categories 
-          WHERE createdAt >= (SELECT MAX(createdAt) FROM categories) - INTERVAL 1 HOUR
-        )
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        DELETE FROM categories 
-        WHERE createdAt >= (SELECT MAX(createdAt) FROM categories) - INTERVAL 1 HOUR
-      `, { transaction });
-
+      await queryInterface.sequelize.query(`DELETE FROM product_categories`, { transaction });
+      await queryInterface.sequelize.query(`DELETE FROM categories`, { transaction });
+      
       await transaction.commit();
       console.log('Category migration rolled back successfully!');
     } catch (error) {
