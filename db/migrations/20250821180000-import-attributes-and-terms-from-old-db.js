@@ -16,7 +16,7 @@ module.exports = {
           'name' as sort_order,
           NOW(),
           NOW()
-        FROM vapehub_live.vh_term_taxonomy tt
+        FROM ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt
         WHERE tt.taxonomy LIKE 'pa_%'
         GROUP BY tt.taxonomy
         ORDER BY tt.taxonomy
@@ -33,8 +33,8 @@ module.exports = {
            tt.count,
            NOW(),
            NOW()
-         FROM vapehub_live.vh_terms t
-         JOIN vapehub_live.vh_term_taxonomy tt ON t.term_id = tt.term_id
+         FROM ${process.env.OLD_DB_NAME}.vh_terms t
+         JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON t.term_id = tt.term_id
          JOIN attributes a ON REPLACE(tt.taxonomy, 'pa_', '') COLLATE utf8mb4_unicode_ci = a.slug COLLATE utf8mb4_unicode_ci
          WHERE tt.taxonomy LIKE 'pa_%'
          ORDER BY a.name ASC, tt.count DESC

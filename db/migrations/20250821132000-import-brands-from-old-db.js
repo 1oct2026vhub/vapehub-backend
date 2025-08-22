@@ -28,15 +28,15 @@ module.exports = {
           tt.description,
           NOW(),
           NOW()
-        FROM vapehub_live.vh_terms t
-        JOIN vapehub_live.vh_term_taxonomy tt ON t.term_id = tt.term_id
+        FROM ${process.env.OLD_DB_NAME}.vh_terms t
+        JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON t.term_id = tt.term_id
         WHERE tt.taxonomy = 'pwb-brand'
       `, { transaction });
 
       // Step 3: Extract brand logos from termmeta
       await queryInterface.sequelize.query(`
         UPDATE temp_real_brands tb
-        JOIN vapehub_live.vh_termmeta tm ON tb.old_term_id = tm.term_id
+        JOIN ${process.env.OLD_DB_NAME}.vh_termmeta tm ON tb.old_term_id = tm.term_id
         SET tb.logo_url = tm.meta_value
         WHERE tm.meta_key IN ('pwb_brand_logo', 'brand_logo', 'brand_image', 'thumbnail_id')
         AND tm.meta_value IS NOT NULL
@@ -44,7 +44,7 @@ module.exports = {
 
       // Step 4: Insert real brands into new database
       await queryInterface.sequelize.query(`
-        INSERT INTO brands (name, description, slug, logo_url, created_at, updated_at)
+        INSERT INTO brands (name, description, slug, logo_url, createdAt, updatedAt)
         SELECT 
           name,
           description,
@@ -67,8 +67,8 @@ module.exports = {
             THEN 1 
             ELSE 0 
           END as is_primary
-        FROM vapehub_live.vh_term_relationships tr
-        JOIN vapehub_live.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+        FROM ${process.env.OLD_DB_NAME}.vh_term_relationships tr
+        JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
         JOIN temp_real_brands tb ON tt.term_id = tb.old_term_id
         JOIN brands b ON tb.slug = b.slug
         WHERE tt.taxonomy = 'pwb-brand'
@@ -137,13 +137,13 @@ module.exports = {
         DELETE FROM product_brands 
         WHERE brand_id IN (
           SELECT id FROM brands 
-          WHERE created_at >= (SELECT MAX(created_at) FROM brands) - INTERVAL 1 HOUR
+          WHERE createdAt >= (SELECT MAX(createdAt) FROM brands) - INTERVAL 1 HOUR
         )
       `, { transaction });
 
       await queryInterface.sequelize.query(`
         DELETE FROM brands 
-        WHERE created_at >= (SELECT MAX(created_at) FROM brands) - INTERVAL 1 HOUR
+        WHERE createdAt >= (SELECT MAX(createdAt) FROM brands) - INTERVAL 1 HOUR
       `, { transaction });
 
       await transaction.commit();

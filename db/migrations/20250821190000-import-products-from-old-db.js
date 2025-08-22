@@ -22,10 +22,10 @@ module.exports = {
             END as status,
             p.post_date as createdAt,
             p.post_modified as updatedAt
-        FROM vapehub_live.vh_posts p
-        LEFT JOIN vapehub_live.vh_postmeta pm_price ON p.ID = pm_price.post_id AND pm_price.meta_key = '_regular_price'
-        LEFT JOIN vapehub_live.vh_postmeta pm_sale_price ON p.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
-        LEFT JOIN vapehub_live.vh_postmeta pm_stock ON p.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
+        FROM ${process.env.OLD_DB_NAME}.vh_posts p
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_price ON p.ID = pm_price.post_id AND pm_price.meta_key = '_regular_price'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_sale_price ON p.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock ON p.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
                  WHERE p.post_type = 'product'
          AND p.post_status IN ('publish', 'draft', 'private')
          AND p.post_name IS NOT NULL
@@ -41,8 +41,8 @@ module.exports = {
             CASE WHEN pm.meta_key = '_thumbnail_id' THEN 1 ELSE 0 END as is_primary,
             NOW(),
             NOW()
-        FROM vapehub_live.vh_postmeta pm
-        JOIN vapehub_live.vh_posts old_p ON pm.post_id = old_p.ID
+        FROM ${process.env.OLD_DB_NAME}.vh_postmeta pm
+        JOIN ${process.env.OLD_DB_NAME}.vh_posts old_p ON pm.post_id = old_p.ID
         JOIN products p ON old_p.post_name COLLATE utf8mb4_unicode_ci = p.slug COLLATE utf8mb4_unicode_ci
         WHERE pm.meta_key IN ('_thumbnail_id', '_product_image_gallery')
         AND pm.meta_value IS NOT NULL
@@ -76,19 +76,19 @@ module.exports = {
             END as status,
             pv.post_date as created_at,
             pv.post_modified as updated_at
-        FROM vapehub_live.vh_posts pv
-        JOIN vapehub_live.vh_posts parent ON pv.post_parent = parent.ID
+        FROM ${process.env.OLD_DB_NAME}.vh_posts pv
+        JOIN ${process.env.OLD_DB_NAME}.vh_posts parent ON pv.post_parent = parent.ID
         JOIN products p ON parent.post_name COLLATE utf8mb4_unicode_ci = p.slug COLLATE utf8mb4_unicode_ci
-        LEFT JOIN vapehub_live.vh_postmeta pm_price ON pv.ID = pm_price.post_id AND pm_price.meta_key = '_price'
-        LEFT JOIN vapehub_live.vh_postmeta pm_regular_price ON pv.ID = pm_regular_price.post_id AND pm_regular_price.meta_key = '_regular_price'
-        LEFT JOIN vapehub_live.vh_postmeta pm_sale_price ON pv.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
-        LEFT JOIN vapehub_live.vh_postmeta pm_stock ON pv.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
-        LEFT JOIN vapehub_live.vh_postmeta pm_stock_status ON pv.ID = pm_stock_status.post_id AND pm_stock_status.meta_key = '_stock_status'
-        LEFT JOIN vapehub_live.vh_postmeta pm_weight ON pv.ID = pm_weight.post_id AND pm_weight.meta_key = '_weight'
-        LEFT JOIN vapehub_live.vh_postmeta pm_length ON pv.ID = pm_length.post_id AND pm_length.meta_key = '_length'
-        LEFT JOIN vapehub_live.vh_postmeta pm_width ON pv.ID = pm_width.post_id AND pm_width.meta_key = '_width'
-        LEFT JOIN vapehub_live.vh_postmeta pm_height ON pv.ID = pm_height.post_id AND pm_height.meta_key = '_height'
-        LEFT JOIN vapehub_live.vh_postmeta pm_barcode ON pv.ID = pm_barcode.post_id AND pm_barcode.meta_key = '_barcode'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_price ON pv.ID = pm_price.post_id AND pm_price.meta_key = '_price'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_regular_price ON pv.ID = pm_regular_price.post_id AND pm_regular_price.meta_key = '_regular_price'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_sale_price ON pv.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock ON pv.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock_status ON pv.ID = pm_stock_status.post_id AND pm_stock_status.meta_key = '_stock_status'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_weight ON pv.ID = pm_weight.post_id AND pm_weight.meta_key = '_weight'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_length ON pv.ID = pm_length.post_id AND pm_length.meta_key = '_length'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_width ON pv.ID = pm_width.post_id AND pm_width.meta_key = '_width'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_height ON pv.ID = pm_height.post_id AND pm_height.meta_key = '_height'
+        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_barcode ON pv.ID = pm_barcode.post_id AND pm_barcode.meta_key = '_barcode'
         WHERE pv.post_type = 'product_variation'
         AND pv.post_status IN ('publish', 'draft', 'private')
         AND pv.post_name IS NOT NULL

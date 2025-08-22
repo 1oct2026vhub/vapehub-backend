@@ -34,15 +34,15 @@ module.exports = {
           NOW(),
           NOW(),
           tt.parent
-        FROM vapehub_live.vh_terms t
-        JOIN vapehub_live.vh_term_taxonomy tt ON t.term_id = tt.term_id
+        FROM ${process.env.OLD_DB_NAME}.vh_terms t
+        JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON t.term_id = tt.term_id
         WHERE tt.taxonomy = 'product_cat'
       `, { transaction });
 
       // Step 3: Extract category images from termmeta
       await queryInterface.sequelize.query(`
         UPDATE temp_categories tc
-        JOIN vapehub_live.vh_termmeta tm ON tc.old_term_id = tm.term_id
+        JOIN ${process.env.OLD_DB_NAME}.vh_termmeta tm ON tc.old_term_id = tm.term_id
         SET tc.logo_url = tm.meta_value
         WHERE tm.meta_key IN ('thumbnail_id', 'product_cat_thumbnail_id', 'category_thumbnail_id')
         AND tm.meta_value IS NOT NULL
@@ -50,7 +50,7 @@ module.exports = {
 
       // Step 4: Insert parent categories first (no parent_id)
       await queryInterface.sequelize.query(`
-        INSERT INTO categories (name, description, slug, parent_id, logo_url, created_at, updated_at)
+        INSERT INTO categories (name, description, slug, parent_id, logo_url, createdAt, updatedAt)
         SELECT 
           tc.name,
           tc.description,
@@ -83,7 +83,7 @@ module.exports = {
 
       // Step 7: Insert child categories with proper parent_id mapping
       await queryInterface.sequelize.query(`
-        INSERT INTO categories (name, description, slug, parent_id, logo_url, created_at, updated_at)
+        INSERT INTO categories (name, description, slug, parent_id, logo_url, createdAt, updatedAt)
         SELECT 
           tc.name,
           tc.description,
@@ -118,8 +118,8 @@ module.exports = {
             THEN 1 
             ELSE 0 
           END as is_primary
-        FROM vapehub_live.vh_term_relationships tr
-        JOIN vapehub_live.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+        FROM ${process.env.OLD_DB_NAME}.vh_term_relationships tr
+        JOIN ${process.env.OLD_DB_NAME}.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
         JOIN category_mapping cm ON tt.term_id = cm.old_term_id
         WHERE tt.taxonomy = 'product_cat'
         AND tr.object_id IN (SELECT id FROM products)
@@ -149,7 +149,7 @@ module.exports = {
           c1.name as category_name,
           c2.name as parent_category,
           c1.slug,
-          c1.created_at
+          c1.createdAt
         FROM categories c1
         LEFT JOIN categories c2 ON c1.parent_id = c2.id
         ORDER BY c1.parent_id ASC, c1.name ASC
@@ -200,13 +200,13 @@ module.exports = {
         DELETE FROM product_categories 
         WHERE category_id IN (
           SELECT id FROM categories 
-          WHERE created_at >= (SELECT MAX(created_at) FROM categories) - INTERVAL 1 HOUR
+          WHERE createdAt >= (SELECT MAX(createdAt) FROM categories) - INTERVAL 1 HOUR
         )
       `, { transaction });
 
       await queryInterface.sequelize.query(`
         DELETE FROM categories 
-        WHERE created_at >= (SELECT MAX(created_at) FROM categories) - INTERVAL 1 HOUR
+        WHERE createdAt >= (SELECT MAX(createdAt) FROM categories) - INTERVAL 1 HOUR
       `, { transaction });
 
       await transaction.commit();
