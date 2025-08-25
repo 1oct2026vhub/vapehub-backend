@@ -5,23 +5,15 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      console.log('Starting order migration from live database...');
-      // Step 1: Create temporary mapping table for user IDs
+      console.log('Starting orders migration from alternative data sources...');
+      
+      // Temporarily disable foreign key checks
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
+      
+      // Step 1: Create orders from viva_com_smart_wc_checkout_orders (primary source)
+      console.log('Creating orders from VivaWallet checkout orders...');
       await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_user_mapping AS
-        SELECT 
-            old_u.ID as old_user_id,
-            new_u.id as new_user_id
-        FROM ${process.env.OLD_DB_NAME}.vh_users old_u
-        INNER JOIN users new_u ON old_u.user_email COLLATE utf8mb4_unicode_ci = new_u.email COLLATE utf8mb4_unicode_ci
-        WHERE old_u.user_status = 0
-      `, { transaction });
-
-      console.log('User mapping table created');
-
-      // Step 2: Migrate Orders from vh_wc_orders
-      await queryInterface.sequelize.query(`
-        INSERT INTO orders (
+        INSERT IGNORE INTO orders (
           user_id,
           coupon_id,
           total,
@@ -53,75 +45,63 @@ module.exports = {
           ordered
         )
         SELECT 
-          um.new_user_id as user_id,
+          -- Try to find user by email from order_stats or default to 1
+          COALESCE(
+            (SELECT customer_id FROM ${process.env.OLD_DB_NAME}.vh_wc_order_stats 
+             WHERE order_id COLLATE utf8mb4_unicode_ci = vco.woocommerce_order_id COLLATE utf8mb4_unicode_ci LIMIT 1), 1
+          ) as user_id,
           NULL as coupon_id,
-          COALESCE(old_o.total_amount, 0) as total,
-          COALESCE(old_o.tax_amount, 0) as discount_price,
-          CASE 
-            WHEN old_o.status = 'completed' THEN 'completed'
-            WHEN old_o.status = 'processing' THEN 'processing'
-            WHEN old_o.status = 'pending' THEN 'pending'
-            WHEN old_o.status = 'cancelled' THEN 'cancel'
-            WHEN old_o.status = 'failed' THEN 'fail'
-            WHEN old_o.status = 'refunded' THEN 'refunded'
-            WHEN old_o.status = 'on-hold' THEN 'pending'
-            ELSE 'pending'
-          END as status,
+          vco.amount as total,
+          0.00 as discount_price,
+          'completed' as status, -- Assume completed since payment was processed
           1 as shipping_method_id,
-          COALESCE(old_o.date_created_gmt, NOW()) as createdAt,
-          COALESCE(old_o.date_updated_gmt, NOW()) as updatedAt,
-          CASE 
-            WHEN old_o.status IN ('cancelled', 'failed') THEN COALESCE(old_o.date_updated_gmt, NOW())
-            ELSE NULL
-          END as deletedAt,
+          COALESCE(vco.date_add, NOW()) as createdAt,
+          COALESCE(vco.date_add, NOW()) as updatedAt,
+          NULL as deletedAt,
           NULL as shipping_address_id,
           NULL as billing_address_id,
-          CONCAT('ORD-', old_o.id, '-', DATE_FORMAT(COALESCE(old_o.date_created_gmt, NOW()), '%Y%m%d')) as order_unique_id,
+          CONCAT('ORD-', vco.woocommerce_order_id, '-', DATE_FORMAT(COALESCE(vco.date_add, NOW()), '%Y%m%d')) as order_unique_id,
           0.00 as deals_discount,
           NULL as applicable_deals,
           0.00 as shipping_cost,
-          CAST(old_o.id AS CHAR) as order_code,
-          old_o.billing_email as email,
+          CAST(vco.woocommerce_order_id AS CHAR) as order_code,
+          NULL as email, -- Will be updated later
           NULL as phone,
           NULL as order_shipping_address_id,
           NULL as order_billing_address_id,
           NULL as referral_id,
-          COALESCE(old_o.total_amount, 0) as sub_total,
+          vco.amount as sub_total,
           NULL as discount_type,
-          1 as payment_method_id,
+          (SELECT id FROM PaymentMethods WHERE payment_method = 'VivaWallet' LIMIT 1) as payment_method_id,
           NULL as shipstation_order_id,
           0 as loyalty_flag,
           0.00 as loyalty_discount,
           0.00 as mailSubscription_discount,
-          CASE 
-            WHEN old_o.status = 'completed' THEN 1
-            ELSE 0
-          END as ordered
-        FROM ${process.env.OLD_DB_NAME}.vh_wc_orders old_o
-        INNER JOIN temp_user_mapping um ON old_o.customer_id = um.old_user_id
-        WHERE 
-          um.new_user_id IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM orders new_o 
-            WHERE new_o.order_code COLLATE utf8mb4_unicode_ci = CAST(old_o.id AS CHAR) COLLATE utf8mb4_unicode_ci
-          )
+          1 as ordered
+        FROM ${process.env.OLD_DB_NAME}.vh_viva_com_smart_wc_checkout_orders vco
+        WHERE NOT EXISTS (
+          SELECT 1 FROM orders new_o 
+          WHERE new_o.order_code COLLATE utf8mb4_unicode_ci = CAST(vco.woocommerce_order_id AS CHAR) COLLATE utf8mb4_unicode_ci
+        )
       `, { transaction });
 
-      console.log('Orders migrated from vh_wc_orders');
-
-      // Step 3: Create temporary mapping table for order IDs
+      // Step 2: Update order totals and details from order_stats
+      console.log('Updating orders with statistics data...');
       await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_order_mapping AS
-        SELECT 
-          old_o.id as old_order_id,
-          new_o.id as new_order_id
-        FROM ${process.env.OLD_DB_NAME}.vh_wc_orders old_o
-        INNER JOIN orders new_o ON new_o.order_code COLLATE utf8mb4_unicode_ci = CAST(old_o.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        UPDATE orders o
+        INNER JOIN ${process.env.OLD_DB_NAME}.vh_wc_order_stats os ON os.order_id COLLATE utf8mb4_unicode_ci = CAST(o.order_code AS UNSIGNED) COLLATE utf8mb4_unicode_ci
+        SET 
+          o.total = COALESCE(os.total_sales, o.total),
+          o.sub_total = COALESCE(os.net_total, o.sub_total),
+          o.shipping_cost = COALESCE(os.shipping_total, o.shipping_cost),
+          o.discount_price = COALESCE(os.tax_total, o.discount_price),
+          o.user_id = COALESCE(os.customer_id, o.user_id),
+          o.updatedAt = NOW()
+        WHERE o.order_code IS NOT NULL
       `, { transaction });
 
-      console.log('Order mapping table created');
-
-      // Step 4: Migrate Order Items from vh_woocommerce_order_items
+      // Step 3: Create order items from vh_woocommerce_order_items
+      console.log('Creating order items from WooCommerce order items...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_items (
           order_id,
@@ -137,33 +117,86 @@ module.exports = {
           deletedAt
         )
         SELECT 
-          om.new_order_id as order_id,
-          -- Use product_id from order_product_lookup if available, otherwise default to 1
-          COALESCE(opl.product_id, 1) as product_id,
-          COALESCE(opl.variation_id, NULL) as variant_id,
+          o.id as order_id,
+          -- Get product_id from order_itemmeta
+          COALESCE(
+            (SELECT CAST(meta_value AS UNSIGNED) 
+             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+             WHERE order_item_id = oi.order_item_id 
+             AND meta_key = '_product_id' 
+             LIMIT 1), 1
+          ) as product_id,
+          -- Get variation_id from order_itemmeta
+          COALESCE(
+            (SELECT CAST(meta_value AS UNSIGNED) 
+             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+             WHERE order_item_id = oi.order_item_id 
+             AND meta_key = '_variation_id' 
+             LIMIT 1), NULL
+          ) as variant_id,
           'piece' as unit,
-          -- Calculate unit price from order stats or use total
-          COALESCE(os.total_sales / NULLIF(os.num_items_sold, 0), old_oi.order_item_name, 0) as unit_price,
-          COALESCE(opl.product_qty, 1) as quantity,
-          NULL as discount_price,
-          COALESCE(opl.product_net_revenue, 0) as total,
-          COALESCE(old_o.date_created_gmt, NOW()) as createdAt,
-          COALESCE(old_o.date_updated_gmt, NOW()) as updatedAt,
+          -- Calculate unit price from line_total and qty
           CASE 
-            WHEN old_o.status IN ('cancelled', 'failed') THEN COALESCE(old_o.date_updated_gmt, NOW())
-            ELSE NULL
-          END as deletedAt
-        FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_items old_oi
-        INNER JOIN temp_order_mapping om ON old_oi.order_id = om.old_order_id
-        INNER JOIN ${process.env.OLD_DB_NAME}.vh_wc_orders old_o ON old_o.id = om.old_order_id
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_wc_order_product_lookup opl ON opl.order_id = old_oi.order_id
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_wc_order_stats os ON os.order_id = old_oi.order_id
-        WHERE old_oi.order_item_type = 'line_item'
+            WHEN COALESCE(
+              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
+               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+               WHERE order_item_id = oi.order_item_id 
+               AND meta_key = '_qty' 
+               LIMIT 1), 1
+            ) > 0 
+            THEN COALESCE(
+              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
+               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+               WHERE order_item_id = oi.order_item_id 
+               AND meta_key = '_line_total' 
+               LIMIT 1), 0
+            ) / COALESCE(
+              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
+               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+               WHERE order_item_id = oi.order_item_id 
+               AND meta_key = '_qty' 
+               LIMIT 1), 1
+            )
+            ELSE 0
+          END as unit_price,
+          -- Get quantity from order_itemmeta
+          COALESCE(
+            (SELECT CAST(meta_value AS UNSIGNED) 
+             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+             WHERE order_item_id = oi.order_item_id 
+             AND meta_key = '_qty' 
+             LIMIT 1), 1
+          ) as quantity,
+          NULL as discount_price,
+          -- Get line total from order_itemmeta
+          COALESCE(
+            (SELECT CAST(meta_value AS DECIMAL(10,2)) 
+             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+             WHERE order_item_id = oi.order_item_id 
+             AND meta_key = '_line_total' 
+             LIMIT 1), 0
+          ) as total,
+          NOW() as createdAt,
+          NOW() as updatedAt,
+          NULL as deletedAt
+        FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_items oi
+        INNER JOIN orders o ON o.order_code COLLATE utf8mb4_unicode_ci = CAST(oi.order_id AS CHAR) COLLATE utf8mb4_unicode_ci
+        WHERE oi.order_item_type = 'line_item'
+        AND NOT EXISTS (
+          SELECT 1 FROM order_items existing_oi 
+          WHERE existing_oi.order_id = o.id 
+          AND existing_oi.product_id = COALESCE(
+            (SELECT CAST(meta_value AS UNSIGNED) 
+             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
+             WHERE order_item_id = oi.order_item_id 
+             AND meta_key = '_product_id' 
+             LIMIT 1), 1
+          )
+        )
       `, { transaction });
 
-      console.log('Order items migrated from vh_woocommerce_order_items');
-
-      // Step 5: Migrate Order Addresses (if available)
+      // Step 4: Create order addresses from order_addresses if available
+      console.log('Creating order addresses...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_addresses (
           order_id,
@@ -185,12 +218,9 @@ module.exports = {
           deleted_at
         )
         SELECT 
-          om.new_order_id as order_id,
+          o.id as order_id,
           o.user_id,
-          COALESCE(
-            SUBSTRING_INDEX(old_o.billing_email, '@', 1),
-            'Customer'
-          ) as name,
+          'Customer' as name,
           NULL as last_name,
           NULL as company_name,
           NULL as country,
@@ -202,31 +232,40 @@ module.exports = {
           NULL as post_code,
           NULL as phone,
           NULL as token,
-          COALESCE(old_o.date_created_gmt, NOW()) as created_at,
-          COALESCE(old_o.date_updated_gmt, NOW()) as updated_at,
-          CASE 
-            WHEN old_o.status IN ('cancelled', 'failed') THEN COALESCE(old_o.date_updated_gmt, NOW())
-            ELSE NULL
-          END as deleted_at
-        FROM ${process.env.OLD_DB_NAME}.vh_wc_orders old_o
-        INNER JOIN temp_order_mapping om ON old_o.id = om.old_order_id
-        INNER JOIN orders o ON o.id = om.new_order_id
+          o.createdAt as created_at,
+          o.updatedAt as updated_at,
+          NULL as deleted_at
+        FROM orders o
+        WHERE o.order_code IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM order_addresses oa WHERE oa.order_id = o.id
+        )
       `, { transaction });
 
-      console.log('Order addresses migrated');
-
-      // Step 6: Update order address references
+      // Step 5: Update order address references
+      console.log('Updating order address references...');
       await queryInterface.sequelize.query(`
         UPDATE orders o
-        INNER JOIN temp_order_mapping om ON o.id = om.new_order_id
-        INNER JOIN order_addresses oa ON oa.order_id = om.new_order_id
+        INNER JOIN order_addresses oa ON oa.order_id = o.id
         SET 
           o.order_billing_address_id = oa.id,
           o.order_shipping_address_id = oa.id
-        WHERE oa.deleted_at IS NULL
+        WHERE o.order_code IS NOT NULL
+        AND oa.deleted_at IS NULL
       `, { transaction });
 
-      // Step 7: Create Order Logs
+      // Step 6: Update user emails from users table
+      console.log('Updating user emails...');
+      await queryInterface.sequelize.query(`
+        UPDATE orders o
+        INNER JOIN users u ON o.user_id = u.id
+        SET o.email = u.email
+        WHERE o.email IS NULL
+        AND u.email IS NOT NULL
+      `, { transaction });
+
+      // Step 7: Create order logs
+      console.log('Creating order logs...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_logs (
           order_id,
@@ -238,28 +277,24 @@ module.exports = {
           updatedAt
         )
         SELECT 
-          om.new_order_id as order_id,
+          o.id as order_id,
           o.user_id,
           o.status,
-          CONCAT('Order ', o.status, ' from WooCommerce migration') as label,
-          CONCAT('Migrated from WooCommerce order ID: ', om.old_order_id) as additional_info,
+          CONCAT('Order ', o.status, ' from VivaWallet migration') as label,
+          CONCAT('Migrated from VivaWallet order ID: ', o.order_code) as additional_info,
           o.createdAt,
           o.updatedAt
         FROM orders o
-        INNER JOIN temp_order_mapping om ON o.id = om.new_order_id
+        WHERE o.order_code IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM order_logs ol WHERE ol.order_id = o.id
+        )
       `, { transaction });
 
-      // Step 8: Clean up temporary tables
-      await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_user_mapping`, { transaction });
-      await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping`, { transaction });
-
-      // Step 9: Verification
+      // Step 8: Verification and reporting
+      console.log('Running verification queries...');
       const [migratedOrdersCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM orders WHERE order_code IS NOT NULL
-      `, { transaction });
-
-      const [ordersByStatus] = await queryInterface.sequelize.query(`
-        SELECT status, COUNT(*) as order_count FROM orders GROUP BY status
       `, { transaction });
 
       const [ordersWithItems] = await queryInterface.sequelize.query(`
@@ -267,19 +302,50 @@ module.exports = {
         FROM orders o INNER JOIN order_items oi ON o.id = oi.order_id
       `, { transaction });
 
-      console.log('Orders migration completed successfully!');
-      console.log(`Orders migrated: ${migratedOrdersCount[0].count}`);
-      console.log(`Orders with items: ${ordersWithItems[0].orders_with_items}`);
+      const [totalAmount] = await queryInterface.sequelize.query(`
+        SELECT SUM(total) as total_amount FROM orders WHERE order_code IS NOT NULL
+      `, { transaction });
+
+      const [ordersByStatus] = await queryInterface.sequelize.query(`
+        SELECT status, COUNT(*) as count FROM orders WHERE order_code IS NOT NULL GROUP BY status
+      `, { transaction });
+
+      const [sampleOrders] = await queryInterface.sequelize.query(`
+        SELECT 
+          order_code,
+          total,
+          status,
+          createdAt,
+          email
+        FROM orders 
+        WHERE order_code IS NOT NULL
+        ORDER BY createdAt DESC
+        LIMIT 10
+      `, { transaction });
+
+      console.log('\n=== MIGRATION COMPLETED SUCCESSFULLY ===');
+      console.log(`📊 Orders migrated: ${migratedOrdersCount[0].count}`);
+      console.log(`�� Orders with items: ${ordersWithItems[0].orders_with_items}`);
+      console.log(`�� Total revenue: £${totalAmount[0].total_amount || 0}`);
       
-      console.log('\nOrders by status:');
+      console.log('\n📈 Orders by status:');
       ordersByStatus.forEach(status => {
-        console.log(`- ${status.status}: ${status.order_count} orders`);
+        console.log(`   - ${status.status}: ${status.count} orders`);
       });
 
+      console.log('\n📋 Sample migrated orders:');
+      sampleOrders.forEach(order => {
+        console.log(`   - Order ${order.order_code}: £${order.total} (${order.status}) - ${order.email || 'No email'}`);
+      });
+
+      // Re-enable foreign key checks
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
+      
       await transaction.commit();
+      console.log('\n✅ Migration committed successfully!');
     } catch (error) {
       await transaction.rollback();
-      console.error('Orders migration failed:', error);
+      console.error('❌ Orders migration failed:', error);
       throw error;
     }
   },
@@ -288,14 +354,10 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
+      console.log('Rolling back orders migration...');
+      
       await queryInterface.sequelize.query(`
         DELETE FROM order_logs WHERE order_id IN (
-          SELECT id FROM orders WHERE order_code IS NOT NULL
-        )
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        DELETE FROM order_items WHERE order_id IN (
           SELECT id FROM orders WHERE order_code IS NOT NULL
         )
       `, { transaction });
@@ -307,14 +369,20 @@ module.exports = {
       `, { transaction });
 
       await queryInterface.sequelize.query(`
+        DELETE FROM order_items WHERE order_id IN (
+          SELECT id FROM orders WHERE order_code IS NOT NULL
+        )
+      `, { transaction });
+
+      await queryInterface.sequelize.query(`
         DELETE FROM orders WHERE order_code IS NOT NULL
       `, { transaction });
 
       await transaction.commit();
-      console.log('Orders migration rolled back successfully!');
+      console.log('✅ Orders migration rolled back successfully!');
     } catch (error) {
       await transaction.rollback();
-      console.error('Orders migration rollback failed:', error);
+      console.error('❌ Orders migration rollback failed:', error);
       throw error;
     }
   }
