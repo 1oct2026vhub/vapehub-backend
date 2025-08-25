@@ -5,13 +5,35 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      console.log('Starting orders migration from alternative data sources...');
+      console.log('Starting orders migration with product ID mapping...');
       
       // Temporarily disable foreign key checks
       await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
       
-      // Step 1: Create orders from viva_com_smart_wc_checkout_orders (primary source)
-      console.log('Creating orders from VivaWallet checkout orders...');
+      // Step 1: Create product mapping table
+      console.log('Creating product ID mapping...');
+      await queryInterface.sequelize.query(`
+        CREATE TEMPORARY TABLE temp_product_mapping AS
+        SELECT 
+          old_p.ID as old_product_id,
+          new_p.id as new_product_id
+        FROM ${process.env.OLD_DB_NAME}.vh_posts old_p
+                 INNER JOIN products new_p ON new_p.slug COLLATE utf8mb4_unicode_ci = old_p.post_name COLLATE utf8mb4_unicode_ci
+        WHERE old_p.post_type = 'product'
+        AND old_p.post_status = 'publish'
+      `, { transaction });
+
+             // Step 2: Create variant mapping table (simplified - will use NULL for variants)
+       console.log('Creating variant ID mapping...');
+       await queryInterface.sequelize.query(`
+         CREATE TEMPORARY TABLE temp_variant_mapping (
+           old_variant_id INT,
+           new_variant_id INT
+         )
+       `, { transaction });
+
+      // Step 3: Create orders from vh_wc_order_product_lookup
+      console.log('Creating orders from order product lookup...');
       await queryInterface.sequelize.query(`
         INSERT IGNORE INTO orders (
           user_id,
@@ -45,51 +67,52 @@ module.exports = {
           ordered
         )
         SELECT 
-          -- Try to find user by email from order_stats or default to 1
-          COALESCE(
-            (SELECT customer_id FROM ${process.env.OLD_DB_NAME}.vh_wc_order_stats 
-             WHERE order_id COLLATE utf8mb4_unicode_ci = vco.woocommerce_order_id COLLATE utf8mb4_unicode_ci LIMIT 1), 1
-          ) as user_id,
+          opl.customer_id as user_id,
           NULL as coupon_id,
-          vco.amount as total,
+          (SELECT SUM(product_net_revenue) 
+           FROM ${process.env.OLD_DB_NAME}.vh_wc_order_product_lookup 
+           WHERE order_id = opl.order_id) as total,
           0.00 as discount_price,
-          'completed' as status, -- Assume completed since payment was processed
+          'completed' as status,
           1 as shipping_method_id,
-          COALESCE(vco.date_add, NOW()) as createdAt,
-          COALESCE(vco.date_add, NOW()) as updatedAt,
+          COALESCE(opl.date_created, NOW()) as createdAt,
+          COALESCE(opl.date_created, NOW()) as updatedAt,
           NULL as deletedAt,
           NULL as shipping_address_id,
           NULL as billing_address_id,
-          CONCAT('ORD-', vco.woocommerce_order_id, '-', DATE_FORMAT(COALESCE(vco.date_add, NOW()), '%Y%m%d')) as order_unique_id,
+          CONCAT('ORD-', opl.order_id, '-', DATE_FORMAT(COALESCE(opl.date_created, NOW()), '%Y%m%d')) as order_unique_id,
           0.00 as deals_discount,
           NULL as applicable_deals,
           0.00 as shipping_cost,
-          CAST(vco.woocommerce_order_id AS CHAR) as order_code,
-          NULL as email, -- Will be updated later
+          CAST(opl.order_id AS CHAR) as order_code,
+          NULL as email,
           NULL as phone,
           NULL as order_shipping_address_id,
           NULL as order_billing_address_id,
           NULL as referral_id,
-          vco.amount as sub_total,
+          (SELECT SUM(product_net_revenue) 
+           FROM ${process.env.OLD_DB_NAME}.vh_wc_order_product_lookup 
+           WHERE order_id = opl.order_id) as sub_total,
           NULL as discount_type,
-          (SELECT id FROM PaymentMethods WHERE payment_method = 'VivaWallet' LIMIT 1) as payment_method_id,
+          1 as payment_method_id,
           NULL as shipstation_order_id,
           0 as loyalty_flag,
           0.00 as loyalty_discount,
           0.00 as mailSubscription_discount,
           1 as ordered
-        FROM ${process.env.OLD_DB_NAME}.vh_viva_com_smart_wc_checkout_orders vco
-        WHERE NOT EXISTS (
-          SELECT 1 FROM orders new_o 
-          WHERE new_o.order_code COLLATE utf8mb4_unicode_ci = CAST(vco.woocommerce_order_id AS CHAR) COLLATE utf8mb4_unicode_ci
-        )
+        FROM ${process.env.OLD_DB_NAME}.vh_wc_order_product_lookup opl
+                 WHERE NOT EXISTS (
+           SELECT 1 FROM orders new_o 
+           WHERE new_o.order_code COLLATE utf8mb4_unicode_ci = CAST(opl.order_id AS CHAR) COLLATE utf8mb4_unicode_ci
+         )
+        GROUP BY opl.order_id, opl.customer_id, opl.date_created
       `, { transaction });
 
-      // Step 2: Update order totals and details from order_stats
+      // Step 4: Update orders with statistics data
       console.log('Updating orders with statistics data...');
       await queryInterface.sequelize.query(`
         UPDATE orders o
-        INNER JOIN ${process.env.OLD_DB_NAME}.vh_wc_order_stats os ON os.order_id COLLATE utf8mb4_unicode_ci = CAST(o.order_code AS UNSIGNED) COLLATE utf8mb4_unicode_ci
+        INNER JOIN ${process.env.OLD_DB_NAME}.vh_wc_order_stats os ON os.order_id = CAST(o.order_code AS UNSIGNED)
         SET 
           o.total = COALESCE(os.total_sales, o.total),
           o.sub_total = COALESCE(os.net_total, o.sub_total),
@@ -100,8 +123,8 @@ module.exports = {
         WHERE o.order_code IS NOT NULL
       `, { transaction });
 
-      // Step 3: Create order items from vh_woocommerce_order_items
-      console.log('Creating order items from WooCommerce order items...');
+      // Step 5: Create order items with mapped product IDs
+      console.log('Creating order items with mapped product IDs...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_items (
           order_id,
@@ -118,84 +141,31 @@ module.exports = {
         )
         SELECT 
           o.id as order_id,
-          -- Get product_id from order_itemmeta
-          COALESCE(
-            (SELECT CAST(meta_value AS UNSIGNED) 
-             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-             WHERE order_item_id = oi.order_item_id 
-             AND meta_key = '_product_id' 
-             LIMIT 1), 1
-          ) as product_id,
-          -- Get variation_id from order_itemmeta
-          COALESCE(
-            (SELECT CAST(meta_value AS UNSIGNED) 
-             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-             WHERE order_item_id = oi.order_item_id 
-             AND meta_key = '_variation_id' 
-             LIMIT 1), NULL
-          ) as variant_id,
+          COALESCE(pm.new_product_id, 1) as product_id, -- Map to new product ID or default to 1
+          COALESCE(vm.new_variant_id, NULL) as variant_id, -- Map to new variant ID
           'piece' as unit,
-          -- Calculate unit price from line_total and qty
           CASE 
-            WHEN COALESCE(
-              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
-               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-               WHERE order_item_id = oi.order_item_id 
-               AND meta_key = '_qty' 
-               LIMIT 1), 1
-            ) > 0 
-            THEN COALESCE(
-              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
-               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-               WHERE order_item_id = oi.order_item_id 
-               AND meta_key = '_line_total' 
-               LIMIT 1), 0
-            ) / COALESCE(
-              (SELECT CAST(meta_value AS DECIMAL(10,2)) 
-               FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-               WHERE order_item_id = oi.order_item_id 
-               AND meta_key = '_qty' 
-               LIMIT 1), 1
-            )
+            WHEN opl.product_qty > 0 THEN opl.product_net_revenue / opl.product_qty
             ELSE 0
           END as unit_price,
-          -- Get quantity from order_itemmeta
-          COALESCE(
-            (SELECT CAST(meta_value AS UNSIGNED) 
-             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-             WHERE order_item_id = oi.order_item_id 
-             AND meta_key = '_qty' 
-             LIMIT 1), 1
-          ) as quantity,
+          opl.product_qty as quantity,
           NULL as discount_price,
-          -- Get line total from order_itemmeta
-          COALESCE(
-            (SELECT CAST(meta_value AS DECIMAL(10,2)) 
-             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-             WHERE order_item_id = oi.order_item_id 
-             AND meta_key = '_line_total' 
-             LIMIT 1), 0
-          ) as total,
-          NOW() as createdAt,
-          NOW() as updatedAt,
+          opl.product_net_revenue as total,
+          COALESCE(opl.date_created, NOW()) as createdAt,
+          COALESCE(opl.date_created, NOW()) as updatedAt,
           NULL as deletedAt
-        FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_items oi
-        INNER JOIN orders o ON o.order_code COLLATE utf8mb4_unicode_ci = CAST(oi.order_id AS CHAR) COLLATE utf8mb4_unicode_ci
-        WHERE oi.order_item_type = 'line_item'
-        AND NOT EXISTS (
+        FROM ${process.env.OLD_DB_NAME}.vh_wc_order_product_lookup opl
+                 INNER JOIN orders o ON o.order_code COLLATE utf8mb4_unicode_ci = CAST(opl.order_id AS CHAR) COLLATE utf8mb4_unicode_ci
+        LEFT JOIN temp_product_mapping pm ON pm.old_product_id = opl.product_id
+        LEFT JOIN temp_variant_mapping vm ON vm.old_variant_id = opl.variation_id
+        WHERE NOT EXISTS (
           SELECT 1 FROM order_items existing_oi 
           WHERE existing_oi.order_id = o.id 
-          AND existing_oi.product_id = COALESCE(
-            (SELECT CAST(meta_value AS UNSIGNED) 
-             FROM ${process.env.OLD_DB_NAME}.vh_woocommerce_order_itemmeta 
-             WHERE order_item_id = oi.order_item_id 
-             AND meta_key = '_product_id' 
-             LIMIT 1), 1
-          )
+          AND existing_oi.product_id = COALESCE(pm.new_product_id, 1)
         )
       `, { transaction });
 
-      // Step 4: Create order addresses from order_addresses if available
+      // Step 6: Create order addresses
       console.log('Creating order addresses...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_addresses (
@@ -242,7 +212,7 @@ module.exports = {
         )
       `, { transaction });
 
-      // Step 5: Update order address references
+      // Step 7: Update order address references
       console.log('Updating order address references...');
       await queryInterface.sequelize.query(`
         UPDATE orders o
@@ -254,7 +224,7 @@ module.exports = {
         AND oa.deleted_at IS NULL
       `, { transaction });
 
-      // Step 6: Update user emails from users table
+      // Step 8: Update user emails
       console.log('Updating user emails...');
       await queryInterface.sequelize.query(`
         UPDATE orders o
@@ -264,7 +234,7 @@ module.exports = {
         AND u.email IS NOT NULL
       `, { transaction });
 
-      // Step 7: Create order logs
+      // Step 9: Create order logs
       console.log('Creating order logs...');
       await queryInterface.sequelize.query(`
         INSERT INTO order_logs (
@@ -280,8 +250,8 @@ module.exports = {
           o.id as order_id,
           o.user_id,
           o.status,
-          CONCAT('Order ', o.status, ' from VivaWallet migration') as label,
-          CONCAT('Migrated from VivaWallet order ID: ', o.order_code) as additional_info,
+          CONCAT('Order ', o.status, ' from order product lookup migration') as label,
+          CONCAT('Migrated from order ID: ', o.order_code) as additional_info,
           o.createdAt,
           o.updatedAt
         FROM orders o
@@ -291,7 +261,11 @@ module.exports = {
         )
       `, { transaction });
 
-      // Step 8: Verification and reporting
+      // Step 10: Clean up temporary tables
+      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping', { transaction });
+      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_variant_mapping', { transaction });
+
+      // Step 11: Verification and reporting
       console.log('Running verification queries...');
       const [migratedOrdersCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM orders WHERE order_code IS NOT NULL
@@ -306,37 +280,20 @@ module.exports = {
         SELECT SUM(total) as total_amount FROM orders WHERE order_code IS NOT NULL
       `, { transaction });
 
-      const [ordersByStatus] = await queryInterface.sequelize.query(`
-        SELECT status, COUNT(*) as count FROM orders WHERE order_code IS NOT NULL GROUP BY status
-      `, { transaction });
-
-      const [sampleOrders] = await queryInterface.sequelize.query(`
+      const [productMappingStats] = await queryInterface.sequelize.query(`
         SELECT 
-          order_code,
-          total,
-          status,
-          createdAt,
-          email
-        FROM orders 
-        WHERE order_code IS NOT NULL
-        ORDER BY createdAt DESC
-        LIMIT 10
+          COUNT(DISTINCT oi.product_id) as unique_products_used,
+          COUNT(DISTINCT oi.variant_id) as unique_variants_used
+        FROM order_items oi
+        WHERE oi.product_id IS NOT NULL
       `, { transaction });
 
       console.log('\n=== MIGRATION COMPLETED SUCCESSFULLY ===');
       console.log(`📊 Orders migrated: ${migratedOrdersCount[0].count}`);
-      console.log(`�� Orders with items: ${ordersWithItems[0].orders_with_items}`);
-      console.log(`�� Total revenue: £${totalAmount[0].total_amount || 0}`);
-      
-      console.log('\n📈 Orders by status:');
-      ordersByStatus.forEach(status => {
-        console.log(`   - ${status.status}: ${status.count} orders`);
-      });
-
-      console.log('\n📋 Sample migrated orders:');
-      sampleOrders.forEach(order => {
-        console.log(`   - Order ${order.order_code}: £${order.total} (${order.status}) - ${order.email || 'No email'}`);
-      });
+      console.log(` Orders with items: ${ordersWithItems[0].orders_with_items}`);
+      console.log(` Total revenue: £${totalAmount[0].total_amount || 0}`);
+      console.log(`📦 Unique products used: ${productMappingStats[0].unique_products_used}`);
+      console.log(`🎨 Unique variants used: ${productMappingStats[0].unique_variants_used}`);
 
       // Re-enable foreign key checks
       await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
