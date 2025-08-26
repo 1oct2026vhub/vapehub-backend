@@ -1,102 +1,193 @@
 'use strict';
 
+// DISABLED: This migration has been converted to a seeder
+// Use the seeder instead: 20250822130300-live-data-migration-products.js
+
+const CrossServerMigration = require('../../utils/cross-server-migration');
+
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return; // Exit early to prevent execution
     const transaction = await queryInterface.sequelize.transaction();
+    const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
     
     try {
-      console.log('Starting products migration from live database...');
+      console.log('Starting products migration from live database (cross-server)...');
       
-      // Step 1: Insert products
-      await queryInterface.sequelize.query(`
-        INSERT INTO products (name, slug, description, price, discount_price, stock_quantity, status, createdAt, updatedAt)
+      // Connect to old database
+      await crossServerMigration.connectToOldDb();
+      
+      // Step 1: Extract products from old database
+      console.log('Fetching products from old database...');
+      const products = await crossServerMigration.fetchFromOldDb(`
         SELECT 
-          p.post_title as name,
-          p.post_name as slug,
-          p.post_content as description,
-          CAST(COALESCE(NULLIF(pm_price.meta_value, ''), '0') AS DECIMAL(10,2)) as price,
-          CAST(COALESCE(NULLIF(pm_sale_price.meta_value, ''), '0') AS DECIMAL(10,2)) as discount_price,
-          CAST(COALESCE(NULLIF(pm_stock.meta_value, ''), '0') AS DECIMAL(10,0)) as stock_quantity,
-          CASE 
-            WHEN p.post_status = 'publish' THEN 'published'
-            WHEN p.post_status = 'draft' THEN 'draft'
-            ELSE 'archived'
-          END as status,
-          p.post_date as createdAt,
-          p.post_modified as updatedAt
-        FROM ${process.env.OLD_DB_NAME}.vh_posts p
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_price ON p.ID = pm_price.post_id AND pm_price.meta_key = '_regular_price'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_sale_price ON p.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock ON p.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
+          p.ID,
+          p.post_title,
+          p.post_name,
+          p.post_content,
+          p.post_status,
+          p.post_date,
+          p.post_modified,
+          pm_price.meta_value as price,
+          pm_sale_price.meta_value as sale_price,
+          pm_stock.meta_value as stock
+        FROM vh_posts p
+        LEFT JOIN vh_postmeta pm_price ON p.ID = pm_price.post_id AND pm_price.meta_key = '_regular_price'
+        LEFT JOIN vh_postmeta pm_sale_price ON p.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
+        LEFT JOIN vh_postmeta pm_stock ON p.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
         WHERE p.post_type = 'product'
         AND p.post_status IN ('publish', 'draft', 'private')
         AND p.post_name IS NOT NULL 
         AND p.post_name != ''
-      `, { transaction });
+      `);
 
-      // Step 2: Insert product variants
-      await queryInterface.sequelize.query(`
-        INSERT INTO product_variants (product_id, slug, price, regular_price, discount_price, stock, stock_status, weight, length, width, height, description, barcode, status, created_at, updated_at)
+      // Step 2: Insert products
+      console.log(`Inserting ${products.length} products...`);
+      for (const product of products) {
+        await queryInterface.sequelize.query(`
+          INSERT INTO products (name, slug, description, price, discount_price, stock_quantity, status, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, {
+          replacements: [
+            product.post_title,
+            product.post_name,
+            product.post_content,
+            parseFloat(product.price || 0),
+            parseFloat(product.sale_price || 0),
+            parseInt(product.stock || 0),
+            product.post_status === 'publish' ? 'published' : product.post_status === 'draft' ? 'draft' : 'archived',
+            product.post_date,
+            product.post_modified
+          ],
+          transaction
+        });
+      }
+
+      // Step 3: Extract product variants from old database
+      console.log('Fetching product variants from old database...');
+      const variants = await crossServerMigration.fetchFromOldDb(`
         SELECT 
-          prod.id as product_id,
-          SUBSTRING(pv.post_name, 1, 100) as slug,
-          CAST(COALESCE(NULLIF(pm_price.meta_value, ''), '0') AS DECIMAL(10,2)) as price,
-          CAST(COALESCE(NULLIF(pm_regular_price.meta_value, ''), '0') AS DECIMAL(10,2)) as regular_price,
-          CAST(COALESCE(NULLIF(pm_sale_price.meta_value, ''), '0') AS DECIMAL(10,2)) as discount_price,
-          CAST(COALESCE(NULLIF(pm_stock.meta_value, ''), '0') AS DECIMAL(10,0)) as stock,
-          CASE 
-            WHEN pm_stock_status.meta_value = 'instock' THEN 'in_stock'
-            WHEN pm_stock_status.meta_value = 'outofstock' THEN 'out_of_stock'
-            ELSE 'backorder'
-          END as stock_status,
-          CAST(COALESCE(NULLIF(pm_weight.meta_value, ''), '0') AS DECIMAL(8,2)) as weight,
-          CAST(COALESCE(NULLIF(pm_length.meta_value, ''), '0') AS DECIMAL(8,2)) as length,
-          CAST(COALESCE(NULLIF(pm_width.meta_value, ''), '0') AS DECIMAL(8,2)) as width,
-          CAST(COALESCE(NULLIF(pm_height.meta_value, ''), '0') AS DECIMAL(8,2)) as height,
-          pv.post_content as description,
-          pm_barcode.meta_value as barcode,
-          CASE 
-            WHEN pv.post_status = 'publish' THEN 'active'
-            ELSE 'inactive'
-          END as status,
-          pv.post_date as createdAt,
-          pv.post_modified as updatedAt
-        FROM ${process.env.OLD_DB_NAME}.vh_posts pv
-        JOIN ${process.env.OLD_DB_NAME}.vh_posts p ON pv.post_parent = p.ID
-        JOIN products prod ON p.post_name COLLATE utf8mb4_unicode_ci = prod.slug COLLATE utf8mb4_unicode_ci
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_price ON pv.ID = pm_price.post_id AND pm_price.meta_key = '_price'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_regular_price ON pv.ID = pm_regular_price.post_id AND pm_regular_price.meta_key = '_regular_price'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_sale_price ON pv.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock ON pv.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_stock_status ON pv.ID = pm_stock_status.post_id AND pm_stock_status.meta_key = '_stock_status'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_weight ON pv.ID = pm_weight.post_id AND pm_weight.meta_key = '_weight'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_length ON pv.ID = pm_length.post_id AND pm_length.meta_key = '_length'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_width ON pv.ID = pm_width.post_id AND pm_width.meta_key = '_width'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_height ON pv.ID = pm_height.post_id AND pm_height.meta_key = '_height'
-        LEFT JOIN ${process.env.OLD_DB_NAME}.vh_postmeta pm_barcode ON pv.ID = pm_barcode.post_id AND pm_barcode.meta_key = '_barcode'
+          pv.ID,
+          pv.post_parent,
+          pv.post_name,
+          pv.post_content,
+          pv.post_status,
+          pv.post_date,
+          pv.post_modified,
+          p.post_name as parent_slug,
+          pm_price.meta_value as price,
+          pm_regular_price.meta_value as regular_price,
+          pm_sale_price.meta_value as sale_price,
+          pm_stock.meta_value as stock,
+          pm_stock_status.meta_value as stock_status,
+          pm_weight.meta_value as weight,
+          pm_length.meta_value as length,
+          pm_width.meta_value as width,
+          pm_height.meta_value as height,
+          pm_barcode.meta_value as barcode
+        FROM vh_posts pv
+        JOIN vh_posts p ON pv.post_parent = p.ID
+        LEFT JOIN vh_postmeta pm_price ON pv.ID = pm_price.post_id AND pm_price.meta_key = '_price'
+        LEFT JOIN vh_postmeta pm_regular_price ON pv.ID = pm_regular_price.post_id AND pm_regular_price.meta_key = '_regular_price'
+        LEFT JOIN vh_postmeta pm_sale_price ON pv.ID = pm_sale_price.post_id AND pm_sale_price.meta_key = '_sale_price'
+        LEFT JOIN vh_postmeta pm_stock ON pv.ID = pm_stock.post_id AND pm_stock.meta_key = '_stock'
+        LEFT JOIN vh_postmeta pm_stock_status ON pv.ID = pm_stock_status.post_id AND pm_stock_status.meta_key = '_stock_status'
+        LEFT JOIN vh_postmeta pm_weight ON pv.ID = pm_weight.post_id AND pm_weight.meta_key = '_weight'
+        LEFT JOIN vh_postmeta pm_length ON pv.ID = pm_length.post_id AND pm_length.meta_key = '_length'
+        LEFT JOIN vh_postmeta pm_width ON pv.ID = pm_width.post_id AND pm_width.meta_key = '_width'
+        LEFT JOIN vh_postmeta pm_height ON pv.ID = pm_height.post_id AND pm_height.meta_key = '_height'
+        LEFT JOIN vh_postmeta pm_barcode ON pv.ID = pm_barcode.post_id AND pm_barcode.meta_key = '_barcode'
         WHERE pv.post_type = 'product_variation'
         AND pv.post_status IN ('publish', 'draft', 'private')
-      `, { transaction });
+      `);
 
-      // Step 3: Insert product images
-      await queryInterface.sequelize.query(`
-        INSERT INTO product_images (product_id, image_url, is_primary, createdAt, updatedAt)
+      // Step 4: Insert product variants
+      console.log(`Inserting ${variants.length} product variants...`);
+      for (const variant of variants) {
+        await queryInterface.sequelize.query(`
+          INSERT INTO product_variants (product_id, slug, price, regular_price, discount_price, stock, stock_status, weight, length, width, height, description, barcode, status, created_at, updated_at)
+          SELECT 
+            prod.id as product_id,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          FROM products prod
+          WHERE prod.slug = ?
+        `, {
+          replacements: [
+            variant.post_name.substring(0, 100),
+            parseFloat(variant.price || 0),
+            parseFloat(variant.regular_price || 0),
+            parseFloat(variant.sale_price || 0),
+            parseInt(variant.stock || 0),
+            variant.stock_status === 'instock' ? 'in_stock' : variant.stock_status === 'outofstock' ? 'out_of_stock' : 'backorder',
+            parseFloat(variant.weight || 0),
+            parseFloat(variant.length || 0),
+            parseFloat(variant.width || 0),
+            parseFloat(variant.height || 0),
+            variant.post_content,
+            variant.barcode,
+            variant.post_status === 'publish' ? 'active' : 'inactive',
+            variant.post_date,
+            variant.post_modified,
+            variant.parent_slug
+          ],
+          transaction
+        });
+      }
+
+      // Step 5: Extract product images from old database
+      console.log('Fetching product images from old database...');
+      const productImages = await crossServerMigration.fetchFromOldDb(`
         SELECT 
-          p.id as product_id,
-          pm.meta_value as image_url,
-          CASE WHEN pm.meta_key = '_thumbnail_id' THEN 1 ELSE 0 END as is_primary,
-          NOW() as createdAt,
-          NOW() as updatedAt
-        FROM ${process.env.OLD_DB_NAME}.vh_postmeta pm
-        JOIN ${process.env.OLD_DB_NAME}.vh_posts old_p ON pm.post_id = old_p.ID
-        JOIN products p ON old_p.post_name COLLATE utf8mb4_unicode_ci = p.slug COLLATE utf8mb4_unicode_ci
+          pm.post_id,
+          pm.meta_value,
+          pm.meta_key,
+          p.post_name
+        FROM vh_postmeta pm
+        JOIN vh_posts p ON pm.post_id = p.ID
         WHERE pm.meta_key IN ('_thumbnail_id', '_product_image_gallery')
         AND pm.meta_value IS NOT NULL 
         AND pm.meta_value != ''
-        AND old_p.post_type = 'product'
-      `, { transaction });
+        AND p.post_type = 'product'
+      `);
 
-      // Step 4: Verification queries
+      // Step 6: Insert product images
+      console.log(`Inserting ${productImages.length} product images...`);
+      for (const image of productImages) {
+        await queryInterface.sequelize.query(`
+          INSERT INTO product_images (product_id, image_url, is_primary, createdAt, updatedAt)
+          SELECT 
+            p.id as product_id,
+            ?,
+            ?,
+            NOW(),
+            NOW()
+          FROM products p
+          WHERE p.slug = ?
+        `, {
+          replacements: [
+            image.meta_value,
+            image.meta_key === '_thumbnail_id' ? 1 : 0,
+            image.post_name
+          ],
+          transaction
+        });
+      }
+
+      // Step 7: Verification queries
       const [productsCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM products
       `, { transaction });
@@ -114,8 +205,12 @@ module.exports = {
       console.log(`Product variants migrated: ${variantsCount[0].count}`);
       console.log(`Product images migrated: ${imagesCount[0].count}`);
 
+      // Close old database connection
+      await crossServerMigration.closeOldDbConnection();
+
       await transaction.commit();
     } catch (error) {
+      await crossServerMigration.closeOldDbConnection();
       await transaction.rollback();
       console.error('Products migration failed:', error);
       throw error;
