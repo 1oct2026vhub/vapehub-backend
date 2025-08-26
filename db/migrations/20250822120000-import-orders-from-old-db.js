@@ -1,9 +1,13 @@
 'use strict';
 
+// DISABLED: This migration has been converted to a seeder
+// Use the seeder instead: 20250822130500-live-data-migration-orders.js
+
 const CrossServerMigration = require('../../utils/cross-server-migration');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return; // Exit early to prevent execution
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
     const CHUNK_SIZE = 1000; // Process 1000 orders at a time
     

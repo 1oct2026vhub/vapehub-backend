@@ -1,9 +1,13 @@
 'use strict';
 
+// DISABLED: This migration has been converted to a seeder
+// Use the seeder instead: 20250822130400-live-data-migration-users.js
+
 const CrossServerMigration = require('../../utils/cross-server-migration');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    return; // Exit early to prevent execution
     const transaction = await queryInterface.sequelize.transaction();
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
     
