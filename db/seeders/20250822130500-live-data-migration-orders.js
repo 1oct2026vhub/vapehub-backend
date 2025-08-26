@@ -50,8 +50,9 @@ module.exports = {
       const orderIds = userMapping.map(m => m.old_user_id);
       const [orderCountResult] = await crossServerMigration.fetchFromOldDb(`
         SELECT COUNT(*) as total_count
-        FROM vh_wc_orders old_o
-        WHERE old_o.customer_id IN (${orderIds.join(',')})
+        FROM vh_posts old_o
+        WHERE old_o.post_type = 'shop_order'
+        AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
       `);
       
       const totalOrders = orderCountResult.total_count;
@@ -81,19 +82,25 @@ module.exports = {
                      // Step 3a: Fetch orders for this chunk from old database
            const chunkOrders = await crossServerMigration.fetchFromOldDb(`
              SELECT 
-               old_o.id,
-               old_o.customer_id,
-               COALESCE(old_o.total_amount, 0) as total,
-               COALESCE(old_o.tax_amount, 0) as discount_price,
-               old_o.status,
-               COALESCE(old_o.date_created_gmt, NOW()) as date_created_gmt,
-               COALESCE(old_o.date_updated_gmt, NOW()) as date_updated_gmt,
-               old_o.billing_email,
-               CONCAT('ORD-', old_o.id, '-', DATE_FORMAT(COALESCE(old_o.date_created_gmt, NOW()), '%Y%m%d')) as order_unique_id,
-               CAST(old_o.id AS CHAR) as order_code,
-               COALESCE(old_o.total_amount, 0) as sub_total
-             FROM vh_wc_orders old_o
-             WHERE old_o.customer_id IN (${orderIds.join(',')})
+               old_o.ID as id,
+               pm_customer.meta_value as customer_id,
+               COALESCE(pm_total.meta_value, 0) as total,
+               COALESCE(pm_tax.meta_value, 0) as discount_price,
+               old_o.post_status as status,
+               COALESCE(old_o.post_date, NOW()) as date_created_gmt,
+               COALESCE(old_o.post_modified, NOW()) as date_updated_gmt,
+               pm_email.meta_value as billing_email,
+               CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_unique_id,
+               CAST(old_o.ID AS CHAR) as order_code,
+               COALESCE(pm_total.meta_value, 0) as sub_total
+             FROM vh_posts old_o
+             LEFT JOIN vh_postmeta pm_customer ON old_o.ID = pm_customer.post_id AND pm_customer.meta_key = '_customer_user'
+             LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
+             LEFT JOIN vh_postmeta pm_tax ON old_o.ID = pm_tax.post_id AND pm_tax.meta_key = '_order_tax'
+             LEFT JOIN vh_postmeta pm_email ON old_o.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
+             WHERE old_o.post_type = 'shop_order'
+             AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+             AND pm_customer.meta_value IN (${orderIds.join(',')})
              LIMIT ${CHUNK_SIZE} OFFSET ${offset}
            `);
 
@@ -155,16 +162,23 @@ module.exports = {
               NULL as coupon_id,
               total,
               discount_price,
-              CASE 
-                WHEN status = 'completed' THEN 'completed'
-                WHEN status = 'processing' THEN 'processing'
-                WHEN status = 'pending' THEN 'pending'
-                WHEN status = 'cancelled' THEN 'cancel'
-                WHEN status = 'failed' THEN 'fail'
-                WHEN status = 'refunded' THEN 'refunded'
-                WHEN status = 'on-hold' THEN 'pending'
-                ELSE 'pending'
-              END as status,
+                             CASE 
+                 WHEN status = 'wc-completed' THEN 'completed'
+                 WHEN status = 'wc-processing' THEN 'processing'
+                 WHEN status = 'wc-pending' THEN 'pending'
+                 WHEN status = 'wc-cancelled' THEN 'cancel'
+                 WHEN status = 'wc-failed' THEN 'fail'
+                 WHEN status = 'wc-refunded' THEN 'refunded'
+                 WHEN status = 'wc-on-hold' THEN 'pending'
+                 WHEN status = 'completed' THEN 'completed'
+                 WHEN status = 'processing' THEN 'processing'
+                 WHEN status = 'pending' THEN 'pending'
+                 WHEN status = 'cancelled' THEN 'cancel'
+                 WHEN status = 'failed' THEN 'fail'
+                 WHEN status = 'refunded' THEN 'refunded'
+                 WHEN status = 'on-hold' THEN 'pending'
+                 ELSE 'pending'
+               END as status,
               1 as shipping_method_id,
               date_created_gmt as createdAt,
               date_updated_gmt as updatedAt,
@@ -237,27 +251,58 @@ module.exports = {
             WHERE oa.deleted_at IS NULL
           `, { transaction });
 
-          // Step 3g: Insert order items for this chunk
-          await queryInterface.sequelize.query(`
-            INSERT INTO order_items (
-              order_id, product_id, variant_id, unit, unit_price, quantity,
-              discount_price, total, createdAt, updatedAt, deletedAt
-            )
-            SELECT 
-              om.new_order_id as order_id,
-              1 as product_id,
-              NULL as variant_id,
-              'piece' as unit,
-              old_o.total as unit_price,
-              1 as quantity,
-              NULL as discount_price,
-              old_o.total as total,
-              old_o.date_created_gmt as createdAt,
-              old_o.date_updated_gmt as updatedAt,
-              CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deletedAt
-            FROM temp_orders_chunk old_o
-            INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
-          `, { transaction });
+                     // Step 3g: Insert order items for this chunk - Extract from old database
+           const orderItemData = await crossServerMigration.fetchFromOldDb(`
+             SELECT 
+               old_o.ID as order_id,
+               pm_product.meta_value as product_id,
+               pm_variant.meta_value as variant_id,
+               pm_qty.meta_value as quantity,
+               pm_total.meta_value as total,
+               pm_subtotal.meta_value as subtotal
+             FROM vh_posts old_o
+             LEFT JOIN vh_postmeta pm_product ON old_o.ID = pm_product.post_id AND pm_product.meta_key = '_product_id'
+             LEFT JOIN vh_postmeta pm_variant ON old_o.ID = pm_variant.post_id AND pm_variant.meta_key = '_variation_id'
+             LEFT JOIN vh_postmeta pm_qty ON old_o.ID = pm_qty.post_id AND pm_qty.meta_key = '_qty'
+             LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_line_total'
+             LEFT JOIN vh_postmeta pm_subtotal ON old_o.ID = pm_subtotal.post_id AND pm_subtotal.meta_key = '_line_subtotal'
+             WHERE old_o.post_type = 'shop_order'
+             AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+             AND old_o.ID IN (${chunkOrders.map(o => o.id).join(',')})
+           `);
+
+           // Insert order items with proper product/variant mapping
+           for (const item of orderItemData) {
+             await queryInterface.sequelize.query(`
+               INSERT INTO order_items (
+                 order_id, product_id, variant_id, unit, unit_price, quantity,
+                 discount_price, total, createdAt, updatedAt, deletedAt
+               )
+               SELECT 
+                 om.new_order_id as order_id,
+                 COALESCE(p.id, 1) as product_id,
+                 COALESCE(pv.id, NULL) as variant_id,
+                 'piece' as unit,
+                 COALESCE(CAST(? AS DECIMAL(10,2)), 0) as unit_price,
+                 COALESCE(CAST(? AS UNSIGNED), 1) as quantity,
+                 COALESCE(CAST(? AS DECIMAL(10,2)), NULL) as discount_price,
+                 COALESCE(CAST(? AS DECIMAL(10,2)), 0) as total,
+                 old_o.date_created_gmt as createdAt,
+                 old_o.date_updated_gmt as updatedAt,
+                 CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deletedAt
+               FROM temp_orders_chunk old_o
+               INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
+               LEFT JOIN products p ON p.id = CAST(? AS UNSIGNED)
+               LEFT JOIN product_variants pv ON pv.id = CAST(? AS UNSIGNED)
+               WHERE old_o.id = ?
+             `, {
+                               replacements: [
+                  item.total || 0, item.quantity || 1, item.subtotal || null, item.total || 0,
+                  item.product_id || 1, item.variant_id || null, item.order_id
+                ],
+               transaction
+             });
+           }
 
           // Step 3h: Insert order logs for this chunk
           await queryInterface.sequelize.query(`
