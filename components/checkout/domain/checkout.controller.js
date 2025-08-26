@@ -115,8 +115,10 @@ module.exports.checkout = async (req, res, next) => {
 
         // Calculate subtotal amount
         for (const item of cart) {
-            if (!item.variant) {
-                return errorResponse(res, {}, "Variant is missing", 404);
+            if (!item.variant || item.variant.deleted_at) {
+                const productName = item.product?.name || 'Unknown product';
+                const variantName = item.variant?.slug || `Variant ID: ${item.variant_id}` || 'Unknown variant';
+                return errorResponse(res, {}, `The selected variant ${variantName} for product ${productName} is no longer available. Please update your cart before proceeding to checkout.`, 404);
             }
             // Validate quantity
             if (item.quantity !== undefined && item.quantity < 1) {
