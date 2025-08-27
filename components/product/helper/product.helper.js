@@ -322,11 +322,6 @@ const fetchProducts = async (query, status = 'published') => {
     // Build base where clause for Product
     const productWhereClause = {
       ...(keyword && { name: { [Op.like]: `%${keyword}%` } }),
-      ...(is_new && {
-        createdAt: {
-          [Op.gte]: new Date(new Date().setDate(new Date().getDate() - 30))
-        }
-      }),
       status: status
     };
 
@@ -545,15 +540,22 @@ const fetchProducts = async (query, status = 'published') => {
       'updatedAt', 'deletedAt'
     ];
     
-    // Fetch products with filters
-    const products = await Product.findAll({
-      where: productWhereClause,
-      attributes: productAttributes, // Exclude description
-      include: includeClause,
-      order: [
-        [sort_by, order],
-        [{ model: ProductVariant, as: 'variants' }, sort_by, order]
-      ],
+         // Fetch products with conditional ordering based on is_new parameter
+     const products = await Product.findAll({
+       where: productWhereClause,
+       attributes: productAttributes,
+       include: includeClause,
+       order: is_new ? [
+         // When is_new=true: Show newest products first (createdAt DESC)
+         ['createdAt', 'DESC'],
+         // Then apply the user's requested sorting as secondary
+         [sort_by, order],
+         [{ model: ProductVariant, as: 'variants' }, sort_by, order]
+       ] : [
+         // Normal sorting when is_new is not requested
+         [sort_by, order],
+         [{ model: ProductVariant, as: 'variants' }, sort_by, order]
+       ],
       limit: parsedLimit,
       offset: parsedOffset,
       distinct: true
@@ -655,7 +657,13 @@ const fetchProducts = async (query, status = 'published') => {
         flavors: flavorTerms,
         flavor_count,
         out_of_stock: !hasInStockVariant,
-        min_price_variant: product.min_price_variant || null
+        min_price_variant: product.min_price_variant || null,
+         is_new: is_new ? (() => {
+           // Only calculate when is_new parameter is requested
+           const thirtyDaysAgo = new Date();
+           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+           return new Date(product.createdAt) >= thirtyDaysAgo;
+         })() : false
       };
     });
     // Build base product filter conditions for SQL queries
@@ -667,12 +675,11 @@ const fetchProducts = async (query, status = 'published') => {
       productFilterParams.keyword = `%${keyword}%`;
     }
     
-    if (is_new) {
-      const lastMonthDate = new Date();
-      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
-      productFilterConditions.push("p.createdAt >= :lastMonthDate");
-      productFilterParams.lastMonthDate = lastMonthDate;
-    }
+    // Note: is_new doesn't filter products in SQL - it only affects sorting and tagging
+    
+     // Note: is_new affects sorting and tagging but doesn't filter products
+     // When is_new=true: Shows all products sorted by createdAt DESC, tags recent ones as "new"
+     // When is_new=false or not provided: Shows all products with normal sorting
     
     // Add deal filter condition
     if (deal_id) {
