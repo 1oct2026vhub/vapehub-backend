@@ -17,6 +17,7 @@ module.exports = {
       await queryInterface.sequelize.query(`
         CREATE TEMPORARY TABLE temp_attributes (
           old_attribute_id BIGINT,
+          taxonomy VARCHAR(255),
           name VARCHAR(255),
           slug VARCHAR(255),
           description TEXT,
@@ -30,7 +31,7 @@ module.exports = {
       await queryInterface.sequelize.query(`
         CREATE TEMPORARY TABLE temp_attribute_terms (
           old_term_id BIGINT,
-          old_attribute_id BIGINT,
+          taxonomy VARCHAR(255),
           name VARCHAR(255),
           slug VARCHAR(255),
           description TEXT,
@@ -45,6 +46,7 @@ module.exports = {
       const attributes = await crossServerMigration.fetchFromOldDb(`
         SELECT 
           MIN(tt.term_taxonomy_id) as term_taxonomy_id,
+          tt.taxonomy,
           REPLACE(tt.taxonomy, 'pa_', '') as name,
           REPLACE(tt.taxonomy, 'pa_', '') as slug,
           CONCAT('Product attribute: ', REPLACE(tt.taxonomy, 'pa_', '')) as description
@@ -59,11 +61,12 @@ module.exports = {
       console.log('📋 Inserting attributes into temporary table...');
       for (const attr of attributes) {
         await queryInterface.sequelize.query(`
-          INSERT INTO temp_attributes (old_attribute_id, name, slug, description, type, sort_order, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, 'select', 'name', NOW(), NOW())
+          INSERT INTO temp_attributes (old_attribute_id, taxonomy, name, slug, description, type, sort_order, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, 'select', 'name', NOW(), NOW())
         `, {
           replacements: [
             attr.term_taxonomy_id,
+            attr.taxonomy,
             attr.name,
             attr.slug,
             attr.description
@@ -77,7 +80,7 @@ module.exports = {
       const attributeTerms = await crossServerMigration.fetchFromOldDb(`
         SELECT 
           t.term_id,
-          tt.term_taxonomy_id,
+          tt.taxonomy,
           t.name,
           CONCAT(REPLACE(tt.taxonomy, 'pa_', ''), '-', t.slug) as slug,
           tt.description,
@@ -93,12 +96,12 @@ module.exports = {
       console.log('📋 Inserting attribute terms into temporary table...');
       for (const term of attributeTerms) {
         await queryInterface.sequelize.query(`
-          INSERT INTO temp_attribute_terms (old_term_id, old_attribute_id, name, slug, description, count, createdAt, updatedAt)
+          INSERT INTO temp_attribute_terms (old_term_id, taxonomy, name, slug, description, count, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
         `, {
           replacements: [
             term.term_id,
-            term.term_taxonomy_id,
+            term.taxonomy,
             term.name,
             term.slug,
             term.description,
@@ -137,7 +140,7 @@ module.exports = {
            tat.createdAt, 
            tat.updatedAt
          FROM temp_attribute_terms tat
-         JOIN temp_attributes ta ON tat.old_attribute_id = ta.old_attribute_id
+         JOIN temp_attributes ta ON tat.taxonomy = ta.taxonomy
          JOIN attributes a ON ta.slug = a.slug
          WHERE a.id IS NOT NULL
          ORDER BY a.name ASC, tat.name ASC
