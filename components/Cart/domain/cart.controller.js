@@ -392,3 +392,199 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
+
+// NEW API: Calculate deals for anonymous users (localStorage cart)
+module.exports.calculateDealsForGuestCart = async (req, res, next) => {
+    try {
+        const { cartItems } = req.body;
+        
+        // Validate request body
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+            return successResponse(res, {
+                items: [],
+                deals: [],
+                summary: {
+                    subtotal: 0,
+                    total_discount: 0,
+                    total: 0
+                }
+            }, 'Empty cart provided');
+        }
+
+        // Validate cart item structure
+        for (const item of cartItems) {
+            if (!item.product_id || !item.quantity || item.quantity < 1) {
+                throw { 
+                    message: "Each cart item must have product_id and quantity >= 1", 
+                    statusCode: 400 
+                };
+            }
+        }
+
+        // Fetch product and variant data for each cart item
+        const enrichedCartItems = await Promise.all(cartItems.map(async (item) => {
+            const { product_id, variant_id, quantity } = item;
+            
+            // Get product with deals and related data
+            const product = await Product.findByPk(product_id, {
+                include: [
+                    {
+                        model: Deal,
+                        as: 'deals',
+                        through: { attributes: [] },
+                        attributes: ['id', 'name', 'required_qty']
+                    },
+                    { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
+                    { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
+                    { model: ProductImage, as: 'ProductImages' }
+                ],
+                paranoid: false
+            });
+
+            if (!product) {
+                throw { 
+                    message: `Product with ID ${product_id} not found`, 
+                    statusCode: 404 
+                };
+            }
+
+            let variant = null;
+            if (variant_id) {
+                variant = await ProductVariant.findByPk(variant_id, {
+                    where: { product_id },
+                    include: [
+                        {
+                            model: ProductVariantAttribute,
+                            as: 'variantAttributes',
+                            include: [
+                                { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'], paranoid: false },
+                                { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'], paranoid: false }
+                            ],
+                            paranoid: false
+                        },
+                        { model: ProductVariantImage, as: 'variantImages', attributes: ['id', 'variant_id', 'image_url', 'is_primary'] }
+                    ],
+                    paranoid: false
+                });
+
+                if (!variant) {
+                    throw { 
+                        message: `Variant with ID ${variant_id} not found for product ${product_id}`, 
+                        statusCode: 404 
+                    };
+                }
+            }
+
+            // Check stock availability
+            const availableStock = variant ? variant.stock : product.stock_quantity || 0;
+            const out_of_stock = variant ? variant.stock <= 0 || variant.stock_status == 'out_of_stock' : false;
+
+            // Create cart-like object for deal calculations
+            return {
+                id: `guest_${product_id}_${variant_id || 'no_variant'}`, // Temporary ID for guest cart
+                product_id,
+                variant_id,
+                quantity: parseInt(quantity),
+                product,
+                variant,
+                user_id: null, // Guest user
+                out_of_stock,
+                available_stock: availableStock
+            };
+        }));
+
+        // Apply deal calculations using the same logic as logged-in users
+        const deals = await dealService.getApplicableDeals(enrichedCartItems);
+        const { totalDiscount, appliedDeals, itemDiscounts } = dealService.calculateDealDiscounts(enrichedCartItems, deals);
+
+        // Build deal quantities map for toast notifications
+        const dealQuantities = {};
+        enrichedCartItems.forEach(item => {
+            if (item.product && item.product.deals) {
+                item.product.deals.forEach(deal => {
+                    if (!dealQuantities[deal.id]) dealQuantities[deal.id] = 0;
+                    dealQuantities[deal.id] += item.quantity;
+                });
+            }
+        });
+
+        // Format response similar to listCartItems
+        const items = enrichedCartItems.map(item => {
+            const price = item.variant ? item.variant.price : item.product.price;
+            const subtotal = price * item.quantity;
+            const itemDiscount = itemDiscounts[item.id] || 0;
+            const total = subtotal - itemDiscount;
+
+            // Deal toast logic
+            let show_deal_toast = false;
+            let deal_required_qty = null;
+            let deal_qty_needed = null;
+            if (item.product && item.product.deals && item.product.deals.length > 0) {
+                const deal = item.product.deals[0]; // First deal for simplicity
+                deal_required_qty = deal.required_qty;
+                const totalQtyForDeal = dealQuantities[deal.id] || 0;
+                show_deal_toast = totalQtyForDeal < deal.required_qty;
+                deal_qty_needed = Math.max(deal.required_qty - totalQtyForDeal, 0);
+            }
+
+            return {
+                // Create mock cart item structure to match logged-in user response
+                id: item.id,
+                user_id: null,
+                product_id: item.product_id,
+                variant_id: item.variant_id,
+                quantity: item.quantity,
+                price_at_addition: item.variant ? item.variant.price : item.product.price,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                deletedAt: null,
+                product: item.product,
+                variant: item.variant,
+                // Calculated fields (same as logged-in users)
+                subtotal,
+                discount: itemDiscount,
+                total,
+                out_of_stock: item.out_of_stock,
+                available_stock: item.available_stock,
+                show_deal_toast,
+                deal_required_qty,
+                deal_qty_needed,
+                applied_deals: appliedDeals.filter(deal => 
+                    deal.items.some(dealItem => dealItem.cart_item_id === item.id)
+                ).map(deal => ({
+                    deal_id: deal.deal_id,
+                    deal_name: deal.deal_name,
+                    discount_amount: deal.items.find(dealItem => dealItem.cart_item_id === item.id)?.discount || 0
+                }))
+            };
+        });
+
+        const proceed_to_checkout = items.every(item => !item.out_of_stock);
+        const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+        const total = subtotal - totalDiscount;
+
+        const response = {
+            items,
+            proceed_to_checkout,
+            deals: appliedDeals.map(deal => ({
+                deal_id: deal.deal_id,
+                deal_name: deal.deal_name,
+                discount_amount: deal.discount_amount,
+                items: deal.items.map(item => ({
+                    cart_item_id: item.cart_item_id,
+                    discount: item.discount
+                }))
+            })),
+            summary: {
+                subtotal,
+                total_discount: totalDiscount,
+                total
+            }
+        };
+
+        return successResponse(res, response, 'Guest cart deals calculated successfully');
+    } catch (error) {
+        console.log("Guest cart deals error:", error);
+        return errorResponse(res, error, error.message || 'Failed to calculate deals for guest cart');
+    }
+};
