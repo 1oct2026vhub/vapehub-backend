@@ -146,7 +146,7 @@ module.exports = {
       for (const carousel of carouselImages) {
         try {
           await queryInterface.sequelize.query(`
-            INSERT INTO carousels 
+            INSERT INTO Carousels 
             (display_order, image_url, image_url_mid, image_url_low, title, description, redirect_url, updated_by, createdAt, updatedAt)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
           `, {
@@ -177,11 +177,11 @@ module.exports = {
       
       // Get final counts for verification
       const totalRecords = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM carousels
+        SELECT COUNT(*) as count FROM Carousels
       `, { type: Sequelize.QueryTypes.SELECT });
       
       const currentPromotionalCarousels = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM carousels 
+        SELECT COUNT(*) as count FROM Carousels 
         WHERE title LIKE '%IVG%' OR title LIKE '%HAYATI%' OR title LIKE '%Smart Max%'
       `, { type: Sequelize.QueryTypes.SELECT });
       
@@ -212,7 +212,7 @@ module.exports = {
       
       // Delete promotional carousel records
       await queryInterface.sequelize.query(`
-        DELETE FROM carousels 
+        DELETE FROM Carousels 
         WHERE title LIKE '%IVG%' OR title LIKE '%HAYATI%' OR title LIKE '%Smart Max%'
       `);
       

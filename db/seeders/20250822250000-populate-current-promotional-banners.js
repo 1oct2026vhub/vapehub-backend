@@ -20,7 +20,7 @@ module.exports = {
       console.log('📋 Step 1: Clearing old banner content and fetching current promotional banners...');
       
       // Clear existing banner content
-      await queryInterface.sequelize.query('DELETE FROM bannerimages', { transaction });
+      await queryInterface.sequelize.query('DELETE FROM BannerImages', { transaction });
       console.log('🗑️ Cleared existing banner content');
       
       // Get current promotional banner images (2025) that should be banners
@@ -189,7 +189,7 @@ module.exports = {
       for (const banner of bannerImages) {
         try {
           await queryInterface.sequelize.query(`
-            INSERT INTO bannerimages 
+            INSERT INTO BannerImages 
             (display_order, image_url, title, description, redirect_url, status, updated_by, createdAt, updatedAt)
             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
           `, {
@@ -219,15 +219,15 @@ module.exports = {
       
       // Get final counts for verification
       const totalRecords = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM bannerimages
+        SELECT COUNT(*) as count FROM BannerImages
       `, { type: Sequelize.QueryTypes.SELECT });
       
       const activeBanners = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM bannerimages WHERE status = 'active'
+        SELECT COUNT(*) as count FROM BannerImages WHERE status = 'active'
       `, { type: Sequelize.QueryTypes.SELECT });
       
       const currentPromotionalBanners = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM bannerimages 
+        SELECT COUNT(*) as count FROM BannerImages 
         WHERE title LIKE '%IVG%' OR title LIKE '%HAYATI%' OR title LIKE '%Smart Max%'
       `, { type: Sequelize.QueryTypes.SELECT });
       
@@ -259,7 +259,7 @@ module.exports = {
       
       // Delete promotional banner records
       await queryInterface.sequelize.query(`
-        DELETE FROM bannerimages 
+        DELETE FROM BannerImages 
         WHERE title LIKE '%IVG%' OR title LIKE '%HAYATI%' OR title LIKE '%Smart Max%'
       `);
       
