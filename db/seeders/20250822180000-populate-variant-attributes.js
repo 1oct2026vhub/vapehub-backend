@@ -18,31 +18,31 @@ module.exports = {
       
       console.log('📋 Step 1: Creating temporary mapping tables...');
       
-      // Drop existing temporary tables first (cleanup from any previous failed runs)
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_variant_mapping');
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping');
+      // Drop existing tables first (cleanup from any previous failed runs)
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
       
-      // Create temporary mapping table for products first
+      // Create regular tables (not temporary) for better persistence
       await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_product_mapping (
+        CREATE TABLE temp_product_mapping (
           old_product_id INT,
           new_product_id INT,
           product_slug VARCHAR(255),
           INDEX idx_old_product (old_product_id),
           INDEX idx_new_product (new_product_id)
-        )
+        ) ENGINE=MEMORY
       `);
       
-      // Create temporary mapping table for variants
+      // Create regular table for variants
       await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_variant_mapping (
+        CREATE TABLE temp_variant_mapping (
           old_variant_id INT,
           new_variant_id BIGINT,
           product_id INT,
           variant_slug VARCHAR(255),
           INDEX idx_old_variant (old_variant_id),
           INDEX idx_new_variant (new_variant_id)
-        )
+        ) ENGINE=MEMORY
       `);
       
       console.log('✅ Temporary tables created successfully');
@@ -221,8 +221,8 @@ module.exports = {
       `, { type: Sequelize.QueryTypes.SELECT });
       
       // Clean up temporary tables
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_variant_mapping');
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
       
       if (crossServerMigration.oldDbConnection) {
         await crossServerMigration.oldDbConnection.close();
@@ -243,8 +243,8 @@ module.exports = {
       try {
         // Cleanup operations
         await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
-        await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_variant_mapping');
-        await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping');
+        await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
+        await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
         
         if (crossServerMigration && crossServerMigration.oldDbConnection) {
           await crossServerMigration.closeOldDbConnection();
