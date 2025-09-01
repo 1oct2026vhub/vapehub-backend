@@ -1,6 +1,7 @@
 // s3Helper.js
 const s3 = require('../../config/awsConfig');
 const crypto = require('crypto');
+const { generateCloudFrontUrl } = require('./cloudFrontHelper');
 
 /**
  * Generates a signed URL for an S3 object.
@@ -63,6 +64,75 @@ const generateUniqueFileName = (originalName) => {
   return `${timestamp}-${randomString}.${extension}`;
 };
 
+/**
+ * Generate CloudFront URL for an S3 object
+ * @param {string} s3Key - S3 object key
+ * @param {string} cloudFrontDomain - CloudFront domain name (from environment or config)
+ * @returns {string} - CloudFront URL
+ */
+const generateCloudFrontUrlForS3 = (s3Key, cloudFrontDomain = null) => {
+  const domain = cloudFrontDomain || process.env.CLOUDFRONT_DOMAIN;
+  if (!domain) {
+    console.warn('⚠️ CLOUDFRONT_DOMAIN not set, returning S3 URL instead');
+    return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+  }
+  return generateCloudFrontUrl(domain, s3Key);
+};
+
+/**
+ * Check if an image exists in S3 bucket
+ * @param {string} s3Key - S3 object key to check
+ * @returns {Promise<boolean>} - True if image exists, false otherwise
+ */
+const checkImageExists = async (s3Key) => {
+  try {
+    await s3.headObject({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Key
+    }).promise();
+    
+    return true;
+  } catch (error) {
+    if (error.code === 'NotFound') {
+      return false;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Get image metadata if it exists
+ * @param {string} s3Key - S3 object key to check
+ * @returns {Promise<Object|null>} - Image metadata or null if not found
+ */
+const getImageMetadata = async (s3Key) => {
+  try {
+    const result = await s3.headObject({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Key
+    }).promise();
+    
+    return {
+      exists: true,
+      size: result.ContentLength,
+      lastModified: result.LastModified,
+      contentType: result.ContentType,
+      etag: result.ETag
+    };
+  } catch (error) {
+    if (error.code === 'NotFound') {
+      return null;
+    }
+    throw error;
+  }
+};
+
 module.exports = {
-  generateSignedUrl, deleteFile, uploadFiletToS3, generateUniqueFileName
+  generateSignedUrl, 
+  deleteFile, 
+  uploadFiletToS3, 
+  generateUniqueFileName, 
+  generateCloudFrontUrlForS3,
+  checkImageExists,
+  getImageMetadata
 };
