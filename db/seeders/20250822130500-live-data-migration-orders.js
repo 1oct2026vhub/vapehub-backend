@@ -12,7 +12,9 @@ module.exports = {
       
       // Connect to old database
       await crossServerMigration.connectToOldDb();
-      
+
+      // Optional: Run scripts/cleanup-orders.js before this seeder if you need a fresh import
+
       // Step 1: Fetch user mapping data from old database
       console.log('📋 Creating user mapping table...');
       const userMapping = await crossServerMigration.fetchFromOldDb(`
@@ -44,6 +46,60 @@ module.exports = {
           replacements: [mapping.old_user_id, mapping.user_email]
         });
       }
+
+      // Create product and variant mapping tables to map old IDs to new IDs
+      console.log('📋 Creating product and variant mapping tables...');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
+
+      await queryInterface.sequelize.query(`
+        CREATE TABLE temp_product_mapping (
+          old_product_id BIGINT,
+          new_product_id BIGINT,
+          product_slug VARCHAR(255),
+          INDEX idx_old_product (old_product_id),
+          INDEX idx_new_product (new_product_id)
+        ) ENGINE=MEMORY
+      `);
+
+      await queryInterface.sequelize.query(`
+        INSERT INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
+        SELECT 
+          old_p.ID as old_product_id,
+          p.id as new_product_id,
+          p.slug as product_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN products p ON p.slug = old_p.post_name COLLATE utf8mb4_unicode_ci
+        WHERE old_p.post_type = 'product' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+      `);
+
+      await queryInterface.sequelize.query(`
+        CREATE TABLE temp_variant_mapping (
+          old_variant_id BIGINT,
+          new_variant_id BIGINT,
+          product_id BIGINT,
+          variant_slug VARCHAR(255),
+          INDEX idx_old_variant (old_variant_id),
+          INDEX idx_new_variant (new_variant_id)
+        ) ENGINE=MEMORY
+      `);
+
+      await queryInterface.sequelize.query(`
+        INSERT INTO temp_variant_mapping (old_variant_id, new_variant_id, product_id, variant_slug)
+        SELECT 
+          old_p.ID as old_variant_id,
+          pv.id as new_variant_id,
+          pv.product_id,
+          pv.slug as variant_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts parent_p ON old_p.post_parent = parent_p.ID
+        INNER JOIN temp_product_mapping pm ON parent_p.ID = pm.old_product_id
+        INNER JOIN product_variants pv ON pv.product_id = pm.new_product_id 
+          AND pv.slug = old_p.post_name COLLATE utf8mb4_unicode_ci
+        WHERE old_p.post_type = 'product_variation' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+      `);
 
       // Step 2: Get total count of orders to migrate
       console.log('📊 Counting orders to migrate...');
@@ -91,7 +147,7 @@ module.exports = {
                COALESCE(old_o.post_modified, NOW()) as date_updated_gmt,
                pm_email.meta_value as billing_email,
                CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_unique_id,
-               CAST(old_o.ID AS CHAR) as order_code,
+               CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_code,
                COALESCE(pm_total.meta_value, 0) as sub_total
              FROM vh_posts old_o
              LEFT JOIN vh_postmeta pm_customer ON old_o.ID = pm_customer.post_id AND pm_customer.meta_key = '_customer_user'
@@ -214,7 +270,7 @@ module.exports = {
             INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
           `, { transaction });
 
-          // Step 3e: Insert order addresses for this chunk
+          // Step 3e: Insert order addresses for this chunk (populate from WooCommerce billing meta)
           await queryInterface.sequelize.query(`
             INSERT INTO order_addresses (
               order_id, user_id, name, last_name, company_name, country, street,
@@ -222,24 +278,35 @@ module.exports = {
             )
             SELECT 
               om.new_order_id as order_id,
-              om.new_order_id as user_id,
-              COALESCE(SUBSTRING_INDEX(old_o.billing_email, '@', 1), 'Customer') as name,
-              NULL as last_name,
-              NULL as company_name,
-              NULL as country,
-              NULL as street,
+              o.user_id as user_id,
+              COALESCE(pm_bfn.meta_value, SUBSTRING_INDEX(old_o.billing_email, '@', 1), 'Customer') as name,
+              COALESCE(pm_bln.meta_value, NULL) as last_name,
+              COALESCE(pm_bcompany.meta_value, NULL) as company_name,
+              COALESCE(pm_bcountry.meta_value, NULL) as country,
+              NULLIF(TRIM(CONCAT(COALESCE(pm_baddr1.meta_value, ''), ' ', COALESCE(pm_baddr2.meta_value, ''))), '') as street,
               NULL as apartment,
-              NULL as town,
-              NULL as county,
+              COALESCE(pm_bcity.meta_value, NULL) as town,
+              COALESCE(pm_bstate.meta_value, NULL) as county,
               NULL as region,
-              NULL as post_code,
-              NULL as phone,
+              COALESCE(pm_bpostcode.meta_value, NULL) as post_code,
+              COALESCE(pm_bphone.meta_value, NULL) as phone,
               NULL as token,
               old_o.date_created_gmt as created_at,
               old_o.date_updated_gmt as updated_at,
               CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deleted_at
             FROM temp_orders_chunk old_o
             INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
+            INNER JOIN orders o ON o.id = om.new_order_id
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bfn ON pm_bfn.post_id = old_o.id AND pm_bfn.meta_key = '_billing_first_name'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bln ON pm_bln.post_id = old_o.id AND pm_bln.meta_key = '_billing_last_name'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcompany ON pm_bcompany.post_id = old_o.id AND pm_bcompany.meta_key = '_billing_company'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcountry ON pm_bcountry.post_id = old_o.id AND pm_bcountry.meta_key = '_billing_country'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_baddr1 ON pm_baddr1.post_id = old_o.id AND pm_baddr1.meta_key = '_billing_address_1'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_baddr2 ON pm_baddr2.post_id = old_o.id AND pm_baddr2.meta_key = '_billing_address_2'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcity ON pm_bcity.post_id = old_o.id AND pm_bcity.meta_key = '_billing_city'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bstate ON pm_bstate.post_id = old_o.id AND pm_bstate.meta_key = '_billing_state'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bpostcode ON pm_bpostcode.post_id = old_o.id AND pm_bpostcode.meta_key = '_billing_postcode'
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bphone ON pm_bphone.post_id = old_o.id AND pm_bphone.meta_key = '_billing_phone'
           `, { transaction });
 
           // Step 3f: Update order address references
@@ -251,58 +318,86 @@ module.exports = {
             WHERE oa.deleted_at IS NULL
           `, { transaction });
 
-                     // Step 3g: Insert order items for this chunk - Extract from old database
-           const orderItemData = await crossServerMigration.fetchFromOldDb(`
-             SELECT 
-               old_o.ID as order_id,
-               pm_product.meta_value as product_id,
-               pm_variant.meta_value as variant_id,
-               pm_qty.meta_value as quantity,
-               pm_total.meta_value as total,
-               pm_subtotal.meta_value as subtotal
-             FROM vh_posts old_o
-             LEFT JOIN vh_postmeta pm_product ON old_o.ID = pm_product.post_id AND pm_product.meta_key = '_product_id'
-             LEFT JOIN vh_postmeta pm_variant ON old_o.ID = pm_variant.post_id AND pm_variant.meta_key = '_variation_id'
-             LEFT JOIN vh_postmeta pm_qty ON old_o.ID = pm_qty.post_id AND pm_qty.meta_key = '_qty'
-             LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_line_total'
-             LEFT JOIN vh_postmeta pm_subtotal ON old_o.ID = pm_subtotal.post_id AND pm_subtotal.meta_key = '_line_subtotal'
-             WHERE old_o.post_type = 'shop_order'
-             AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
-             AND old_o.ID IN (${chunkOrders.map(o => o.id).join(',')})
-           `);
+          // Also set orders.phone from billing phone if available
+          await queryInterface.sequelize.query(`
+            UPDATE orders o
+            INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
+            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bphone ON pm_bphone.post_id = om.old_order_id AND pm_bphone.meta_key = '_billing_phone'
+            SET o.phone = COALESCE(o.phone, pm_bphone.meta_value)
+            WHERE pm_bphone.meta_value IS NOT NULL
+          `, { transaction });
 
-           // Insert order items with proper product/variant mapping
-           for (const item of orderItemData) {
-             await queryInterface.sequelize.query(`
-               INSERT INTO order_items (
-                 order_id, product_id, variant_id, unit, unit_price, quantity,
-                 discount_price, total, createdAt, updatedAt, deletedAt
-               )
-               SELECT 
-                 om.new_order_id as order_id,
-                 COALESCE(p.id, 1) as product_id,
-                 COALESCE(pv.id, NULL) as variant_id,
-                 'piece' as unit,
-                 COALESCE(CAST(? AS DECIMAL(10,2)), 0) as unit_price,
-                 COALESCE(CAST(? AS UNSIGNED), 1) as quantity,
-                 COALESCE(CAST(? AS DECIMAL(10,2)), NULL) as discount_price,
-                 COALESCE(CAST(? AS DECIMAL(10,2)), 0) as total,
-                 old_o.date_created_gmt as createdAt,
-                 old_o.date_updated_gmt as updatedAt,
-                 CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deletedAt
-               FROM temp_orders_chunk old_o
-               INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
-               LEFT JOIN products p ON p.id = CAST(? AS UNSIGNED)
-               LEFT JOIN product_variants pv ON pv.id = CAST(? AS UNSIGNED)
-               WHERE old_o.id = ?
-             `, {
-                               replacements: [
-                  item.total || 0, item.quantity || 1, item.subtotal || null, item.total || 0,
-                  item.product_id || 1, item.variant_id || null, item.order_id
-                ],
-               transaction
-             });
-           }
+          // Attempt to set legacy order_address_id if the column exists (ignore error if not)
+          try {
+            await queryInterface.sequelize.query(`
+              UPDATE orders o
+              INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
+              INNER JOIN order_addresses oa ON oa.order_id = om.new_order_id
+              SET o.order_address_id = oa.id
+              WHERE oa.deleted_at IS NULL
+            `, { transaction });
+          } catch (_) {
+            // Column may not exist; ignore
+          }
+
+          // Step 3g: Insert order items for this chunk - Extract from WooCommerce order tables
+          const orderItemData = await crossServerMigration.fetchFromOldDb(`
+            SELECT 
+              o.ID as order_id,
+              MAX(CASE WHEN oim.meta_key = '_product_id' THEN oim.meta_value END) as product_id,
+              MAX(CASE WHEN oim.meta_key = '_variation_id' THEN oim.meta_value END) as variant_id,
+              MAX(CASE WHEN oim.meta_key = '_qty' THEN oim.meta_value END) as quantity,
+              MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) as total,
+              MAX(CASE WHEN oim.meta_key = '_line_subtotal' THEN oim.meta_value END) as subtotal
+            FROM vh_posts o
+            INNER JOIN vh_woocommerce_order_items oi ON oi.order_id = o.ID
+            INNER JOIN vh_woocommerce_order_itemmeta oim ON oim.order_item_id = oi.order_item_id
+            WHERE o.post_type = 'shop_order'
+              AND o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+              AND o.ID IN (${chunkOrders.map(o => o.id).join(',')})
+            GROUP BY o.ID, oi.order_item_id
+          `);
+
+          // Insert order items with proper product/variant mapping
+          for (const item of orderItemData) {
+            await queryInterface.sequelize.query(`
+              INSERT INTO order_items (
+                order_id, product_id, variant_id, unit, unit_price, quantity,
+                discount_price, total, createdAt, updatedAt, deletedAt
+              )
+              SELECT 
+                om.new_order_id as order_id,
+                COALESCE(pm.new_product_id, pvm.product_id, NULL) as product_id,
+                COALESCE(pvm.new_variant_id, pv.id, NULL) as variant_id,
+                'piece' as unit,
+                COALESCE(CAST(? AS DECIMAL(10,2)), 0) as unit_price,
+                COALESCE(CAST(? AS UNSIGNED), 1) as quantity,
+                COALESCE(CAST(? AS DECIMAL(10,2)), NULL) as discount_price,
+                COALESCE(CAST(? AS DECIMAL(10,2)), 0) as total,
+                old_o.date_created_gmt as createdAt,
+                old_o.date_updated_gmt as updatedAt,
+                CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deletedAt
+              FROM temp_orders_chunk old_o
+              INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
+              LEFT JOIN temp_variant_mapping pvm ON pvm.old_variant_id = CAST(? AS UNSIGNED)
+              LEFT JOIN temp_product_mapping pm ON pm.old_product_id = CAST(? AS UNSIGNED)
+              LEFT JOIN product_variants pv ON pv.id = CAST(? AS UNSIGNED)
+              WHERE old_o.id = ?
+                AND (pm.new_product_id IS NOT NULL OR pvm.product_id IS NOT NULL)
+            `, {
+              replacements: [
+                item.total || 0,
+                item.quantity || 1,
+                item.subtotal || null,
+                item.total || 0,
+                item.variant_id || null,
+                item.product_id || null,
+                item.variant_id || null,
+                item.order_id
+              ],
+              transaction
+            });
+          }
 
           // Step 3h: Insert order logs for this chunk
           await queryInterface.sequelize.query(`
@@ -340,6 +435,9 @@ module.exports = {
 
       // Step 4: Clean up temporary tables
       await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_user_mapping`);
+      // Also drop mapping tables created for this seeder run
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
+      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
 
       // Step 5: Verification queries
       const [ordersCount] = await queryInterface.sequelize.query(`
