@@ -9,31 +9,20 @@ const os = require('os');
 const dbConfig = require('../config/database');
 
 /**
- * CRON JOB: Migrate Product Images to S3
+ * CRON JOB: Migrate Product Variant Images to S3
  * 
- * This cron job processes product images in batches to avoid memory issues
- * and can handle large amounts of data efficiently.
- * 
- * Features:
- * - Smart migration: Check S3 first, upload only if needed
- * - Batch processing: Process images in configurable chunks
- * - Progress tracking: Save progress to resume if interrupted
- * - Error handling: Continue processing even if some images fail
- * - Rate limiting: Respectful delays to avoid overwhelming servers
- * 
- * Usage:
- * - Add to cron: every 30 minutes
- * - Or run manually: node cron/migrate-product-images-to-s3.js
+ * This cron job processes product variant images in batches with rate limiting
+ * and progress tracking similar to product images migration.
  */
 
 // Configuration
 const CONFIG = {
-  BATCH_SIZE: 15,           // Process 15 images per batch (safer for shared hosting)
-  DELAY_BETWEEN_IMAGES: 400, // 400ms between individual images
-  DELAY_BETWEEN_BATCHES: 15000, // 15 seconds between batches
-  MAX_RETRIES: 3,           // Max retry attempts for failed downloads
-  PROGRESS_FILE: './logs/product-migration-progress.json', // Progress tracking
-  LOG_FILE: './logs/product-migration.log' // Detailed logging
+  BATCH_SIZE: 15,
+  DELAY_BETWEEN_IMAGES: 400,
+  DELAY_BETWEEN_BATCHES: 15000,
+  MAX_RETRIES: 3,
+  PROGRESS_FILE: './logs/variant-migration-progress.json',
+  LOG_FILE: './logs/variant-migration.log'
 };
 
 // Global statistics
@@ -49,117 +38,91 @@ let globalStats = {
   totalBatches: 0
 };
 
-/**
- * Main execution function
- */
-async function migrateProductImagesToS3() {
+async function migrateVariantImagesToS3() {
   const startTime = new Date();
   globalStats.startTime = startTime;
   
-  console.log('🚀 Starting PRODUCT IMAGE MIGRATION CRON JOB');
+  console.log('🚀 Starting PRODUCT VARIANT IMAGE MIGRATION CRON JOB');
   console.log(`⏰ Started at: ${startTime.toISOString()}`);
   console.log(`📊 Batch size: ${CONFIG.BATCH_SIZE}`);
   
   try {
-    // Initialize database connection
     const environment = process.env.NODE_ENV || 'local';
     const config = dbConfig[environment];
     const sequelize = new Sequelize({
       ...config,
       pool: { max: 1, min: 0, idle: 10000 }
     });
-    
-    // Test the connection
+
     await sequelize.authenticate();
     console.log('✅ Connected to database successfully');
-    
-    // Load progress if exists
+
     const progress = loadProgress();
     if (progress) {
       console.log(`📈 Resuming from previous run: ${progress.currentBatch}/${progress.totalBatches} batches`);
       globalStats.currentBatch = progress.currentBatch;
     }
-    
-    // Get total count of products with images
-    const totalProducts = await getTotalProductCount(sequelize);
-    globalStats.totalBatches = Math.ceil(totalProducts / CONFIG.BATCH_SIZE);
-    
-    console.log(`📊 Total product images: ${totalProducts}`);
+
+    const totalVariants = await getTotalVariantImageCount(sequelize);
+    globalStats.totalBatches = Math.ceil(totalVariants / CONFIG.BATCH_SIZE);
+
+    console.log(`📊 Total variant images: ${totalVariants}`);
     console.log(`📦 Total batches to process: ${globalStats.totalBatches}`);
-    
-    // Process in batches
+
     for (let batchNum = globalStats.currentBatch; batchNum < globalStats.totalBatches; batchNum++) {
       const batchStartTime = new Date();
       globalStats.currentBatch = batchNum;
       globalStats.lastBatchTime = batchStartTime;
-      
+
       console.log(`\n🔄 Processing batch ${batchNum + 1}/${globalStats.totalBatches}`);
       console.log(`⏰ Batch started at: ${batchStartTime.toISOString()}`);
-      
-      // Process current batch
-      const batchStats = await processBatch(sequelize, batchNum);
-      
-      // Update global stats
+
+      const batchStats = await processVariantBatch(sequelize, batchNum);
+
       globalStats.totalProcessed += batchStats.processed;
       globalStats.totalUploaded += batchStats.uploaded;
       globalStats.totalSkipped += batchStats.skipped;
       globalStats.totalUpdated += batchStats.updated;
       globalStats.totalErrors += batchStats.errors;
-      
-      // Log batch results
+
       const batchEndTime = new Date();
       const batchDuration = (batchEndTime - batchStartTime) / 1000;
       console.log(`✅ Batch ${batchNum + 1} completed in ${batchDuration.toFixed(2)}s`);
       console.log(`📊 Batch stats: ${batchStats.processed} processed, ${batchStats.uploaded} uploaded, ${batchStats.errors} errors`);
-      
-      // Save progress
+
       saveProgress();
-      
-      // Delay between batches (except for last batch)
+
       if (batchNum < globalStats.totalBatches - 1) {
         console.log(`⏳ Waiting ${CONFIG.DELAY_BETWEEN_BATCHES / 1000}s before next batch...`);
         await new Promise(resolve => setTimeout(resolve, CONFIG.DELAY_BETWEEN_BATCHES));
       }
     }
-    
-    // Final summary
+
     const endTime = new Date();
     const totalDuration = (endTime - startTime) / 1000;
-    
-    console.log('\n🎉 PRODUCT IMAGE MIGRATION COMPLETED!');
+
+    console.log('\n🎉 PRODUCT VARIANT IMAGE MIGRATION COMPLETED!');
     console.log(`⏰ Total duration: ${totalDuration.toFixed(2)}s`);
-    console.log(`📊 Final Statistics:`);
+    console.log('📊 Final Statistics:');
     console.log(`   - Total processed: ${globalStats.totalProcessed}`);
     console.log(`   - Total uploaded: ${globalStats.totalUploaded}`);
     console.log(`   - Total skipped: ${globalStats.totalSkipped}`);
     console.log(`   - Total updated: ${globalStats.totalUpdated}`);
     console.log(`   - Total errors: ${globalStats.totalErrors}`);
-    
-    // Clean up progress file
+
     cleanupProgress();
-    
-    // Close database connection
     await sequelize.close();
     console.log('🔌 Closed database connection');
-    
   } catch (error) {
-    console.error('❌ CRITICAL ERROR in product image migration:', error);
+    console.error('❌ CRITICAL ERROR in variant image migration:', error);
     console.error('Stack trace:', error.stack);
-    
-    // Save progress for resume
     saveProgress();
-    
-    // Log error
     logError(error);
-    
     throw error;
   }
 }
 
-/**
- * Process a single batch of products
- */
-async function processBatch(sequelize, batchNum) {
+async function processVariantBatch(sequelize, batchNum) {
   const batchStats = {
     processed: 0,
     uploaded: 0,
@@ -167,87 +130,69 @@ async function processBatch(sequelize, batchNum) {
     updated: 0,
     errors: 0
   };
-  
+
   try {
-    // Get products for this batch
-    const products = await getProductsBatch(sequelize, batchNum);
-    console.log(`📦 Processing ${products.length} product images in batch ${batchNum + 1}`);
-    
-    // Process each product image in the batch
-    for (let i = 0; i < products.length; i++) {
-      const productImage = products[i];
+    const variants = await getVariantImagesBatch(sequelize, batchNum);
+    console.log(`📦 Processing ${variants.length} variant images in batch ${batchNum + 1}`);
+
+    for (let i = 0; i < variants.length; i++) {
+      const variantImage = variants[i];
       batchStats.processed++;
-      
+
       try {
-        console.log(`🔄 Processing product image ${i + 1}/${products.length}: ${productImage.product_name || `ID ${productImage.id}`}`);
-        
-        // Migrate product image
-        const finalUrl = await smartImageMigration(productImage.image_url, 'products', batchStats);
-        
+        console.log(`🔄 Processing variant image ${i + 1}/${variants.length}: ${variantImage.variant_name || `ID ${variantImage.id}`}`);
+
+        const finalUrl = await smartImageMigration(variantImage.image_url, 'variants', batchStats);
+
         if (finalUrl) {
-          // Update database
-          await updateProductImageUrl(sequelize, productImage.id, finalUrl);
+          await updateVariantImageUrl(sequelize, variantImage.id, finalUrl);
           batchStats.updated++;
-          console.log(`✅ Updated product image URL: ${productImage.product_name || `ID ${productImage.id}`}`);
+          console.log(`✅ Updated variant image URL: ${variantImage.variant_name || `ID ${variantImage.id}`}`);
         } else {
-          console.log(`❌ Failed to process product image: ${productImage.product_name || `ID ${productImage.id}`}`);
+          console.log(`❌ Failed to process variant image: ${variantImage.variant_name || `ID ${variantImage.id}`}`);
         }
-        
-        // Delay between images (except for last image in batch)
-        if (i < products.length - 1) {
+
+        if (i < variants.length - 1) {
           await new Promise(resolve => setTimeout(resolve, CONFIG.DELAY_BETWEEN_IMAGES));
         }
-        
       } catch (error) {
         batchStats.errors++;
-        console.error(`❌ Error processing product image ${productImage.id}:`, error.message);
-        
-        // Continue with next product image instead of failing entire batch
+        console.error(`❌ Error processing variant image ${variantImage.id}:`, error.message);
         continue;
       }
     }
-    
   } catch (error) {
-    console.error(`❌ Error processing batch ${batchNum + 1}:`, error);
+    console.error(`❌ Error processing variant batch ${batchNum + 1}:`, error);
     throw error;
   }
-  
+
   return batchStats;
 }
 
-/**
- * Smart image migration: Check if exists in S3, upload if needed, return correct URL
- */
-async function smartImageMigration(imageUrl, folder = 'products', batchStats) {
+async function smartImageMigration(imageUrl, folder = 'variants', batchStats) {
   try {
     if (!imageUrl || imageUrl.trim() === '') {
       batchStats.skipped++;
       return null;
     }
 
-    // Generate S3 key based on image URL or create a unique one
     let s3Key;
     let needsUpload = false;
-    
-    // Try to extract filename from URL
+
     const urlParts = imageUrl.split('/');
     const fileName = urlParts[urlParts.length - 1];
-    
+
     if (fileName && fileName.includes('.')) {
-      // Use original filename if available
       s3Key = `${folder}/${fileName}`;
     } else {
-      // Generate unique filename
-      const fileExtension = '.jpg'; // Default extension
-      const uniqueFileName = generateUniqueFileName(`product${fileExtension}`);
+      const fileExtension = '.jpg';
+      const uniqueFileName = generateUniqueFileName(`variant${fileExtension}`);
       s3Key = `${folder}/${uniqueFileName}`;
     }
 
     console.log(`🔍 Checking if image exists in S3: ${s3Key}`);
-    
-    // Check if image already exists in S3
+
     const imageExists = await checkImageExists(s3Key);
-    
     if (imageExists) {
       console.log(`✅ Image already exists in S3: ${s3Key}`);
       batchStats.skipped++;
@@ -258,20 +203,16 @@ async function smartImageMigration(imageUrl, folder = 'products', batchStats) {
       needsUpload = true;
     }
 
-    // If image doesn't exist in S3, download and upload it
     if (needsUpload) {
       const uploadResult = await downloadAndUploadToS3(imageUrl, folder, s3Key, batchStats);
       if (!uploadResult) {
-        return null; // Upload failed
+        return null;
       }
     }
 
-    // Generate and return the correct URL (CloudFront or S3)
     const finalUrl = generateCloudFrontUrlForS3(s3Key);
     console.log(`🌐 Final URL: ${finalUrl}`);
-    
     return finalUrl;
-
   } catch (error) {
     batchStats.errors++;
     console.error(`❌ Error in smart image migration for ${imageUrl}:`, error.message);
@@ -279,27 +220,20 @@ async function smartImageMigration(imageUrl, folder = 'products', batchStats) {
   }
 }
 
-/**
- * Download image from URL and upload to S3
- */
-async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null, batchStats) {
+async function downloadAndUploadToS3(imageUrl, folder = 'variants', s3Key = null, batchStats) {
   try {
     if (!imageUrl || imageUrl.trim() === '') {
       batchStats.skipped++;
       return null;
     }
 
-    // Clean the URL - remove any WordPress upload path prefixes
     const cleanUrl = imageUrl.replace(/^.*\/wp-content\/uploads\//, '').replace(/^.*\/uploads\//, '');
-    
-    // Create full URL if it's a relative path
     const fullUrl = imageUrl.startsWith('http') ? imageUrl : 
                    imageUrl.startsWith('//') ? `https:${imageUrl}` :
                    `https://vapehub.co.uk/wp-content/uploads/${cleanUrl}`;
 
     console.log(`📥 Downloading: ${fullUrl}`);
 
-    // Download the image with improved headers and retry logic
     let response;
     let retries = CONFIG.MAX_RETRIES;
     let lastError;
@@ -325,14 +259,12 @@ async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null
             'Sec-Fetch-Site': 'same-origin'
           }
         });
-        break; // Success, exit retry loop
+        break;
       } catch (error) {
         lastError = error;
         retries--;
-        
         if (retries > 0) {
           console.log(`⚠️ Download failed, retrying... (${retries} attempts left)`);
-          // Exponential backoff: 1s, 2s, 3s
           const delay = (CONFIG.MAX_RETRIES - retries) * 1000;
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -343,7 +275,6 @@ async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null
       throw lastError;
     }
 
-    // Get file extension from URL or content-type
     let fileExtension = path.extname(fullUrl).toLowerCase();
     if (!fileExtension && response.headers['content-type']) {
       const mimeType = response.headers['content-type'];
@@ -351,33 +282,27 @@ async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null
       else if (mimeType.includes('png')) fileExtension = '.png';
       else if (mimeType.includes('gif')) fileExtension = '.gif';
       else if (mimeType.includes('webp')) fileExtension = '.webp';
-      else fileExtension = '.jpg'; // default
+      else fileExtension = '.jpg';
     }
 
-    // Use provided s3Key or generate unique filename
     let finalS3Key = s3Key;
     if (!finalS3Key) {
-      const fileName = generateUniqueFileName(`product${fileExtension}`);
+      const fileName = generateUniqueFileName(`variant${fileExtension}`);
       finalS3Key = `${folder}/${fileName}`;
     }
 
-    // Create temporary file
     const tempDir = os.tmpdir();
     const tempFileName = generateUniqueFileName(`temp${fileExtension}`);
     const tempFile = path.join(tempDir, tempFileName);
     const writer = fs.createWriteStream(tempFile);
 
-    // Pipe image data to temporary file
     response.data.pipe(writer);
-
     await new Promise((resolve, reject) => {
       writer.on('finish', resolve);
       writer.on('error', reject);
     });
 
-    // Read file and upload to S3
     const fileBuffer = fs.readFileSync(tempFile);
-    
     const uploadParams = {
       Bucket: process.env.AWS_S3_BUCKET,
       Key: finalS3Key,
@@ -386,21 +311,16 @@ async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null
     };
 
     const uploadResult = await uploadFiletToS3(uploadParams);
-    
-    // Clean up temporary file
     fs.unlinkSync(tempFile);
-    
+
     if (uploadResult && uploadResult.Location) {
       console.log(`✅ Uploaded to S3: ${finalS3Key}`);
-      
-      // Return the S3 key for the calling function to generate URL
       return finalS3Key;
     } else {
       batchStats.errors++;
       console.error('❌ Upload to S3 did not return a Location for key:', finalS3Key);
       return null;
     }
-
   } catch (error) {
     batchStats.errors++;
     console.error(`❌ Error uploading image ${imageUrl}:`, error.message);
@@ -408,75 +328,59 @@ async function downloadAndUploadToS3(imageUrl, folder = 'products', s3Key = null
   }
 }
 
-/**
- * Get total count of product images
- */
-async function getTotalProductCount(sequelize) {
+async function getTotalVariantImageCount(sequelize) {
   try {
     const [result] = await sequelize.query(`
       SELECT COUNT(*) as total 
-      FROM product_images 
+      FROM product_variant_images 
       WHERE image_url IS NOT NULL AND image_url != ''
     `, {
       type: Sequelize.QueryTypes.SELECT
     });
-    
     return result.total;
   } catch (error) {
-    console.error('❌ Error getting product image count:', error);
+    console.error('❌ Error getting variant image count:', error);
     throw error;
   }
 }
 
-/**
- * Get product images for a specific batch
- */
-async function getProductsBatch(sequelize, batchNum) {
+async function getVariantImagesBatch(sequelize, batchNum) {
   try {
     const offset = batchNum * CONFIG.BATCH_SIZE;
-    
-    const productImages = await sequelize.query(`
-      SELECT pi.id, pi.image_url, p.name as product_name
-      FROM product_images pi
-      JOIN products p ON pi.product_id = p.id
-      WHERE pi.image_url IS NOT NULL AND pi.image_url != ''
-      ORDER BY pi.id
+    const variantImages = await sequelize.query(`
+      SELECT pvi.id, pvi.image_url, pv.slug as variant_name
+      FROM product_variant_images pvi
+      JOIN product_variants pv ON pvi.variant_id = pv.id
+      WHERE pvi.image_url IS NOT NULL AND pvi.image_url != ''
+      ORDER BY pvi.id
       LIMIT ? OFFSET ?
     `, {
       replacements: [CONFIG.BATCH_SIZE, offset],
       type: Sequelize.QueryTypes.SELECT
     });
-    
-    return productImages;
+    return variantImages;
   } catch (error) {
-    console.error(`❌ Error getting product images for batch ${batchNum}:`, error);
+    console.error(`❌ Error getting variant images for batch ${batchNum}:`, error);
     throw error;
   }
 }
 
-/**
- * Update product image URL in database
- */
-async function updateProductImageUrl(sequelize, productImageId, newUrl) {
+async function updateVariantImageUrl(sequelize, variantImageId, newUrl) {
   try {
     await sequelize.query(`
-      UPDATE product_images 
-      SET image_url = ?, updatedAt = NOW() 
+      UPDATE product_variant_images 
+      SET image_url = ?, updated_at = NOW() 
       WHERE id = ?
     `, {
-      replacements: [newUrl, productImageId]
+      replacements: [newUrl, variantImageId]
     });
-    
     return true;
   } catch (error) {
-    console.error(`❌ Error updating product image ${productImageId}:`, error);
+    console.error(`❌ Error updating variant image ${variantImageId}:`, error);
     throw error;
   }
 }
 
-/**
- * Load progress from file
- */
 function loadProgress() {
   try {
     if (fs.existsSync(CONFIG.PROGRESS_FILE)) {
@@ -489,9 +393,6 @@ function loadProgress() {
   return null;
 }
 
-/**
- * Save progress to file
- */
 function saveProgress() {
   try {
     const progressData = {
@@ -504,22 +405,18 @@ function saveProgress() {
       totalErrors: globalStats.totalErrors,
       lastUpdated: new Date().toISOString()
     };
-    
-    // Ensure logs directory exists
+
     const logsDir = path.dirname(CONFIG.PROGRESS_FILE);
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
     }
-    
+
     fs.writeFileSync(CONFIG.PROGRESS_FILE, JSON.stringify(progressData, null, 2));
   } catch (error) {
     console.warn('⚠️ Could not save progress file:', error.message);
   }
 }
 
-/**
- * Clean up progress file
- */
 function cleanupProgress() {
   try {
     if (fs.existsSync(CONFIG.PROGRESS_FILE)) {
@@ -531,9 +428,6 @@ function cleanupProgress() {
   }
 }
 
-/**
- * Log error to file
- */
 function logError(error) {
   try {
     const errorLog = {
@@ -542,22 +436,18 @@ function logError(error) {
       stack: error.stack,
       stats: globalStats
     };
-    
-    // Ensure logs directory exists
+
     const logsDir = path.dirname(CONFIG.LOG_FILE);
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
     }
-    
+
     fs.appendFileSync(CONFIG.LOG_FILE, JSON.stringify(errorLog, null, 2) + '\n---\n');
   } catch (logError) {
     console.error('❌ Could not log error to file:', logError.message);
   }
 }
 
-/**
- * Handle graceful shutdown
- */
 process.on('SIGINT', () => {
   console.log('\n⚠️ Received SIGINT, saving progress and shutting down gracefully...');
   saveProgress();
@@ -570,20 +460,21 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// If running directly (not imported), execute the migration
 if (require.main === module) {
-  migrateProductImagesToS3()
+  migrateVariantImagesToS3()
     .then(() => {
-      console.log('✅ Product image migration completed successfully');
+      console.log('✅ Variant image migration completed successfully');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('❌ Product image migration failed:', error);
+      console.error('❌ Variant image migration failed:', error);
       process.exit(1);
     });
 }
 
 module.exports = {
-  migrateProductImagesToS3,
+  migrateVariantImagesToS3,
   CONFIG
 };
+
+
