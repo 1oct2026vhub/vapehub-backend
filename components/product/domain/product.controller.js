@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, LoyaltyPointsSettings } = require("../../../models");
+const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, LoyaltyPointsSettings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
@@ -664,11 +664,11 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     ]
                 },
                 { model: ProductImage, as: 'ProductImages' },
-                {
-                    model: Flavor, as: 'Flavors', through: {
-                        model: ProductFlavor,
-                    }
-                },
+                // {
+                //     model: Flavor, as: 'Flavors', through: {
+                //         model: ProductFlavor,
+                //     }
+                // },
                 {   // for min price variant
                     model: ProductVariant,
                     as: 'variants',
@@ -873,16 +873,16 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     as: 'ProductImages',
                     attributes: ['id', 'product_id', 'image_url', 'is_primary']
                 },
-                {
-                    model: Flavor,
-                    as: 'Flavors',
-                    through: { 
-                        model: ProductFlavor,
-                        attributes: [] // Exclude ProductFlavor table data from response
-                    },
-                    required: false,
-                    attributes: ['id', 'name']
-                },
+                // {
+                //     model: Flavor,
+                //     as: 'Flavors',
+                //     through: { 
+                //         model: ProductFlavor,
+                //         attributes: [] // Exclude ProductFlavor table data from response
+                //     },
+                //     required: false,
+                //     attributes: ['id', 'name']
+                // },
                 {
                     model: Deal,
                     as: 'deals',
@@ -1343,16 +1343,16 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                     where: { is_primary: true },
                     required: false
                 },
-                {
-                    model: Flavor,
-                    as: 'Flavors',
-                    through: { 
-                        model: ProductFlavor,
-                        attributes: [] // Exclude ProductFlavor table data from response
-                    },
-                    required: false,
-                    attributes: ['id', 'name']
-                },
+                // {
+                //     model: Flavor,
+                //     as: 'Flavors',
+                //     through: { 
+                //         model: ProductFlavor,
+                //         attributes: [] // Exclude ProductFlavor table data from response
+                //     },
+                //     required: false,
+                //     attributes: ['id', 'name']
+                // },
                 {
                     model: ProductVariant,
                     as: 'variants',
@@ -1551,7 +1551,6 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 }))
             };
         });
-
         // Calculate pagination info
         const totalPages = Math.ceil(totalCount / parseInt(limit));
         const currentPage = Math.floor(parseInt(offset) / parseInt(limit)) + 1;

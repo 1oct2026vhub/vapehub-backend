@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sequelize, Product, Category, Brand, Flavor, ProductImage, ProductFlavor, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
+const { sequelize, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
 
