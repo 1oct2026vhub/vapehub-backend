@@ -19,7 +19,7 @@ module.exports.login = async (req, res, next) => {
             include: [
             {
                 model: Role,
-                as: "roles", 
+                as: "roles", // Correct association name from User model
                 attributes: ["id", "role", "permission", "is_admin_panel"], // Fetch role details
             },
             ],
@@ -28,15 +28,21 @@ module.exports.login = async (req, res, next) => {
         if (!user) {
             return errorResponse(res, { message: "Invalid email or password" },"Invalid email or password",400);
         }
-        // Ensure user is part of the admin panel
-        if (!user.roles?.is_admin_panel) {
+        
+        // Ensure user has a role and is part of the admin panel
+        if (!user.roles) {
+            return errorResponse(res, { message: "Unauthorized: No role assigned" },"Unauthorized: No role assigned",403);
+        }
+        
+        // Handle MySQL BOOLEAN stored as tinyint (0/1) vs JavaScript boolean (true/false)
+        const isAdminPanel = user.roles.is_admin_panel;
+        if (isAdminPanel !== 1 && isAdminPanel !== true) {
             return errorResponse(res, { message: "Unauthorized: Admin access required" },"Unauthorized: Admin access required",403);
         }
 
         if (user.blocked) {
             return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." },"Your account has been blocked. Please reach out to support for assistance.",400);
         }
-      
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
