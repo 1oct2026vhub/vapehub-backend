@@ -1,6 +1,7 @@
 // s3Helper.js
 const s3 = require('../../config/awsConfig');
 const crypto = require('crypto');
+const sharp = require('sharp');
 const { generateCloudFrontUrl } = require('./cloudFrontHelper');
 
 /**
@@ -127,6 +128,167 @@ const getImageMetadata = async (s3Key) => {
   }
 };
 
+/**
+ * Resize image buffer while maintaining high quality
+ * @param {Buffer} imageBuffer - Original image buffer
+ * @param {Object} options - Resize options
+ * @param {number} [options.width] - Target width (optional)
+ * @param {number} [options.height] - Target height (optional) 
+ * @param {number} [options.maxWidth=1920] - Maximum width
+ * @param {number} [options.maxHeight=1080] - Maximum height
+ * @param {number} [options.quality=90] - JPEG quality (1-100)
+ * @param {string} [options.format='jpeg'] - Output format (jpeg, png, webp)
+ * @param {boolean} [options.maintainAspectRatio=true] - Maintain aspect ratio
+ * @returns {Promise<Buffer>} - Resized image buffer
+ */
+const resizeImageBuffer = async (imageBuffer, options = {}) => {
+  try {
+    const {
+      width,
+      height,
+      maxWidth = 1920,
+      maxHeight = 1080,
+      quality = 90,
+      format = 'jpeg',
+      maintainAspectRatio = true
+    } = options;
+
+    let sharpInstance = sharp(imageBuffer);
+    
+    // Get original image metadata
+    const metadata = await sharpInstance.metadata();
+    console.log(`📊 Original image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
+
+    // Determine resize options
+    let resizeOptions = {};
+    
+    if (width && height) {
+      // Specific dimensions provided
+      resizeOptions = {
+        width,
+        height,
+        fit: maintainAspectRatio ? 'inside' : 'fill',
+        withoutEnlargement: true
+      };
+    } else if (width || height) {
+      // Only one dimension provided
+      resizeOptions = {
+        width: width || null,
+        height: height || null,
+        fit: 'inside',
+        withoutEnlargement: true
+      };
+    } else {
+      // Use max dimensions as constraints
+      if (metadata.width > maxWidth || metadata.height > maxHeight) {
+        resizeOptions = {
+          width: maxWidth,
+          height: maxHeight,
+          fit: 'inside',
+          withoutEnlargement: true
+        };
+      }
+    }
+
+    // Apply resize if needed
+    if (Object.keys(resizeOptions).length > 0) {
+      sharpInstance = sharpInstance.resize(resizeOptions);
+      console.log(`🔄 Resizing image with options:`, resizeOptions);
+    }
+
+    // Apply format-specific optimizations
+    switch (format.toLowerCase()) {
+      case 'jpeg':
+      case 'jpg':
+        sharpInstance = sharpInstance
+          .jpeg({ 
+            quality, 
+            progressive: true,
+            optimiseScans: true,
+            mozjpeg: true
+          });
+        break;
+      case 'png':
+        sharpInstance = sharpInstance
+          .png({ 
+            quality,
+            progressive: true,
+            compressionLevel: 9,
+            adaptiveFiltering: true
+          });
+        break;
+      case 'webp':
+        sharpInstance = sharpInstance
+          .webp({ 
+            quality,
+            effort: 6,
+            smartSubsample: true
+          });
+        break;
+      default:
+        // Default to JPEG for unknown formats
+        sharpInstance = sharpInstance.jpeg({ quality, progressive: true });
+    }
+
+    const processedBuffer = await sharpInstance.toBuffer();
+    
+    // Get final image info
+    const finalMetadata = await sharp(processedBuffer).metadata();
+    console.log(`✅ Processed image: ${finalMetadata.width}x${finalMetadata.height}, size: ${(processedBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    
+    return processedBuffer;
+  } catch (error) {
+    console.error('❌ Error resizing image:', error);
+    throw error;
+  }
+};
+
+/**
+ * Enhanced upload function with automatic image resizing
+ * @param {Object} params - Upload parameters
+ * @param {Object} resizeOptions - Image resize options (optional)
+ * @returns {Promise<Object>} - Upload result
+ */
+const uploadImageToS3WithResize = async (params, resizeOptions = null) => {
+  try {
+    let finalBuffer = params.Body;
+    let finalContentType = params.ContentType || 'image/jpeg';
+
+    // If resize options provided and Body is a Buffer, resize the image
+    if (resizeOptions && Buffer.isBuffer(params.Body)) {
+      console.log('🖼️ Applying image resize before upload...');
+      finalBuffer = await resizeImageBuffer(params.Body, resizeOptions);
+      
+      // Update content type based on format
+      if (resizeOptions.format) {
+        switch (resizeOptions.format.toLowerCase()) {
+          case 'jpeg':
+          case 'jpg':
+            finalContentType = 'image/jpeg';
+            break;
+          case 'png':
+            finalContentType = 'image/png';
+            break;
+          case 'webp':
+            finalContentType = 'image/webp';
+            break;
+        }
+      }
+    }
+
+    const uploadParams = {
+      ...params,
+      Body: finalBuffer,
+      ContentType: finalContentType
+    };
+
+    return await s3.upload(uploadParams).promise();
+  } catch (error) {
+    console.error('❌ Error uploading image with resize:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   generateSignedUrl, 
   deleteFile, 
@@ -134,5 +296,7 @@ module.exports = {
   generateUniqueFileName, 
   generateCloudFrontUrlForS3,
   checkImageExists,
-  getImageMetadata
+  getImageMetadata,
+  resizeImageBuffer,
+  uploadImageToS3WithResize
 };
