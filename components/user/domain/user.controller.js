@@ -566,6 +566,7 @@ const referFriend = async (req, res, next) => {
             const referral_coupon = await Referral.create({
                 email: email,
                 referrer_id: referrer_id,
+                referred_user_id: null, // Set to null since user hasn't registered yet
                 referral_code: referral_code,
                 referral_coupon_code: referral_coupon_code,
                 status: 'pending',
