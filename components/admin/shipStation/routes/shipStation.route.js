@@ -1895,7 +1895,7 @@ router.post('/shipments/void-label', authMiddleware(true), voidShipStationLabel)
  *       500:
  *         description: Internal Server Error
  */
-router.get("/carriers", authMiddleware(true), getShipStationCarriers);
+router.get("/carriers",  getShipStationCarriers);
 
 /**
  * @swagger
@@ -1964,7 +1964,7 @@ router.get("/carriers", authMiddleware(true), getShipStationCarriers);
  *                 message:
  *                   type: string
  */
-router.get("/carrier-services", authMiddleware(true), getShipStationCarrierServices);
+router.get("/carrier-services", getShipStationCarrierServices);
 
 
 /**

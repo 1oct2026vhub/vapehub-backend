@@ -654,20 +654,19 @@ async function getShipStationCarriers(req, res, next) {
     try {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-        
+        const shipStationCarrierUrl = process.env.SHIPSTATION_CARRIER_URL;
+        const shipStationCarrierServiceUrl = process.env.SHIPSTATION_CARRIER_SERVICE_URL;
         if (!apiKey || !apiSecret) {
             return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
         }
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-        const response = await axios.get('https://ssapi.shipstation.com/carriers', {
+        const response = await axios.get(shipStationCarrierUrl, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
         });
-
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carriers:', error);
@@ -691,20 +690,20 @@ async function getShipStationCarrierServices(req, res) {
 
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
-        
+        const shipStationCarrierUrl = process.env.SHIPSTATION_CARRIER_URL;
+        const shipStationCarrierServiceUrl = process.env.SHIPSTATION_CARRIER_SERVICE_URL;
         if (!apiKey || !apiSecret) {
             return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
         }
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${encodeURIComponent(carrierCode)}`, {
+        const response = await axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
         });
-
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carrier services:', error);
