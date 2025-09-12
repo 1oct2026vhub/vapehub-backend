@@ -452,6 +452,16 @@ module.exports.applyCoupon = async (req, res, next) => {
 
                 // Check if expired
                 const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+                const serverTime = new Date();
+                
+                let testCoupon = await Coupon.findOne({
+                    where: {
+                        code: couponCode,
+                        status: "active"
+                        // start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
+                        // end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                    }
+                });
                 coupon = await Coupon.findOne({
                     where: {
                         code: couponCode,
@@ -463,7 +473,14 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (!coupon) {
                     throw {
                         statusCode: 404,
-                        message: 'Invalid or expired coupon code'
+                        message: 'Invalid or expired coupon code',
+                        testCoupon: testCoupon,
+                        serverTime: serverTime.toISOString(),
+                        currentUkTime: currentUkTime,
+                        startDate: testCoupon ? testCoupon.start_date : null,
+                        endDate: testCoupon ? testCoupon.end_date : null,
+                        startDateComparison: testCoupon ? testCoupon.start_date <= currentUkTime : null,
+                        endDateComparison: testCoupon ? testCoupon.end_date >= currentUkTime : null
                     }
                 }
                 if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
