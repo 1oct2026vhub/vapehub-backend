@@ -450,9 +450,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             } 
             else {
 
-                // Check if expired - use UTC time for comparison since DB stores UTC
+                // Check if expired - compare date and time only (ignore timezone completely)
                 const currentTime = new Date();
-                const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
 
                 let testCoupon = await Coupon.findOne({
                     where: {
@@ -464,23 +463,42 @@ module.exports.applyCoupon = async (req, res, next) => {
                     where: {
                         code: couponCode,
                         status: "active",
-                        start_date: { [Op.lte]: currentTime }, // Coupon has started
-                        end_date: { [Op.or]: [{ [Op.gte]: currentTime }, { [Op.is]: null }] }, // Not expired
+                        [Op.and]: [
+                            // Check if coupon has started (compare date and time only)
+                            {
+                                [Op.or]: [
+                                    { start_date: { [Op.is]: null } },
+                                    {
+                                        start_date: {
+                                            [Op.lte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
+                                        }
+                                    }
+                                ]
+                            },
+                            // Check if coupon hasn't expired (compare date and time only)
+                            {
+                                [Op.or]: [
+                                    { end_date: { [Op.is]: null } },
+                                    {
+                                        end_date: {
+                                            [Op.gte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 });
-                
+
                 if (!coupon) {
                     throw {
                         statusCode: 404,
                         message: 'Invalid or expired coupon code',
                         testCoupon: testCoupon,
                         currentTime: currentTime.toISOString(),
-                        currentUkTime : moment().tz(process.env.UK_TIMEZONE),
-                        currentUkTimeIntoISOString: currentUkTime.toISOString(),
                         startDate: testCoupon ? testCoupon.start_date : null,
                         endDate: testCoupon ? testCoupon.end_date : null,
-                        startDateComparison: testCoupon ? testCoupon.start_date <= currentTime : null,
-                        endDateComparison: testCoupon ? testCoupon.end_date >= currentTime : null
+                        note: 'Using database-level date comparison to avoid timezone issues'
                     }
                 }
                 if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
