@@ -162,8 +162,8 @@ module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
         const user_id = req.user.id;
-        const { email, phone, couponCode, receive_promotions, shipping_method_id, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, loyalty, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
-        
+        const { email, phone, couponCode, receive_promotions, shipping_address_id, shipping_address, billing_address, useShippingAsBilling, payment_method, loyalty, total, cardNumber, expiryMonth, expiryYear, cvv } = req.body;
+        let { shipping_method_id } = req.body;
         // Update user's receive_promotions preference if provided
         if (typeof receive_promotions === 'boolean') {
             await User.update(
@@ -302,7 +302,6 @@ module.exports.placeOrder = async (req, res, next) => {
         let loyaltyDiscountType = null;
         let loyalty_flag = false;
         let totalDiscount = 0
-
         // Apply coupon if provided
         if (couponCode) {
             const referral = await Referral.findOne({
@@ -373,8 +372,37 @@ module.exports.placeOrder = async (req, res, next) => {
                 discountType = referralValueType;
             }
             else{
-                const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
-                coupon = await Coupon.findOne({ where: { code: couponCode, status: "active", start_date: { [Op.lte]: currentUkTime }, end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] } } });
+                // Check if expired - compare date and time only (ignore timezone completely)
+                coupon = await Coupon.findOne({ 
+                    where: { 
+                        code: couponCode, 
+                        status: "active",
+                        [Op.and]: [
+                            // Check if coupon has started (compare date and time only)
+                            {
+                                [Op.or]: [
+                                    { start_date: { [Op.is]: null } },
+                                    {
+                                        start_date: {
+                                            [Op.lte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
+                                        }
+                                    }
+                                ]
+                            },
+                            // Check if coupon hasn't expired (compare date and time only)
+                            {
+                                [Op.or]: [
+                                    { end_date: { [Op.is]: null } },
+                                    {
+                                        end_date: {
+                                            [Op.gte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    } 
+                });
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
                     const singleUsedCoupon = await CouponUsage.findOne({ where: {coupon_id: coupon.id } });
@@ -633,7 +661,12 @@ module.exports.placeOrder = async (req, res, next) => {
         }
         // Apply Shipping Cost
         const shippingMethod = await ShippingMethod.findOne({ where: { id: shipping_method_id }, attributes: ["id", "shipping_cost"] });
-        if (shippingMethod) calculatedTotal += shippingMethod.shipping_cost;
+        if (shippingMethod) {
+            calculatedTotal += parseFloat(shippingMethod.shipping_cost);
+        } else {
+            shipping_method_id = null;
+            // throw new Error(`Shipping method with ID ${shipping_method_id} not found`);
+        }
         // Ensure Price Integrity
         calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
         let orderCode = 0;
@@ -645,7 +678,6 @@ module.exports.placeOrder = async (req, res, next) => {
                 const accessToken = await getVivaAccessToken();
                 wallet_check.accessToken = accessToken;
                 orderCode = await createVivaOrder(accessToken,calculatedTotal); // Amount in EUR/USD, etc.
-                
                 // Check if order code is valid
                 if (!orderCode || orderCode === 0) {
                     throw new Error("Failed to generate Viva Wallet order code");
@@ -744,7 +776,7 @@ module.exports.placeOrder = async (req, res, next) => {
             status: "pending",
             order_shipping_address_id: shippingAddrs.id,
             order_billing_address_id: billingAddrs.id,
-            shipping_method_id,
+            shipping_method_id: shipping_method_id ? shipping_method_id : null,
             order_unique_id: orderUniqueId,
             order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
             shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
