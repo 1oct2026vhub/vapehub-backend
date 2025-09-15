@@ -337,7 +337,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         // Calculate subtotal amount
         for (const item of cart) {
             if (!item.variant) {
-                return errorResponse(res, {}, "Variant is missing", 404);
+                return errorResponse(res, {}, `Variant for product ${item.product?.name || 'Unknown'} is not found`, 404);
             }
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity;
