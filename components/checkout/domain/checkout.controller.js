@@ -450,24 +450,22 @@ module.exports.applyCoupon = async (req, res, next) => {
             } 
             else {
 
-                // Check if expired
+                // Check if expired - use UTC time for comparison since DB stores UTC
+                const currentTime = new Date();
                 const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
-                const serverTime = new Date();
-                
+
                 let testCoupon = await Coupon.findOne({
                     where: {
                         code: couponCode,
                         status: "active"
-                        // start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
-                        // end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
                     }
                 });
                 coupon = await Coupon.findOne({
                     where: {
                         code: couponCode,
                         status: "active",
-                        start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
-                        end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                        start_date: { [Op.lte]: currentTime }, // Coupon has started
+                        end_date: { [Op.or]: [{ [Op.gte]: currentTime }, { [Op.is]: null }] }, // Not expired
                     }
                 });
                 if (!coupon) {
@@ -475,12 +473,13 @@ module.exports.applyCoupon = async (req, res, next) => {
                         statusCode: 404,
                         message: 'Invalid or expired coupon code',
                         testCoupon: testCoupon,
-                        serverTime: serverTime.toISOString(),
-                        currentUkTime: currentUkTime,
+                        currentTime: currentTime.toISOString(),
+                        currentUkTime : moment().tz(process.env.UK_TIMEZONE),
+                        currentUkTimeIntoISOString: currentUkTime.toISOString(),
                         startDate: testCoupon ? testCoupon.start_date : null,
                         endDate: testCoupon ? testCoupon.end_date : null,
-                        startDateComparison: testCoupon ? testCoupon.start_date <= currentUkTime : null,
-                        endDateComparison: testCoupon ? testCoupon.end_date >= currentUkTime : null
+                        startDateComparison: testCoupon ? testCoupon.start_date <= currentTime : null,
+                        endDateComparison: testCoupon ? testCoupon.end_date >= currentTime : null
                     }
                 }
                 if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
