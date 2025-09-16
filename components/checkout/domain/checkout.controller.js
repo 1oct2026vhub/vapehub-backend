@@ -450,55 +450,56 @@ module.exports.applyCoupon = async (req, res, next) => {
             } 
             else {
 
-                // Check if expired - compare date and time only (ignore timezone completely)
-                const currentTime = new Date();
-
-                let testCoupon = await Coupon.findOne({
-                    where: {
-                        code: couponCode,
-                        status: "active"
-                    }
-                });
+                // Get coupon first without date validation
                 coupon = await Coupon.findOne({
                     where: {
                         code: couponCode,
-                        status: "active",
-                        [Op.and]: [
-                            // Check if coupon has started (compare date and time only)
-                            {
-                                [Op.or]: [
-                                    { start_date: { [Op.is]: null } },
-                                    {
-                                        start_date: {
-                                            [Op.lte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
-                                        }
-                                    }
-                                ]
-                            },
-                            // Check if coupon hasn't expired (compare date and time only)
-                            {
-                                [Op.or]: [
-                                    { end_date: { [Op.is]: null } },
-                                    {
-                                        end_date: {
-                                            [Op.gte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
+                        status: "active"
                     }
                 });
 
                 if (!coupon) {
                     throw {
                         statusCode: 404,
-                        message: 'Invalid or expired coupon code',
-                        testCoupon: testCoupon,
-                        currentTime: currentTime.toISOString(),
-                        startDate: testCoupon ? testCoupon.start_date : null,
-                        endDate: testCoupon ? testCoupon.end_date : null,
-                        note: 'Using database-level date comparison to avoid timezone issues'
+                        message: 'Invalid or expired coupon code'
+                    }
+                }
+
+                // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
+                const currentTime = new Date();
+                const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
+                const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
+                    String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
+                    String(currentUKTime.getHours()).padStart(2, '0') + ':' +
+                    String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
+                    String(currentUKTime.getSeconds()).padStart(2, '0');
+
+                // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
+                const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+                const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+
+                // Check if coupon has started
+                if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
+                    throw {
+                        statusCode: 404,
+                        message: 'Coupon has not started yet',
+                        currentUKTime: currentUKTimeFormatted,
+                        startDate: startDateFormatted,
+                        endDate: endDateFormatted,
+                        note: 'Current UK time is before coupon start date'
+                    }
+                }
+
+                // Check if coupon has expired
+                if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                    throw {
+                        statusCode: 404,
+                        message: 'Coupon has expired',
+                        currentUKTime: currentUKTimeFormatted,
+                        startDate: startDateFormatted,
+                        endDate: endDateFormatted,
+                        note: 'Current UK time is after coupon end date'
                     }
                 }
                 if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
