@@ -1271,3 +1271,66 @@ module.exports.getFeatureContent = async (req, res, next) => {
         return errorResponse(res, error, error.message || 'Failed to retrieve feature content');
     }
 };
+
+/**
+ * Get slugs for specific entities by name search
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ */
+module.exports.getEntitySlugs = async (req, res, next) => {
+    try {
+        // Define the entity names we want to find
+        const targetEntities = ['nic salt', 'disposables'];
+        
+        // First, find the entities by name (MySQL compatible)
+        const entities = await Category.findAll({
+            where: {
+                name: {
+                    [Op.or]: targetEntities.map(name => ({
+                        [Op.like]: `%${name}%`
+                    }))
+                }
+            },
+            attributes: ['id', 'name', 'slug']
+        });
+
+        if (!entities || entities.length === 0) {
+            return errorResponse(res, { message: 'No matching entities found' }, 'No matching entities found', 404);
+        }
+
+        // Get the entity IDs
+        const entityIds = entities.map(entity => entity.id);
+
+        // Find slug relations for these entities
+        const slugRelations = await SlugRelation.findAll({
+            where: {
+                entity_type: 'category',
+                entity_id: {
+                    [Op.in]: entityIds
+                }
+            },
+            attributes: ['slug', 'entity_id']
+        });
+
+        // Map the results
+        const result = entities.map(entity => {
+            const slugRelation = slugRelations.find(sr => sr.entity_id === entity.id);
+            return {
+                entity_id: entity.id,
+                entity_name: entity.name,
+                entity_slug: entity.slug,
+                slug_relation: slugRelation ? slugRelation.slug : null
+            };
+        });
+
+        return successResponse(res, { 
+            entities: result,
+            total_found: result.length
+        }, 'Entity slugs retrieved successfully');
+
+    } catch (error) {
+        console.error('Error in getEntitySlugs:', error);
+        return errorResponse(res, error, error.message || 'Failed to retrieve entity slugs');
+    }
+};
