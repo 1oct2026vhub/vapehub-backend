@@ -372,37 +372,39 @@ module.exports.placeOrder = async (req, res, next) => {
                 discountType = referralValueType;
             }
             else{
-                // Check if expired - compare date and time only (ignore timezone completely)
+                // Get coupon first without date validation
                 coupon = await Coupon.findOne({ 
                     where: { 
                         code: couponCode, 
-                        status: "active",
-                        [Op.and]: [
-                            // Check if coupon has started (compare date and time only)
-                            {
-                                [Op.or]: [
-                                    { start_date: { [Op.is]: null } },
-                                    {
-                                        start_date: {
-                                            [Op.lte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
-                                        }
-                                    }
-                                ]
-                            },
-                            // Check if coupon hasn't expired (compare date and time only)
-                            {
-                                [Op.or]: [
-                                    { end_date: { [Op.is]: null } },
-                                    {
-                                        end_date: {
-                                            [Op.gte]: Sequelize.literal(`DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')`)
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
+                        status: "active"
                     } 
                 });
+
+                if (coupon) {
+                    // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
+                    const currentTime = new Date();
+                    const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
+                    const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
+                        String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
+                        String(currentUKTime.getHours()).padStart(2, '0') + ':' +
+                        String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
+                        String(currentUKTime.getSeconds()).padStart(2, '0');
+
+                    // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
+                    const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+                    const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+
+                    // Check if coupon has started
+                    if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
+                        coupon = null; // Mark as invalid
+                    }
+
+                    // Check if coupon has expired
+                    if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                        coupon = null; // Mark as invalid
+                    }
+                }
                 if (coupon && subTotal >= (coupon.minimum_purchase || 0) && (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit)) {
                     userUsedCoupon = await CouponUsage.findOne({ where: { user_id, coupon_id: coupon.id } });
                     const singleUsedCoupon = await CouponUsage.findOne({ where: {coupon_id: coupon.id } });
