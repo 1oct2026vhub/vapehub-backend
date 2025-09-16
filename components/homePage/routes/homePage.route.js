@@ -836,4 +836,56 @@ router.get('/welcome-content', homePageController.getWelcomeContent);
  */
 router.get('/feature-content', homePageController.getFeatureContent);
 
+/**
+ * @swagger
+ * /api/home/entity-slugs:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get slugs for specific entities by name search
+ *     description: Retrieve entity information and their corresponding slugs from SlugRelation table for specified entity names
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved entity slugs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     entities:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           entity_id:
+ *                             type: integer
+ *                             description: ID of the entity
+ *                           entity_name:
+ *                             type: string
+ *                             description: Name of the entity
+ *                           entity_slug:
+ *                             type: string
+ *                             description: Slug from the entity table
+ *                           slug_relation:
+ *                             type: string
+ *                             description: Slug from the slug_relations table
+ *                     total_found:
+ *                       type: integer
+ *                       description: Total number of entities found
+ *                 message:
+ *                   type: string
+ *                   example: Entity slugs retrieved successfully
+ *       404:
+ *         description: No matching entities found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/entity-slugs', homePageController.getEntitySlugs);
+
 module.exports = router
