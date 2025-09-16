@@ -450,13 +450,18 @@ async function migrateCarouselImages(crossServerMigration, queryInterface, Seque
 function generateFallbackUrls(imageUrl) {
   const fallbackUrls = [];
   
-  // Clean the URL - remove any WordPress upload path prefixes
-  const cleanUrl = imageUrl.replace(/^.*\/wp-content\/uploads\//, '').replace(/^.*\/uploads\//, '');
-  
   // Original URL
   if (imageUrl.startsWith('http')) {
     fallbackUrls.push(imageUrl);
   }
+  
+  // If it's already an S3 URL, don't try to convert it to WordPress URLs
+  if (imageUrl.includes('s3') || imageUrl.includes('cloudfront')) {
+    return fallbackUrls; // Just return the original URL
+  }
+  
+  // Clean the URL - remove any WordPress upload path prefixes
+  const cleanUrl = imageUrl.replace(/^.*\/wp-content\/uploads\//, '').replace(/^.*\/uploads\//, '');
   
   // Standard WordPress uploads path variations
   fallbackUrls.push(`https://www.vapehub.co.uk/wp-content/uploads/${cleanUrl}`);
@@ -670,7 +675,14 @@ function isValidImageUrl(url) {
   try {
     const urlObj = new URL(url);
     
-    // Check if domain is reasonable
+    // Allow S3 and CloudFront URLs
+    if (urlObj.hostname.includes('s3') || urlObj.hostname.includes('cloudfront')) {
+      const path = urlObj.pathname.toLowerCase();
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
+      return imageExtensions.some(ext => path.endsWith(ext));
+    }
+    
+    // Check if domain is reasonable for WordPress URLs
     if (!urlObj.hostname.includes('vapehub.co.uk')) {
       return false;
     }
