@@ -846,7 +846,7 @@ module.exports.placeOrder = async (req, res, next) => {
                     shipping: { address: shippingAddrs },
                     billing: { address: billingAddrs }
                 },
-                wallet_log: wallet_check
+                // wallet_log: wallet_check
             }
         }, "Success");
     } catch (error) {
