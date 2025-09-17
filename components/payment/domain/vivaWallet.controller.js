@@ -297,9 +297,10 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     }
 
                     
-                    // Clear the user's cart
+                    // Clear the user's cart (hard delete to avoid unique constraint issues)
                     await Cart.destroy({ 
-                        where: { user_id: order.user_id }
+                        where: { user_id: order.user_id },
+                        force: true  // Hard delete to completely remove records
                     });
 
                         const referral = await Referral.findOne({
