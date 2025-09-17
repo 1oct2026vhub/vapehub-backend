@@ -118,7 +118,7 @@ const createVivaOrder = async (accessToken, amount) => {
             {
                 amount: Math.round(amount * 100), // Convert to cents and ensure it's an integer
                 customerTrns: "Order Payment",
-                sourceCode: "2305"
+                sourceCode:  process.env.VIVA_SOURCE_CODE
             },
             {
                 headers: {
