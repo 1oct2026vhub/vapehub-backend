@@ -1316,14 +1316,23 @@ module.exports.getEntitySlugs = async (req, res, next) => {
         // Map the results
         const result = entities.map(entity => {
             const slugRelation = slugRelations.find(sr => sr.entity_id === entity.id);
+            
+            // Determine the flag based on entity name
+            let flag = null;
+            if (entity.name.toLowerCase().includes('disposables')) {
+                flag = 'disposables';
+            } else if (entity.name.toLowerCase().includes('nic salts')) {
+                flag = 'nic salts';
+            }
+            
             return {
                 entity_id: entity.id,
                 entity_name: entity.name,
                 entity_slug: entity.slug,
-                slug_relation: slugRelation ? slugRelation.slug : null
+                slug_relation: slugRelation ? slugRelation.slug : null,
+                flag: flag
             };
         });
-
         return successResponse(res, { 
             entities: result,
             total_found: result.length
