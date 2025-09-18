@@ -193,22 +193,26 @@ module.exports.createCart = async (req, res, next) => {
         }
         
         let availableStock = product.stock_quantity || 0; // Fallback to product stock if no variant
+        let variant = null; // Initialize variant variable
         if (variant_id) {
-            const variant = await ProductVariant.findByPk(variant_id);
+            variant = await ProductVariant.findByPk(variant_id);
             if (!variant || variant.product_id !== product_id) {
                 throw { message: `Variant not found or does not belong to the specified product`, statusCode: 404 };
             }
             availableStock = variant.stock || 0; // Use variant stock if specified
-            
         }
 
         // Check stock availability
         if (availableStock === 0) {
-            return errorResponse(res, {}, `${variant.slug} Out of stock`, 400);
+            const itemName = variant ? variant.slug : product.name;
+            return errorResponse(res, {}, `${itemName} Out of stock`, 400);
         }
-
         if (quantity > availableStock) {
-            return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock. You have ${cartExists.quantity} in your basket.`, 400);
+            if (cartExists) {
+                return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock. You have ${cartExists.quantity} in your basket.`, 400);
+            } else {
+                return errorResponse(res, {}, `Only ${availableStock} item(s) available in stock.`, 400);
+            }
         }
 
         if (cartExists) {
@@ -366,7 +370,7 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
             const availableStock = variant ? variant.stock : (product.stock_quantity || 0);
             // Check if item is out of stock
             let isOutOfStock = false;
-            if(availableStock == 0 || variant.stock_status == 'out_of_stock'){
+            if(availableStock == 0 || (variant && variant.stock_status == 'out_of_stock')){
                 isOutOfStock = true;
             }
             // Check if requested quantity exceeds available stock
