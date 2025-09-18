@@ -10,6 +10,15 @@ module.exports = {
     try {
       console.log('🚀 Starting LIVE DATA MIGRATION: Attributes & Terms from old database...');
       
+      // Step 0: Clear existing data for fresh start
+      console.log('🧹 Clearing existing data for fresh start...');
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
+      await queryInterface.sequelize.query(`DELETE FROM product_attribute_terms`, { transaction });
+      await queryInterface.sequelize.query(`DELETE FROM attribute_terms`, { transaction });
+      await queryInterface.sequelize.query(`DELETE FROM attributes`, { transaction });
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
+      console.log('✅ Existing data cleared successfully');
+      
       // Connect to old database
       await crossServerMigration.connectToOldDb();
       
@@ -45,7 +54,6 @@ module.exports = {
       console.log('📥 Fetching attributes from old database...');
       const attributes = await crossServerMigration.fetchFromOldDb(`
         SELECT 
-          MIN(tt.term_taxonomy_id) as term_taxonomy_id,
           tt.taxonomy,
           REPLACE(tt.taxonomy, 'pa_', '') as name,
           REPLACE(tt.taxonomy, 'pa_', '') as slug,
@@ -53,19 +61,21 @@ module.exports = {
         FROM vh_term_taxonomy tt
         WHERE tt.taxonomy LIKE 'pa_%'
         GROUP BY tt.taxonomy
+        ORDER BY tt.taxonomy
       `);
 
       console.log(`✅ Found ${attributes.length} attributes to migrate`);
 
-      // Step 3: Insert attributes into temporary table
-      console.log('📋 Inserting attributes into temporary table...');
+      // Step 3: Insert attributes into temporary table with generated IDs
+      console.log('📋 Inserting attributes into temporary table with generated IDs...');
+      let attributeIdCounter = 1;
       for (const attr of attributes) {
         await queryInterface.sequelize.query(`
           INSERT INTO temp_attributes (old_attribute_id, taxonomy, name, slug, description, type, sort_order, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, ?, 'select', 'name', NOW(), NOW())
         `, {
           replacements: [
-            attr.term_taxonomy_id,
+            attributeIdCounter++, // Generate sequential IDs starting from 1
             attr.taxonomy,
             attr.name,
             attr.slug,
@@ -111,11 +121,12 @@ module.exports = {
         });
       }
 
-             // Step 6: Insert attributes into new database (handle duplicate slugs)
-       console.log('💾 Inserting attributes into new database...');
+             // Step 6: Insert attributes into new database with EXACT old DB IDs
+       console.log('💾 Inserting attributes into new database with exact old DB IDs...');
        await queryInterface.sequelize.query(`
-         INSERT IGNORE INTO attributes (name, description, slug, type, sort_order, created_at, updated_at)
+         INSERT IGNORE INTO attributes (id, name, description, slug, type, sort_order, created_at, updated_at)
          SELECT 
+           old_attribute_id,
            name, 
            description, 
            slug, 
@@ -127,11 +138,12 @@ module.exports = {
          ORDER BY name ASC
        `, { transaction });
 
-             // Step 7: Insert attribute terms into new database (handle cases where attributes might not exist)
-       console.log('💾 Inserting attribute terms into new database...');
+             // Step 7: Insert attribute terms into new database with EXACT old DB IDs
+       console.log('💾 Inserting attribute terms into new database with exact old DB IDs...');
        await queryInterface.sequelize.query(`
-         INSERT IGNORE INTO attribute_terms (attribute_id, name, slug, description, count, created_at, updated_at)
+         INSERT IGNORE INTO attribute_terms (id, attribute_id, name, slug, description, count, created_at, updated_at)
          SELECT 
+           tat.old_term_id,
            a.id as attribute_id, 
            tat.name, 
            tat.slug, 
@@ -141,7 +153,7 @@ module.exports = {
            tat.updatedAt
          FROM temp_attribute_terms tat
          JOIN temp_attributes ta ON tat.taxonomy = ta.taxonomy
-         JOIN attributes a ON ta.slug = a.slug
+         JOIN attributes a ON ta.old_attribute_id = a.id
          WHERE a.id IS NOT NULL
          ORDER BY a.name ASC, tat.name ASC
        `, { transaction });
