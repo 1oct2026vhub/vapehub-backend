@@ -4,191 +4,174 @@ const CrossServerMigration = require('../../utils/cross-server-migration');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    const crossServerMigration = new CrossServerMigration();
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      console.log('🚀 Starting to populate product_categories from old WooCommerce database...');
+      console.log('🚀 Starting Product Categories Migration...\n');
       
-      // Initialize cross-server migration
-      const crossServerMigration = new CrossServerMigration();
+      // Connect to old database
       await crossServerMigration.connectToOldDb();
       
-      // Disable foreign key checks for bulk operations
-      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
+      // Step 1: Clear existing data from product_categories table
+      console.log('🧹 Step 1: Clearing existing product categories data...');
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
+      await queryInterface.sequelize.query('DELETE FROM product_categories', { transaction });
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
+      console.log('✅ Cleared existing product categories data\n');
       
-      console.log('📋 Step 1: Creating temporary mapping tables...');
-      
-      // Create temporary mapping table for products
-      await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_product_mapping (
-          old_product_id INT,
-          new_product_id INT,
-          INDEX idx_old_product (old_product_id),
-          INDEX idx_new_product (new_product_id)
-        )
-      `);
-      
-      // Create temporary mapping table for categories
-      await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_category_mapping (
-          old_category_slug VARCHAR(255),
-          new_category_id INT,
-          INDEX idx_old_slug (old_category_slug),
-          INDEX idx_new_category (new_category_id)
-        )
-      `);
-      
-      // Populate product mapping based on matching slugs
-      await queryInterface.sequelize.query(`
-        INSERT INTO temp_product_mapping (old_product_id, new_product_id)
+      // Step 2: Get product categories from old database
+      console.log('📊 Step 2: Fetching product categories from old database...');
+      const productCategoriesData = await crossServerMigration.fetchFromOldDb(`
         SELECT 
-          old_p.ID as old_product_id,
-          p.id as new_product_id
-        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
-        INNER JOIN products p ON p.slug = old_p.post_name COLLATE utf8mb4_unicode_ci
-        WHERE old_p.post_type = 'product' 
-          AND old_p.post_status = 'publish'
+          p.ID as product_id,
+          p.post_title as product_title,
+          tt.term_taxonomy_id as category_id,
+          t.term_id,
+          t.name as category_name,
+          t.slug as category_slug
+        FROM vh_posts p
+        JOIN vh_term_relationships tr ON p.ID = tr.object_id
+        JOIN vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+        JOIN vh_terms t ON tt.term_id = t.term_id
+        WHERE p.post_type = 'product'
+          AND p.post_status = 'publish'
+          AND tt.taxonomy = 'product_cat'
+        ORDER BY p.ID, t.term_id
       `);
       
-      // Populate category mapping based on matching slugs
-      await queryInterface.sequelize.query(`
-        INSERT INTO temp_category_mapping (old_category_slug, new_category_id)
-        SELECT 
-          old_t.slug as old_category_slug,
-          c.id as new_category_id
-        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_terms old_t
-        INNER JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_term_taxonomy old_tt ON old_t.term_id = old_tt.term_id
-        INNER JOIN categories c ON c.slug = old_t.slug COLLATE utf8mb4_unicode_ci
-        WHERE old_tt.taxonomy = 'product_cat'
-      `);
+      console.log(`📈 Found ${productCategoriesData.length} product categories to migrate\n`);
       
-      console.log('📊 Step 2: Fetching product-category relationships from old database...');
+      // Step 3: Process and insert product categories
+      console.log('⚙️ Step 3: Processing and inserting product categories...');
+      let insertedCount = 0;
+      let skippedCount = 0;
       
-      // Get product-category relationships from old database
-      const productCategoryData = await crossServerMigration.fetchFromOldDb(`
-        SELECT 
-          tr.object_id as old_product_id,
-          t.slug as category_slug,
-          t.name as category_name
-        FROM vh_term_relationships tr
-        INNER JOIN vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-        INNER JOIN vh_terms t ON tt.term_id = t.term_id
-        WHERE tt.taxonomy = 'product_cat'
-        ORDER BY tr.object_id
-      `);
-      
-      console.log(`✅ Found ${productCategoryData.length} product-category relationships in old database`);
-      
-      if (productCategoryData.length === 0) {
-        console.log('⚠️ No product-category data found in old database');
-        await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
-        if (crossServerMigration.oldDbConnection) {
-          await crossServerMigration.oldDbConnection.close();
+      for (const catData of productCategoriesData) {
+        try {
+          // Check if product exists in new database (using exact ID)
+          const productExists = await queryInterface.sequelize.query(`
+            SELECT id FROM products WHERE id = ?
+          `, {
+            replacements: [catData.product_id],
+            type: Sequelize.QueryTypes.SELECT,
+            transaction
+          });
+          
+          if (productExists.length === 0) {
+            console.log(`⚠️ Skipping categories for product ${catData.product_id} - product not found in new database`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Get category_id from new database using category_slug
+          const category = await queryInterface.sequelize.query(`
+            SELECT id FROM categories WHERE slug = ?
+          `, {
+            replacements: [catData.category_slug],
+            type: Sequelize.QueryTypes.SELECT,
+            transaction
+          });
+          
+          if (category.length === 0) {
+            console.log(`⚠️ Skipping category ${catData.category_slug} for product ${catData.product_id} - category not found in new database`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Check if this product-category relationship already exists
+          const existingRelation = await queryInterface.sequelize.query(`
+            SELECT id FROM product_categories WHERE product_id = ? AND category_id = ?
+          `, {
+            replacements: [catData.product_id, category[0].id],
+            type: Sequelize.QueryTypes.SELECT,
+            transaction
+          });
+          
+          if (existingRelation.length > 0) {
+            // Skip duplicate relationship
+            continue;
+          }
+          
+          // Insert product category
+          await queryInterface.sequelize.query(`
+            INSERT INTO product_categories (
+              product_id, category_id, is_primary, created_at, updated_at
+            ) VALUES (?, ?, ?, NOW(), NOW())
+          `, {
+            replacements: [
+              catData.product_id,        // Exact product ID from old DB
+              category[0].id,            // Category ID from new DB
+              false                      // is_primary = false (default)
+            ],
+            transaction
+          });
+          
+          insertedCount++;
+          
+          if (insertedCount % 100 === 0) {
+            console.log(`  📈 Processed ${insertedCount} product categories...`);
+          }
+          
+        } catch (error) {
+          console.error(`❌ Error inserting product category for product ${catData.product_id}:`, error.message);
+          skippedCount++;
         }
-        return;
       }
       
-      // Debug: Log the first few relationships
-      for (let i = 0; i < Math.min(productCategoryData.length, 5); i++) {
-        const item = productCategoryData[i];
-        console.log(`🔍 Debug ${i+1}: product_id=${item.old_product_id}, category=${item.category_name}, slug=${item.category_slug}`);
-      }
+      console.log(`✅ Product categories inserted: ${insertedCount}`);
+      console.log(`⚠️ Product categories skipped: ${skippedCount}`);
       
-      console.log('🔗 Step 3: Processing and inserting product-category relationships...');
-      
-      // Use direct SQL query for better performance
-      const result = await queryInterface.sequelize.query(`
-        INSERT IGNORE INTO product_categories 
-        (product_id, category_id, is_primary, created_at, updated_at)
-        SELECT 
-          pm.new_product_id as product_id,
-          cm.new_category_id as category_id,
-          0 as is_primary,
-          NOW() as created_at,
-          NOW() as updated_at
-        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_term_relationships tr
-        INNER JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-        INNER JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_terms t ON tt.term_id = t.term_id
-        INNER JOIN temp_product_mapping pm ON tr.object_id = pm.old_product_id
-        INNER JOIN temp_category_mapping cm ON t.slug = cm.old_category_slug COLLATE utf8mb4_unicode_ci
-        WHERE tt.taxonomy = 'product_cat'
-      `);
-      
-      const insertedCount = result[1].affectedRows || 0;
-      console.log(`✅ Successfully inserted ${insertedCount} product-category relationships!`);
-      
-      console.log('🎯 Step 4: Setting primary categories...');
-      
-      // Set the first category as primary for each product
-      await queryInterface.sequelize.query(`
-        UPDATE product_categories pc1
-        SET is_primary = 1
-        WHERE pc1.id = (
-          SELECT MIN(pc2.id)
-          FROM (SELECT * FROM product_categories) pc2
-          WHERE pc2.product_id = pc1.product_id
-        )
-      `);
-      
-      console.log('✅ Primary categories set successfully!');
-      
-      // Re-enable foreign key checks
-      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
-      
-      console.log('📊 Step 5: Verification and cleanup...');
-      
-      // Get final counts for verification
-      const totalRecords = await queryInterface.sequelize.query(`
+      // Step 4: Final verification
+      console.log('\n🔍 Step 4: Final verification...');
+      const finalCount = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM product_categories
-      `, { type: Sequelize.QueryTypes.SELECT });
+      `, { type: Sequelize.QueryTypes.SELECT, transaction });
       
       const uniqueProducts = await queryInterface.sequelize.query(`
         SELECT COUNT(DISTINCT product_id) as count FROM product_categories
-      `, { type: Sequelize.QueryTypes.SELECT });
+      `, { type: Sequelize.QueryTypes.SELECT, transaction });
       
       const uniqueCategories = await queryInterface.sequelize.query(`
         SELECT COUNT(DISTINCT category_id) as count FROM product_categories
-      `, { type: Sequelize.QueryTypes.SELECT });
+      `, { type: Sequelize.QueryTypes.SELECT, transaction });
       
-      const primaryCategories = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count FROM product_categories WHERE is_primary = 1
-      `, { type: Sequelize.QueryTypes.SELECT });
+      console.log('\n📊 MIGRATION SUMMARY:');
+      console.log('   • Product categories inserted:', insertedCount);
+      console.log('   • Product categories skipped:', skippedCount);
+      console.log('   • Total records in table:', finalCount[0].count);
+      console.log('   • Unique products with categories:', uniqueProducts[0].count);
+      console.log('   • Unique categories used:', uniqueCategories[0].count);
       
-      // Clean up temporary tables
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping');
-      await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_category_mapping');
+      // Sample migrated product categories
+      const sampleCategories = await queryInterface.sequelize.query(`
+        SELECT 
+          pc.product_id, pc.category_id, 
+          p.name as product_name, c.name as category_name
+        FROM product_categories pc
+        JOIN products p ON pc.product_id = p.id
+        JOIN categories c ON pc.category_id = c.id
+        ORDER BY pc.product_id, pc.category_id
+        LIMIT 5
+      `, { type: Sequelize.QueryTypes.SELECT, transaction });
       
-      if (crossServerMigration.oldDbConnection) {
-        await crossServerMigration.oldDbConnection.close();
-      }
-      
-      console.log('🎉 Product categories population completed successfully!');
-      console.log('📊 Migration Summary:');
-      console.log(`   • Successfully inserted: ${insertedCount}`);
-      console.log(`   • Total records in table: ${totalRecords[0].count}`);
-      console.log(`   • Unique products: ${uniqueProducts[0].count}`);
-      console.log(`   • Unique categories: ${uniqueCategories[0].count}`);
-      console.log(`   • Primary categories: ${primaryCategories[0].count}`);
+      console.log('\n📋 Sample migrated product categories:');
+      sampleCategories.forEach(cat => {
+        console.log(`   • Product: ${cat.product_id} (${cat.product_name}), Category: ${cat.category_name}`);
+      });
       
       await transaction.commit();
+      await crossServerMigration.closeOldDbConnection();
+      
+      console.log('\n🎉 PRODUCT CATEGORIES MIGRATION completed successfully!');
+      console.log('✅ Product categories now use exact product IDs from old database');
+      console.log('✅ All product category data properly mapped from vh_term_relationships');
+      console.log('✅ Fresh start with cleared existing data');
       
     } catch (error) {
-      console.error('❌ Error in product categories migration:', error);
-      
-      try {
-        await transaction.rollback();
-        await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
-        await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_product_mapping');
-        await queryInterface.sequelize.query('DROP TEMPORARY TABLE IF EXISTS temp_category_mapping');
-        
-        const crossServerMigration = new CrossServerMigration();
-        if (crossServerMigration.oldDbConnection) {
-          await crossServerMigration.oldDbConnection.close();
-        }
-      } catch (cleanupError) {
-        console.error('❌ Error during cleanup:', cleanupError);
-      }
-      
+      await transaction.rollback();
+      await crossServerMigration.closeOldDbConnection();
+      console.error('❌ Migration failed:', error);
       throw error;
     }
   },
@@ -199,18 +182,21 @@ module.exports = {
     try {
       console.log('🔄 Rolling back product categories migration...');
       
-      // Delete all product category records
-      await queryInterface.sequelize.query(`
-        DELETE FROM product_categories
-      `);
+      // Disable foreign key checks
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', { transaction });
       
-      console.log('✅ Product categories rollback completed successfully!');
+      // Delete all product categories
+      await queryInterface.sequelize.query('DELETE FROM product_categories', { transaction });
+      
+      // Re-enable foreign key checks
+      await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
       
       await transaction.commit();
+      console.log('✅ Product categories migration rolled back successfully');
       
     } catch (error) {
-      console.error('❌ Error during product categories rollback:', error);
       await transaction.rollback();
+      console.error('❌ Rollback failed:', error);
       throw error;
     }
   }
