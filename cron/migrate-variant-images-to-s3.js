@@ -210,8 +210,9 @@ async function smartImageMigration(imageUrl, folder = 'variants', batchStats) {
       }
     }
 
+    // Generate and return the S3 URL for database update
     const finalUrl = generateCloudFrontUrlForS3(s3Key);
-    console.log(`🌐 Final URL: ${finalUrl}`);
+    console.log(`🌐 Final URL (S3): ${finalUrl}`);
     return finalUrl;
   } catch (error) {
     batchStats.errors++;
@@ -227,10 +228,8 @@ async function downloadAndUploadToS3(imageUrl, folder = 'variants', s3Key = null
       return null;
     }
 
-    const cleanUrl = imageUrl.replace(/^.*\/wp-content\/uploads\//, '').replace(/^.*\/uploads\//, '');
-    const fullUrl = imageUrl.startsWith('http') ? imageUrl : 
-                   imageUrl.startsWith('//') ? `https:${imageUrl}` :
-                   `https://vapehub.co.uk/wp-content/uploads/${cleanUrl}`;
+    // Use the image URL directly from database for downloading
+    const fullUrl = imageUrl;
 
     console.log(`📥 Downloading: ${fullUrl}`);
 
@@ -247,7 +246,6 @@ async function downloadAndUploadToS3(imageUrl, folder = 'variants', s3Key = null
           timeout: 30000,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.vapehub.co.uk/',
             'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
