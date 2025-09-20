@@ -32,6 +32,612 @@ module.exports.listAllproducts = async (req, res, next) => {
     }
 }
 
+// OPTIMIZED NEW PRODUCTS API - Uses raw SQL for maximum performance
+module.exports.listNewProducts = async (req, res, next) => {
+    try {
+        const {
+            sort_by = 'createdAt',
+            order = 'DESC',
+            limit = 10,
+            offset = 0,
+            keyword,
+            price_range,
+            categories,
+            brand,
+            variant,
+            deal_id
+        } = req.query;
+
+        // Parse limit and offset as integers
+        const parsedLimit = parseInt(limit);
+        const parsedOffset = parseInt(offset);
+
+        // Validate price range format
+        let priceRange = null;
+        if (price_range) {
+            if (price_range === "200+") {
+                priceRange = { min: 200, max: 999999 };
+            } else {
+                const [minPrice, maxPrice] = price_range.split('-').map(Number);
+                if (isNaN(minPrice) || isNaN(maxPrice)) {
+                    throw new Error('Invalid price range format. Use format: min-max or "200+"');
+                }
+                priceRange = { min: minPrice, max: maxPrice };
+            }
+        }
+
+        // Parse variant filter
+        let variantFilters = {};
+        let selectedAttributes = {};
+        if (variant) {
+            try {
+                variantFilters = typeof variant === 'string' ? JSON.parse(variant) : variant;
+                if (typeof variantFilters !== 'object') {
+                    throw new Error('Variant filter must be an object');
+                }
+            } catch (error) {
+                throw new Error('Invalid variant filter format: must be valid JSON');
+            }
+        }
+
+        // Check if variantFilters is directly an attributes object
+        if (variantFilters && !variantFilters.attributes && !variantFilters.id) {
+            const isAttributeFormat = Object.entries(variantFilters).every(([key, value]) => {
+                return !isNaN(key) && Array.isArray(value);
+            });
+            if (isAttributeFormat) {
+                variantFilters = { attributes: variantFilters };
+                selectedAttributes = variantFilters.attributes;
+            }
+        }
+        else if (variantFilters && variantFilters.attributes && !variantFilters.id) {
+            selectedAttributes = variantFilters.attributes;
+        }
+
+        // Ensure all term IDs are arrays and convert to numbers
+        selectedAttributes = Object.entries(selectedAttributes).reduce((acc, [key, value]) => {
+            const attributeId = parseInt(key);
+            if (!isNaN(attributeId)) {
+                acc[attributeId] = Array.isArray(value) ? value.map(v => parseInt(v)).filter(v => !isNaN(v)) : [parseInt(value)].filter(v => !isNaN(v));
+            }
+            return acc;
+        }, {});
+
+        // Build base where conditions for new products (all products, descending order)
+        let productFilterConditions = [
+            "p.deletedAt IS NULL",
+            "p.status = 'published'"
+        ];
+        let productFilterParams = {};
+
+        if (keyword) {
+            productFilterConditions.push("p.name LIKE :keyword");
+            productFilterParams.keyword = `%${keyword}%`;
+        }
+
+        if (categories) {
+            const categoryIds = categories.split(',').map(Number);
+            productFilterConditions.push(`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))`);
+        }
+
+        if (brand) {
+            const brandIds = brand.split(',').map(Number);
+            productFilterConditions.push(`EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))`);
+        }
+
+        if (deal_id) {
+            productFilterConditions.push("EXISTS (SELECT 1 FROM deal_products dp JOIN deals d ON dp.deal_id = d.id WHERE dp.product_id = p.id AND d.id = :dealId AND d.is_active = true AND d.is_deleted = false AND d.valid_from <= NOW() AND d.valid_to >= NOW())");
+            productFilterParams.dealId = parseInt(deal_id);
+        }
+
+        if (priceRange) {
+            productFilterConditions.push(`EXISTS (
+                SELECT 1
+                FROM (
+                    SELECT MIN(pv2.price) AS min_price
+                    FROM product_variants pv2
+                    WHERE 
+                        pv2.product_id = p.id
+                        AND pv2.status = 'active'
+                        AND pv2.deleted_at IS NULL
+                        AND pv2.price IS NOT NULL
+                        AND pv2.price > 0
+                ) AS min_price_table
+                WHERE min_price BETWEEN :minPrice AND :maxPrice
+            )`);
+            productFilterParams.minPrice = priceRange.min;
+            productFilterParams.maxPrice = priceRange.max;
+        }
+
+        if (variantFilters.id) {
+            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)");
+            productFilterParams.variantId = variantFilters.id;
+        }
+
+        // Add attribute filtering
+        if (Object.keys(selectedAttributes).length > 0) {
+            Object.entries(selectedAttributes).forEach(([attrId, termIds]) => {
+                if (Array.isArray(termIds) && termIds.length > 0) {
+                    productFilterConditions.push(`EXISTS (
+                        SELECT 1 FROM product_attribute_terms pat
+                        WHERE pat.product_id = p.id
+                        AND pat.attribute_id = ${parseInt(attrId)}
+                        AND pat.term_id IN (${termIds.join(',')})
+                        AND pat.deleted_at IS NULL
+                    )`);
+                }
+            });
+        }
+
+        const sqlProductWhereClause = productFilterConditions.length > 0 
+            ? "WHERE " + productFilterConditions.join(" AND ") 
+            : "";
+
+        // Simplified main products query (no subqueries for better performance)
+        const productsQuery = `
+            SELECT 
+                p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
+                p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, p.coil_style,
+                p.device_style, p.eliquid_capacity, p.pod_coil_style, p.pod_fill_style,
+                p.power_supply, p.nicotine_strength, p.nicotine_type, p.vg_ratio,
+                p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt
+            FROM products p
+            ${sqlProductWhereClause}
+            ORDER BY p.createdAt DESC, p.${sort_by} ${order}
+            LIMIT :limit OFFSET :offset
+        `;
+
+        // Count query
+        const countQuery = `
+            SELECT COUNT(DISTINCT p.id) as total_count
+            FROM products p
+            ${sqlProductWhereClause}
+        `;
+
+        // Execute main queries
+        const [productsResult, countResult] = await Promise.all([
+            Product.sequelize.query(productsQuery, {
+                replacements: { ...productFilterParams, limit: parsedLimit, offset: parsedOffset },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            Product.sequelize.query(countQuery, {
+                replacements: productFilterParams,
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        const totalCount = countResult[0].total_count;
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+        const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
+
+        // Get product IDs for related data queries
+        const productIds = productsResult.map(p => p.id);
+        if (productIds.length === 0) {
+            return successResponse(res, {
+                products: [],
+                category_items: [],
+                brand_items: [],
+                deal_items: [],
+                attributes: [],
+                price_ranges: [],
+                pagination: {
+                    total_count: 0,
+                    total_pages: 0,
+                    current_page: 1,
+                    limit: parsedLimit,
+                    offset: parsedOffset
+                }
+            }, 'Success');
+        }
+
+        // Execute essential queries in parallel (including deals and attributes for UI requirements)
+        const [
+            categoriesResult,
+            brandsResult,
+            productImagesResult,
+            variantsResult,
+            variantImagesResult,
+            dealsResult,
+            attributeTermsResult
+        ] = await Promise.all([
+            // Categories query
+            Product.sequelize.query(`
+                SELECT 
+                    c.id, c.updated_by, c.name, c.description, c.slug, c.parent_id, c.logo_url,
+                    c.createdAt, c.updatedAt, c.deletedAt, pc.product_id, pc.is_primary
+                FROM product_categories pc
+                JOIN categories c ON pc.category_id = c.id
+                WHERE pc.product_id IN (${productIds.join(',')})
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Brands query
+            Product.sequelize.query(`
+                SELECT 
+                    b.id, b.updated_by, b.slug, b.name, b.description, b.logo_url,
+                    b.createdAt, b.updatedAt, b.deletedAt, pb.product_id, pb.is_primary
+                FROM product_brands pb
+                JOIN brands b ON pb.brand_id = b.id
+                WHERE pb.product_id IN (${productIds.join(',')})
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Product Images query
+            Product.sequelize.query(`
+                SELECT 
+                    id, updated_by, product_id, image_url, is_primary, createdAt, updatedAt, deletedAt
+                FROM product_images
+                WHERE product_id IN (${productIds.join(',')})
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Variants query
+            Product.sequelize.query(`
+                SELECT 
+                    id, product_id, slug, regular_price, price, discount_price, purchase_price,
+                    weight, length, width, height, description, barcode, stock, low_stock_threshold,
+                    stock_status, status, updated_by, created_at, updated_at, deleted_at
+                FROM product_variants
+                WHERE product_id IN (${productIds.join(',')}) AND status = 'active'
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Variant Images query (simplified)
+            Product.sequelize.query(`
+                SELECT 
+                    id, variant_id, image_url, is_primary
+                FROM product_variant_images
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (${productIds.join(',')}) AND status = 'active')
+                LIMIT 100
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Deals query (essential for UI)
+            Product.sequelize.query(`
+                SELECT 
+                    d.id, d.name, d.slug, d.image_url, d.deal_type, d.required_qty,
+                    d.get_qty, d.fixed_price, d.discount_percent, d.tiered_qty_json,
+                    d.bundle_product_ids_json, d.valid_from, d.valid_to, dp.product_id
+                FROM deal_products dp
+                JOIN deals d ON dp.deal_id = d.id
+                WHERE dp.product_id IN (${productIds.join(',')})
+                    AND d.is_active = 1 
+                    AND d.is_deleted = 0 
+                    AND d.valid_from <= NOW() 
+                    AND d.valid_to >= NOW()
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Product Attribute Terms query (for puff count)
+            Product.sequelize.query(`
+                SELECT 
+                    pat.id, pat.product_id, pat.attribute_id, pat.term_id, pat.is_visible_page,
+                    pat.used_in_variation, pat.updated_by, pat.created_at, pat.updated_at, pat.deleted_at,
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                FROM product_attribute_terms pat
+                JOIN attributes a ON pat.attribute_id = a.id
+                JOIN attribute_terms t ON pat.term_id = t.id
+                WHERE pat.product_id IN (${productIds.join(',')})
+                AND a.name IN ('number-of-puffs', 'flavour')
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        // Create maps for efficient data lookup
+        const categoriesMap = new Map();
+        categoriesResult.forEach(cat => {
+            if (!categoriesMap.has(cat.product_id)) {
+                categoriesMap.set(cat.product_id, []);
+            }
+            categoriesMap.get(cat.product_id).push({
+                id: cat.id,
+                updated_by: cat.updated_by,
+                name: cat.name,
+                description: cat.description,
+                slug: cat.slug,
+                parent_id: cat.parent_id,
+                logo_url: cat.logo_url,
+                createdAt: cat.createdAt,
+                updatedAt: cat.updatedAt,
+                deletedAt: cat.deletedAt,
+                ProductCategory: {
+                    is_primary: cat.is_primary
+                }
+            });
+        });
+
+        const brandsMap = new Map();
+        brandsResult.forEach(brand => {
+            if (!brandsMap.has(brand.product_id)) {
+                brandsMap.set(brand.product_id, []);
+            }
+            brandsMap.get(brand.product_id).push({
+                id: brand.id,
+                updated_by: brand.updated_by,
+                slug: brand.slug,
+                name: brand.name,
+                description: brand.description,
+                logo_url: brand.logo_url,
+                createdAt: brand.createdAt,
+                updatedAt: brand.updatedAt,
+                deletedAt: brand.deletedAt,
+                ProductBrand: {
+                    is_primary: brand.is_primary
+                }
+            });
+        });
+
+        const productImagesMap = new Map();
+        productImagesResult.forEach(img => {
+            if (!productImagesMap.has(img.product_id)) {
+                productImagesMap.set(img.product_id, []);
+            }
+            productImagesMap.get(img.product_id).push({
+                id: img.id,
+                updated_by: img.updated_by,
+                product_id: img.product_id,
+                image_url: img.image_url,
+                is_primary: img.is_primary,
+                createdAt: img.createdAt,
+                updatedAt: img.updatedAt,
+                deletedAt: img.deletedAt
+            });
+        });
+
+        const variantsMap = new Map();
+        variantsResult.forEach(variant => {
+            if (!variantsMap.has(variant.product_id)) {
+                variantsMap.set(variant.product_id, []);
+            }
+            variantsMap.get(variant.product_id).push(variant);
+        });
+
+        const variantImagesMap = new Map();
+        variantImagesResult.forEach(img => {
+            if (!variantImagesMap.has(img.variant_id)) {
+                variantImagesMap.set(img.variant_id, []);
+            }
+            variantImagesMap.get(img.variant_id).push({
+                id: img.id,
+                variant_id: img.variant_id,
+                image_url: img.image_url,
+                is_primary: img.is_primary
+            });
+        });
+
+        const dealsMap = new Map();
+        dealsResult.forEach(deal => {
+            if (!dealsMap.has(deal.product_id)) {
+                dealsMap.set(deal.product_id, []);
+            }
+            dealsMap.get(deal.product_id).push({
+                id: deal.id,
+                name: deal.name,
+                slug: deal.slug,
+                image_url: deal.image_url,
+                deal_type: deal.deal_type,
+                required_qty: deal.required_qty,
+                get_qty: deal.get_qty,
+                fixed_price: deal.fixed_price,
+                discount_percent: deal.discount_percent,
+                tiered_qty_json: deal.tiered_qty_json,
+                bundle_product_ids_json: deal.bundle_product_ids_json,
+                valid_from: deal.valid_from,
+                valid_to: deal.valid_to
+            });
+        });
+
+        const attributeTermsMap = new Map();
+        attributeTermsResult.forEach(pat => {
+            if (!attributeTermsMap.has(pat.product_id)) {
+                attributeTermsMap.set(pat.product_id, []);
+            }
+            attributeTermsMap.get(pat.product_id).push({
+                id: pat.id,
+                product_id: pat.product_id,
+                attribute_id: pat.attribute_id,
+                term_id: pat.term_id,
+                is_visible_page: pat.is_visible_page,
+                used_in_variation: pat.used_in_variation,
+                updated_by: pat.updated_by,
+                created_at: pat.created_at,
+                updated_at: pat.updated_at,
+                deleted_at: pat.deletedAt,
+                attribute: {
+                    id: pat.attr_id,
+                    name: pat.attr_name,
+                    type: pat.attr_type
+                },
+                term: {
+                    id: pat.term_id,
+                    name: pat.term_name,
+                    slug: pat.term_slug
+                }
+            });
+        });
+
+        // Process products with essential UI data (puff count, deals, stock status)
+        const availableProducts = productsResult.map(product => {
+            // Extract puff count from attributes
+            let puffCount = product.puff_count; // Use direct field first
+            const productAttributeTerms = attributeTermsMap.get(product.id) || [];
+            if (productAttributeTerms.length > 0) {
+                const puffAttributes = productAttributeTerms.filter(pat => 
+                    pat.attribute && pat.attribute.name === 'number-of-puffs'
+                );
+                
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    
+                    puffAttributes.forEach(pat => {
+                        if (pat.term) {
+                            const puffMatches = pat.term.name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = pat.term.name;
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
+                    }
+                }
+            }
+
+            // Get flavors
+            let flavorTerms = [];
+            if (productAttributeTerms.length > 0) {
+                flavorTerms = productAttributeTerms
+                    .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+                    .map(pat => ({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug
+                    }));
+            }
+
+            // Get variants with images
+            const variants = (variantsMap.get(product.id) || []).map(variant => ({
+                ...variant,
+                variantImages: variantImagesMap.get(variant.id) || []
+            }));
+
+            // Check stock status
+            const hasInStockVariant = variants.some(variant =>
+                variant.status === 'active' &&
+                variant.stock > 0 &&
+                variant.stock_status === 'in_stock' &&
+                variant.price !== null &&
+                parseFloat(variant.price) > 0
+            );
+
+            // Get min price variant
+            const minPriceVariant = getMinPriceVariant({
+                variants: variants,
+                ProductImages: productImagesMap.get(product.id) || []
+            });
+
+            // Calculate is_new: either database field is true OR product is within last 30 days
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const isWithinLast30Days = new Date(product.createdAt) >= thirtyDaysAgo;
+            const isNewProduct = product.is_new || isWithinLast30Days;
+
+            return {
+                id: product.id,
+                updated_by: product.updated_by,
+                name: product.name,
+                slug: product.slug,
+                price: minPriceVariant ? minPriceVariant.price : parseFloat(product.price) || 0,
+                discount_price: product.discount_price,
+                stock_quantity: product.stock_quantity,
+                puff_count: puffCount,
+                is_new: isNewProduct,
+                battery_capacity: product.battery_capacity,
+                coil_style: product.coil_style,
+                device_style: product.device_style,
+                eliquid_capacity: product.eliquid_capacity,
+                pod_coil_style: product.pod_coil_style,
+                pod_fill_style: product.pod_fill_style,
+                power_supply: product.power_supply,
+                nicotine_strength: product.nicotine_strength,
+                nicotine_type: product.nicotine_type,
+                vg_ratio: product.vg_ratio,
+                vaping_style: product.vaping_style,
+                bottle_size: product.bottle_size,
+                status: product.status,
+                createdAt: product.createdAt,
+                updatedAt: product.updatedAt,
+                deletedAt: product.deletedAt,
+                Categories: categoriesMap.get(product.id) || [],
+                Brands: brandsMap.get(product.id) || [],
+                ProductImages: productImagesMap.get(product.id) || [],
+                variants: variants,
+                deals: dealsMap.get(product.id) || [],
+                flavors: flavorTerms,
+                flavor_count: flavorTerms.length,
+                out_of_stock: !hasInStockVariant,
+                min_price_variant: minPriceVariant
+            };
+        });
+
+        // Get simplified filter options (only essential ones for performance)
+        const [
+            categoryResults,
+            brandResults
+        ] = await Promise.all([
+            // Simplified categories query
+            Product.sequelize.query(`
+                SELECT 
+                    c.id, c.name, c.slug, 
+                    COUNT(DISTINCT pc.product_id) as product_count
+                FROM categories c
+                JOIN product_categories pc ON pc.category_id = c.id
+                JOIN products p ON p.id = pc.product_id
+                WHERE p.deletedAt IS NULL
+                AND p.status = 'published'
+                GROUP BY c.id, c.name, c.slug
+                LIMIT 20
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Simplified brands query
+            Product.sequelize.query(`
+                SELECT 
+                    b.id, b.name, b.slug, 
+                    COUNT(DISTINCT pb.product_id) as product_count
+                FROM brands b
+                JOIN product_brands pb ON pb.brand_id = b.id
+                JOIN products p ON p.id = pb.product_id
+                WHERE p.deletedAt IS NULL
+                AND p.status = 'published'
+                GROUP BY b.id, b.name, b.slug
+                LIMIT 20
+            `, {
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        return successResponse(res, {
+            products: availableProducts,
+            category_items: categoryResults,
+            brand_items: brandResults,
+            deal_items: [], // Simplified - no deal filter options for now
+            attributes: [], // Simplified - no attribute filter options for now
+            price_ranges: [], // Simplified - no price range filter options for now
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parsedLimit,
+                offset: parsedOffset
+            }
+        }, 'Success');
+
+    } catch (error) {
+        logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+}
+
 module.exports.getProductByid = async (req, res, next) => {
     try {
         const includeClause = [
