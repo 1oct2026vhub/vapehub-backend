@@ -647,59 +647,292 @@ module.exports.uploadImage = async (req, res) => {
 
 module.exports.listAllproductsBySlug = async (req, res, next) => {
     try {
-        const product = await Product.findOne({
-            where: { 
-                slug: req.params.slug,
-                status: productStatus.PUBLISHED
-            }, 
-            include: [
-                { model: Category, as: 'Categories', through: { attributes: ['is_primary'] } },
-                { model: Brand, as: 'Brands', through: { attributes: ['is_primary'] } },
-                {
-                    model: ProductAttributeTerm,
-                    as: 'productAttributeTerms',
-                    include: [
-                        { model: Attribute, as: 'attribute', attributes: ['id', 'name', 'type'] },
-                        { model: AttributeTerm, as: 'term', attributes: ['id', 'name', 'slug'] }
-                    ]
-                },
-                { model: ProductImage, as: 'ProductImages' },
-                // {
-                //     model: Flavor, as: 'Flavors', through: {
-                //         model: ProductFlavor,
-                //     }
-                // },
-                {   // for min price variant
-                    model: ProductVariant,
-                    as: 'variants',
-                    where: { status: 'active' },
-                    required: false,
-                    include: [
-                        {
-                            model: ProductVariantImage,
-                            as: 'variantImages',
-                            attributes: ['id', 'variant_id', 'image_url', 'is_primary']
-                        }
-                    ]
-                },
-                {
-                    model: Deal,
-                    as: 'deals',
-                    through: { attributes: [] },
-                    where: {
-                        is_active: true,
-                        is_deleted: false,
-                        valid_from: { [Op.lte]: new Date() },
-                        valid_to: { [Op.gte]: new Date() }
-                    },
-                    required: false
-                }
-            ]
+        const slug = req.params.slug;
+        
+        // Main product query - OPTIMIZED with raw SQL
+        const productQuery = `
+            SELECT 
+                p.id, p.updated_by, p.name, p.slug, p.description, p.price, p.discount_price,
+                p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, p.coil_style,
+                p.device_style, p.eliquid_capacity, p.pod_coil_style, p.pod_fill_style,
+                p.power_supply, p.nicotine_strength, p.nicotine_type, p.vg_ratio,
+                p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt
+            FROM products p
+            WHERE p.slug = :slug AND p.status = :status
+        `;
+        
+        // Execute main product query
+        const [productResult] = await Product.sequelize.query(productQuery, {
+            replacements: { slug, status: productStatus.PUBLISHED },
+            type: Product.sequelize.QueryTypes.SELECT
         });
-        if (!product) {
+        
+        if (!productResult) {
             throw new Error('Product not found');
         }
-        // **Transform the response** to group attribute terms
+        
+        // Execute all related queries in parallel for maximum performance
+        const [
+            categoriesResult,
+            brandsResult,
+            productImagesResult,
+            variantsResult,
+            variantImagesResult,
+            dealsResult,
+            attributeTermsResult
+        ] = await Promise.all([
+            // Categories query
+            Product.sequelize.query(`
+                SELECT 
+                    c.id, c.updated_by, c.name, c.description, c.slug, c.parent_id, c.logo_url,
+                    c.createdAt, c.updatedAt, c.deletedAt, pc.is_primary
+                FROM product_categories pc
+                JOIN categories c ON pc.category_id = c.id
+                WHERE pc.product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Brands query
+            Product.sequelize.query(`
+                SELECT 
+                    b.id, b.updated_by, b.slug, b.name, b.description, b.logo_url,
+                    b.createdAt, b.updatedAt, b.deletedAt, pb.is_primary
+                FROM product_brands pb
+                JOIN brands b ON pb.brand_id = b.id
+                WHERE pb.product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Product Images query
+            Product.sequelize.query(`
+                SELECT 
+                    id, updated_by, product_id, image_url, is_primary, createdAt, updatedAt, deletedAt
+                FROM product_images
+                WHERE product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Variants query
+            Product.sequelize.query(`
+                SELECT 
+                    id, product_id, slug, regular_price, price, discount_price, purchase_price,
+                    weight, length, width, height, description, barcode, stock, low_stock_threshold,
+                    stock_status, status, updated_by, created_at, updated_at, deleted_at
+                FROM product_variants
+                WHERE product_id = :productId AND status = 'active'
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Variant Images query
+            Product.sequelize.query(`
+                SELECT 
+                    id, variant_id, image_url, is_primary
+                FROM product_variant_images
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active')
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Deals query
+            Product.sequelize.query(`
+                SELECT 
+                    d.id, d.name, d.slug, d.image_url, d.deal_type, d.required_qty,
+                    d.get_qty, d.fixed_price, d.discount_percent, d.tiered_qty_json,
+                    d.bundle_product_ids_json, d.valid_from, d.valid_to
+                FROM deal_products dp
+                JOIN deals d ON dp.deal_id = d.id
+                WHERE dp.product_id = :productId 
+                    AND d.is_active = 1 
+                    AND d.is_deleted = 0 
+                    AND d.valid_from <= NOW() 
+                    AND d.valid_to >= NOW()
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+            
+            // Product Attribute Terms query
+            Product.sequelize.query(`
+                SELECT 
+                    pat.id, pat.product_id, pat.attribute_id, pat.term_id, pat.is_visible_page,
+                    pat.used_in_variation, pat.updated_by, pat.created_at, pat.updated_at, pat.deleted_at,
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                FROM product_attribute_terms pat
+                JOIN attributes a ON pat.attribute_id = a.id
+                JOIN attribute_terms t ON pat.term_id = t.id
+                WHERE pat.product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+        // Parse and structure the data
+        const product = {
+            id: productResult.id,
+            updated_by: productResult.updated_by,
+            name: productResult.name,
+            slug: productResult.slug,
+            description: productResult.description,
+            price: productResult.price,
+            discount_price: productResult.discount_price,
+            stock_quantity: productResult.stock_quantity,
+            puff_count: productResult.puff_count,
+            is_new: productResult.is_new,
+            battery_capacity: productResult.battery_capacity,
+            coil_style: productResult.coil_style,
+            device_style: productResult.device_style,
+            eliquid_capacity: productResult.eliquid_capacity,
+            pod_coil_style: productResult.pod_coil_style,
+            pod_fill_style: productResult.pod_fill_style,
+            power_supply: productResult.power_supply,
+            nicotine_strength: productResult.nicotine_strength,
+            nicotine_type: productResult.nicotine_type,
+            vg_ratio: productResult.vg_ratio,
+            vaping_style: productResult.vaping_style,
+            bottle_size: productResult.bottle_size,
+            status: productResult.status,
+            createdAt: productResult.createdAt,
+            updatedAt: productResult.updatedAt,
+            deletedAt: productResult.deletedAt
+        };
+        
+        // Parse Categories
+        product.Categories = categoriesResult.map(cat => ({
+            id: cat.id,
+            updated_by: cat.updated_by,
+            name: cat.name,
+            description: cat.description,
+            slug: cat.slug,
+            parent_id: cat.parent_id,
+            logo_url: cat.logo_url,
+            createdAt: cat.createdAt,
+            updatedAt: cat.updatedAt,
+            deletedAt: cat.deletedAt,
+            ProductCategory: {
+                is_primary: cat.is_primary
+            }
+        }));
+        
+        // Parse Brands
+        product.Brands = brandsResult.map(brand => ({
+            id: brand.id,
+            updated_by: brand.updated_by,
+            slug: brand.slug,
+            name: brand.name,
+            description: brand.description,
+            logo_url: brand.logo_url,
+            createdAt: brand.createdAt,
+            updatedAt: brand.updatedAt,
+            deletedAt: brand.deletedAt,
+            ProductBrand: {
+                is_primary: brand.is_primary
+            }
+        }));
+        
+        // Parse Product Images
+        product.ProductImages = productImagesResult.map(img => ({
+            id: img.id,
+            updated_by: img.updated_by,
+            product_id: img.product_id,
+            image_url: img.image_url,
+            is_primary: img.is_primary,
+            createdAt: img.createdAt,
+            updatedAt: img.updatedAt,
+            deletedAt: img.deletedAt
+        }));
+        
+        // Create variant images map
+        const variantImagesMap = new Map();
+        variantImagesResult.forEach(img => {
+            if (!variantImagesMap.has(img.variant_id)) {
+                variantImagesMap.set(img.variant_id, []);
+            }
+            variantImagesMap.get(img.variant_id).push({
+                id: img.id,
+                variant_id: img.variant_id,
+                image_url: img.image_url,
+                is_primary: img.is_primary
+            });
+        });
+        
+        // Parse Variants with Images
+        product.variants = variantsResult.map(variant => ({
+            id: variant.id,
+            product_id: variant.product_id,
+            slug: variant.slug,
+            regular_price: variant.regular_price,
+            price: variant.price,
+            discount_price: variant.discount_price,
+            purchase_price: variant.purchase_price,
+            weight: variant.weight,
+            length: variant.length,
+            width: variant.width,
+            height: variant.height,
+            description: variant.description,
+            barcode: variant.barcode,
+            stock: variant.stock,
+            low_stock_threshold: variant.low_stock_threshold,
+            stock_status: variant.stock_status,
+            status: variant.status,
+            updated_by: variant.updated_by,
+            created_at: variant.created_at,
+            updated_at: variant.updated_at,
+            deleted_at: variant.deleted_at,
+            variantImages: variantImagesMap.get(variant.id) || []
+        }));
+        
+        // Parse Deals
+        product.deals = dealsResult.map(deal => ({
+            id: deal.id,
+            name: deal.name,
+            slug: deal.slug,
+            image_url: deal.image_url,
+            deal_type: deal.deal_type,
+            required_qty: deal.required_qty,
+            get_qty: deal.get_qty,
+            fixed_price: deal.fixed_price,
+            discount_percent: deal.discount_percent,
+            tiered_qty_json: deal.tiered_qty_json,
+            bundle_product_ids_json: deal.bundle_product_ids_json,
+            valid_from: deal.valid_from,
+            valid_to: deal.valid_to
+        }));
+        
+        // Parse Product Attribute Terms
+        product.productAttributeTerms = attributeTermsResult.map(pat => ({
+            id: pat.id,
+            product_id: pat.product_id,
+            attribute_id: pat.attribute_id,
+            term_id: pat.term_id,
+            is_visible_page: pat.is_visible_page,
+            used_in_variation: pat.used_in_variation,
+            updated_by: pat.updated_by,
+            created_at: pat.created_at,
+            updated_at: pat.updated_at,
+            deleted_at: pat.deleted_at,
+            attribute: {
+                id: pat.attr_id,
+                name: pat.attr_name,
+                type: pat.attr_type
+            },
+            term: {
+                id: pat.term_id,
+                name: pat.term_name,
+                slug: pat.term_slug
+            }
+        }));
+        
+        // **Transform the response** to group attribute terms (same logic as original)
         const attributeTermsMap = new Map();
 
         product.productAttributeTerms.forEach((pat) => {
@@ -762,33 +995,34 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // Get min price variant
         const minPriceVariant = getMinPriceVariant(product);
 
-    //    Convert Map to array
-       const attributeTerms = Array.from(attributeTermsMap.values());
-       // **Modify the response**
-       const response = {
-           ...product.toJSON(),  // Convert Sequelize object to plain JSON
-           puff_count: puffCount,
-           price: minPriceVariant ? minPriceVariant.price : product.price,
-           regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
-           discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
-           min_price_variant: minPriceVariant,
-           attributeTerms,
-           deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
-               id: deal.id,
-               name: deal.name,
-               slug: deal.slug,
-               image_url: deal.image_url,
-               deal_type: deal.deal_type,
-               required_qty: deal.required_qty,
-               get_qty: deal.get_qty,
-               fixed_price: deal.fixed_price,
-               discount_percent: deal.discount_percent,
-               tiered_qty_json: deal.tiered_qty_json,
-               bundle_product_ids_json: deal.bundle_product_ids_json,
-               valid_from: deal.valid_from,
-               valid_to: deal.valid_to
-           })) : []
-       };
+        // Convert Map to array
+        const attributeTerms = Array.from(attributeTermsMap.values());
+        
+        // **Modify the response** (same logic as original)
+        const response = {
+            ...product,  // Use parsed product object instead of toJSON()
+            puff_count: puffCount,
+            price: minPriceVariant ? minPriceVariant.price : product.price,
+            regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
+            discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+            min_price_variant: minPriceVariant,
+            attributeTerms,
+            deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
+                id: deal.id,
+                name: deal.name,
+                slug: deal.slug,
+                image_url: deal.image_url,
+                deal_type: deal.deal_type,
+                required_qty: deal.required_qty,
+                get_qty: deal.get_qty,
+                fixed_price: deal.fixed_price,
+                discount_percent: deal.discount_percent,
+                tiered_qty_json: deal.tiered_qty_json,
+                bundle_product_ids_json: deal.bundle_product_ids_json,
+                valid_from: deal.valid_from,
+                valid_to: deal.valid_to
+            })) : []
+        };
         successResponse(res, response, 'Success');
     } catch (error) {
         logger.error(error)
