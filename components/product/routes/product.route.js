@@ -312,6 +312,268 @@ router.get('/', productController.listAllproducts);
 
 /**
  * @swagger
+ * /api/product/new:
+ *   get:
+ *     summary: Retrieve a list of products in descending order (newest first) with optional filters - OPTIMIZED
+ *     tags:
+ *       - Product
+ *     parameters:
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         description: Keyword to search in product names (case-insensitive)
+ *       - in: query
+ *         name: price_range
+ *         schema:
+ *           type: string
+ *           example: "10-50"
+ *         description: Price range filter (min-max)
+ *       - in: query
+ *         name: categories
+ *         schema:
+ *           type: string
+ *           example: "1,2,3"
+ *         description: Comma-separated category IDs
+ *       - in: query
+ *         name: brand
+ *         schema:
+ *           type: string
+ *           example: "1,2,3"
+ *         description: Comma-separated brand IDs
+ *       - in: query
+ *         name: deal_id
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         required: false
+ *         description: Filter products by specific deal ID
+ *       - in: query
+ *         name: variant
+ *         schema:
+ *           type: string
+ *           example: "{\"attributes\": {\"12\": [475, 477, 851, 5], \"29\": [33, 669, 55]}}"
+ *         description: JSON string of variant/attribute filters where key is variant ID or attribute ID and value is array of term IDs
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           default: "createdAt"
+ *           enum: ["id", "name", "price", "createdAt", "stock"]
+ *         description: Field to sort by (applies to both Product and ProductVariant)
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           default: "DESC"
+ *           enum: ["ASC", "DESC"]
+ *         description: Sort direction
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items to return
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of items to skip
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved products in descending order with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                             nullable: true
+ *                           is_new:
+ *                             type: boolean
+ *                             description: Whether the product is marked as new
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           Categories:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           Brands:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           ProductImages:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           variants:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           deals:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           flavors:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                           flavor_count:
+ *                             type: integer
+ *                           out_of_stock:
+ *                             type: boolean
+ *                           min_price_variant:
+ *                             type: object
+ *                             nullable: true
+ *                     category_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           product_count:
+ *                             type: integer
+ *                     brand_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           product_count:
+ *                             type: integer
+ *                     deal_items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           deal_type:
+ *                             type: string
+ *                           product_count:
+ *                             type: integer
+ *                     attributes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           attribute:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               type:
+ *                                 type: string
+ *                               is_visible:
+ *                                 type: boolean
+ *                               slug:
+ *                                 type: string
+ *                           terms:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 name:
+ *                                   type: string
+ *                                 slug:
+ *                                   type: string
+ *                                 product_count:
+ *                                   type: integer
+ *                     price_ranges:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           label:
+ *                             type: string
+ *                           count:
+ *                             type: integer
+ *                           value:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                         total_pages:
+ *                           type: integer
+ *                         current_page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         offset:
+ *                           type: integer
+ *       400:
+ *         description: Invalid request parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ */
+router.get('/new', productController.listNewProducts);
+
+/**
+ * @swagger
  * /api/product/fetch/{id}:
  *   get:
  *     summary: Retrieve a single product by ID

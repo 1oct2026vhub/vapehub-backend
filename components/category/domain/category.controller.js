@@ -115,7 +115,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
         const parsedOffset = parseInt(offset);
 
         // Use raw SQL for maximum performance - single query approach
-        const isNewFilter = is_new ? `AND p.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)` : '';
+        // Note: is_new filtering is now handled in application logic for hybrid approach
         
         // Handle popularity sorting (order_count) - match getTrendingProducts logic
         const popularityJoin = sort_by === 'order_count' ? `
@@ -194,8 +194,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             )
             AND p.status = 'published'
             AND p.deletedAt IS NULL
-            ${isNewFilter}
-            ORDER BY ${is_new ? 'p.createdAt DESC, ' : ''}${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}
+            ORDER BY p.createdAt DESC, ${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `;
 
@@ -207,7 +206,6 @@ const fetchCategoryProducts = async (categoryId, query) => {
             WHERE pc.category_id = ${categoryId}
             AND p.status = 'published'
             AND p.deletedAt IS NULL
-            ${isNewFilter}
         `;
 
         // Get product images for all products
@@ -288,12 +286,11 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 // Determine primary image
                 const primaryImage = product.variant_image || product.product_image;
 
-                // Check if product is new
-                const isNewProduct = is_new ? (() => {
-                    const thirtyDaysAgo = new Date();
-                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                    return new Date(product.createdAt) >= thirtyDaysAgo;
-                })() : false;
+                // Calculate is_new: either database field is true OR product is within last 30 days
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const isWithinLast30Days = new Date(product.createdAt) >= thirtyDaysAgo;
+                const isNewProduct = product.is_new || isWithinLast30Days;
 
                 return {
                     id: product.id,
