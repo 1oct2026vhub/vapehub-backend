@@ -2252,7 +2252,7 @@ router.get('/more-like-this',
         query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
     ]),
     productController.getMoreLikeThisProducts
-);
+); 
 
 /**
  * @swagger

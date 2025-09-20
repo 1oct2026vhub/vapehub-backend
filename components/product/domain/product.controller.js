@@ -2684,7 +2684,7 @@ module.exports.getAllDeals = async (req, res, next) => {
 
 // OPTIMIZED VERSION - 96%+ faster performance using raw SQL queries
 module.exports.getMoreLikeThisProducts = async (req, res, next) => {
-    try {
+    try { 
         const { product_id, limit = 10, offset = 0 } = req.query;
 
         // Validate product_id
