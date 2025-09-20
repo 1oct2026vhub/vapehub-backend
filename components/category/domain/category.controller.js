@@ -210,15 +210,43 @@ const fetchCategoryProducts = async (categoryId, query) => {
             ${isNewFilter}
         `;
 
-        // Execute both queries in parallel
-        const [productsResult, countResult] = await Promise.all([
+        // Get product images for all products
+        const productImagesQuery = `
+            SELECT 
+                pi.id, pi.product_id, pi.image_url, pi.is_primary
+            FROM product_images pi
+            WHERE pi.product_id IN (
+                SELECT DISTINCT pc.product_id 
+                FROM product_categories pc 
+                WHERE pc.category_id = ${categoryId}
+            )
+            ORDER BY pi.product_id, pi.is_primary DESC
+        `;
+
+        // Execute all queries in parallel
+        const [productsResult, countResult, productImagesResult] = await Promise.all([
             sequelize.query(productsQuery, { type: sequelize.QueryTypes.SELECT }),
-            sequelize.query(countQuery, { type: sequelize.QueryTypes.SELECT })
+            sequelize.query(countQuery, { type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(productImagesQuery, { type: sequelize.QueryTypes.SELECT })
         ]);
 
         const totalCount = countResult[0].total;
         const totalPages = Math.ceil(totalCount / parsedLimit);
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
+
+        // Group product images by product_id
+        const productImagesMap = new Map();
+        productImagesResult.forEach(image => {
+            if (!productImagesMap.has(image.product_id)) {
+                productImagesMap.set(image.product_id, []);
+            }
+            productImagesMap.get(image.product_id).push({
+                id: image.id,
+                product_id: image.product_id,
+                image_url: image.image_url,
+                is_primary: image.is_primary
+            });
+        });
 
         // Process raw SQL results - much faster than ORM processing
         const availableProducts = productsResult
@@ -297,6 +325,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                     flavors: [], // Will be populated from productAttributeTerms if needed
                     out_of_stock: !(parseInt(product.in_stock_variants_count) > 0), // EXACT fetchProducts logic
                     order_count: product.order_count ? parseInt(product.order_count) : 0, // Add order count for popularity
+                    ProductImages: productImagesMap.get(product.id) || [], // Add ProductImages array like fetchProducts
                     min_price_variant: {
                         price: parseFloat(product.min_price),
                         variant_image: product.variant_image ? {
@@ -401,3 +430,69 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+// module.exports.getCategoryBySlug = async (req, res, next) => {
+//     try {
+//         const { productId } = req.query;
+
+//         if (productId) {
+//             // Get category ID for this product
+//             const productCategory = await ProductCategory.findOne({
+//                 where: { product_id: productId },
+//                 include: [{
+//                     model: Category,
+//                     as: 'Category',
+//                     attributes: ['id']
+//                 }]
+//             });
+
+//             // Get brand ID for this product
+//             const productBrand = await ProductBrand.findOne({
+//                 where: { product_id: productId },
+//                 include: [{
+//                     model: Brand,
+//                     as: 'Brand',
+//                     attributes: ['id']
+//                 }]
+//             });
+
+//             // Set category and brand IDs from the product for fetchProducts
+//             if (productCategory?.Category?.id) {
+//                 req.query.categories = `${productCategory.Category.id}`;
+//             }
+//             if (productBrand?.Brand?.id) {
+//                 req.query.brand = `${productBrand.Brand.id}`;
+//             }
+//             req.query.source = 'product';
+            
+//             // Remove variant filtering when fetching by both category and brand
+//             // delete req.query.variant;
+//         } else {
+//             // Original logic when no productId is provided
+//             const category = await Category.findOne({ where: { slug: req.params.slug } });
+//             if (!category) {
+//                 throw {
+//                     message: "Category not found",
+//                     statusCode: 400,
+//                 };
+//             }
+//             req.query.categories = `${category.id}`;
+//             req.query.source = 'category';
+//         }
+//         // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
+//         const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
+
+//         return successResponse(res, { 
+//             ...additionalData,
+//             products,
+//             brand: brand_items, 
+//             attributes,
+//             deal:deal_items,
+//             price_ranges,
+//             pagination
+//         }, "Success");
+//     } catch (error) {
+//         console.log("🚀 ~ module.exports.getCategoryBySlug= ~ error:", error)
+//         return errorResponse(res, error, error.message);
+//     }
+// }
