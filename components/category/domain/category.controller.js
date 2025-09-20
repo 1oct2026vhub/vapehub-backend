@@ -107,7 +107,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             limit = 10,
             offset = 0,
             is_new
-        } = query;
+        } = query; 
 
         // Cache removed for production safety
 
