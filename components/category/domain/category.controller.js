@@ -129,14 +129,10 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 AND o.status NOT IN ('cancelled', 'refunded')
                 GROUP BY oi.product_id
             ) order_stats ON p.id = order_stats.product_id` : '';
-        
         const productsQuery = `
             SELECT 
                 p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity,
-                p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
-                p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
-                p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt,
+                p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt,
                 p.updatedAt, p.deletedAt,
                 ${sort_by === 'order_count' ? 'COALESCE(order_stats.order_count, 0) as order_count,' : ''}
                 -- Get min variant price and image
@@ -302,18 +298,6 @@ const fetchCategoryProducts = async (categoryId, query) => {
                     stock_quantity: product.stock_quantity,
                     puff_count: puffCount,
                     is_new: isNewProduct,
-                    battery_capacity: product.battery_capacity,
-                    coil_style: product.coil_style,
-                    device_style: product.device_style,
-                    eliquid_capacity: product.eliquid_capacity,
-                    pod_coil_style: product.pod_coil_style,
-                    pod_fill_style: product.pod_fill_style,
-                    power_supply: product.power_supply,
-                    nicotine_strength: product.nicotine_strength,
-                    nicotine_type: product.nicotine_type,
-                    vg_ratio: product.vg_ratio,
-                    vaping_style: product.vaping_style,
-                    bottle_size: product.bottle_size,
                     status: product.status,
                     createdAt: product.createdAt,
                     updatedAt: product.updatedAt,
