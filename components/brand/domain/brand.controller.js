@@ -135,7 +135,7 @@ module.exports.listBrandsWithPagination = async (req, res, next) => {
             limit,
             offset,
             order: [['id', 'DESC']],
-            attributes: ['id', 'name', 'logo_url', 'slug', 'description']
+            attributes: ['id', 'name', 'logo_url', 'slug']
         });
 
         const totalPages = Math.ceil(count / limit);
