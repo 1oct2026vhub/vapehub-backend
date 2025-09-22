@@ -1281,7 +1281,7 @@ module.exports.getFeatureContent = async (req, res, next) => {
 module.exports.getEntitySlugs = async (req, res, next) => {
     try {
         // Define the entity names we want to find
-        const targetEntities = ['nic salt', 'disposables'];
+        const targetEntities = ['nic salt', 'big puff vape kits'];
         
         // First, find the entities by name (MySQL compatible)
         const entities = await Category.findAll({
@@ -1319,8 +1319,8 @@ module.exports.getEntitySlugs = async (req, res, next) => {
             
             // Determine the flag based on entity name
             let flag = null;
-            if (entity.name.toLowerCase().includes('disposables')) {
-                flag = 'disposables';
+            if (entity.name.toLowerCase().includes('big puff vape kits')) {
+                flag = 'big puff vape kits';
             } else if (entity.name.toLowerCase().includes('nic salts')) {
                 flag = 'nic salts';
             }
