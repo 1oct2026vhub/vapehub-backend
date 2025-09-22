@@ -329,7 +329,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                             image_url: product.variant_image
                         } : null
                     },
-                    deals: product.deal_data ? [JSON.parse(product.deal_data)] : []
+                    deals: product.deal_data && product.deal_data !== null ? [product.deal_data] : []
                 };
             });
 
