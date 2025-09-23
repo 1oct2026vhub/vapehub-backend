@@ -74,6 +74,58 @@ module.exports = {
           AND old_p.post_status IN ('publish', 'draft', 'private')
       `);
 
+      // Add fallback mapping for products with similar names (case-insensitive)
+      await queryInterface.sequelize.query(`
+        INSERT IGNORE INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
+        SELECT 
+          old_p.ID as old_product_id,
+          p.id as new_product_id,
+          p.slug as product_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN products p ON LOWER(p.slug COLLATE utf8mb4_unicode_ci) = LOWER(old_p.post_name COLLATE utf8mb4_unicode_ci)
+        WHERE old_p.post_type = 'product' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+          AND old_p.ID NOT IN (SELECT old_product_id FROM temp_product_mapping)
+      `);
+
+      // Add even more flexible mapping using LIKE for partial matches
+      await queryInterface.sequelize.query(`
+        INSERT IGNORE INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
+        SELECT 
+          old_p.ID as old_product_id,
+          p.id as new_product_id,
+          p.slug as product_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN products p ON (
+          p.slug COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', old_p.post_name COLLATE utf8mb4_unicode_ci, '%') 
+          OR old_p.post_name COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', p.slug COLLATE utf8mb4_unicode_ci, '%')
+        )
+        WHERE old_p.post_type = 'product' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+          AND old_p.ID NOT IN (SELECT old_product_id FROM temp_product_mapping)
+      `);
+
+      // Add mapping by product title/name similarity
+      await queryInterface.sequelize.query(`
+        INSERT IGNORE INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
+        SELECT 
+          old_p.ID as old_product_id,
+          p.id as new_product_id,
+          p.slug as product_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN products p ON (
+          p.name COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', old_p.post_title COLLATE utf8mb4_unicode_ci, '%') 
+          OR old_p.post_title COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', p.name, '%')
+        )
+        WHERE old_p.post_type = 'product' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+          AND old_p.ID NOT IN (SELECT old_product_id FROM temp_product_mapping)
+      `);
+
+      // Log mapping statistics
+      const [productMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_product_mapping');
+      console.log(`📊 Product mapping created: ${productMappingCount[0].count} products mapped`);
+
       await queryInterface.sequelize.query(`
         CREATE TABLE temp_variant_mapping (
           old_variant_id BIGINT,
@@ -100,6 +152,32 @@ module.exports = {
         WHERE old_p.post_type = 'product_variation' 
           AND old_p.post_status IN ('publish', 'draft', 'private')
       `);
+
+      // Add fallback variant mapping with more flexible matching
+      await queryInterface.sequelize.query(`
+        INSERT IGNORE INTO temp_variant_mapping (old_variant_id, new_variant_id, product_id, variant_slug)
+        SELECT 
+          old_p.ID as old_variant_id,
+          pv.id as new_variant_id,
+          pv.product_id,
+          pv.slug as variant_slug
+        FROM ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts old_p
+        INNER JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_posts parent_p ON old_p.post_parent = parent_p.ID
+        INNER JOIN temp_product_mapping pm ON parent_p.ID = pm.old_product_id
+        INNER JOIN product_variants pv ON pv.product_id = pm.new_product_id 
+          AND (
+            pv.slug COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', old_p.post_name COLLATE utf8mb4_unicode_ci, '%') 
+            OR old_p.post_name COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', pv.slug COLLATE utf8mb4_unicode_ci, '%')
+            OR LOWER(pv.slug COLLATE utf8mb4_unicode_ci) = LOWER(old_p.post_name COLLATE utf8mb4_unicode_ci)
+          )
+        WHERE old_p.post_type = 'product_variation' 
+          AND old_p.post_status IN ('publish', 'draft', 'private')
+          AND old_p.ID NOT IN (SELECT old_variant_id FROM temp_variant_mapping)
+      `);
+
+      // Log variant mapping statistics
+      const [variantMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_variant_mapping');
+      console.log(`📊 Variant mapping created: ${variantMappingCount[0].count} variants mapped`);
 
       // Step 2: Get total count of orders to migrate
       console.log('📊 Counting orders to migrate...');
@@ -156,9 +234,14 @@ module.exports = {
              LEFT JOIN vh_postmeta pm_email ON old_o.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
              WHERE old_o.post_type = 'shop_order'
              AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
-             AND pm_customer.meta_value IN (${orderIds.join(',')})
              LIMIT ${CHUNK_SIZE} OFFSET ${offset}
            `);
+
+           // Skip this chunk if no orders found
+           if (chunkOrders.length === 0) {
+             console.log(`⏭️ Skipping empty chunk ${chunkIndex + 1}/${totalChunks}`);
+             continue;
+           }
 
            // Create temporary table for this chunk in new database
            await queryInterface.sequelize.query(`
@@ -341,62 +424,125 @@ module.exports = {
           }
 
           // Step 3g: Insert order items for this chunk - Extract from WooCommerce order tables
-          const orderItemData = await crossServerMigration.fetchFromOldDb(`
-            SELECT 
-              o.ID as order_id,
-              MAX(CASE WHEN oim.meta_key = '_product_id' THEN oim.meta_value END) as product_id,
-              MAX(CASE WHEN oim.meta_key = '_variation_id' THEN oim.meta_value END) as variant_id,
-              MAX(CASE WHEN oim.meta_key = '_qty' THEN oim.meta_value END) as quantity,
-              MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) as total,
-              MAX(CASE WHEN oim.meta_key = '_line_subtotal' THEN oim.meta_value END) as subtotal
-            FROM vh_posts o
-            INNER JOIN vh_woocommerce_order_items oi ON oi.order_id = o.ID
-            INNER JOIN vh_woocommerce_order_itemmeta oim ON oim.order_item_id = oi.order_item_id
-            WHERE o.post_type = 'shop_order'
-              AND o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
-              AND o.ID IN (${chunkOrders.map(o => o.id).join(',')})
-            GROUP BY o.ID, oi.order_item_id
-          `);
+          let orderItemData = [];
+          if (chunkOrders.length > 0) {
+            orderItemData = await crossServerMigration.fetchFromOldDb(`
+              SELECT 
+                o.ID as order_id,
+                oi.order_item_name,
+                MAX(CASE WHEN oim.meta_key = '_product_id' THEN oim.meta_value END) as product_id,
+                MAX(CASE WHEN oim.meta_key = '_variation_id' THEN oim.meta_value END) as variant_id,
+                MAX(CASE WHEN oim.meta_key = '_qty' THEN oim.meta_value END) as quantity,
+                MAX(CASE WHEN oim.meta_key = '_line_total' THEN oim.meta_value END) as total,
+                MAX(CASE WHEN oim.meta_key = '_line_subtotal' THEN oim.meta_value END) as subtotal
+              FROM vh_posts o
+              INNER JOIN vh_woocommerce_order_items oi ON oi.order_id = o.ID
+              INNER JOIN vh_woocommerce_order_itemmeta oim ON oim.order_item_id = oi.order_item_id
+              WHERE o.post_type = 'shop_order'
+                AND o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+                AND o.ID IN (${chunkOrders.map(o => o.id).join(',')})
+              GROUP BY o.ID, oi.order_item_id, oi.order_item_name
+            `);
+          }
 
           // Insert order items with proper product/variant mapping
           for (const item of orderItemData) {
-            await queryInterface.sequelize.query(`
-              INSERT INTO order_items (
-                order_id, product_id, variant_id, unit, unit_price, quantity,
-                discount_price, total, createdAt, updatedAt, deletedAt
-              )
-              SELECT 
-                om.new_order_id as order_id,
-                COALESCE(pm.new_product_id, pvm.product_id, NULL) as product_id,
-                COALESCE(pvm.new_variant_id, pv.id, NULL) as variant_id,
-                'piece' as unit,
-                COALESCE(CAST(? AS DECIMAL(10,2)), 0) as unit_price,
-                COALESCE(CAST(? AS UNSIGNED), 1) as quantity,
-                COALESCE(CAST(? AS DECIMAL(10,2)), NULL) as discount_price,
-                COALESCE(CAST(? AS DECIMAL(10,2)), 0) as total,
-                old_o.date_created_gmt as createdAt,
-                old_o.date_updated_gmt as updatedAt,
-                CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deletedAt
-              FROM temp_orders_chunk old_o
-              INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
-              LEFT JOIN temp_variant_mapping pvm ON pvm.old_variant_id = CAST(? AS UNSIGNED)
-              LEFT JOIN temp_product_mapping pm ON pm.old_product_id = CAST(? AS UNSIGNED)
-              LEFT JOIN product_variants pv ON pv.id = CAST(? AS UNSIGNED)
-              WHERE old_o.id = ?
-                AND (pm.new_product_id IS NOT NULL OR pvm.product_id IS NOT NULL)
-            `, {
-              replacements: [
-                item.total || 0,
-                item.quantity || 1,
-                item.subtotal || null,
-                item.total || 0,
-                item.variant_id || null,
-                item.product_id || null,
-                item.variant_id || null,
-                item.order_id
-              ],
-              transaction
-            });
+            try {
+              // First try to get the mapped product/variant IDs
+              const [mappingResult] = await queryInterface.sequelize.query(`
+                SELECT 
+                  om.new_order_id as order_id,
+                  COALESCE(pm.new_product_id, pvm.product_id) as product_id,
+                  COALESCE(pvm.new_variant_id, pv.id) as variant_id
+                FROM temp_orders_chunk old_o
+                INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
+                LEFT JOIN temp_variant_mapping pvm ON pvm.old_variant_id = CAST(? AS UNSIGNED)
+                LEFT JOIN temp_product_mapping pm ON pm.old_product_id = CAST(? AS UNSIGNED)
+                LEFT JOIN product_variants pv ON pv.id = CAST(? AS UNSIGNED)
+                WHERE old_o.id = ?
+                  AND (pm.new_product_id IS NOT NULL OR pvm.product_id IS NOT NULL)
+              `, {
+                replacements: [
+                  item.variant_id || null,
+                  item.product_id || null,
+                  item.variant_id || null,
+                  item.order_id
+                ],
+                transaction
+              });
+
+              if (mappingResult.length > 0 && mappingResult[0].product_id) {
+                // Insert order item with valid mapping
+                await queryInterface.sequelize.query(`
+                  INSERT INTO order_items (
+                    order_id, product_id, variant_id, unit, unit_price, quantity,
+                    discount_price, total, createdAt, updatedAt, deletedAt
+                  )
+                  VALUES (?, ?, ?, 'piece', ?, ?, ?, ?, ?, ?, ?)
+                `, {
+                  replacements: [
+                    mappingResult[0].order_id,
+                    mappingResult[0].product_id,
+                    mappingResult[0].variant_id,
+                    item.total || 0,
+                    item.quantity || 1,
+                    item.subtotal || null,
+                    item.total || 0,
+                    item.date_created_gmt || new Date(),
+                    item.date_updated_gmt || new Date(),
+                    item.status && ['cancelled', 'failed'].includes(item.status) ? item.date_updated_gmt : null
+                  ],
+                  transaction
+                });
+              } else {
+                // Try to find a product by name matching as fallback
+                const [nameMatchResult] = await queryInterface.sequelize.query(`
+                  SELECT 
+                    om.new_order_id as order_id,
+                    p.id as product_id,
+                    NULL as variant_id
+                  FROM temp_orders_chunk old_o
+                  INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
+                  INNER JOIN products p ON p.name LIKE CONCAT('%', ?, '%')
+                  WHERE old_o.id = ?
+                  LIMIT 1
+                `, {
+                  replacements: [item.order_item_name || '', item.order_id],
+                  transaction
+                });
+
+                if (nameMatchResult.length > 0) {
+                  // Insert order item with name-matched product
+                  await queryInterface.sequelize.query(`
+                    INSERT INTO order_items (
+                      order_id, product_id, variant_id, unit, unit_price, quantity,
+                      discount_price, total, createdAt, updatedAt, deletedAt
+                    )
+                    VALUES (?, ?, ?, 'piece', ?, ?, ?, ?, ?, ?, ?)
+                  `, {
+                    replacements: [
+                      nameMatchResult[0].order_id,
+                      nameMatchResult[0].product_id,
+                      nameMatchResult[0].variant_id,
+                      item.total || 0,
+                      item.quantity || 1,
+                      item.subtotal || null,
+                      item.total || 0,
+                      item.date_created_gmt || new Date(),
+                      item.date_updated_gmt || new Date(),
+                      item.status && ['cancelled', 'failed'].includes(item.status) ? item.date_updated_gmt : null
+                    ],
+                    transaction
+                  });
+                } else {
+                  // Skip all unmapped items for now to avoid errors
+                  console.log(`⏭️ Skipping unmapped item: "${item.order_item_name}" for order ${item.order_id}`);
+                }
+              }
+            } catch (error) {
+              console.log(`⚠️ Failed to insert order item for order ${item.order_id}: ${error.message}`);
+              // Continue with next item instead of failing entire chunk
+            }
           }
 
           // Step 3h: Insert order logs for this chunk
