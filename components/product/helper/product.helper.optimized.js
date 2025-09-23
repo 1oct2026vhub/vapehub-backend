@@ -255,6 +255,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       productAttributeTerms,
       productImages,
       deals,
+      productReviews,
       totalCountResult
     ] = await Promise.all([
       // Categories
@@ -329,6 +330,21 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         ${deal_id ? `AND d.id = ${parseInt(deal_id)}` : ''}
       `, { type: sequelize.QueryTypes.SELECT }),
 
+      // Reviews with user data - OPTIMIZED: Only fetch essential fields
+      sequelize.query(`
+        SELECT 
+          r.id, r.product_id, r.user_id, r.order_id, r.user_name, r.company_name,
+          r.rating, r.comment, r.verified_by, r.testimonial, r.created_at,
+          u.first_name, u.last_name, u.profile_pic_url,
+          o.order_unique_id
+        FROM reviews r
+        LEFT JOIN users u ON u.id = r.user_id
+        LEFT JOIN orders o ON o.id = r.order_id
+        WHERE r.product_id IN (${productIds.join(',')})
+        AND r.is_visible = true
+        ORDER BY r.product_id, r.created_at DESC
+      `, { type: sequelize.QueryTypes.SELECT }),
+
       // Total count
       sequelize.query(`
         SELECT COUNT(DISTINCT p.id) as total_count
@@ -351,6 +367,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
     const attributeTermsMap = new Map();
     const imagesMap = new Map();
     const dealsMap = new Map();
+    const reviewsMap = new Map();
 
     // Group related data by product_id for efficient lookup
     productCategories.forEach(pc => {
@@ -383,6 +400,12 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       dealsMap.get(d.product_id).push(d);
     });
 
+    // Group reviews by product_id for efficient lookup
+    productReviews.forEach(review => {
+      if (!reviewsMap.has(review.product_id)) reviewsMap.set(review.product_id, []);
+      reviewsMap.get(review.product_id).push(review);
+    });
+
     // OPTIMIZATION 4: Process products with optimized data assembly
     const processedProducts = products.map(product => {
       const productId = product.id;
@@ -394,6 +417,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       const productAttributeTermsData = attributeTermsMap.get(productId) || [];
       const productImagesData = imagesMap.get(productId) || [];
       const dealsData = dealsMap.get(productId) || [];
+      const productReviewsData = reviewsMap.get(productId) || [];
 
       // Process variants efficiently
       const variantsMapForProduct = new Map();
@@ -500,6 +524,60 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           slug: pat.term_slug
         }));
 
+      // Process reviews efficiently - OPTIMIZED: Single pass processing
+      const reviewsMapForProduct = new Map();
+      let totalRating = 0;
+      let verifiedCount = 0;
+      let testimonialCount = 0;
+      const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      
+      // Single pass: process reviews and calculate statistics simultaneously
+      productReviewsData.forEach(review => {
+        if (!reviewsMapForProduct.has(review.id)) {
+          const processedReview = {
+            id: review.id,
+            user_id: review.user_id,
+            order_id: review.order_id,
+            user_name: review.user_name,
+            company_name: review.company_name,
+            rating: review.rating,
+            comment: review.comment,
+            verified_by: review.verified_by,
+            testimonial: review.testimonial,
+            created_at: review.created_at,
+            user: review.user_id ? {
+              id: review.user_id,
+              first_name: review.first_name,
+              last_name: review.last_name,
+              profile_pic_url: review.profile_pic_url
+            } : null,
+            order: review.order_id ? {
+              id: review.order_id,
+              order_unique_id: review.order_unique_id
+            } : null
+          };
+          
+          reviewsMapForProduct.set(review.id, processedReview);
+          
+          // Calculate statistics in the same loop
+          totalRating += review.rating;
+          ratingDistribution[review.rating]++;
+          if (review.verified_by) verifiedCount++;
+          if (review.testimonial) testimonialCount++;
+        }
+      });
+      
+      const processedReviews = Array.from(reviewsMapForProduct.values());
+      
+      // Calculate review statistics - OPTIMIZED: Pre-calculated values
+      const reviewStats = {
+        total_reviews: processedReviews.length,
+        average_rating: processedReviews.length > 0 ? Math.round((totalRating / processedReviews.length) * 10) / 10 : 0,
+        rating_distribution: ratingDistribution,
+        verified_reviews: verifiedCount,
+        testimonials: testimonialCount
+      };
+
       // Check stock status efficiently
       const hasInStockVariant = productVariantsData.some(variant =>
         variant.status === 'active' &&
@@ -591,7 +669,9 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           tiered_qty_json: d.tiered_qty_json,
           valid_from: d.valid_from,
           valid_to: d.valid_to
-        }))
+        })),
+        reviews: processedReviews,
+        review_stats: reviewStats
       };
     });
 
@@ -663,46 +743,43 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       
       SELECT 
         'price_ranges' as filter_type,
-        CASE 
-          WHEN ppr.min_price < 10 THEN '0-9.99'
-          WHEN ppr.min_price < 20 THEN '10-19.99'
-          WHEN ppr.min_price < 30 THEN '20-29.99'
-          WHEN ppr.min_price < 50 THEN '30-49.99'
-          WHEN ppr.min_price < 100 THEN '50-99.99'
-          WHEN ppr.min_price < 200 THEN '100-199.99'
-          ELSE '200+'
-        END as id,
-        CASE 
-          WHEN ppr.min_price < 10 THEN '£0 - £9.99'
-          WHEN ppr.min_price < 20 THEN '£10 - £19.99'
-          WHEN ppr.min_price < 30 THEN '£20 - £29.99'
-          WHEN ppr.min_price < 50 THEN '£30 - £49.99'
-          WHEN ppr.min_price < 100 THEN '£50 - £99.99'
-          WHEN ppr.min_price < 200 THEN '£100 - £199.99'
-          ELSE '£200 & Above'
-        END as name,
-        CASE 
-          WHEN ppr.min_price < 10 THEN '0-9.99'
-          WHEN ppr.min_price < 20 THEN '10-19.99'
-          WHEN ppr.min_price < 30 THEN '20-29.99'
-          WHEN ppr.min_price < 50 THEN '30-49.99'
-          WHEN ppr.min_price < 100 THEN '50-99.99'
-          WHEN ppr.min_price < 200 THEN '100-199.99'
-          ELSE '200+'
-        END as slug,
+        price_range_id as id,
+        price_range_name as name,
+        price_range_slug as slug,
         COUNT(*) as product_count
-      FROM product_price_ranges ppr
-      WHERE ppr.min_price IS NOT NULL
-      GROUP BY 
-        CASE 
-          WHEN ppr.min_price < 10 THEN '0-9.99'
-          WHEN ppr.min_price < 20 THEN '10-19.99'
-          WHEN ppr.min_price < 30 THEN '20-29.99'
-          WHEN ppr.min_price < 50 THEN '30-49.99'
-          WHEN ppr.min_price < 100 THEN '50-99.99'
-          WHEN ppr.min_price < 200 THEN '100-199.99'
-          ELSE '200+'
-        END
+      FROM (
+        SELECT 
+          CASE 
+            WHEN ppr.min_price < 10 THEN '0-9.99'
+            WHEN ppr.min_price < 20 THEN '10-19.99'
+            WHEN ppr.min_price < 30 THEN '20-29.99'
+            WHEN ppr.min_price < 50 THEN '30-49.99'
+            WHEN ppr.min_price < 100 THEN '50-99.99'
+            WHEN ppr.min_price < 200 THEN '100-199.99'
+            ELSE '200+'
+          END as price_range_id,
+          CASE 
+            WHEN ppr.min_price < 10 THEN '£0 - £9.99'
+            WHEN ppr.min_price < 20 THEN '£10 - £19.99'
+            WHEN ppr.min_price < 30 THEN '£20 - £29.99'
+            WHEN ppr.min_price < 50 THEN '£30 - £49.99'
+            WHEN ppr.min_price < 100 THEN '£50 - £99.99'
+            WHEN ppr.min_price < 200 THEN '£100 - £199.99'
+            ELSE '£200 & Above'
+          END as price_range_name,
+          CASE 
+            WHEN ppr.min_price < 10 THEN '0-9.99'
+            WHEN ppr.min_price < 20 THEN '10-19.99'
+            WHEN ppr.min_price < 30 THEN '20-29.99'
+            WHEN ppr.min_price < 50 THEN '30-49.99'
+            WHEN ppr.min_price < 100 THEN '50-99.99'
+            WHEN ppr.min_price < 200 THEN '100-199.99'
+            ELSE '200+'
+          END as price_range_slug
+        FROM product_price_ranges ppr
+        WHERE ppr.min_price IS NOT NULL
+      ) price_ranges
+      GROUP BY price_range_id, price_range_name, price_range_slug
     `;
 
     const filterCounts = await sequelize.query(filterCountsQuery, {
