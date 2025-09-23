@@ -194,14 +194,11 @@ module.exports.listNewProducts = async (req, res, next) => {
             ? "WHERE " + productFilterConditions.join(" AND ") 
             : "";
 
-        // Simplified main products query (no subqueries for better performance)
+        // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
-                p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, p.coil_style,
-                p.device_style, p.eliquid_capacity, p.pod_coil_style, p.pod_fill_style,
-                p.power_supply, p.nicotine_strength, p.nicotine_type, p.vg_ratio,
-                p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt
+                p.id, p.name, p.slug, p.price, p.discount_price,
+                p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY p.createdAt DESC, p.${sort_by} ${order}
@@ -261,11 +258,10 @@ module.exports.listNewProducts = async (req, res, next) => {
             dealsResult,
             attributeTermsResult
         ] = await Promise.all([
-            // Categories query
+            // Categories query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    c.id, c.updated_by, c.name, c.description, c.slug, c.parent_id, c.logo_url,
-                    c.createdAt, c.updatedAt, c.deletedAt, pc.product_id, pc.is_primary
+                    c.id, c.name, c.slug, pc.product_id, pc.is_primary
                 FROM product_categories pc
                 JOIN categories c ON pc.category_id = c.id
                 WHERE pc.product_id IN (${productIds.join(',')})
@@ -273,11 +269,10 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Brands query
+            // Brands query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    b.id, b.updated_by, b.slug, b.name, b.description, b.logo_url,
-                    b.createdAt, b.updatedAt, b.deletedAt, pb.product_id, pb.is_primary
+                    b.id, b.name, b.slug, pb.product_id, pb.is_primary
                 FROM product_brands pb
                 JOIN brands b ON pb.brand_id = b.id
                 WHERE pb.product_id IN (${productIds.join(',')})
@@ -285,45 +280,41 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Product Images query
+            // Product Images query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, updated_by, product_id, image_url, is_primary, createdAt, updatedAt, deletedAt
+                    id, product_id, image_url, is_primary
                 FROM product_images
                 WHERE product_id IN (${productIds.join(',')})
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Variants query
+            // Variants query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, slug, regular_price, price, discount_price, purchase_price,
-                    weight, length, width, height, description, barcode, stock, low_stock_threshold,
-                    stock_status, status, updated_by, created_at, updated_at, deleted_at
+                    id, product_id, price, discount_price, stock, stock_status, status
                 FROM product_variants
                 WHERE product_id IN (${productIds.join(',')}) AND status = 'active'
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Variant Images query (simplified)
+            // Variant Images query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, variant_id, image_url, is_primary
+                    variant_id, image_url, is_primary
                 FROM product_variant_images
                 WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (${productIds.join(',')}) AND status = 'active')
-                LIMIT 100
+                LIMIT 50
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Deals query (essential for UI)
+            // Deals query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    d.id, d.name, d.slug, d.image_url, d.deal_type, d.required_qty,
-                    d.get_qty, d.fixed_price, d.discount_percent, d.tiered_qty_json,
-                    d.bundle_product_ids_json, d.valid_from, d.valid_to, dp.product_id
+                    d.id, d.name, d.deal_type, d.discount_percent, dp.product_id
                 FROM deal_products dp
                 JOIN deals d ON dp.deal_id = d.id
                 WHERE dp.product_id IN (${productIds.join(',')})
@@ -335,13 +326,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Product Attribute Terms query (for puff count)
+            // Product Attribute Terms query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    pat.id, pat.product_id, pat.attribute_id, pat.term_id, pat.is_visible_page,
-                    pat.used_in_variation, pat.updated_by, pat.created_at, pat.updated_at, pat.deleted_at,
-                    a.id as attr_id, a.name as attr_name, a.type as attr_type,
-                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                    pat.product_id, pat.attribute_id, pat.term_id,
+                    a.name as attr_name,
+                    t.name as term_name
                 FROM product_attribute_terms pat
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
@@ -360,15 +350,8 @@ module.exports.listNewProducts = async (req, res, next) => {
             }
             categoriesMap.get(cat.product_id).push({
                 id: cat.id,
-                updated_by: cat.updated_by,
                 name: cat.name,
-                description: cat.description,
                 slug: cat.slug,
-                parent_id: cat.parent_id,
-                logo_url: cat.logo_url,
-                createdAt: cat.createdAt,
-                updatedAt: cat.updatedAt,
-                deletedAt: cat.deletedAt,
                 ProductCategory: {
                     is_primary: cat.is_primary
                 }
@@ -382,14 +365,8 @@ module.exports.listNewProducts = async (req, res, next) => {
             }
             brandsMap.get(brand.product_id).push({
                 id: brand.id,
-                updated_by: brand.updated_by,
-                slug: brand.slug,
                 name: brand.name,
-                description: brand.description,
-                logo_url: brand.logo_url,
-                createdAt: brand.createdAt,
-                updatedAt: brand.updatedAt,
-                deletedAt: brand.deletedAt,
+                slug: brand.slug,
                 ProductBrand: {
                     is_primary: brand.is_primary
                 }
@@ -403,13 +380,9 @@ module.exports.listNewProducts = async (req, res, next) => {
             }
             productImagesMap.get(img.product_id).push({
                 id: img.id,
-                updated_by: img.updated_by,
                 product_id: img.product_id,
                 image_url: img.image_url,
-                is_primary: img.is_primary,
-                createdAt: img.createdAt,
-                updatedAt: img.updatedAt,
-                deletedAt: img.deletedAt
+                is_primary: img.is_primary
             });
         });
 
@@ -427,7 +400,6 @@ module.exports.listNewProducts = async (req, res, next) => {
                 variantImagesMap.set(img.variant_id, []);
             }
             variantImagesMap.get(img.variant_id).push({
-                id: img.id,
                 variant_id: img.variant_id,
                 image_url: img.image_url,
                 is_primary: img.is_primary
@@ -442,17 +414,8 @@ module.exports.listNewProducts = async (req, res, next) => {
             dealsMap.get(deal.product_id).push({
                 id: deal.id,
                 name: deal.name,
-                slug: deal.slug,
-                image_url: deal.image_url,
                 deal_type: deal.deal_type,
-                required_qty: deal.required_qty,
-                get_qty: deal.get_qty,
-                fixed_price: deal.fixed_price,
-                discount_percent: deal.discount_percent,
-                tiered_qty_json: deal.tiered_qty_json,
-                bundle_product_ids_json: deal.bundle_product_ids_json,
-                valid_from: deal.valid_from,
-                valid_to: deal.valid_to
+                discount_percent: deal.discount_percent
             });
         });
 
@@ -462,25 +425,15 @@ module.exports.listNewProducts = async (req, res, next) => {
                 attributeTermsMap.set(pat.product_id, []);
             }
             attributeTermsMap.get(pat.product_id).push({
-                id: pat.id,
                 product_id: pat.product_id,
                 attribute_id: pat.attribute_id,
                 term_id: pat.term_id,
-                is_visible_page: pat.is_visible_page,
-                used_in_variation: pat.used_in_variation,
-                updated_by: pat.updated_by,
-                created_at: pat.created_at,
-                updated_at: pat.updated_at,
-                deleted_at: pat.deletedAt,
                 attribute: {
-                    id: pat.attr_id,
-                    name: pat.attr_name,
-                    type: pat.attr_type
+                    name: pat.attr_name
                 },
                 term: {
                     id: pat.term_id,
-                    name: pat.term_name,
-                    slug: pat.term_slug
+                    name: pat.term_name
                 }
             });
         });
@@ -563,7 +516,6 @@ module.exports.listNewProducts = async (req, res, next) => {
 
             return {
                 id: product.id,
-                updated_by: product.updated_by,
                 name: product.name,
                 slug: product.slug,
                 price: minPriceVariant ? minPriceVariant.price : parseFloat(product.price) || 0,
@@ -571,22 +523,8 @@ module.exports.listNewProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 is_new: isNewProduct,
-                battery_capacity: product.battery_capacity,
-                coil_style: product.coil_style,
-                device_style: product.device_style,
-                eliquid_capacity: product.eliquid_capacity,
-                pod_coil_style: product.pod_coil_style,
-                pod_fill_style: product.pod_fill_style,
-                power_supply: product.power_supply,
-                nicotine_strength: product.nicotine_strength,
-                nicotine_type: product.nicotine_type,
-                vg_ratio: product.vg_ratio,
-                vaping_style: product.vaping_style,
-                bottle_size: product.bottle_size,
                 status: product.status,
                 createdAt: product.createdAt,
-                updatedAt: product.updatedAt,
-                deletedAt: product.deletedAt,
                 Categories: categoriesMap.get(product.id) || [],
                 Brands: brandsMap.get(product.id) || [],
                 ProductImages: productImagesMap.get(product.id) || [],
@@ -3064,17 +3002,8 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             dealsMap.get(deal.product_id).push({
                 id: deal.id,
                 name: deal.name,
-                slug: deal.slug,
-                image_url: deal.image_url,
                 deal_type: deal.deal_type,
-                required_qty: deal.required_qty,
-                get_qty: deal.get_qty,
-                fixed_price: deal.fixed_price,
-                discount_percent: deal.discount_percent,
-                tiered_qty_json: deal.tiered_qty_json,
-                bundle_product_ids_json: deal.bundle_product_ids_json,
-                valid_from: deal.valid_from,
-                valid_to: deal.valid_to
+                discount_percent: deal.discount_percent
             });
         });
 
