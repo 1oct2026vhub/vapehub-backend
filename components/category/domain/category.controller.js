@@ -432,7 +432,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
 
 module.exports.getCategoryBySlug = async (req, res, next) => {
     try {
-        const { productId } = req.query;
+        const { productId, homepage } = req.query;
 
         if (productId) {
             // Get category ID for this product
@@ -475,11 +475,16 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     statusCode: 400,
                 };
             }
-            
-            // Use optimized category-specific query instead of fetchProducts
-            const optimizedResult = await fetchCategoryProducts(category.id, req.query);
-            
-            return successResponse(res, optimizedResult, "Success");
+            if(homepage){
+                // Use optimized category-specific query instead of fetchProducts
+                const optimizedResult = await fetchCategoryProducts(category.id, req.query);
+                return successResponse(res, optimizedResult, "Success");
+            }
+            else{
+                // Use fetchProducts from product helper for non-homepage requests
+                const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
+                return successResponse(res, {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination}, "Success");
+            }
         }
         // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
         const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
@@ -494,7 +499,6 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             pagination
         }, "Success");
     } catch (error) {
-        console.log("🚀 ~ module.exports.getCategoryBySlug= ~ error:", error)
         return errorResponse(res, error, error.message);
     }
 }
