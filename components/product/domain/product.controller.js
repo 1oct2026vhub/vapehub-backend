@@ -1833,6 +1833,23 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             order: [['createdAt', 'DESC']]
         });
 
+        // 11. Get reviews for the product with raw SQL
+        const reviewsResult = await Product.sequelize.query(`
+            SELECT 
+                r.id, r.product_id, r.user_id, r.order_id, r.user_name, r.company_name,
+                r.rating, r.comment, r.verified_by, r.testimonial, r.created_at,
+                u.first_name, u.last_name, u.profile_pic_url,
+                o.order_unique_id
+            FROM reviews r
+            LEFT JOIN users u ON u.id = r.user_id
+            LEFT JOIN orders o ON o.id = r.order_id
+            WHERE r.product_id = :product_id
+            ORDER BY r.created_at DESC
+        `, {
+            replacements: { product_id },
+            type: Product.sequelize.QueryTypes.SELECT
+        });
+
         // OPTIMIZED: Process raw SQL results into structured data
         // Create maps for efficient data lookup
         const variantAttributesMap = new Map();
@@ -1987,6 +2004,58 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 v.stock > 0 && v.stock <= v.low_stock_threshold
             ).length,
             out_of_stock: filteredVariants.filter(v => v.stock <= 0).length
+        };
+
+        // Process reviews for the product - OPTIMIZED: Single pass processing
+        const reviewsMapForProduct = new Map();
+        let totalRating = 0;
+        let verifiedCount = 0;
+        let testimonialCount = 0;
+        const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        
+        // Single pass: process reviews and calculate statistics simultaneously
+        reviewsResult.forEach(review => {
+            if (!reviewsMapForProduct.has(review.id)) {
+                const processedReview = {
+                    id: review.id,
+                    user_id: review.user_id,
+                    order_id: review.order_id,
+                    user_name: review.user_name,
+                    company_name: review.company_name,
+                    rating: review.rating,
+                    comment: review.comment,
+                    verified_by: review.verified_by,
+                    testimonial: review.testimonial,
+                    created_at: review.created_at,
+                    user: review.user_id ? {
+                        first_name: review.first_name,
+                        last_name: review.last_name,
+                        profile_pic_url: review.profile_pic_url
+                    } : null,
+                    order: review.order_id ? {
+                        order_unique_id: review.order_unique_id
+                    } : null
+                };
+                
+                reviewsMapForProduct.set(review.id, processedReview);
+                
+                // Calculate statistics in the same loop
+                totalRating += review.rating;
+                ratingDistribution[review.rating]++;
+                if (review.verified_by) verifiedCount++;
+                if (review.testimonial) testimonialCount++;
+            }
+        });
+        
+        const processedReviews = Array.from(reviewsMapForProduct.values());
+        
+        // Calculate review statistics - OPTIMIZED: Pre-calculated values
+        const reviewStats = {
+            total_reviews: processedReviews.length,
+            average_rating: processedReviews.length > 0 ? Math.round((totalRating / processedReviews.length) * 10) / 10 : 0,
+            rating_distribution: ratingDistribution,
+            verified_reviews: verifiedCount,
+            testimonials: testimonialCount
         };
 
         // Prepare variant information with images (OPTIMIZED)
@@ -2248,7 +2317,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 price: minPriceVariant ? minPriceVariant.price : product.price,
                 regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
                 discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
-                min_price_variant: minPriceVariant
+                min_price_variant: minPriceVariant,
+                reviews: processedReviews,
+                review_stats: reviewStats
             },
             variants: finalVariants.map(variant => ({
                 ...variant,
