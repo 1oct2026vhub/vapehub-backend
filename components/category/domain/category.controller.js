@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { sequelize, Category, Product, ProductCategory, ProductBrand, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct } = require("../../../models");
+const { sequelize, Category, Product, ProductCategory, ProductBrand, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, Review, User, Order } = require("../../../models");
 const { fetchProducts } = require("../../product/helper/product.helper");
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
@@ -228,6 +228,33 @@ const fetchCategoryProducts = async (categoryId, query) => {
         const totalPages = Math.ceil(totalCount / parsedLimit);
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
 
+        // Fetch reviews for all products in batch (similar to fetchProducts implementation)
+        const productIds = productsResult.map(p => p.id);
+        let productReviews = [];
+        
+        if (productIds.length > 0) {
+            productReviews = await sequelize.query(`
+                SELECT 
+                    r.id, r.product_id, r.user_id, r.order_id, r.user_name, r.company_name,
+                    r.rating, r.comment, r.verified_by, r.testimonial, r.created_at,
+                    u.first_name, u.last_name, u.profile_pic_url,
+                    o.order_unique_id
+                FROM reviews r
+                LEFT JOIN users u ON u.id = r.user_id
+                LEFT JOIN orders o ON o.id = r.order_id
+                WHERE r.product_id IN (${productIds.join(',')})
+                AND r.is_visible = true
+                ORDER BY r.product_id, r.created_at DESC
+            `, { type: sequelize.QueryTypes.SELECT });
+        }
+
+        // Group reviews by product_id for efficient lookup
+        const reviewsMap = new Map();
+        productReviews.forEach(review => {
+            if (!reviewsMap.has(review.product_id)) reviewsMap.set(review.product_id, []);
+            reviewsMap.get(review.product_id).push(review);
+        });
+
         // Group product images by product_id
         const productImagesMap = new Map();
         productImagesResult.forEach(image => {
@@ -288,6 +315,63 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 const isWithinLast30Days = new Date(product.createdAt) >= thirtyDaysAgo;
                 const isNewProduct = product.is_new || isWithinLast30Days;
 
+                // Process reviews for this product (similar to fetchProducts implementation)
+                const productReviewsData = reviewsMap.get(product.id) || [];
+                
+                // Process reviews efficiently - OPTIMIZED: Single pass processing
+                const reviewsMapForProduct = new Map();
+                let totalRating = 0;
+                let verifiedCount = 0;
+                let testimonialCount = 0;
+                const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                
+                // Single pass: process reviews and calculate statistics simultaneously
+                productReviewsData.forEach(review => {
+                    if (!reviewsMapForProduct.has(review.id)) {
+                        const processedReview = {
+                            id: review.id,
+                            user_id: review.user_id,
+                            order_id: review.order_id,
+                            user_name: review.user_name,
+                            company_name: review.company_name,
+                            rating: review.rating,
+                            comment: review.comment,
+                            verified_by: review.verified_by,
+                            testimonial: review.testimonial,
+                            created_at: review.created_at,
+                            user: review.user_id ? {
+                                id: review.user_id,
+                                first_name: review.first_name,
+                                last_name: review.last_name,
+                                profile_pic_url: review.profile_pic_url
+                            } : null,
+                            order: review.order_id ? {
+                                id: review.order_id,
+                                order_unique_id: review.order_unique_id
+                            } : null
+                        };
+                        
+                        reviewsMapForProduct.set(review.id, processedReview);
+                        
+                        // Calculate statistics in the same loop
+                        totalRating += review.rating;
+                        ratingDistribution[review.rating]++;
+                        if (review.verified_by) verifiedCount++;
+                        if (review.testimonial) testimonialCount++;
+                    }
+                });
+                
+                const processedReviews = Array.from(reviewsMapForProduct.values());
+                
+                // Calculate review statistics - OPTIMIZED: Pre-calculated values
+                const reviewStats = {
+                    total_reviews: processedReviews.length,
+                    average_rating: processedReviews.length > 0 ? Math.round((totalRating / processedReviews.length) * 10) / 10 : 0,
+                    rating_distribution: ratingDistribution,
+                    verified_reviews: verifiedCount,
+                    testimonials: testimonialCount
+                };
+
                 return {
                     id: product.id,
                     updated_by: product.updated_by,
@@ -313,7 +397,10 @@ const fetchCategoryProducts = async (categoryId, query) => {
                             image_url: product.variant_image
                         } : null
                     },
-                    deals: product.deal_data && product.deal_data !== null ? [product.deal_data] : []
+                    deals: product.deal_data && product.deal_data !== null ? [product.deal_data] : [],
+                    // Add review data and statistics
+                    reviews: processedReviews,
+                    review_stats: reviewStats
                 };
             });
 
