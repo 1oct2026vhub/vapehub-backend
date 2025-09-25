@@ -315,6 +315,203 @@ module.exports.getProductById = async (req, res, next) => {
     try {
         const { id } = req.params; 
 
+        // Use Promise.all for parallel execution of optimized queries
+        const [product, categories, brands, images, attributeTerms, variants] = await Promise.all([
+            // Main product query - minimal data first
+            Product.findByPk(id, {
+                paranoid: false,
+                benchmark: false,
+                logging: false,
+                attributes: [
+                    'id', 'updated_by', 'name', 'slug', 'description', 'price', 'discount_price', 
+                    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
+                    'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
+                    'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 
+                    'vg_ratio', 'vaping_style', 'bottle_size', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                ]
+            }),
+            
+            // Categories query
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: Category,
+                    as: "Categories",
+                    paranoid: false,
+                    through: { attributes: ['is_primary'] },
+                    attributes: ['id', 'updated_by', 'name', 'description', 'slug', 'parent_id', 'logo_url', 'createdAt', 'updatedAt', 'deletedAt']
+                }],
+                attributes: []
+            }).then(result => result?.Categories || []),
+            
+            // Brands query
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: Brand,
+                    as: "Brands",
+                    paranoid: false,
+                    through: { attributes: ['is_primary'] },
+                    attributes: ['id', 'updated_by', 'slug', 'name', 'description', 'logo_url', 'createdAt', 'updatedAt', 'deletedAt']
+                }],
+                attributes: []
+            }).then(result => result?.Brands || []),
+            
+            // Images query
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: ProductImage,
+                    as: "ProductImages",
+                    attributes: ['id', 'updated_by', 'product_id', 'image_url', 'is_primary', 'createdAt', 'updatedAt', 'deletedAt']
+                }],
+                attributes: []
+            }).then(result => result?.ProductImages || []),
+            
+            // Attribute terms query with optimized includes
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: ProductAttributeTerm,
+                    as: "productAttributeTerms",
+                    attributes: [
+                        "id", "product_id", "attribute_id", "term_id", 
+                        "is_visible_page", "used_in_variation"
+                    ],
+                    include: [  
+                        {
+                            model: Attribute,
+                            as: "attribute",
+                            attributes: ["id", "name", "slug"]
+                        },
+                        {
+                            model: AttributeTerm,
+                            as: "term",
+                            attributes: ["id", "name", "slug"]
+                        }
+                    ]
+                }],
+                attributes: []
+            }).then(result => result?.productAttributeTerms || []),
+            
+            // Variants query with optimized includes
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: ProductVariant,
+                    as: "variants",
+                    attributes: [
+                        "id", "product_id", "slug", "price", "regular_price", "discount_price",
+                        "purchase_price", "weight", "length", "width", "height", "description",
+                        "barcode", "stock", "low_stock_threshold", "stock_status", "status"
+                    ],
+                    include: [
+                        {
+                            model: ProductVariantImage,
+                            as: "variantImages",
+                            attributes: ["id", "variant_id", "image_url", "is_primary"]
+                        },
+                        {
+                            model: ProductVariantAttribute,
+                            as: "variantAttributes",
+                            attributes: [
+                                "id", "variant_id", "attribute_id", "term_id", 
+                                "is_visible", "used_in_variation"
+                            ],
+                            include: [
+                                {
+                                    model: AttributeTerm,
+                                    as: "term",
+                                    attributes: ["id", "name", "slug"]
+                                },
+                                {
+                                    model: Attribute,
+                                    as: "attribute",
+                                    attributes: ["id", "name", "type"]
+                                }
+                            ]
+                        }
+                    ]
+                }],
+                attributes: []
+            }).then(result => result?.variants || [])
+        ]);
+
+        // If the product does not exist, return a 404 error response
+        if (!product) {
+            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Manually construct the product object with all related data
+        const productData = product.toJSON();
+        productData.Categories = categories;
+        productData.Brands = brands;
+        productData.ProductImages = images;
+        productData.productAttributeTerms = attributeTerms;
+        productData.variants = variants;
+
+        // Process variants to update stock_status based on low stock threshold
+        // Optimize the loop with early exit conditions
+        if (variants && variants.length > 0) {
+            for (const variant of variants) {
+                // Update stock_status based on stock level and low_stock_threshold
+                if (variant.stock <= 0) {
+                    variant.stock_status = 'out_of_stock';
+                } else if (variant.stock <= variant.low_stock_threshold) {
+                    variant.stock_status = 'low_stock';
+                }
+            }
+        }
+
+        // Extract largest puff count from number-of-puffs attribute
+        // Optimize the puff count extraction with early exit
+        let puffCount = null;
+        if (attributeTerms && attributeTerms.length > 0) {
+            let maxPuffCount = 0;
+            let maxPuffTerm = null;
+            
+            for (const pat of attributeTerms) {
+                if (pat.attribute && pat.attribute.name === 'number-of-puffs' && pat.term) {
+                    // Find all numbers in the string
+                    const puffMatches = pat.term.name.match(/(\d+)/g);
+                    if (puffMatches) {
+                        // Use the largest number in the string
+                        const count = Math.max(...puffMatches.map(Number));
+                        if (count > maxPuffCount) {
+                            maxPuffCount = count;
+                            maxPuffTerm = pat.term.name;
+                        }
+                    }
+                }
+            }
+            
+            if (maxPuffCount > 0) {
+                if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                    puffCount = `~${maxPuffCount} puffs`;
+                } else {
+                    puffCount = maxPuffTerm;
+                }
+            }
+        }
+
+        // Add puff count to the product response
+        const productResponse = {
+            ...productData,
+            puff_count: puffCount
+        };
+        
+        // Return success response with the retrieved product data
+        return successResponse(res, productResponse, "Product retrieved successfully");
+    } catch (error) {
+        // Handle any unexpected errors and return an appropriate error response
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getProductByIdOriginal = async (req, res, next) => {
+    try {
+        const { id } = req.params; 
+
         // Fetch the product by ID along with related data (Categories, Brands, Images, Flavors, Variants, and Attributes)
         const product = await Product.findByPk(id, {
             paranoid: false,
