@@ -1312,15 +1312,13 @@ const fetchProducts = async (query, status = 'published') => {
 // Helper to get the minimum price variant for a product
 function getMinPriceVariant(product) {
   if (!product || !product.variants || product.variants.length === 0) return null;
-  
   // Filter variants to exclude out-of-stock variants
   const availableVariants = product.variants.filter(variant => 
     variant.status === 'active' && 
-    parseFloat(variant.price) > 0 && 
-    variant.stock_status !== 'out_of_stock' && 
-    (variant.stock === null || variant.stock > 0)
+    parseFloat(variant.price) > 0 
+    // && variant.stock_status !== 'out_of_stock' && 
+    // (variant.stock === null || variant.stock > 0)
   );
-  
   // If no variants are in stock, return null to avoid showing the product
   if (availableVariants.length === 0) return null;
   const minPrice = Math.min(...availableVariants.map(variant => parseFloat(variant.price) || 0));
@@ -1328,14 +1326,12 @@ function getMinPriceVariant(product) {
     const vPrice = parseFloat(v.price) || 0;
     return vPrice === minPrice ? v : minV;
   }, null);
-  
   let variantImage = (minPriceVariant.variantImages && minPriceVariant.variantImages.length > 0)
     ? minPriceVariant.variantImages[0]
     : null;
   if (!variantImage && product.ProductImages && product.ProductImages.length > 0) {
     variantImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
   }
-  
   return {
     id: minPriceVariant.id,
     slug: minPriceVariant.slug,
