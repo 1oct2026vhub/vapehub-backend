@@ -208,12 +208,14 @@ module.exports.checkout = async (req, res, next) => {
             validityMessage = ''
         }
 
-        // Get mail subscription data
+        // Get mail subscription data and loyalty points redemption info
         let mailSubscriptionData = null;
+        let loyaltyRedemptionInfo = null;
         const user = await User.findOne({
             where: { id: userId },
-            attributes: ['id', 'email']
+            attributes: ['id', 'email', 'loyalty_points']
         });
+        
         if (user && user.email) {
             // Get user's mail subscription
             const mailSubscription = await MailSubscription.findOne({
@@ -238,6 +240,40 @@ module.exports.checkout = async (req, res, next) => {
             }
         }
 
+        // Get loyalty points redemption information
+        const loyaltySettings = await LoyaltyPointsSettings.findOne({
+            where: { status: true }
+        });
+
+        if (loyaltySettings && user) {
+            const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
+            const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
+            let redemptionAmount = 0;
+            let redemptionType = 'none';
+
+            if (canRedeem) {
+                if (loyaltySettings.loyalty_amount_type === 'percentage') {
+                    redemptionAmount = loyaltySettings.loyalty_amount;
+                    redemptionType = 'percentage';
+                } else {
+                    redemptionAmount = loyaltySettings.loyalty_amount;
+                    redemptionType = 'fixed';
+                }
+            }
+
+            loyaltyRedemptionInfo = {
+                user_points: user.loyalty_points || 0,
+                minimum_points_required: loyaltySettings.minimum_points_redemption,
+                can_redeem: canRedeem,
+                points_needed: pointsNeeded,
+                redemption_amount: redemptionAmount,
+                redemption_type: redemptionType,
+                points_value: loyaltySettings.points_value,
+                min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                amount_divisor: loyaltySettings.amount_divisor
+            };
+        }
+
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
@@ -260,6 +296,7 @@ module.exports.checkout = async (req, res, next) => {
             referralDiscount,
             referralMessage,
             mail_subscription_data: mailSubscriptionData,
+            loyalty_redemption_info: loyaltyRedemptionInfo,
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
