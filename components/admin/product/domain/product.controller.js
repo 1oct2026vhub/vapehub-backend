@@ -502,6 +502,7 @@ module.exports.getProductById = async (req, res, next) => {
         
         // Return success response with the retrieved product data
         return successResponse(res, productResponse, "Product retrieved successfully");
+        
     } catch (error) {
         // Handle any unexpected errors and return an appropriate error response
         return errorResponse(res, error, error.message);
