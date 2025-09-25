@@ -3885,6 +3885,15 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 }));
             const flavor_count = flavorTerms.length;
 
+            // Add out_of_stock assessment (same logic as fetchProducts)
+            const hasInStockVariant = variants && variants.some(variant =>
+                variant.status === 'active' &&
+                variant.stock > 0 &&
+                variant.stock_status === 'in_stock' &&
+                variant.price !== null &&
+                parseFloat(variant.price) > 0
+            );
+
             // Group attributes for the response
             const attributeTermsMapForProduct = new Map();
             productAttributeTerms.forEach((pat) => {
@@ -3917,6 +3926,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 flavor_count: flavor_count,
+                out_of_stock: !hasInStockVariant,
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: categories.length > 0 ? categories[0] : null,
