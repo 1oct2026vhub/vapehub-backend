@@ -31,7 +31,6 @@ module.exports = {
             }
             const canRedeem = user.loyalty_points >= settings.minimum_points_redemption;
             const pointsNeeded = Math.max(0, settings.minimum_points_redemption - user.loyalty_points);
-
             let redemptionAmount = 0;
             let redemptionType = 'none';
 
@@ -83,6 +82,7 @@ module.exports = {
                 points_value: settings.points_value,
                 min_amount_for_loyalty_points: settings.min_amount_for_loyalty_points,
                 mail_subscription_data: mailSubscriptionData,
+                amount_divisor: settings.amount_divisor,
                 // total_points_value: (user.loyalty_points || 0) * settings.points_value
             };
 
