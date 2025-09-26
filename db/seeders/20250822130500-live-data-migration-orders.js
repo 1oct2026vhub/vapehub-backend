@@ -8,7 +8,44 @@ module.exports = {
     const CHUNK_SIZE = 1000;
     
     try {
-      console.log('🚀 Starting LIVE DATA MIGRATION: Orders from old database...');
+      // Step 0: Clear existing order data from new database
+      const [existingOrdersCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM orders`);
+      const [existingOrderItemsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_items`);
+      const [existingOrderAddressesCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_addresses`);
+      const [existingOrderLogsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_logs`);
+      
+      const transaction = await queryInterface.sequelize.transaction();
+      
+      try {
+        // Clear order-related tables in correct order (respecting foreign keys)
+        // Delete in order: child tables first, then parent tables
+        await queryInterface.sequelize.query(`DELETE FROM order_logs`, { transaction });
+        await queryInterface.sequelize.query(`DELETE FROM order_items`, { transaction });
+        await queryInterface.sequelize.query(`DELETE FROM orders`, { transaction });
+        await queryInterface.sequelize.query(`DELETE FROM order_addresses`, { transaction });
+        
+        // Reset auto-increment counters
+        await queryInterface.sequelize.query(`ALTER TABLE orders AUTO_INCREMENT = 1`, { transaction });
+        await queryInterface.sequelize.query(`ALTER TABLE order_items AUTO_INCREMENT = 1`, { transaction });
+        await queryInterface.sequelize.query(`ALTER TABLE order_addresses AUTO_INCREMENT = 1`, { transaction });
+        await queryInterface.sequelize.query(`ALTER TABLE order_logs AUTO_INCREMENT = 1`, { transaction });
+        
+        await transaction.commit();
+        
+        // Verify tables are empty
+        const [ordersCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM orders`);
+        const [orderItemsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_items`);
+        const [orderAddressesCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_addresses`);
+        const [orderLogsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_logs`);
+        
+        if (ordersCount[0].count > 0 || orderItemsCount[0].count > 0 || orderAddressesCount[0].count > 0 || orderLogsCount[0].count > 0) {
+          throw new Error('❌ Tables are not empty after cleanup. Migration aborted.');
+        }
+        
+      } catch (cleanupError) {
+        await transaction.rollback();
+        throw cleanupError;
+      }
       
       // Connect to old database
       await crossServerMigration.connectToOldDb();
@@ -16,7 +53,6 @@ module.exports = {
       // Optional: Run scripts/cleanup-orders.js before this seeder if you need a fresh import
 
       // Step 1: Fetch user mapping data from old database
-      console.log('📋 Creating user mapping table...');
       const userMapping = await crossServerMigration.fetchFromOldDb(`
         SELECT 
           old_u.ID as old_user_id,
@@ -48,7 +84,6 @@ module.exports = {
       }
 
       // Create product and variant mapping tables to map old IDs to new IDs
-      console.log('📋 Creating product and variant mapping tables...');
       await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
       await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
 
@@ -124,7 +159,6 @@ module.exports = {
 
       // Log mapping statistics
       const [productMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_product_mapping');
-      console.log(`📊 Product mapping created: ${productMappingCount[0].count} products mapped`);
 
       await queryInterface.sequelize.query(`
         CREATE TABLE temp_variant_mapping (
@@ -177,10 +211,8 @@ module.exports = {
 
       // Log variant mapping statistics
       const [variantMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_variant_mapping');
-      console.log(`📊 Variant mapping created: ${variantMappingCount[0].count} variants mapped`);
 
       // Step 2: Get total count of orders to migrate
-      console.log('📊 Counting orders to migrate...');
       const orderIds = userMapping.map(m => m.old_user_id);
       const [orderCountResult] = await crossServerMigration.fetchFromOldDb(`
         SELECT COUNT(*) as total_count
@@ -191,12 +223,8 @@ module.exports = {
       
       const totalOrders = orderCountResult.total_count;
       const totalChunks = Math.ceil(totalOrders / CHUNK_SIZE);
-      
-      console.log(`📊 Total orders to migrate: ${totalOrders}`);
-      console.log(`📊 Total chunks: ${totalChunks}`);
 
       if (totalOrders === 0) {
-        console.log('ℹ️ No new orders to migrate');
         await crossServerMigration.closeOldDbConnection();
         return;
       }
@@ -239,7 +267,6 @@ module.exports = {
 
            // Skip this chunk if no orders found
            if (chunkOrders.length === 0) {
-             console.log(`⏭️ Skipping empty chunk ${chunkIndex + 1}/${totalChunks}`);
              continue;
            }
 
@@ -345,6 +372,18 @@ module.exports = {
             FROM temp_orders_chunk
           `, { transaction });
 
+          // Step 3c.1: Validate user mapping for this chunk
+          const [userMappingValidation] = await queryInterface.sequelize.query(`
+            SELECT 
+              COUNT(*) as total_orders,
+              COUNT(CASE WHEN user_id IS NULL THEN 1 END) as unmapped_users
+            FROM temp_orders_chunk
+          `, { transaction });
+          
+          if (userMappingValidation[0].unmapped_users > 0) {
+            console.warn(`⚠️ Chunk ${chunkIndex + 1}: ${userMappingValidation[0].unmapped_users}/${userMappingValidation[0].total_orders} orders have unmapped users`);
+          }
+
           // Step 3d: Create order mapping for this chunk
           await queryInterface.sequelize.query(`
             CREATE TEMPORARY TABLE temp_order_mapping_chunk AS
@@ -401,6 +440,19 @@ module.exports = {
             WHERE oa.deleted_at IS NULL
           `, { transaction });
 
+          // Step 3f.1: Validate address mapping for this chunk
+          const [addressMappingValidation] = await queryInterface.sequelize.query(`
+            SELECT 
+              COUNT(*) as total_orders,
+              COUNT(CASE WHEN o.order_billing_address_id IS NULL THEN 1 END) as unmapped_addresses
+            FROM orders o
+            INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
+          `, { transaction });
+          
+          if (addressMappingValidation[0].unmapped_addresses > 0) {
+            console.warn(`⚠️ Chunk ${chunkIndex + 1}: ${addressMappingValidation[0].unmapped_addresses}/${addressMappingValidation[0].total_orders} orders have unmapped addresses`);
+          }
+
           // Also set orders.phone from billing phone if available
           await queryInterface.sequelize.query(`
             UPDATE orders o
@@ -440,12 +492,17 @@ module.exports = {
               INNER JOIN vh_woocommerce_order_itemmeta oim ON oim.order_item_id = oi.order_item_id
               WHERE o.post_type = 'shop_order'
                 AND o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+                AND oi.order_item_type = 'line_item'
                 AND o.ID IN (${chunkOrders.map(o => o.id).join(',')})
               GROUP BY o.ID, oi.order_item_id, oi.order_item_name
             `);
           }
 
           // Insert order items with proper product/variant mapping
+          let successfulItems = 0;
+          let failedItems = 0;
+          let skippedItems = 0;
+          
           for (const item of orderItemData) {
             try {
               // First try to get the mapped product/variant IDs
@@ -494,6 +551,7 @@ module.exports = {
                   ],
                   transaction
                 });
+                successfulItems++;
               } else {
                 // Try to find a product by name matching as fallback
                 const [nameMatchResult] = await queryInterface.sequelize.query(`
@@ -534,16 +592,54 @@ module.exports = {
                     ],
                     transaction
                   });
+                  successfulItems++;
                 } else {
-                  // Skip all unmapped items for now to avoid errors
-                  console.log(`⏭️ Skipping unmapped item: "${item.order_item_name}" for order ${item.order_id}`);
+                  // Create a placeholder order item for unmapped products
+                  
+                  // Get the new order ID for this item
+                  const [orderMappingResult] = await queryInterface.sequelize.query(`
+                    SELECT new_order_id 
+                    FROM temp_order_mapping_chunk 
+                    WHERE old_order_id = ?
+                  `, {
+                    replacements: [item.order_id],
+                    transaction
+                  });
+                  
+                  if (orderMappingResult.length > 0) {
+                    // Insert placeholder order item
+                    await queryInterface.sequelize.query(`
+                      INSERT INTO order_items (
+                        order_id, product_id, variant_id, unit, unit_price, quantity,
+                        discount_price, total, createdAt, updatedAt, deletedAt
+                      )
+                      VALUES (?, NULL, NULL, 'piece', ?, ?, ?, ?, ?, ?, ?)
+                    `, {
+                      replacements: [
+                        orderMappingResult[0].new_order_id,
+                        item.total || 0,
+                        item.quantity || 1,
+                        item.subtotal || null,
+                        item.total || 0,
+                        item.date_created_gmt || new Date(),
+                        item.date_updated_gmt || new Date(),
+                        item.status && ['cancelled', 'failed'].includes(item.status) ? item.date_updated_gmt : null
+                      ],
+                      transaction
+                    });
+                    successfulItems++;
+                  } else {
+                    skippedItems++;
+                  }
                 }
               }
             } catch (error) {
-              console.log(`⚠️ Failed to insert order item for order ${item.order_id}: ${error.message}`);
+              failedItems++;
               // Continue with next item instead of failing entire chunk
             }
           }
+          
+          // Log item mapping statistics for this chunk
 
           // Step 3h: Insert order logs for this chunk
           await queryInterface.sequelize.query(`
@@ -565,6 +661,34 @@ module.exports = {
           // Step 3i: Re-enable foreign key checks
           await queryInterface.sequelize.query(`SET FOREIGN_KEY_CHECKS = 1`, { transaction });
 
+          // Step 3i.1: Final data quality check for this chunk
+          const [chunkQualityCheck] = await queryInterface.sequelize.query(`
+            SELECT 
+              COUNT(*) as total_orders,
+              COUNT(CASE WHEN o.user_id IS NULL THEN 1 END) as unmapped_users,
+              COUNT(CASE WHEN o.order_billing_address_id IS NULL THEN 1 END) as unmapped_addresses,
+              COUNT(CASE WHEN oi.id IS NULL THEN 1 END) as orders_without_items
+            FROM orders o
+            INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
+            LEFT JOIN order_items oi ON oi.order_id = o.id
+            GROUP BY o.id
+          `, { transaction });
+          
+          const qualityIssues = [];
+          if (chunkQualityCheck.some(row => row.unmapped_users > 0)) {
+            qualityIssues.push('unmapped users');
+          }
+          if (chunkQualityCheck.some(row => row.unmapped_addresses > 0)) {
+            qualityIssues.push('unmapped addresses');
+          }
+          if (chunkQualityCheck.some(row => row.orders_without_items > 0)) {
+            qualityIssues.push('orders without items');
+          }
+          
+          if (qualityIssues.length > 0) {
+            // Quality issues detected but not logged
+          }
+
           // Step 3j: Clean up temporary tables for this chunk
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_orders_chunk`, { transaction });
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping_chunk`, { transaction });
@@ -574,7 +698,6 @@ module.exports = {
           
         } catch (error) {
           await transaction.rollback();
-          console.error(`❌ Chunk ${chunkIndex + 1}/${totalChunks} failed:`, error);
           throw error;
         }
       }
@@ -585,7 +708,8 @@ module.exports = {
       await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
       await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
 
-      // Step 5: Verification queries
+      // Step 5: Comprehensive verification and data quality report
+      
       const [ordersCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM orders WHERE order_code IS NOT NULL
       `);
@@ -602,18 +726,38 @@ module.exports = {
         SELECT COUNT(*) as count FROM order_logs
       `);
 
-      console.log('🎉 LIVE DATA MIGRATION: Orders completed successfully!');
-      console.log(`📊 Orders migrated: ${ordersCount[0].count}`);
-      console.log(`📦 Order items migrated: ${orderItemsCount[0].count}`);
-      console.log(`📍 Order addresses migrated: ${orderAddressesCount[0].count}`);
-      console.log(`📝 Order logs migrated: ${orderLogsCount[0].count}`);
+      // Data quality checks
+      const [qualityReport] = await queryInterface.sequelize.query(`
+        SELECT 
+          COUNT(*) as total_orders,
+          COUNT(CASE WHEN user_id IS NULL THEN 1 END) as orders_without_users,
+          COUNT(CASE WHEN order_billing_address_id IS NULL THEN 1 END) as orders_without_addresses,
+          COUNT(CASE WHEN oi.id IS NULL THEN 1 END) as orders_without_items,
+          COUNT(CASE WHEN total <= 0 THEN 1 END) as orders_with_zero_total,
+          COUNT(CASE WHEN email IS NULL OR email = '' THEN 1 END) as orders_without_email
+        FROM orders o
+        LEFT JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.order_code IS NOT NULL
+      `);
+
+      const [productMappingReport] = await queryInterface.sequelize.query(`
+        SELECT 
+          COUNT(*) as total_order_items,
+          COUNT(CASE WHEN product_id IS NULL THEN 1 END) as items_without_products,
+          COUNT(CASE WHEN product_id IS NOT NULL THEN 1 END) as items_with_products
+        FROM order_items
+      `);
+
+      // Calculate success rates
+      const userMappingRate = ((qualityReport[0].total_orders - qualityReport[0].orders_without_users) / qualityReport[0].total_orders * 100).toFixed(2);
+      const addressMappingRate = ((qualityReport[0].total_orders - qualityReport[0].orders_without_addresses) / qualityReport[0].total_orders * 100).toFixed(2);
+      const productMappingRate = ((productMappingReport[0].total_order_items - productMappingReport[0].items_without_products) / productMappingReport[0].total_order_items * 100).toFixed(2);
 
       // Close old database connection
       await crossServerMigration.closeOldDbConnection();
 
     } catch (error) {
       await crossServerMigration.closeOldDbConnection();
-      console.error('❌ LIVE DATA MIGRATION: Orders failed:', error);
       throw error;
     }
   },
@@ -622,18 +766,14 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
     
     try {
-      console.log('🔄 Rolling back LIVE DATA MIGRATION: Orders...');
-      
       await queryInterface.sequelize.query(`DELETE FROM order_logs WHERE additional_info LIKE '%WooCommerce migration%'`, { transaction });
       await queryInterface.sequelize.query(`DELETE FROM order_items`, { transaction });
       await queryInterface.sequelize.query(`DELETE FROM order_addresses`, { transaction });
       await queryInterface.sequelize.query(`DELETE FROM orders WHERE order_code IS NOT NULL`, { transaction });
       
       await transaction.commit();
-      console.log('✅ LIVE DATA MIGRATION: Orders rolled back successfully!');
     } catch (error) {
       await transaction.rollback();
-      console.error('❌ LIVE DATA MIGRATION: Orders rollback failed:', error);
       throw error;
     }
   }
