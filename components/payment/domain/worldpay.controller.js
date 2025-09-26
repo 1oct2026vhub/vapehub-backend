@@ -1864,8 +1864,8 @@ const handlePaymentError = async (order, webhookData) => {
                 userEmail: order.email,
                 timestamp: new Date().toISOString()
             });
-            
-            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
             
             logger.info({
                 type: 'payment_failure_email_success_worldpay',
@@ -1887,9 +1887,9 @@ const handlePaymentError = async (order, webhookData) => {
                     message: emailError.message,
                     stack: emailError.stack,
                     name: emailError.name
-                },
-                timestamp: new Date().toISOString()
-            });
+            },
+            timestamp: new Date().toISOString()
+        });
         }
 
         logger.logInfo({
@@ -2246,8 +2246,8 @@ const handleSentForRefund = async (order, webhookData) => {
                 userEmail: order.user.email,
                 timestamp: new Date().toISOString()
             });
-            
-            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+
+        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
             
             logger.info({
                 type: 'refund_confirmation_email_success_worldpay',
@@ -2578,10 +2578,43 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         used_at: new Date()
                     });
                 } else {
-                    console.log("🚀 ~ handleWorldpayPaymentSuccess ~ existingCouponUsage:", existingCouponUsage.id)
+                    logger.info({
+                        type: 'worldpay_coupon_usage_exists',
+                        message: 'Coupon usage already exists for this user and coupon',
+                        orderId: order.id,
+                        couponId: order.coupon_id,
+                        userId: order.user_id,
+                        existingCouponUsageId: existingCouponUsage.id,
+                        timestamp: new Date().toISOString()
+                    });
                 }
             } catch (error) {
-                console.log("🚀 ~ handleWorldpayPaymentSuccess ~ error:", error)
+                logger.error({
+                    type: 'worldpay_coupon_processing_error',
+                    message: 'Error processing coupon for WorldPay order',
+                    orderId: order.id,
+                    couponId: order.coupon_id,
+                    userId: order.user_id,
+                    error: {
+                        message: error.message,
+                        stack: error.stack,
+                        name: error.name
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                
+                utilsLogger.logError({
+                    type: 'worldpay_coupon_processing_error',
+                    message: 'Error processing coupon for WorldPay order',
+                    orderId: order.id,
+                    couponId: order.coupon_id,
+                    userId: order.user_id,
+                    error: {
+                        message: error.message,
+                        stack: error.stack,
+                        name: error.name
+                    }
+                });
                 // Don't throw the error, just log it and continue
             }
         }
@@ -2989,6 +3022,23 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
         });
 
         // Send success email
+        logger.info({
+            type: 'worldpay_email_preparation_start',
+            message: 'Starting WorldPay email preparation',
+            orderId: order.id,
+            orderCode: order.order_code,
+            userEmail: order.user.email,
+            timestamp: new Date().toISOString()
+        });
+        
+        utilsLogger.logInfo({
+            type: 'worldpay_email_preparation_start',
+            message: 'Starting WorldPay email preparation',
+            orderId: order.id,
+            orderCode: order.order_code,
+            userEmail: order.user.email
+        });
+        
         const emailData = {
             emailTypes: 'ORDER_CONFIRMATION',
             to: order.user.email,
@@ -3038,7 +3088,47 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             }
         };
 
+        logger.info({
+            type: 'worldpay_email_data_prepared',
+            message: 'WorldPay email data prepared',
+            orderId: order.id,
+            orderCode: order.order_code,
+            userEmail: order.user.email,
+            emailData: emailData,
+            timestamp: new Date().toISOString()
+        });
+        
+        utilsLogger.logInfo({
+            type: 'worldpay_email_data_prepared',
+            message: 'WorldPay email data prepared',
+            orderId: order.id,
+            orderCode: order.order_code,
+            userEmail: order.user.email,
+            emailData: emailData
+        });
+
         try {
+            logger.info({
+                type: 'worldpay_email_sending_start',
+                message: 'About to send WorldPay email',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                emailTestMode: process.env.EMAIL_TEST_MODE,
+                emailHost: process.env.EMAIL_HOST,
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'worldpay_email_sending_start',
+                message: 'About to send WorldPay email',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                emailTestMode: process.env.EMAIL_TEST_MODE,
+                emailHost: process.env.EMAIL_HOST
+            });
+            
             // Log email environment configuration for WorldPay
             logger.info({
                 type: 'email_environment_check_worldpay',
@@ -3086,7 +3176,53 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 emailData: emailData
             });
 
-            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+            logger.info({
+                type: 'worldpay_sendemail_call',
+                message: 'Calling sendEmail function for WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                sendEmailParams: {
+                    to: emailData.to,
+                    emailTypes: emailData.emailTypes,
+                    context: emailData.context
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'worldpay_sendemail_call',
+                message: 'Calling sendEmail function for WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                sendEmailParams: {
+                    to: emailData.to,
+                    emailTypes: emailData.emailTypes,
+                    context: emailData.context
+                }
+            });
+            
+            const emailResult = await sendEmail(emailData.to, emailData.emailTypes, emailData.context, []);
+            
+            logger.info({
+                type: 'worldpay_sendemail_success',
+                message: 'WorldPay email sent successfully',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                emailResult: emailResult,
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'worldpay_sendemail_success',
+                message: 'WorldPay email sent successfully',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                emailResult: emailResult
+            });
             
             // Log successful email sending
             logger.info({
@@ -3107,6 +3243,33 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             });
             
         } catch (emailError) {
+            logger.error({
+                type: 'worldpay_email_sending_failed',
+                message: 'WorldPay email sending failed',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logError({
+                type: 'worldpay_email_sending_failed',
+                message: 'WorldPay email sending failed',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                }
+            });
+            
             // Log email failure
             logger.error({
                 type: 'order_confirmation_email_failure_worldpay',
@@ -3153,7 +3316,32 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                     amount: amount,
                 }}}, "Success");
     } catch (error) {
-        console.log(error);
+        // Log the error with comprehensive details
+        logger.error({
+            type: 'worldpay_payment_success_handler_error',
+            message: 'Error in WorldPay payment success handler',
+            error: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            },
+            requestBody: req.body,
+            timestamp: new Date().toISOString()
+        });
+        
+        utilsLogger.logError({
+            type: 'worldpay_payment_success_handler_error',
+            message: 'Error in WorldPay payment success handler',
+            error: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            },
+            requestBody: req.body
+        });
+        
         return errorResponse(res, error, error.message);
     }
 };
@@ -3444,6 +3632,32 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                     amount: amount,
                 }}}, "Success");
     } catch (error) {
+        // Log the main error with comprehensive details
+        logger.error({
+            type: 'worldpay_payment_success_error',
+            message: 'Error in WorldPay payment success handler',
+            error: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            },
+            requestBody: req.body,
+            timestamp: new Date().toISOString()
+        });
+        
+        utilsLogger.logError({
+            type: 'worldpay_payment_success_error',
+            message: 'Error in WorldPay payment success handler',
+            error: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            },
+            requestBody: req.body
+        });
+        
         return errorResponse(res, error, error.message);
     }
 };
