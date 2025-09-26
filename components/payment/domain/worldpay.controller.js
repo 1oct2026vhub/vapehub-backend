@@ -6,6 +6,7 @@ const { createNotification } = require('../../notification/helper/notification.h
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
 const crypto = require("crypto");
+const utilsLogger = require('../../../utils/logger');
 
 const convertAmountToDecimal = (amount, currencyCode) => {
     // Convert amount from pence/cents to pounds/dollars
@@ -1839,33 +1840,57 @@ const handlePaymentError = async (order, webhookData) => {
             emailTypes: 'ORDER_CANCELLATION',
             to: order.user.email,
             context: {
-                userName: order.user?.first_name || order.email.split('@')[0],
+                userName: order.user?.first_name || order.email?.split('@')[0] || 'Customer',
                 orderId: order.id,
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
-                orderDate: order.createdAt.toLocaleDateString(),
+                orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
                 status: 'cancelled',
                 message: 'Payment error occurred. Please try again.',
                 reason: 'Payment error occurred via Worldpay',
-                eventId: webhookData.eventId,
-                transactionReference: webhookData.eventDetails.transactionReference,
-                eventDate: webhookData.eventDetails.date,
-                retryPaymentLink: `${process.env.FRONTEND_URL}/payment/retry/${order.order_code}`
+                eventId: webhookData.eventId || 'N/A',
+                transactionReference: webhookData.eventDetails?.transactionReference || 'N/A',
+                eventDate: webhookData.eventDetails?.date || new Date().toISOString(),
+                retryPaymentLink: `${process.env.FRONTEND_URL || 'https://vapehub.com'}/payment/retry/${order.order_code}`
             }
         };
 
-        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-        logger.logInfo({
-            type: 'worldpay_webhook_email_sent',
-            message: 'Worldpay webhook sent failure email',
-            email_summary: {
-                order_id: order.id,
-                user_email: order.email,
-                amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode
-            },
-            timestamp: new Date().toISOString()
-        });
+        try {
+            logger.info({
+                type: 'payment_failure_email_attempt_worldpay',
+                message: 'Attempting to send payment failure email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.email,
+                timestamp: new Date().toISOString()
+            });
+            
+            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+            
+            logger.info({
+                type: 'payment_failure_email_success_worldpay',
+                message: 'Payment failure email sent successfully via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.email,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (emailError) {
+            logger.error({
+                type: 'payment_failure_email_failure_worldpay',
+                message: 'Failed to send payment failure email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         logger.logInfo({
             type: 'worldpay_webhook_processing_completed',
@@ -2200,19 +2225,54 @@ const handleSentForRefund = async (order, webhookData) => {
                 orderId: order.id,
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
-                orderDate: order.createdAt.toLocaleDateString(),
+                orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
                 status: 'refunded',
-                refundAmount: convertedAmount.value,
-                refundCurrency: convertedAmount.currencyCode,
-                transactionId: webhookData.eventDetails.transactionReference,
-                refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization,
-                octReference: webhookData.eventDetails.octReference,
+                refundAmount: convertedAmount.value || 0,
+                refundCurrency: convertedAmount.currencyCode || 'GBP',
+                transactionId: webhookData.eventDetails?.transactionReference || 'N/A',
+                refundAuthorization: webhookData.eventDetails?.refund?.onlineRefundAuthorization || 'N/A',
+                octReference: webhookData.eventDetails?.octReference || 'N/A',
                 reason: 'Refund processed successfully via Worldpay',
                 currentDate: new Date().toLocaleDateString()
             }
         };
 
-        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        try {
+            logger.info({
+                type: 'refund_confirmation_email_attempt_worldpay',
+                message: 'Attempting to send refund confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                timestamp: new Date().toISOString()
+            });
+            
+            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+            
+            logger.info({
+                type: 'refund_confirmation_email_success_worldpay',
+                message: 'Refund confirmation email sent successfully via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (emailError) {
+            logger.error({
+                type: 'refund_confirmation_email_failure_worldpay',
+                message: 'Failed to send refund confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         logger.logInfo({
             type: 'worldpay_refund_processed',
@@ -2937,19 +2997,19 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 orderId: order.id,
                 orderUniqueId: order.order_unique_id,
                 orderCode: order.order_code,
-                orderDate: order.createdAt.toLocaleDateString(),
+                orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
                 status: order.status,
-                shippingMethod: order.shippingMethod?.shipping_method || '',
+                shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
                 shippingCost: order.shipping_cost || 0,
                 totalAmount: order.total || 0,
                 discountPrice: order.discount_price || 0,
                 loyaltyDiscount: order.loyalty_discount || 0,
-                items: order.orderItems.map(item => ({
-                    name: item.variant ? `${item.product?.name || ''} - ${item.variant?.slug || ''}` : item.product?.name || '',
+                items: order.orderItems ? order.orderItems.map(item => ({
+                    name: item.variant ? `${item.product?.name || 'Product'} - ${item.variant?.slug || 'Variant'}` : (item.product?.name || 'Product'),
                     quantity: item.quantity || 0,
                     price: item.unit_price || 0,
                     total: item.total || 0
-                })),
+                })) : [],
                 shippingAddress: order.orderShippingAddress ? {
                     name: order.orderShippingAddress.name || '',
                     last_name: order.orderShippingAddress.last_name || '',
@@ -2959,7 +3019,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                     post_code: order.orderShippingAddress.post_code || '',
                     country: order.orderShippingAddress.country || '',
                     phone: order.orderShippingAddress.phone || ''
-                } : null,
+                } : {},
                 billingAddress: order.orderBillingAddress ? {
                     name: order.orderBillingAddress.name || '',
                     last_name: order.orderBillingAddress.last_name || '',
@@ -2969,16 +3029,117 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                     post_code: order.orderBillingAddress.post_code || '',
                     country: order.orderBillingAddress.country || '',
                     phone: order.orderBillingAddress.phone || ''
-                } : null,
+                } : {},
                 paymentMethod: 'Worldpay',
-                transactionId: orderCode || '',
-                amount: amount,
-                currency: currency,
+                transactionId: orderCode || 'N/A',
+                amount: amount || 0,
+                currency: currency || 'GBP',
                 ...(order.mailSubscription_discount > 0 && { mailSubscriptionDiscount: order.mailSubscription_discount })
             }
         };
 
-        await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+        try {
+            // Log email environment configuration for WorldPay
+            logger.info({
+                type: 'email_environment_check_worldpay',
+                message: 'Email environment configuration for WorldPay',
+                emailTestMode: process.env.EMAIL_TEST_MODE,
+                emailHost: process.env.EMAIL_HOST,
+                emailPort: process.env.EMAIL_PORT,
+                emailUsername: process.env.EMAIL_USERNAME ? 'SET' : 'NOT_SET',
+                emailPassword: process.env.EMAIL_PASSWORD ? 'SET' : 'NOT_SET',
+                emailNoReplySender: process.env.EMAIL_NO_REPLY_SENDER,
+                hostUrl: process.env.HOST_URL,
+                frontendUrl: process.env.FRONTEND_URL,
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'email_environment_check_worldpay',
+                message: 'Email environment configuration for WorldPay',
+                emailTestMode: process.env.EMAIL_TEST_MODE,
+                emailHost: process.env.EMAIL_HOST,
+                emailPort: process.env.EMAIL_PORT,
+                emailUsername: process.env.EMAIL_USERNAME ? 'SET' : 'NOT_SET',
+                emailPassword: process.env.EMAIL_PASSWORD ? 'SET' : 'NOT_SET',
+                emailNoReplySender: process.env.EMAIL_NO_REPLY_SENDER,
+                hostUrl: process.env.HOST_URL,
+                frontendUrl: process.env.FRONTEND_URL
+            });
+
+            // Log email attempt
+            logger.info({
+                type: 'order_confirmation_email_attempt_worldpay',
+                message: 'Attempting to send order confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'order_confirmation_email_attempt_worldpay',
+                message: 'Attempting to send order confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                emailData: emailData
+            });
+
+            await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+            
+            // Log successful email sending
+            logger.info({
+                type: 'order_confirmation_email_success_worldpay',
+                message: 'Order confirmation email sent successfully via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logInfo({
+                type: 'order_confirmation_email_success_worldpay',
+                message: 'Order confirmation email sent successfully via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email
+            });
+            
+        } catch (emailError) {
+            // Log email failure
+            logger.error({
+                type: 'order_confirmation_email_failure_worldpay',
+                message: 'Failed to send order confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            utilsLogger.logError({
+                type: 'order_confirmation_email_failure_worldpay',
+                message: 'Failed to send order confirmation email via WorldPay',
+                orderId: order.id,
+                orderCode: order.order_code,
+                userEmail: order.user.email,
+                error: {
+                    message: emailError.message,
+                    stack: emailError.stack,
+                    name: emailError.name
+                },
+                emailData: emailData
+            });
+            
+            // Log the error but don't fail the payment
+            // The order processing should continue even if email fails
+        }
+
         return successResponse(res, {
             message: "payment successfull",
             data: {
