@@ -2407,6 +2407,26 @@ const handleRefundFailed = async (order, webhookData) => {
 
 module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
     try {
+        // Log function entry with request details
+        logger.info({
+            type: 'worldpay_payment_success_start',
+            message: 'WorldPay payment success handler started',
+            requestBody: req.body,
+            orderCode: req.body?.orderCode,
+            currency: req.body?.currency,
+            amount: req.body?.amount,
+            timestamp: new Date().toISOString()
+        });
+        
+        utilsLogger.logInfo({
+            type: 'worldpay_payment_success_start',
+            message: 'WorldPay payment success handler started',
+            requestBody: req.body,
+            orderCode: req.body?.orderCode,
+            currency: req.body?.currency,
+            amount: req.body?.amount
+        });
+        
         const { orderCode, currency, amount } = req.body;
         const order = await Order.findOne({
             where: { 
