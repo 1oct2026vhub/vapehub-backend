@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
-const logger = require('../../../utils/logger');
+const logger = require('../../../library/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
