@@ -36,40 +36,30 @@ const router = express.Router();
  *               description:
  *                 type: string
  *                 description: Detailed description of the shipping method
+ *               display_text:
+ *                 type: string
+ *                 description: Full display text for the shipping method (e.g., "Royal Mail Tracked 48 - 2 to 4 working days")
  *               shipping_cost:
  *                 type: number
  *                 description: Base cost of shipping in the base currency
- *               min_order_total:
- *                 type: number
- *                 description: Minimum order total required for this shipping method
- *               max_order_total:
- *                 type: number
- *                 description: Maximum order total for this shipping method
- *               free_shipping_threshold:
- *                 type: number
- *                 description: Order total threshold for free shipping
- *               shipping_rules:
- *                 type: array
- *                 description: Array of shipping cost rules based on order total ranges
- *                 items:
- *                   type: object
- *                   properties:
- *                     min_total:
- *                       type: number
- *                       description: Minimum order total for this rule
- *                     max_total:
- *                       type: number
- *                       description: Maximum order total for this rule
- *                     shipping_cost:
- *                       type: number
- *                       description: Shipping cost for this order total range
- *               is_active:
+ *               method_order:
+ *                 type: integer
+ *                 description: Order/priority of the shipping method for display
+ *               is_enabled:
  *                 type: boolean
- *                 description: Whether the shipping method is active
+ *                 description: Whether the shipping method is enabled/active
+ *               service_code:
+ *                 type: string
+ *                 description: Service code for shipping carrier (e.g., "fedex_2day")
+ *               carrier_code:
+ *                 type: string
+ *                 description: Carrier code for shipping method (e.g., "fedex")
  *               api_key:
  *                 type: string
+ *                 description: API key for shipping provider
  *               api_secret:
  *                 type: string
+ *                 description: API secret for shipping provider
  *     responses:
  *       201:
  *         description: Created successfully
@@ -149,40 +139,30 @@ router.get(
  *               description:
  *                 type: string
  *                 description: Detailed description of the shipping method
+ *               display_text:
+ *                 type: string
+ *                 description: Full display text for the shipping method (e.g., "Royal Mail Tracked 48 - 2 to 4 working days")
  *               shipping_cost:
  *                 type: number
  *                 description: Base cost of shipping in the base currency
- *               min_order_total:
- *                 type: number
- *                 description: Minimum order total required for this shipping method
- *               max_order_total:
- *                 type: number
- *                 description: Maximum order total for this shipping method
- *               free_shipping_threshold:
- *                 type: number
- *                 description: Order total threshold for free shipping
- *               shipping_rules:
- *                 type: array
- *                 description: Array of shipping cost rules based on order total ranges
- *                 items:
- *                   type: object
- *                   properties:
- *                     min_total:
- *                       type: number
- *                       description: Minimum order total for this rule
- *                     max_total:
- *                       type: number
- *                       description: Maximum order total for this rule
- *                     shipping_cost:
- *                       type: number
- *                       description: Shipping cost for this order total range
- *               is_active:
+ *               method_order:
+ *                 type: integer
+ *                 description: Order/priority of the shipping method for display
+ *               is_enabled:
  *                 type: boolean
- *                 description: Whether the shipping method is active
+ *                 description: Whether the shipping method is enabled/active
+ *               service_code:
+ *                 type: string
+ *                 description: Service code for shipping carrier (e.g., "fedex_2day")
+ *               carrier_code:
+ *                 type: string
+ *                 description: Carrier code for shipping method (e.g., "fedex")
  *               api_key:
  *                 type: string
+ *                 description: API key for shipping provider
  *               api_secret:
  *                 type: string
+ *                 description: API secret for shipping provider
  *     responses:
  *       200:
  *         description: Updated successfully
@@ -323,6 +303,150 @@ router.post(
     authMiddleware(true),
     validateRequest(shippingMethodValidators.calculate),
     shippingMethodController.calculateShippingCost
+);
+
+/**
+ * @swagger
+ * /api/admin/shipping-methods/{id}/toggle-status:
+ *   post:
+ *     summary: Toggle shipping method enabled/disabled status
+ *     description: Toggles the is_enabled status of a shipping method
+ *     tags:
+ *       - ADMIN - Shipping Methods
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: The ID of the shipping method to toggle
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ *     responses:
+ *       200:
+ *         description: Status toggled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     is_enabled:
+ *                       type: boolean
+ *                       example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping method disabled successfully"
+ *       401:
+ *         description: Unauthorized (Invalid or missing token)
+ *       404:
+ *         description: Shipping method not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+    "/:id/toggle-status",
+    authMiddleware(true),
+    validateRequest(shippingMethodValidators.getById),
+    shippingMethodController.toggleShippingMethodStatus
+);
+
+/**
+ * @swagger
+ * /api/admin/shipping-methods/update-order:
+ *   post:
+ *     summary: Update method order for multiple shipping methods
+ *     description: Updates the method_order for multiple shipping methods in bulk
+ *     tags:
+ *       - ADMIN - Shipping Methods
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - method_orders
+ *             properties:
+ *               method_orders:
+ *                 type: array
+ *                 description: Array of shipping method orders to update
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - id
+ *                     - method_order
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: ID of the shipping method
+ *                       example: 1
+ *                     method_order:
+ *                       type: integer
+ *                       description: New order position for the shipping method
+ *                       example: 1
+ *                 example:
+ *                   - id: 1
+ *                     method_order: 1
+ *                   - id: 2
+ *                     method_order: 2
+ *                   - id: 3
+ *                     method_order: 3
+ *     responses:
+ *       200:
+ *         description: Method orders updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       shipping_method:
+ *                         type: string
+ *                         example: "Standard Delivery"
+ *                       method_order:
+ *                         type: integer
+ *                         example: 1
+ *                       is_enabled:
+ *                         type: boolean
+ *                         example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Method orders updated successfully"
+ *       400:
+ *         description: Bad Request - Invalid method orders array
+ *       401:
+ *         description: Unauthorized (Invalid or missing token)
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+    "/update-order",
+    authMiddleware(true),
+    validateRequest(shippingMethodValidators.updateOrder),
+    shippingMethodController.updateMethodOrder
 );
 
 module.exports = router;
