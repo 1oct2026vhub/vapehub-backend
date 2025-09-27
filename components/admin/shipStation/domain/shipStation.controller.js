@@ -47,6 +47,7 @@ async function createShipStationOrder(order) {
             })) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
+            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
         };
         // console.log("shipStationOrder>>>>>>", shipStationOrder);
         // Create order in ShipStation
@@ -748,7 +749,7 @@ async function testCreateShipStationOrder(req, res, next) {
                 {
                     model: Order.sequelize.models.ShippingMethod,
                     as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
                 },
                 {
                     model: Order.sequelize.models.OrderItem,
@@ -861,7 +862,7 @@ async function getOrderDataById(req, res, next) {
                 {
                     model: Order.sequelize.models.ShippingMethod,
                     as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
                 },
                 {
                     model: Order.sequelize.models.PaymentMethod,
