@@ -48,6 +48,28 @@ module.exports = (sequelize, DataTypes) => {
             },
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,
+            description: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Description of the shipping method'
+            },
+            method_order: {
+                type: DataTypes.INTEGER,
+                allowNull: true,
+                defaultValue: 0,
+                comment: 'Order/priority of the shipping method for display'
+            },
+            is_enabled: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: true,
+                comment: 'Whether the shipping method is enabled/active'
+            },
+            display_text: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Full display text for the shipping method (e.g., "Royal Mail Tracked 48 - 2 to 4 working days")'
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,
