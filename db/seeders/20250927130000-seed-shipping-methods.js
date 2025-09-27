@@ -13,6 +13,7 @@ module.exports = {
         is_enabled: true,
         service_code: 'royal_mail_tracked_48',
         carrier_code: 'royal_mail',
+        requestedShippingService: 'Royal Mail Tracked 48',
         createdAt: new Date(),
         updatedAt: new Date()
       },
@@ -25,6 +26,7 @@ module.exports = {
         is_enabled: true,
         service_code: 'royal_mail_tracked_24',
         carrier_code: 'royal_mail',
+        requestedShippingService: 'Royal Mail Tracked 24',
         createdAt: new Date(),
         updatedAt: new Date()
       },
@@ -37,6 +39,7 @@ module.exports = {
         is_enabled: true,
         service_code: 'dpd_next_day',
         carrier_code: 'dpd',
+        requestedShippingService: 'DPD Next Day Delivery',
         createdAt: new Date(),
         updatedAt: new Date()
       },
@@ -49,6 +52,7 @@ module.exports = {
         is_enabled: true,
         service_code: 'royal_mail_special_delivery',
         carrier_code: 'royal_mail',
+        requestedShippingService: 'Royal Mail Next Day Special Delivery',
         createdAt: new Date(),
         updatedAt: new Date()
       }

@@ -405,9 +405,36 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                     attributes: ['id', 'first_name', 'last_name', 'email']
                 },
                 {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
+                    model: Order.sequelize.models.OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                },
+                {
                     model: ShippingMethod,
                     as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code']
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
+                },
+                {
+                    model: Order.sequelize.models.OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'quantity', 'unit_price'],
+                    include: [
+                        {
+                            model: Order.sequelize.models.Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'slug']
+                        },
+                        {
+                            model: Order.sequelize.models.ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price', 'weight']
+                        }
+                    ]
                 }
             ]
         });

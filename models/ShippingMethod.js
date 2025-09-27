@@ -70,6 +70,11 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
                 comment: 'Full display text for the shipping method (e.g., "Royal Mail Tracked 48 - 2 to 4 working days")'
             },
+            requestedShippingService: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Shipping service name for ShipStation integration (e.g., "Standard Delivery", "Royal Mail Tracked 24")'
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,
