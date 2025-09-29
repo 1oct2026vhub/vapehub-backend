@@ -950,6 +950,33 @@ module.exports.updateProduct = async (req, res, next) => {
                 );
             }
         }
+        // Check for duplicate slug if slug is provided
+        if (cleanSlug) {
+            const existingProductSlug = await Product.findOne({
+                where: {
+                    slug: cleanSlug,
+                    id: { [Op.ne]: id } // Exclude current product
+                },
+                transaction
+            });
+
+            if (existingProductSlug) {
+                await transaction.rollback();
+                return errorResponse(
+                    res, 
+                    { 
+                        message: "This slug already exists in another product",
+                        existing_product: {
+                            id: existingProductSlug.id,
+                            name: existingProductSlug.name,
+                            slug: existingProductSlug.slug
+                        }
+                    }, 
+                    "Duplicate product slug", 
+                    400
+                );
+            }
+        }
 
         // Validate categories if provided
         if (category_ids && category_ids.length > 0) {
