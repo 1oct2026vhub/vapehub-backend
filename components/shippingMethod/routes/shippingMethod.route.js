@@ -55,6 +55,44 @@ router.get("/", authenticateJWT, shippingMethodController.getAllShippingMethods)
 
 /**
  * @swagger
+ * /api/shipping-method/display:
+ *   get:
+ *     summary: Get shipping methods display text (Public API)
+ *     description: Retrieve only display_text and id for shipping methods (no authentication required)
+ *     tags:
+ *       - Shipping Method
+ *     responses:
+ *       200:
+ *         description: Shipping methods display text retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping methods display text retrieved successfully"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       display_text:
+ *                         type: string
+ *                         example: "Royal Mail Tracked 48 - 2 to 4 working days"
+ *       500:
+ *         description: Internal Server Error
+ */
+router.get("/display", shippingMethodController.getShippingMethodsDisplay);
+
+/**
+ * @swagger
  * /api/shipping-method/available:
  *   get:
  *     summary: Get available shipping methods for cart
@@ -100,6 +138,44 @@ router.get("/", authenticateJWT, shippingMethodController.getAllShippingMethods)
  *         description: Internal Server Error
  */
 router.get("/available", authenticateJWT, shippingMethodController.getAvailableShippingMethods);
+
+/**
+ * @swagger
+ * /api/shipping-method/display:
+ *   get:
+ *     summary: Get shipping methods display text (Public API)
+ *     description: Retrieve only display_text and id for shipping methods (no authentication required)
+ *     tags:
+ *       - Shipping Method
+ *     responses:
+ *       200:
+ *         description: Shipping methods display text retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Shipping methods display text retrieved successfully"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       display_text:
+ *                         type: string
+ *                         example: "Royal Mail Tracked 48 - 2 to 4 working days"
+ *       500:
+ *         description: Internal Server Error
+ */
+router.get("/display", shippingMethodController.getShippingMethodsDisplay);
 
 /**
  * @swagger
