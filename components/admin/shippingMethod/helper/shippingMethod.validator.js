@@ -48,6 +48,12 @@ const shippingMethodValidators = {
 
     calculate: [
         check("order_total").isFloat({ min: 0 }).withMessage("Order total must be a positive number")
+    ],
+
+    updateOrder: [
+        check("method_orders").isArray().withMessage("Method orders must be an array"),
+        check("method_orders.*.id").isInt({ min: 1 }).withMessage("Shipping method ID must be a positive integer"),
+        check("method_orders.*.method_order").isInt({ min: 0 }).withMessage("Method order must be a non-negative integer")
     ]
 };
 

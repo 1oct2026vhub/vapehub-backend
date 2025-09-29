@@ -23,6 +23,27 @@ module.exports.getAllShippingMethods = async (req, res, next) => {
 };
 
 /**
+ * Get shipping methods display text only (Public API)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+module.exports.getShippingMethodsDisplay = async (req, res, next) => {
+    try {
+        const shippingMethods = await ShippingMethod.findAll({
+            where: { is_enabled: true },
+            attributes: ['id', 'display_text'],
+            order: [['method_order', 'ASC']]
+        });
+
+        return successResponse(res, shippingMethods, 'Shipping methods display text retrieved successfully');
+    } catch (error) {
+        logger.error('Error in getShippingMethodsDisplay:', error);
+        return errorResponse(res, error, 'Failed to retrieve shipping methods display text');
+    }
+};
+
+/**
  * Apply shipping method to cart
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object

@@ -247,6 +247,12 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
         let maxQuantity = null;
         let description = '';
 
+        console.log(`🔍 Processing deal: ${oldDeal.title} (ID: ${oldDeal.id})`);
+        console.log(`📊 Raw data - product_adjustments: ${oldDeal.product_adjustments}`);
+        console.log(`📊 Raw data - cart_adjustments: ${oldDeal.cart_adjustments}`);
+        console.log(`📊 Raw data - bulk_adjustments: ${oldDeal.bulk_adjustments}`);
+        console.log(`📊 Raw data - set_adjustments: ${oldDeal.set_adjustments}`);
+
         // Try to extract discount info from various adjustment fields
         const adjustments = [
           oldDeal.product_adjustments,
@@ -255,14 +261,46 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
           oldDeal.set_adjustments
         ].filter(adj => adj && adj !== '[]' && adj !== '{}');
 
+        console.log(`🔧 Found ${adjustments.length} non-empty adjustments to parse`);
+
         for (const adjustment of adjustments) {
           try {
             const parsed = JSON.parse(adjustment);
-            if (parsed.type) {
+            console.log(`✅ Parsed adjustment:`, JSON.stringify(parsed, null, 2));
+            
+            // Check for set_adjustments structure (product_cumulative)
+            if (parsed.operator === 'product_cumulative' && parsed.ranges) {
+              console.log(`🎯 Found product_cumulative operator with ranges`);
+              
+              // Get the first range (usually "1")
+              const rangeKeys = Object.keys(parsed.ranges);
+              if (rangeKeys.length > 0) {
+                const firstRangeKey = rangeKeys[0];
+                const firstRange = parsed.ranges[firstRangeKey];
+                
+                if (firstRange) {
+                  // Extract required_qty from "from" field
+                  minQuantity = firstRange.from ? parseInt(firstRange.from) : null;
+                  maxQuantity = firstRange.from ? parseInt(firstRange.from) : null; // Same as required_qty for "buy N for fixed price"
+                  
+                  // Extract fixed_price from "value" field
+                  if (firstRange.value) {
+                    discountValue = parseFloat(firstRange.value);
+                    discountType = 'fixed';
+                  }
+                  
+                  console.log(`📦 Extracted - required_qty: ${minQuantity}, get_qty: ${maxQuantity}, fixed_price: ${discountValue}`);
+                }
+              }
+            }
+            
+            // Fallback to old logic for other adjustment types
+            if (parsed.type && !minQuantity) {
               discountType = parsed.type === 'percentage' ? 'percentage' : 'fixed';
               discountValue = parsed.value || 0;
+              console.log(`💰 Fallback discount type: ${discountType}, value: ${discountValue}`);
             }
-            if (parsed.ranges && Array.isArray(parsed.ranges)) {
+            if (parsed.ranges && Array.isArray(parsed.ranges) && !minQuantity) {
               const firstRange = parsed.ranges[0];
               if (firstRange) {
                 minQuantity = firstRange.from || null;
@@ -273,11 +311,27 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
                 if (firstRange.type) {
                   discountType = firstRange.type === 'percentage' ? 'percentage' : 'fixed';
                 }
+                console.log(`📦 Fallback quantity range: ${minQuantity} to ${maxQuantity}`);
               }
             }
           } catch (e) {
-            // Ignore parsing errors
+            console.log(`❌ Failed to parse adjustment: ${adjustment}`, e.message);
           }
+        }
+
+        // Set default values if parsing failed
+        if (minQuantity === null) {
+          minQuantity = 1; // Default minimum quantity
+          console.log(`🔧 Using default minQuantity: ${minQuantity}`);
+        }
+        if (maxQuantity === null) {
+          maxQuantity = 1; // Default maximum quantity
+          console.log(`🔧 Using default maxQuantity: ${maxQuantity}`);
+        }
+        if (discountValue === 0) {
+          discountValue = 10; // Default 10% discount
+          discountType = 'percentage';
+          console.log(`🔧 Using default discount: ${discountValue}%`);
         }
 
         // Generate description from title and rules
@@ -291,7 +345,7 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
           id: oldDeal.id,
           name: oldDeal.title,
           slug: oldDeal.title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim('-'),
-          deal_type: 'QUANTITY_DISCOUNT', // Default deal type
+          deal_type: 'BUY_N_FOR_FIXED', // Default deal type
           required_qty: minQuantity,
           get_qty: maxQuantity,
           fixed_price: discountType === 'fixed' ? discountValue : null,
