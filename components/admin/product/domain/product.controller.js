@@ -759,7 +759,8 @@ module.exports.createProduct = async (req, res, next) => {
                 name: {
                     [Op.like]: cleanName // Case-insensitive comparison
                 }
-            }
+            },
+            transaction
         });
 
         if (existingProductName) {
@@ -774,6 +775,31 @@ module.exports.createProduct = async (req, res, next) => {
                     }
                 }, 
                 "Duplicate product name", 
+                400
+            );
+        }
+
+        // Check for duplicate slug
+        const existingProductSlug = await Product.findOne({
+            where: {
+                slug: cleanSlug
+            },
+            transaction
+        });
+
+        if (existingProductSlug) {
+            await transaction.rollback();
+            return errorResponse(
+                res, 
+                { 
+                    message: "This slug already exists in another product",
+                    existing_product: {
+                        id: existingProductSlug.id,
+                        name: existingProductSlug.name,
+                        slug: existingProductSlug.slug
+                    }
+                }, 
+                "Duplicate product slug", 
                 400
             );
         }
@@ -850,6 +876,27 @@ module.exports.createProduct = async (req, res, next) => {
             stack: error.stack,
             body: req.body
         });
+        
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            const validationErrors = error.errors.map(err => ({
+                message: err.message,
+                field: err.path,
+                value: err.value
+            }));
+            return errorResponse(res, { message: "Validation failed", errors: validationErrors }, "Validation error", 400);
+        }
+        
+        // Handle Sequelize unique constraint errors
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            const uniqueErrors = error.errors.map(err => ({
+                message: err.message,
+                field: err.path,
+                value: err.value
+            }));
+            return errorResponse(res, { message: "Unique constraint violation", errors: uniqueErrors }, "Duplicate entry", 400);
+        }
+        
         return errorResponse(res, error, error.message);
     }
 };
