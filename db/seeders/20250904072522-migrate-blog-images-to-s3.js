@@ -24,24 +24,24 @@ const path = require('path');
 const os = require('os');
 
 // Background processing configuration
-const BATCH_SIZE = 5; // Process 5 images at a time
-const BATCH_DELAY = 30000; // 30 seconds between batches
-const IMAGE_DELAY = 8000; // 8 seconds between individual images
+const BATCH_SIZE = 3; // Process 3 images at a time (reduced)
+const BATCH_DELAY = 60000; // 60 seconds between batches (increased)
+const IMAGE_DELAY = 15000; // 15 seconds between individual images (increased)
 
 // Progress tracking
 let failedDownloads = [];
 const progressFile = path.join(__dirname, '../../logs/blog-image-migration-progress.json');
 const logFile = path.join(__dirname, '../../logs/blog-image-migration.log');
 
-// Circuit breaker for shared server protection
+// Circuit breaker for shared server protection (DISABLED)
 let circuitBreaker = {
   consecutive502s: 0,
   consecutive429s: 0, // Rate limiting errors
   totalErrors: 0,
-  isOpen: false,
+  isOpen: false, // Always false - circuit breaker disabled
   lastErrorTime: null,
   cooldownPeriod: 1800000, // 30 minutes for shared servers
-  maxErrorsPerHour: 10 // Conservative limit for shared hosting
+  maxErrorsPerHour: 1000 // Increased limit - effectively disabled
 };
 
 module.exports = {
@@ -382,17 +382,10 @@ async function downloadAndUploadToS3(imageUrl, s3Key, imageStats) {
             responseType: 'stream',
             timeout: 30000,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Referer': 'https://www.vapehub.co.uk/',
-              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+              'User-Agent': 'Mozilla/5.0 (compatible; ImageBot/1.0)',
+              'Accept': 'image/*',
               'Accept-Language': 'en-US,en;q=0.9',
-              'Accept-Encoding': 'gzip, deflate, br',
-              'DNT': '1',
-              'Connection': 'keep-alive',
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache',
-              'X-Forwarded-For': '127.0.0.1',
-              'X-Real-IP': '127.0.0.1'
+              'Connection': 'keep-alive'
             },
             maxContentLength: 10 * 1024 * 1024, // 10MB max file size
             validateStatus: function (status) {
@@ -494,29 +487,20 @@ function handleDownloadError(error, imageUrl) {
   circuitBreaker.totalErrors++;
   circuitBreaker.lastErrorTime = Date.now();
   
-  // Handle server overload errors (common on shared hosting)
+  // Circuit breaker disabled - just log errors
   if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
     circuitBreaker.consecutive502s++;
-    if (circuitBreaker.consecutive502s >= 2) { // More aggressive for shared servers
-      circuitBreaker.isOpen = true;
-      logMessage(`🔌 Circuit breaker opened after ${circuitBreaker.consecutive502s} consecutive server errors`);
-    }
+    logMessage(`⚠️ Server error ${statusCode} (${circuitBreaker.consecutive502s} consecutive)`);
   }
   
   // Handle rate limiting (429 Too Many Requests)
   if (statusCode === 429) {
     circuitBreaker.consecutive429s++;
-    if (circuitBreaker.consecutive429s >= 1) { // Immediate circuit break on rate limiting
-      circuitBreaker.isOpen = true;
-      logMessage(`🔌 Circuit breaker opened due to rate limiting (429 error)`);
-    }
+    logMessage(`⚠️ Rate limiting (429 error) - ${circuitBreaker.consecutive429s} consecutive`);
   }
   
-  // Check total errors per hour for shared server protection
-  if (circuitBreaker.totalErrors >= circuitBreaker.maxErrorsPerHour) {
-    circuitBreaker.isOpen = true;
-    logMessage(`🔌 Circuit breaker opened due to too many errors (${circuitBreaker.totalErrors}/${circuitBreaker.maxErrorsPerHour})`);
-  }
+  // Log total errors but don't trigger circuit breaker
+  logMessage(`📊 Total errors so far: ${circuitBreaker.totalErrors}`);
   
   failedDownloads.push({
     url: imageUrl,
@@ -550,38 +534,19 @@ function getErrorSuggestion(statusCode) {
 }
 
 /**
- * Check circuit breaker status
+ * Check circuit breaker status (DISABLED)
  */
 async function checkCircuitBreaker() {
-  if (!circuitBreaker.isOpen) {
-    return false;
-  }
-  
-  const timeSinceLastError = Date.now() - circuitBreaker.lastErrorTime;
-  if (timeSinceLastError > circuitBreaker.cooldownPeriod) {
-    resetCircuitBreaker();
-    logMessage(`🔌 Circuit breaker reset after cooldown period`);
-    return false;
-  }
-  
-  return true;
+  // Circuit breaker disabled - always return false
+  return false;
 }
 
 /**
- * Wait for circuit breaker to reset
+ * Wait for circuit breaker to reset (DISABLED)
  */
 async function waitForCircuitBreaker() {
-  if (!circuitBreaker.isOpen) return;
-  
-  const timeSinceLastError = Date.now() - circuitBreaker.lastErrorTime;
-  if (timeSinceLastError < circuitBreaker.cooldownPeriod) {
-    const waitTime = circuitBreaker.cooldownPeriod - timeSinceLastError;
-    logMessage(`⏳ Waiting ${Math.round(waitTime/60000)} minutes for circuit breaker reset...`);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-  }
-  
-  resetCircuitBreaker();
-  logMessage(`🔌 Circuit breaker reset`);
+  // Circuit breaker disabled - no waiting needed
+  return;
 }
 
 /**
