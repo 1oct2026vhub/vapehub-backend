@@ -285,7 +285,7 @@ module.exports.toggleShippingMethodStatus = async (req, res) => {
 module.exports.updateMethodOrder = async (req, res) => {
     try {
         const { method_orders } = req.body; // Array of {id, method_order}
-        
+                
         if (!Array.isArray(method_orders) || method_orders.length === 0) {
             const error = new Error("Method orders array is required");
             error.statusCode = 400;
@@ -293,6 +293,27 @@ module.exports.updateMethodOrder = async (req, res) => {
         }
         
         const { id: updated_by } = req.user;
+        
+        
+        // First, check if the shipping methods exist
+        const existingMethods = await ShippingMethod.findAll({
+            where: {
+                id: method_orders.map(item => item.id)
+            }
+        });
+        
+        
+        if (existingMethods.length !== method_orders.length) {
+            const foundIds = existingMethods.map(m => m.id);
+            const requestedIds = method_orders.map(m => m.id);
+            const missingIds = requestedIds.filter(id => !foundIds.includes(id));
+            
+            // Show all available shipping methods
+            const allMethods = await ShippingMethod.findAll({
+                attributes: ['id', 'shipping_method', 'method_order'],
+                order: [['id', 'ASC']]
+            });
+        }
         
         // Simple approach for small dataset
         const updatePromises = method_orders.map(({ id, method_order }) => {
@@ -302,7 +323,7 @@ module.exports.updateMethodOrder = async (req, res) => {
             );
         });
         
-        await Promise.all(updatePromises);
+        const updateResults = await Promise.all(updatePromises);
         
         // Fetch updated shipping methods
         const updatedMethods = await ShippingMethod.findAll({
