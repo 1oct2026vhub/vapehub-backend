@@ -69,6 +69,11 @@ module.exports = {
         console.log(`📂 Categories available: ${blogDataExists.categoryCount}`);
       }
 
+      // Clear existing blog data before migration
+      console.log('\n🧹 Clearing existing blog data...');
+      await clearExistingBlogData(queryInterface);
+      console.log('✅ Existing blog data cleared successfully');
+
       // Step 1: Migrate blog categories
       console.log('\n📂 Step 1: Migrating blog categories...');
       await migrateBlogCategories(crossServerMigration, queryInterface, Sequelize, migrationStats, blogDataExists.useWordPress);
@@ -168,19 +173,7 @@ async function migrateBlogCategories(crossServerMigration, queryInterface, Seque
       migrationStats.categories.processed++;
       
       try {
-        // Check if category already exists
-        const existingCategory = await queryInterface.sequelize.query(`
-          SELECT id FROM blog_categories WHERE slug = ?
-        `, {
-          replacements: [oldCategory.slug],
-          type: Sequelize.QueryTypes.SELECT
-        });
-
-        if (existingCategory.length > 0) {
-          categoryMapping[oldCategory.old_id] = existingCategory[0].id;
-          logMessage(`⏭️ Category already exists: ${oldCategory.name}`);
-          continue;
-        }
+        // No need to check for existing categories since we cleared all data
 
         // Store category image URL directly (no S3 upload for now)
         let imageUrl = oldCategory.image_url;
@@ -428,19 +421,7 @@ async function migrateBlogPosts(crossServerMigration, queryInterface, Sequelize,
       migrationStats.blogs.processed++;
       
       try {
-        // Check if blog already exists
-        const existingBlog = await queryInterface.sequelize.query(`
-          SELECT id FROM blogs WHERE slug = ?
-        `, {
-          replacements: [oldBlog.slug],
-          type: Sequelize.QueryTypes.SELECT
-        });
-
-        if (existingBlog.length > 0) {
-          blogMapping[oldBlog.old_id] = existingBlog[0].id;
-          logMessage(`⏭️ Blog already exists: ${oldBlog.title}`);
-          continue;
-        }
+        // No need to check for existing blogs since we cleared all data
 
         // Find matching product image or use original image
         let imageUrl = await findMatchingProductImage(oldBlog.title, oldBlog.image_url, queryInterface, migrationStats);
@@ -998,4 +979,44 @@ Generic blogs using original images: ${migrationStats.images.skipped}
 
   console.log(report);
   logMessage(report);
+}
+
+/**
+ * Clear existing blog data before migration
+ */
+async function clearExistingBlogData(queryInterface) {
+  try {
+    // Clear in correct order to avoid foreign key constraints
+    console.log('🗑️  Clearing blog category relations...');
+    await queryInterface.sequelize.query('DELETE FROM blog_category_relations', {
+      type: queryInterface.sequelize.QueryTypes.DELETE
+    });
+
+    console.log('🗑️  Clearing blog posts...');
+    await queryInterface.sequelize.query('DELETE FROM blogs', {
+      type: queryInterface.sequelize.QueryTypes.DELETE
+    });
+
+    console.log('🗑️  Clearing blog categories...');
+    await queryInterface.sequelize.query('DELETE FROM blog_categories', {
+      type: queryInterface.sequelize.QueryTypes.DELETE
+    });
+
+    // Reset auto-increment counters
+    console.log('🔄 Resetting auto-increment counters...');
+    await queryInterface.sequelize.query('ALTER TABLE blog_categories AUTO_INCREMENT = 1', {
+      type: queryInterface.sequelize.QueryTypes.RAW
+    });
+    await queryInterface.sequelize.query('ALTER TABLE blogs AUTO_INCREMENT = 1', {
+      type: queryInterface.sequelize.QueryTypes.RAW
+    });
+    await queryInterface.sequelize.query('ALTER TABLE blog_category_relations AUTO_INCREMENT = 1', {
+      type: queryInterface.sequelize.QueryTypes.RAW
+    });
+
+    console.log('✅ All existing blog data cleared successfully');
+  } catch (error) {
+    console.error('❌ Error clearing existing blog data:', error.message);
+    throw error;
+  }
 }
