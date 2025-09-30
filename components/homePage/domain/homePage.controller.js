@@ -532,21 +532,21 @@ module.exports.getSlugRelations = async (req, res, next) => {
             };
 
             // Include deals if entity is category or brand
-            if (['category', 'brand'].includes(slugRelations[0].entity_type)) {
-                const dealsData = await getDealsForEntity(
-                    slugRelations[0].entity_type,
-                    slugRelations[0].entity_id
-                );
-                response.deals = dealsData.deals;
-                response.deals_text = dealsData.deals_text;
-            }
+            // if (['category', 'brand'].includes(slugRelations[0].entity_type)) {
+            //     const dealsData = await getDealsForEntity(
+            //         slugRelations[0].entity_type,
+            //         slugRelations[0].entity_id
+            //     );
+            //     response.deals = dealsData.deals;
+            //     response.deals_text = dealsData.deals_text;
+            // }
 
-            // Include latest 3 deals if entity is deal
-            if (slugRelations[0].entity_type === 'deal') {
-                const latestDealsData = await getLatestDeals();
-                response.latest_deals = latestDealsData.deals;
-                response.deals_text = latestDealsData.deals_text;
-            }
+            // // Include latest 3 deals if entity is deal
+            // if (slugRelations[0].entity_type === 'deal') {
+            //     const latestDealsData = await getLatestDeals();
+            //     response.latest_deals = latestDealsData.deals;
+            //     response.deals_text = latestDealsData.deals_text;
+            // }
 
             return successResponse(res, response, 'Success');
         }
@@ -566,21 +566,21 @@ module.exports.getSlugRelations = async (req, res, next) => {
             };
 
             // Include deals for each matched slug
-            const dealsPromises = slugRelations
-                .filter(relation => ['category', 'brand'].includes(relation.entity_type))
-                .map(async (relation) => {
-                    const dealsData = await getDealsForEntity(
-                        relation.entity_type,
-                        relation.entity_id
-                    );
-                    return {
-                        slug: relation.slug,
-                        deals: dealsData.deals,
-                        deals_text: dealsData.deals_text
-                    };
-                });
+            // const dealsPromises = slugRelations
+            //     .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+            //     .map(async (relation) => {
+            //         const dealsData = await getDealsForEntity(
+            //             relation.entity_type,
+            //             relation.entity_id
+            //         );
+            //         return {
+            //             slug: relation.slug,
+            //             deals: dealsData.deals,
+            //             deals_text: dealsData.deals_text
+            //         };
+            //     });
 
-            const dealsResults = await Promise.all(dealsPromises);
+            const dealsResults = []; //await Promise.all(dealsPromises);
             if (dealsResults.length > 0) {
                 response.deals_by_slug = dealsResults;
             }
@@ -648,28 +648,28 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 }, "Invalid hierarchy", 400);
             }
 
-            const response = sortedRelations.map(relation => ({
-                slug: relation.slug,
-                entity_type: relation.entity_type,
-                entity_id: relation.entity_id
-            }));
+            // const response = sortedRelations.map(relation => ({
+            //     slug: relation.slug,
+            //     entity_type: relation.entity_type,
+            //     entity_id: relation.entity_id
+            // }));
 
             // Include deals for category/brand slugs
-            const dealsPromises = sortedRelations
-                .filter(relation => ['category', 'brand'].includes(relation.entity_type))
-                .map(async (relation) => {
-                    const dealsData = await getDealsForEntity(
-                        relation.entity_type,
-                        relation.entity_id
-                    );
-                    return {
-                        slug: relation.slug,
-                        deals: dealsData.deals,
-                        deals_text: dealsData.deals_text
-                    };
-                });
+            // const dealsPromises = sortedRelations
+            //     .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+            //     .map(async (relation) => {
+            //         const dealsData = await getDealsForEntity(
+            //             relation.entity_type,
+            //             relation.entity_id
+            //         );
+            //         return {
+            //             slug: relation.slug,
+            //             deals: dealsData.deals,
+            //             deals_text: dealsData.deals_text
+            //         };
+            //     });
 
-            const dealsResults = await Promise.all(dealsPromises);
+            const dealsResults = []; //await Promise.all(dealsPromises);
             if (dealsResults.length > 0) {
                 return successResponse(res, {
                     relations: response,
