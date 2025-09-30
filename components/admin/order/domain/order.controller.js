@@ -40,20 +40,21 @@ module.exports.listAllOrders = async (req, res, next) => {
         if (status) {
             whereCondition.status = status;
         }
-
-        // Date range filter
-        if (start_date && end_date) {
-            // Parse dates using moment to ensure consistent handling
-            const startMoment = moment(start_date);
-            const endMoment = moment(end_date);
+        if(!search) {
+            // Date range filter
+            if (start_date && end_date) {
+                // Parse dates using moment to ensure consistent handling
+                const startMoment = moment(start_date);
+                const endMoment = moment(end_date);
+                
+                // Set start of day for start date and end of day for end date
+                const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+                const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
             
-            // Set start of day for start date and end of day for end date
-            const startDateTime = startMoment.startOf('day').format('YYYY-MM-DD HH:mm:ss');
-            const endDateTime = endMoment.endOf('day').format('YYYY-MM-DD HH:mm:ss');
-            
-            whereCondition.createdAt = {
-                [Op.between]: [startDateTime, endDateTime]
-            };
+                whereCondition.createdAt = {
+                    [Op.between]: [startDateTime, endDateTime]
+                };
+            }
         }
        
         // Search filter
