@@ -316,7 +316,7 @@ module.exports = {
           // Step 3c: Insert orders for this chunk
           await queryInterface.sequelize.query(`
             INSERT IGNORE INTO orders (
-              user_id, coupon_id, total, discount_price, status, shipping_method_id,
+              id, user_id, coupon_id, total, discount_price, status, shipping_method_id,
               createdAt, updatedAt, deletedAt, shipping_address_id, billing_address_id,
               order_unique_id, deals_discount, applicable_deals, shipping_cost, order_code,
               email, phone, order_shipping_address_id, order_billing_address_id, referral_id,
@@ -324,6 +324,7 @@ module.exports = {
               loyalty_discount, mailSubscription_discount, ordered
             )
             SELECT 
+              id,
               user_id,
               NULL as coupon_id,
               total,
@@ -391,6 +392,11 @@ module.exports = {
             FROM temp_orders_chunk old_o
             INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
           `, { transaction });
+
+          // Step 3d.1: Set auto-increment to continue from the highest order ID
+          const [maxOrderId] = await queryInterface.sequelize.query(`SELECT MAX(old_order_id) as max_id FROM temp_order_mapping_chunk`, { transaction });
+          const nextOrderId = (maxOrderId[0]?.max_id || 0) + 1;
+          await queryInterface.sequelize.query(`ALTER TABLE orders AUTO_INCREMENT = ${nextOrderId}`, { transaction });
 
           // Step 3e: Insert order addresses for this chunk (populate from WooCommerce billing meta)
           await queryInterface.sequelize.query(`
