@@ -557,7 +557,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                 if (coupon.is_single_use && singleUsedCoupon) {
                     throw {
                         statusCode: 400,
-                        message: 'Already used this coupon.'
+                        message: 'This coupon is no longer available — usage limit exceeded.'
+                        // message: 'Already used this coupon.'
                     }
                 }
                 if (userUsedCoupon) {
