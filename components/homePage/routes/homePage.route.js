@@ -230,6 +230,71 @@ router.get("/slug-relation",
     homePageController.getSlugRelations
 );
 
+/**
+ * @swagger
+ * /api/home/seo-meta:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get SEO meta data by slug
+ *     description: Fetches entity SEO meta data (name, description, logo_url) based on the provided slug
+ *     parameters:
+ *       - in: query
+ *         name: slug
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The slug to lookup
+ *         example: "e-liquids"
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "SEO meta data retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     slug:
+ *                       type: string
+ *                       example: "e-liquids"
+ *                     entity_type:
+ *                       type: string
+ *                       example: "category"
+ *                     entity_id:
+ *                       type: integer
+ *                       example: 123
+ *                     name:
+ *                       type: string
+ *                       example: "E-Liquids"
+ *                     description:
+ *                       type: string
+ *                       example: "Premium e-liquids collection"
+ *                     logo_url:
+ *                       type: string
+ *                       example: "https://example.com/images/e-liquids.jpg"
+ *       400:
+ *         description: Bad request (missing slug parameter)
+ *       404:
+ *         description: Slug not found or entity not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/seo-meta",
+    validateRequest([
+        query("slug").notEmpty().withMessage("Slug parameter is required")
+    ]),
+    homePageController.getSeoMetaBySlug
+);
+
 // /**
 //  * @swagger
 //  * /api/home/upload-banner-image:

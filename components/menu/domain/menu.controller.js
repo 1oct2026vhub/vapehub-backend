@@ -278,13 +278,13 @@ module.exports = {
                                     const deal = dealMap.get(item.entity_id);
                                     if (deal) {
                                         const dealData = deal.toJSON ? deal.toJSON() : { ...deal };
-                                        // Use deal's own image_url if available, otherwise fallback to primary product image
+                                    // Use deal's own image_url if available, otherwise fallback to primary product image
                                         if (!dealData.image_url && dealData.products && dealData.products.length > 0) {
                                             const primaryProduct = dealData.products[0];
-                                            if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
+                                        if (primaryProduct.ProductImages && primaryProduct.ProductImages.length > 0) {
                                                 dealData.image_url = primaryProduct.ProductImages[0].image_url;
-                                            }
                                         }
+                                    }
                                         item.entity_data = dealData;
                                     } else {
                                         item.entity_data = null;
@@ -311,7 +311,7 @@ module.exports = {
                         const key = `${item.entity_type}_${item.entity_id}`;
                         item.related_products = relatedProductsMap.get(key) || [];
                     }
-                    
+
                     // Process children recursively
                     if (item.children && item.children.length > 0) {
                         processMenuItems(item.children);
