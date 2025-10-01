@@ -1985,11 +1985,9 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         timestamp: new Date()
                     });
                 }
-                else{
-                    await user.update({
-                        loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
-                    });
-                }
+                await user.update({
+                    loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
+                });
             }
         }
         if(!order.loyalty_flag){
