@@ -282,10 +282,625 @@ const getDealsForEntity = async (entityType, entityId) => {
 };
 
 /**
+ * OPTIMIZED: Batch version of getDealsForEntity
+ * Fetches deals for multiple entities in a single optimized operation
+ * @param {Array} entities - Array of objects with { type, id } 
+ * @returns {Map} Map with key 'type_id' => { deals, deals_text }
+ */
+const getBatchDealsForEntities = async (entities) => {
+    if (!entities || entities.length === 0) {
+        return new Map();
+    }
+
+    const dealFilter = {
+        is_active: true,
+        is_deleted: false,
+        valid_from: { [Op.lte]: new Date() },
+        valid_to: { [Op.gte]: new Date() }
+    };
+
+    // Separate entities by type
+    const categoryIds = entities.filter(e => e.type === 'category').map(e => e.id);
+    const brandIds = entities.filter(e => e.type === 'brand').map(e => e.id);
+
+    // Batch fetch all entity details in parallel
+    const [categories, brands] = await Promise.all([
+        categoryIds.length > 0 ? Category.findAll({
+            where: { id: { [Op.in]: categoryIds } },
+            attributes: ['id', 'name'],
+            raw: true
+        }) : Promise.resolve([]),
+        
+        brandIds.length > 0 ? Brand.findAll({
+            where: { id: { [Op.in]: brandIds } },
+            attributes: ['id', 'name'],
+            raw: true
+        }) : Promise.resolve([])
+    ]);
+
+    // Create entity name maps
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+    const brandMap = new Map(brands.map(b => [b.id, b.name]));
+
+    // Batch fetch product IDs for all categories and brands in parallel
+    const [productCategories, productBrands] = await Promise.all([
+        categoryIds.length > 0 ? ProductCategory.findAll({
+            where: { category_id: { [Op.in]: categoryIds } },
+            attributes: ['category_id', 'product_id'],
+            raw: true
+        }) : Promise.resolve([]),
+        
+        brandIds.length > 0 ? ProductBrand.findAll({
+            where: { brand_id: { [Op.in]: brandIds } },
+            attributes: ['brand_id', 'product_id'],
+            raw: true
+        }) : Promise.resolve([])
+    ]);
+
+    // Group product IDs by entity
+    const entityProductMap = new Map();
+    
+    productCategories.forEach(pc => {
+        const key = `category_${pc.category_id}`;
+        if (!entityProductMap.has(key)) {
+            entityProductMap.set(key, []);
+        }
+        entityProductMap.get(key).push(pc.product_id);
+    });
+
+    productBrands.forEach(pb => {
+        const key = `brand_${pb.brand_id}`;
+        if (!entityProductMap.has(key)) {
+            entityProductMap.set(key, []);
+        }
+        entityProductMap.get(key).push(pb.product_id);
+    });
+
+    // Collect all unique product IDs
+    const allProductIds = [...new Set([
+        ...productCategories.map(pc => pc.product_id),
+        ...productBrands.map(pb => pb.product_id)
+    ])];
+
+    if (allProductIds.length === 0) {
+        // Return empty results for all entities
+        const results = new Map();
+        entities.forEach(entity => {
+            results.set(`${entity.type}_${entity.id}`, { deals: [], deals_text: '' });
+        });
+        return results;
+    }
+
+    // Batch fetch all deal products with stock check in one query
+    const dealProducts = await DealProduct.findAll({
+        where: { product_id: { [Op.in]: allProductIds } },
+        attributes: ['deal_id', 'product_id'],
+        include: [
+            {
+                model: Product,
+                as: 'product',
+                where: { status: 'published' },
+                attributes: ['id', 'name', 'slug'],
+                include: [
+                    {
+                        model: ProductVariant,
+                        as: 'variants',
+                        attributes: ['id', 'stock', 'stock_status'],
+                        where: { 
+                            stock: { [Op.gt]: 0 },
+                            deleted_at: null
+                        },
+                        required: false
+                    }
+                ]
+            }
+        ]
+    });
+
+    // Filter to only include products with available variants
+    const availableDealProducts = dealProducts.filter(dp => {
+        const product = dp.product;
+        return product.variants && product.variants.length > 0;
+    });
+
+    if (availableDealProducts.length === 0) {
+        // Return empty results for all entities
+        const results = new Map();
+        entities.forEach(entity => {
+            results.set(`${entity.type}_${entity.id}`, { deals: [], deals_text: '' });
+        });
+        return results;
+    }
+
+    // Get unique deal IDs
+    const dealIds = [...new Set(availableDealProducts.map(dp => dp.deal_id))];
+
+    // Batch fetch all deals
+    const deals = await Deal.findAll({
+        where: {
+            id: { [Op.in]: dealIds },
+            ...dealFilter
+        },
+        attributes: [
+            'id', 
+            'name', 
+            'slug', 
+            'deal_type', 
+            'required_qty', 
+            'get_qty', 
+            'fixed_price', 
+            'discount_percent', 
+            'tiered_qty_json',
+            'bundle_product_ids_json',
+            'valid_from',
+            'valid_to',
+            'image_url',
+            'createdAt'
+        ]
+    });
+
+    // Create deal map
+    const dealMap = new Map(deals.map(d => [d.id, d.toJSON()]));
+
+    // Build results for each entity
+    const results = new Map();
+
+    entities.forEach(entity => {
+        const key = `${entity.type}_${entity.id}`;
+        const productIds = entityProductMap.get(key) || [];
+        
+        if (productIds.length === 0) {
+            results.set(key, { deals: [], deals_text: '' });
+            return;
+        }
+
+        // Find deal products for this entity's products
+        const entityDealProducts = availableDealProducts.filter(dp => 
+            productIds.includes(dp.product_id)
+        );
+
+        if (entityDealProducts.length === 0) {
+            results.set(key, { deals: [], deals_text: '' });
+            return;
+        }
+
+        // Get unique deal IDs for this entity
+        const entityDealIds = [...new Set(entityDealProducts.map(dp => dp.deal_id))];
+
+        // Get deals for this entity
+        const entityDeals = entityDealIds
+            .map(dealId => dealMap.get(dealId))
+            .filter(Boolean)
+            .map(deal => {
+                const dealProductCount = entityDealProducts.filter(dp => dp.deal_id === deal.id).length;
+                return {
+                    ...deal,
+                    product_count: dealProductCount
+                };
+            });
+
+        // Generate deals text
+        const entityName = entity.type === 'category' 
+            ? (categoryMap.get(entity.id) || 'products')
+            : (brandMap.get(entity.id) || 'products');
+
+        let dealsText = '';
+        if (entityDeals.length > 0) {
+            const dealResults = entityDeals.slice(0, 2);
+
+            if (dealResults.length === 1) {
+                const deal = dealResults[0];
+                if (deal.fixed_price) {
+                    dealsText = `Get the most for your money with our amazing ${deal.required_qty} for £${deal.fixed_price} deal on ${entityName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+                } else if (deal.discount_percent) {
+                    dealsText = `Get the most for your money with our amazing ${deal.discount_percent}% off deal on ${entityName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+                } else {
+                    dealsText = `Get the most for your money with our amazing deals on ${entityName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+                }
+            } else if (dealResults.length >= 2) {
+                const deal1 = dealResults[0];
+                const deal2 = dealResults[1];
+                
+                let deal1Text = '';
+                let deal2Text = '';
+
+                if (deal1.fixed_price) {
+                    deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+                } else if (deal1.discount_percent) {
+                    deal1Text = `${deal1.discount_percent}% off`;
+                } else {
+                    deal1Text = 'amazing deal';
+                }
+
+                if (deal2.fixed_price) {
+                    deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+                } else if (deal2.discount_percent) {
+                    deal2Text = `${deal2.discount_percent}% off`;
+                } else {
+                    deal2Text = 'amazing offer';
+                }
+
+                dealsText = `Get the most for your money with our amazing ${deal1Text} deal and ${deal2Text} offer on ${entityName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            }
+        }
+
+        results.set(key, {
+            deals: entityDeals,
+            deals_text: dealsText
+        });
+    });
+
+    return results;
+};
+
+const getDealsForEntityOriginal = async (entityType, entityId) => {
+    // Build deal filter
+    const dealFilter = {
+        is_active: true,
+        is_deleted: false,
+        valid_from: { [Op.lte]: new Date() },
+        valid_to: { [Op.gte]: new Date() }
+    };
+
+    let deals = [];
+    let categoryName = 'products';
+
+    if (entityType === 'category') {
+        // Step 1: Get category details
+        const category = await Category.findByPk(entityId);
+        if (!category) {
+            return { deals: [], deals_text: '' };
+        }
+        categoryName = category.name;
+
+        // Step 2: Get product IDs from ProductCategory using category ID
+        const productCategories = await ProductCategory.findAll({
+            where: { category_id: entityId },
+            attributes: ['product_id']
+        });
+
+        if (productCategories.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const productIds = productCategories.map(pc => pc.product_id);
+
+        // Step 3: Get deal IDs from DealProduct using product IDs with stock check
+        const dealProducts = await DealProduct.findAll({
+            where: { product_id: { [Op.in]: productIds } },
+            attributes: ['deal_id', 'product_id'],
+            include: [
+                {
+                    model: Product,
+                    as: 'product',
+                    where: { status: 'published' },
+                    attributes: ['id', 'name', 'slug'],
+                    include: [
+                        {
+                            model: ProductVariant,
+                            as: 'variants',
+                            attributes: ['id', 'stock', 'stock_status'],
+                            where: { 
+                                stock: { [Op.gt]: 0 },
+                                deleted_at: null
+                            },
+                            required: false
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (dealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        // Filter deals to only include those where all products have available variants
+        const availableDealProducts = dealProducts.filter(dp => {
+            const product = dp.product;
+            // Check if product has at least one variant with stock > 0
+            return product.variants && product.variants.length > 0;
+        });
+
+        if (availableDealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(availableDealProducts.map(dp => dp.deal_id))];
+
+        // Step 4: Get deal data from Deal using deal IDs
+        deals = await Deal.findAll({
+            where: {
+                id: { [Op.in]: dealIds },
+                ...dealFilter
+            },
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'deal_type', 
+                'required_qty', 
+                'get_qty', 
+                'fixed_price', 
+                'discount_percent', 
+                'tiered_qty_json',
+                'bundle_product_ids_json',
+                'valid_from',
+                'valid_to',
+                'image_url',
+                'createdAt'
+            ]
+        });
+
+        // Add product count to each deal (only counting products with available variants)
+        deals = deals.map(deal => {
+            const dealProductCount = availableDealProducts.filter(dp => dp.deal_id === deal.id).length;
+            return {
+                ...deal.toJSON(),
+                product_count: dealProductCount
+            };
+        });
+
+    } else if (entityType === 'brand') {
+        // Step 1: Get brand details
+        const brand = await Brand.findByPk(entityId);
+        if (!brand) {
+            return { deals: [], deals_text: '' };
+        }
+        categoryName = brand.name;
+
+        // Step 2: Get product IDs from ProductBrand using brand ID
+        const productBrands = await ProductBrand.findAll({
+            where: { brand_id: entityId },
+            attributes: ['product_id']
+        });
+
+        if (productBrands.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const productIds = productBrands.map(pb => pb.product_id);
+
+        // Step 3: Get deal IDs from DealProduct using product IDs with stock check
+        const dealProducts = await DealProduct.findAll({
+            where: { product_id: { [Op.in]: productIds } },
+            attributes: ['deal_id', 'product_id'],
+            include: [
+                {
+                    model: Product,
+                    as: 'product',
+                    where: { status: 'published' },
+                    attributes: ['id', 'name', 'slug'],
+                    include: [
+                        {
+                            model: ProductVariant,
+                            as: 'variants',
+                            attributes: ['id', 'stock', 'stock_status'],
+                            where: { 
+                                stock: { [Op.gt]: 0 },
+                                deleted_at: null
+                            },
+                            required: false
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (dealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        // Filter deals to only include those where all products have available variants
+        const availableDealProducts = dealProducts.filter(dp => {
+            const product = dp.product;
+            // Check if product has at least one variant with stock > 0
+            return product.variants && product.variants.length > 0;
+        });
+
+        if (availableDealProducts.length === 0) {
+            return { deals: [], deals_text: '' };
+        }
+
+        const dealIds = [...new Set(availableDealProducts.map(dp => dp.deal_id))];
+
+        // Step 4: Get deal data from Deal using deal IDs
+        deals = await Deal.findAll({
+            where: {
+                id: { [Op.in]: dealIds },
+                ...dealFilter
+            },
+            attributes: [
+                'id', 
+                'name', 
+                'slug', 
+                'deal_type', 
+                'required_qty', 
+                'get_qty', 
+                'fixed_price', 
+                'discount_percent', 
+                'tiered_qty_json',
+                'bundle_product_ids_json',
+                'valid_from',
+                'valid_to',
+                'image_url',
+                'createdAt'
+            ]
+        });
+
+        // Add product count to each deal (only counting products with available variants)
+        deals = deals.map(deal => {
+            const dealProductCount = availableDealProducts.filter(dp => dp.deal_id === deal.id).length;
+            return {
+                ...deal.toJSON(),
+                product_count: dealProductCount
+            };
+        });
+    }
+
+    // Generate deals text
+    let dealsText = '';
+    if (deals.length > 0) {
+        const dealResults = deals.slice(0, 2); // Take first 2 deals
+
+        if (dealResults.length === 1) {
+            const deal = dealResults[0];
+            if (deal.fixed_price) {
+                dealsText = `Get the most for your money with our amazing ${deal.required_qty} for £${deal.fixed_price} deal on ${categoryName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else if (deal.discount_percent) {
+                dealsText = `Get the most for your money with our amazing ${deal.discount_percent}% off deal on ${categoryName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else {
+                dealsText = `Get the most for your money with our amazing deals on ${categoryName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            }
+        } else if (dealResults.length >= 2) {
+            const deal1 = dealResults[0];
+            const deal2 = dealResults[1];
+            
+            let deal1Text = '';
+            let deal2Text = '';
+
+            if (deal1.fixed_price) {
+                deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+            } else if (deal1.discount_percent) {
+                deal1Text = `${deal1.discount_percent}% off`;
+            } else {
+                deal1Text = 'amazing deal';
+            }
+
+            if (deal2.fixed_price) {
+                deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+            } else if (deal2.discount_percent) {
+                deal2Text = `${deal2.discount_percent}% off`;
+            } else {
+                deal2Text = 'amazing offer';
+            }
+
+            dealsText = `Get the most for your money with our amazing ${deal1Text} deal and ${deal2Text} offer on ${categoryName} vapes from leading brands! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+        }
+    }
+
+    return {
+        deals,
+        deals_text: dealsText
+    };
+};
+
+/**
  * Get the latest 3 active deals
  * @returns {Object} Object containing deals array and descriptive text
  */
 const getLatestDeals = async () => {
+    const dealFilter = {
+        is_active: true,
+        is_deleted: false,
+        valid_from: { [Op.lte]: new Date() },
+        valid_to: { [Op.gte]: new Date() }
+    };
+
+    const deals = await Deal.findAll({
+        where: dealFilter,
+        attributes: [
+            'id', 
+            'name', 
+            'slug', 
+            'deal_type', 
+            'required_qty', 
+            'get_qty', 
+            'fixed_price', 
+            'discount_percent', 
+            'tiered_qty_json',
+            'bundle_product_ids_json',
+            'valid_from',
+            'valid_to',
+            'image_url',
+            'createdAt'
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: 3
+    });
+
+    // Generate descriptive text based on deals
+    let dealsText = '';
+    if (deals.length > 0) {
+        if (deals.length === 1) {
+            const deal = deals[0];
+            if (deal.fixed_price) {
+                dealsText = `Get the most for your money with our amazing ${deal.required_qty} for £${deal.fixed_price} deal! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else if (deal.discount_percent) {
+                dealsText = `Get the most for your money with our amazing ${deal.discount_percent}% off deal! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            } else {
+                dealsText = `Get the most for your money with our amazing deals! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+            }
+        } else if (deals.length === 2) {
+            const deal1 = deals[0];
+            const deal2 = deals[1];
+            
+            let deal1Text = '';
+            let deal2Text = '';
+
+            if (deal1.fixed_price) {
+                deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+            } else if (deal1.discount_percent) {
+                deal1Text = `${deal1.discount_percent}% off`;
+            } else {
+                deal1Text = 'amazing deal';
+            }
+
+            if (deal2.fixed_price) {
+                deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+            } else if (deal2.discount_percent) {
+                deal2Text = `${deal2.discount_percent}% off`;
+            } else {
+                deal2Text = 'amazing offer';
+            }
+
+            dealsText = `Get the most for your money with our amazing ${deal1Text} deal and ${deal2Text} offer! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+        } else {
+            const deal1 = deals[0];
+            const deal2 = deals[1];
+            const deal3 = deals[2];
+            
+            let deal1Text = '';
+            let deal2Text = '';
+            let deal3Text = '';
+
+            if (deal1.fixed_price) {
+                deal1Text = `${deal1.required_qty} for £${deal1.fixed_price}`;
+            } else if (deal1.discount_percent) {
+                deal1Text = `${deal1.discount_percent}% off`;
+            } else {
+                deal1Text = 'amazing deal';
+            }
+
+            if (deal2.fixed_price) {
+                deal2Text = `${deal2.required_qty} for £${deal2.fixed_price}`;
+            } else if (deal2.discount_percent) {
+                deal2Text = `${deal2.discount_percent}% off`;
+            } else {
+                deal2Text = 'amazing offer';
+            }
+
+            if (deal3.fixed_price) {
+                deal3Text = `${deal3.required_qty} for £${deal3.fixed_price}`;
+            } else if (deal3.discount_percent) {
+                deal3Text = `${deal3.discount_percent}% off`;
+            } else {
+                deal3Text = 'amazing offer';
+            }
+
+            dealsText = `Get the most for your money with our amazing ${deal1Text} deal, ${deal2Text} offer, and ${deal3Text} offer! Mix & Match to find the perfect combination of devices, or just stock up on great deals. They're not our only multibuy deals, we have plenty more!`;
+        }
+    } else {
+        dealsText = 'No active deals available at the moment';
+    }
+
+    return {
+        deals: deals,
+        deals_text: dealsText
+    };
+};
+
+const getLatestDealsOriginal = async () => {
     const dealFilter = {
         is_active: true,
         is_deleted: false,
@@ -487,6 +1102,229 @@ module.exports.getBannerImages = async (req, res, next) => {
  * @param {Function} next - Express next function
  */
 module.exports.getSlugRelations = async (req, res, next) => {
+    try {
+        const { slugs } = req.query;
+
+        // Validate input
+        if (!slugs) {
+            return errorResponse(res, { message: "Slugs parameter is required" }, "Slugs parameter is required", 400);
+        }
+
+        // Parse slugs from query string
+        const slugArray = slugs.split(',').map(slug => slug.trim());
+
+        // Query slug relations
+        const slugRelations = await SlugRelation.findAll({
+            where: {
+                slug: {
+                    [Op.in]: slugArray
+                }
+            },
+            order: [
+                // Order by entity type priority
+                [Sequelize.literal(`FIELD(entity_type, ${Object.keys(ENTITY_TYPE_PRIORITY)
+                    .map(type => `'${type}'`)
+                    .join(',')})`)]
+            ]
+        });
+        // Handle no matches
+        if (!slugRelations.length) {
+            return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
+        }
+
+        // Handle single slug query - no validation needed
+        if (slugArray.length === 1) {
+            const seoData = await seoService.getSeoMeta(
+                getEntityType(slugRelations[0].entity_type),
+                slugRelations[0].slug
+            );
+
+            const response = {
+                slug: slugRelations[0].slug,
+                entity_type: slugRelations[0].entity_type,
+                entity_id: slugRelations[0].entity_id,
+                seo: seoData
+            };
+
+            // Include deals if entity is category or brand
+            if (['category', 'brand'].includes(slugRelations[0].entity_type)) {
+                const dealsData = await getDealsForEntity(
+                    slugRelations[0].entity_type,
+                    slugRelations[0].entity_id
+                );
+                response.deals = dealsData.deals;
+                response.deals_text = dealsData.deals_text;
+            }
+
+            // // Include latest 3 deals if entity is deal
+            if (slugRelations[0].entity_type === 'deal') {
+                const latestDealsData = await getLatestDeals();
+                response.latest_deals = latestDealsData.deals;
+                response.deals_text = latestDealsData.deals_text;
+            }
+
+            return successResponse(res, response, 'Success');
+        }
+
+        // Handle multiple slugs query
+        const matchedSlugs = new Set(slugRelations.map(relation => relation.slug));
+        const allSlugsMatched = slugArray.every(slug => matchedSlugs.has(slug));
+
+        if (!allSlugsMatched) {
+            const response = {
+                message: 'Partial matches found, refine your query if needed',
+                data: slugRelations.map(relation => ({
+                    slug: relation.slug,
+                    entity_type: relation.entity_type,
+                    entity_id: relation.entity_id
+                }))
+            };
+
+            // OPTIMIZED: Batch fetch deals for all matched slugs
+            const entitiesForDeals = slugRelations
+                .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+                .map(relation => ({
+                    type: relation.entity_type,
+                    id: relation.entity_id
+                }));
+
+            if (entitiesForDeals.length > 0) {
+                const dealsMap = await getBatchDealsForEntities(entitiesForDeals);
+                
+                const dealsResults = slugRelations
+                    .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+                    .map(relation => {
+                        const key = `${relation.entity_type}_${relation.entity_id}`;
+                        const dealsData = dealsMap.get(key) || { deals: [], deals_text: '' };
+                        return {
+                            slug: relation.slug,
+                            deals: dealsData.deals,
+                            deals_text: dealsData.deals_text
+                        };
+                    });
+
+                if (dealsResults.length > 0) {
+                    response.deals_by_slug = dealsResults;
+                }
+            }
+
+            return successResponse(res, response, 'Success');
+        }
+
+        // For pairs, validate hierarchical relationships
+        if (slugArray.length === 2) {
+            // Sort relations by priority to ensure parent comes first
+            const sortedRelations = slugRelations.sort((a, b) => 
+                ENTITY_TYPE_PRIORITY[a.entity_type] - ENTITY_TYPE_PRIORITY[b.entity_type]
+            );
+
+            const [parent, child] = sortedRelations;
+
+            // Define valid hierarchical relationships
+            const validHierarchy = {
+                category: {
+                    validChildTypes: ['subcategory', 'product'],
+                    errorMessage: 'A category slug can only be followed by a subcategory or product slug'
+                },
+                brand: {
+                    validChildTypes: ['subbrand', 'product'],
+                    errorMessage: 'A brand slug can only be followed by a sub-brand or product slug'
+                },
+                product: {
+                    validChildTypes: ['product_variant'],
+                    errorMessage: 'A product slug can only be followed by a product variant slug'
+                },
+                blog_category: {
+                    validChildTypes: ['blog_variant'],
+                    errorMessage: 'A blog category slug can only be followed by a blog variant slug'
+                },
+                deal: {
+                    validChildTypes: ['deal_variant'],
+                    errorMessage: 'A deal slug can only be followed by a deal variant slug'
+                }
+            };
+
+            // Validate hierarchy
+            const parentRules = validHierarchy[parent.entity_type];
+            if (!parentRules) {
+                return errorResponse(res, {
+                    message: "Invalid parent slug type",
+                    details: `Only category, brand, product, and blog_category can be parent slugs`,
+                    allowedParents: Object.keys(validHierarchy),
+                    received: parent.entity_type
+                }, "Invalid hierarchy", 400);
+            }
+
+            if (!parentRules.validChildTypes.includes(child.entity_type)) {
+                return errorResponse(res, {
+                    message: "Invalid slug hierarchy",
+                    details: parentRules.errorMessage,
+                    parent: {
+                        slug: parent.slug,
+                        type: parent.entity_type
+                    },
+                    child: {
+                        slug: child.slug,
+                        type: child.entity_type
+                    },
+                    allowedChildTypes: parentRules.validChildTypes
+                }, "Invalid hierarchy", 400);
+            }
+
+            const response = sortedRelations.map(relation => ({
+                slug: relation.slug,
+                entity_type: relation.entity_type,
+                entity_id: relation.entity_id
+            }));
+
+            // OPTIMIZED: Batch fetch deals for category/brand slugs
+            const entitiesForDeals = sortedRelations
+                .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+                .map(relation => ({
+                    type: relation.entity_type,
+                    id: relation.entity_id
+                }));
+
+            if (entitiesForDeals.length > 0) {
+                const dealsMap = await getBatchDealsForEntities(entitiesForDeals);
+                
+                const dealsResults = sortedRelations
+                    .filter(relation => ['category', 'brand'].includes(relation.entity_type))
+                    .map(relation => {
+                        const key = `${relation.entity_type}_${relation.entity_id}`;
+                        const dealsData = dealsMap.get(key) || { deals: [], deals_text: '' };
+                        return {
+                            slug: relation.slug,
+                            deals: dealsData.deals,
+                            deals_text: dealsData.deals_text
+                        };
+                    });
+
+                if (dealsResults.length > 0) {
+                    return successResponse(res, {
+                        relations: response,
+                        deals_by_slug: dealsResults
+                    }, 'Success');
+                }
+            }
+
+            // If validation passes, return the pair
+            return successResponse(res, response, 'Success');
+        }
+
+        // If more than 2 slugs, return error
+        return errorResponse(res, {
+            message: "Invalid number of slugs",
+            details: "Only single slugs or pairs are supported"
+        }, "Invalid request", 400);
+
+    } catch (error) {
+        console.log(error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getSlugRelationsOriginal = async (req, res, next) => {
     try {
         const { slugs } = req.query;
 
