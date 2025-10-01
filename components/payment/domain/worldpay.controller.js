@@ -1985,9 +1985,25 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         timestamp: new Date()
                     });
                 }
-                await user.update({
-                    loyalty_points: sequelize.literal(`loyalty_points + ${settings.points_value}`)
-                });
+                const minimumAmountForLoyaltyPoints = settings.min_amount_for_loyalty_points || 0;
+                    if (parseFloat(order.total) >= parseFloat(minimumAmountForLoyaltyPoints)) {
+                        let pointsToBeAdded = 0;
+                        if (settings.amount_divisor && parseFloat(settings.amount_divisor) > 0) {
+                            pointsToBeAdded = Math.floor(parseFloat(order.total) / parseFloat(settings.amount_divisor));
+                        } else {
+                            pointsToBeAdded = parseFloat(settings.points_value);
+                        }
+
+                        if (pointsToBeAdded > 0) {
+                            await User.update({
+                                loyalty_points: sequelize.literal(`loyalty_points + ${pointsToBeAdded}`)
+                            }, {
+                                where: {
+                                    id: order.user_id
+                                }
+                            });
+                        }
+                    }
             }
         }
         if(!order.loyalty_flag){
