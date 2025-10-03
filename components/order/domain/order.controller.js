@@ -17,34 +17,27 @@ module.exports.getOrders = async (req, res) => {
         const userId = req.user.id; // Get user ID from authenticated token
         const { page = 1, limit = 10 } = req.query; // Default page 1 and 10 items per page
         const offset = (page - 1) * limit;
-        // Get user data
-        const user = await User.findOne({
-            where: { id: userId },
-            attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'receive_promotions']
-        });
+        const parsedLimit = parseInt(limit);
+        const parsedPage = parseInt(page);
+        
+        // OPTIMIZATION: Run user check and count in parallel
+        const [user, totalCount] = await Promise.all([
+            User.findOne({
+                where: { id: userId },
+                attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'receive_promotions']
+            }),
+            Order.count({
+                where: { user_id: userId }
+            })
+        ]);
 
         if (!user) {
             return errorResponse(res, {}, 'User not found', 404);
         }
 
-        // First get the total count of user's orders excluding failed orders
-        const totalCount = await Order.count({
-            where: { 
-                user_id: userId,
-                // status: {
-                //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
-                // }
-            }
-        });
-
-        // Then get the paginated orders excluding failed orders
+        // OPTIMIZATION: Get orders with optimized includes
         const orders = await Order.findAll({
-            where: { 
-                user_id: userId,
-                // status: {
-                //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
-                // }
-            },
+            where: { user_id: userId },
             attributes: [
                 'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
             ],
@@ -113,25 +106,44 @@ module.exports.getOrders = async (req, res) => {
                 }
             ],
             order: [['createdAt', 'DESC']],
-            limit: parseInt(limit),
-            offset: parseInt(offset)
+            limit: parsedLimit,
+            offset: offset
         });
 
-        if (!orders) {
-            return errorResponse(res, {}, {message: 'Orders not found'}, 404);
-        }
-        // Mapping orders to include the image URL for each order item
-        const mappedOrders = orders.map(order => {
-            // Update order status if needed
-            order.orderItems.forEach(item => {
-                if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
-                    item.variant.primary_image_url = item.variant.variantImages[0].image_url;
+        if (!orders || orders.length === 0) {
+            return successResponse(res, {
+                user: {
+                    id: user.id,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    email: user.email,
+                    phone: user.phone,
+                    receive_promotions: user.receive_promotions
+                },
+                orders: [],
+                pagination: {
+                    total: totalCount,
+                    page: parsedPage,
+                    limit: parsedLimit,
+                    total_pages: Math.ceil(totalCount / parsedLimit)
                 }
-            });
+            }, 'No orders found', 200);
+        }
+
+        // OPTIMIZATION: Pre-calculate totalPages to avoid recalculation
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+        
+        // OPTIMIZATION: More efficient mapping with early returns
+        const mappedOrders = orders.map(order => {
+            if (order.orderItems && order.orderItems.length > 0) {
+                order.orderItems.forEach(item => {
+                    if (item.variant?.variantImages?.length > 0) {
+                        item.variant.primary_image_url = item.variant.variantImages[0].image_url;
+                    }
+                });
+            }
             return order;
         });
-
-        const totalPages = Math.ceil(totalCount / limit);
 
         successResponse(res, {
             user: {
@@ -145,8 +157,8 @@ module.exports.getOrders = async (req, res) => {
             orders: mappedOrders,
             pagination: {
                 total: totalCount,
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: parsedPage,
+                limit: parsedLimit,
                 total_pages: totalPages
             }
         }, 'Orders fetched successfully', 200);
@@ -157,7 +169,150 @@ module.exports.getOrders = async (req, res) => {
     }
 };
 
+// module.exports.getOrdersOld = async (req, res) => {
+//     try {
+//         const userId = req.user.id; // Get user ID from authenticated token
+//         const { page = 1, limit = 10 } = req.query; // Default page 1 and 10 items per page
+//         const offset = (page - 1) * limit;
+//         // Get user data
+//         const user = await User.findOne({
+//             where: { id: userId },
+//             attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'receive_promotions']
+//         });
 
+//         if (!user) {
+//             return errorResponse(res, {}, 'User not found', 404);
+//         }
+
+//         // First get the total count of user's orders excluding failed orders
+//         const totalCount = await Order.count({
+//             where: { 
+//                 user_id: userId,
+//                 // status: {
+//                 //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
+//                 // }
+//             }
+//         });
+
+//         // Then get the paginated orders excluding failed orders
+//         const orders = await Order.findAll({
+//             where: { 
+//                 user_id: userId,
+//                 // status: {
+//                 //     [Op.ne]: 'fail' // Exclude orders with 'fail' status
+//                 // }
+//             },
+//             attributes: [
+//                 'id', 'order_unique_id', 'total', 'discount_price', 'status', 'createdAt', 'email', 'phone'
+//             ],
+//             include: [
+//                 {
+//                     model: OrderItem,
+//                     as: 'orderItems',
+//                     attributes: ['id', 'unit', 'unit_price', 'quantity', 'discount_price', 'total'],
+//                     include: [
+//                         {
+//                             model: Product,
+//                             as: 'product',
+//                             attributes: ['id', 'name', 'slug', 'price'],
+//                             paranoid: false,
+//                             include: [
+//                                 {
+//                                     model: ProductImage,
+//                                     as: 'ProductImages',
+//                                     attributes: ['image_url'],
+//                                     where: { is_primary: true },
+//                                     required: false
+//                                 }
+//                             ]
+//                         },
+//                         {
+//                             model: ProductVariant,
+//                             as: 'variant',
+//                             attributes: ['id', 'slug', 'price'],
+//                             paranoid: false,
+//                             include: [
+//                                 {
+//                                     model: ProductVariantImage,
+//                                     as: 'variantImages',
+//                                     attributes: ['image_url'],
+//                                     where: { is_primary: true },
+//                                     required: false
+//                                 }
+//                             ]
+//                         }
+//                     ]
+//                 },
+//                 {
+//                     model: UserAddress,
+//                     as: 'shippingAddress',
+//                     attributes: ['name', 'street', 'town', 'post_code', 'phone']
+//                 },
+//                 {
+//                     model: UserAddress,
+//                     as: 'billingAddress',
+//                     attributes: ['name', 'street', 'town', 'post_code', 'phone']
+//                 },
+//                 {
+//                     model: OrderAddress,
+//                     as: 'orderShippingAddress',
+//                     attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+//                 },
+//                 {
+//                     model: OrderAddress,
+//                     as: 'orderBillingAddress',
+//                     attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+//                 },
+//                 {
+//                     model: ShippingMethod,
+//                     as: 'shippingMethod',
+//                     attributes: ['id', 'shipping_method', 'shipping_cost']
+//                 }
+//             ],
+//             order: [['createdAt', 'DESC']],
+//             limit: parseInt(limit),
+//             offset: parseInt(offset)
+//         });
+
+//         if (!orders) {
+//             return errorResponse(res, {}, {message: 'Orders not found'}, 404);
+//         }
+//         // Mapping orders to include the image URL for each order item
+//         const mappedOrders = orders.map(order => {
+//             // Update order status if needed
+//             order.orderItems.forEach(item => {
+//                 if (item.variant && item.variant.variantImages && item.variant.variantImages.length > 0) {
+//                     item.variant.primary_image_url = item.variant.variantImages[0].image_url;
+//                 }
+//             });
+//             return order;
+//         });
+
+//         const totalPages = Math.ceil(totalCount / limit);
+
+//         successResponse(res, {
+//             user: {
+//                 id: user.id,
+//                 first_name: user.first_name,
+//                 last_name: user.last_name,
+//                 email: user.email,
+//                 phone: user.phone,
+//                 receive_promotions: user.receive_promotions
+//             },
+//             orders: mappedOrders,
+//             pagination: {
+//                 total: totalCount,
+//                 page: parseInt(page),
+//                 limit: parseInt(limit),
+//                 total_pages: totalPages
+//             }
+//         }, 'Orders fetched successfully', 200);
+
+//     } catch (error) {
+//         console.error("Error fetching orders:", error);
+//         return errorResponse(res, error, {message: "Failed to fetch orders"});
+//     }
+// };
 module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {
