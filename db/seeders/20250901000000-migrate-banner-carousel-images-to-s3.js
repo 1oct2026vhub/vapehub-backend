@@ -18,7 +18,7 @@ let circuitBreaker = {
   totalErrors: 0,
   isOpen: false,
   lastErrorTime: null,
-  cooldownPeriod: 900000 // 15 minutes for shared hosting (servers need more recovery time)
+  cooldownPeriod: 300000 // 5 minutes (optimized for faster recovery)
 };
 
 module.exports = {
@@ -223,12 +223,12 @@ async function downloadAndUploadToS3(imageUrl, folder = 'banners', s3Key = null,
           
           if (retries > 0) {
             logMessage(`⚠️ Download failed (${errorType}), retrying... (${retries} attempts left)`);
-            // Enhanced backoff for 502 errors - SHARED SERVER needs much longer delays
+            // OPTIMIZED backoff - reduced delays for faster processing
             let delay;
             if (statusCode === 502) {
-              delay = Math.min(15000 * Math.pow(2, 3 - retries), 120000); // 30s, 60s, 120s for 502s on shared hosting
+              delay = Math.min(3000 * Math.pow(2, 3 - retries), 15000); // 6s, 12s, 15s for 502s (optimized)
             } else {
-              delay = Math.min(5000 * Math.pow(2, 3 - retries), 30000); // 10s, 20s, 30s for other errors
+              delay = Math.min(1000 * Math.pow(2, 3 - retries), 5000); // 2s, 4s, 5s for other errors (optimized)
             }
             logMessage(`⏳ Waiting ${delay}ms before retry (${errorType})...`);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -367,10 +367,10 @@ async function migrateBannerImages(crossServerMigration, queryInterface, Sequeli
         console.log(`❌ Failed to process banner image: ${banner.title || `ID ${banner.id}`}`);
       }
       
-      // Add delay between processing to avoid rate limiting (SHARED SERVER - needs longer delays)
+      // Add delay between processing to avoid rate limiting (OPTIMIZED - reduced delay)
       if (imageStats.processed < bannersWithImages.length) {
-        console.log(`⏳ Waiting 15 seconds before next image (shared server protection)...`);
-        await new Promise(resolve => setTimeout(resolve, 15000));
+        console.log(`⏳ Waiting 2 seconds before next image (optimized)...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Save progress periodically (every 10 items)
@@ -425,10 +425,10 @@ async function migrateCarouselImages(crossServerMigration, queryInterface, Seque
         console.log(`❌ Failed to process carousel image: ${carousel.title || `ID ${carousel.id}`}`);
       }
       
-      // Add delay between processing to avoid rate limiting (SHARED SERVER - needs longer delays)
+      // Add delay between processing to avoid rate limiting (OPTIMIZED - reduced delay)
       if (imageStats.processed < carouselsWithImages.length) {
-        console.log(`⏳ Waiting 15 seconds before next image (shared server protection)...`);
-        await new Promise(resolve => setTimeout(resolve, 15000));
+        console.log(`⏳ Waiting 2 seconds before next image (optimized)...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Save progress periodically (every 10 items)
@@ -732,10 +732,10 @@ function updateCircuitBreaker(statusCode) {
   if (statusCode === 502) {
     circuitBreaker.consecutive502s++;
     
-    // Open circuit breaker if too many consecutive 502s (shared server = lower threshold)
-    if (circuitBreaker.consecutive502s >= 3) {
+    // Open circuit breaker if too many consecutive 502s (optimized threshold)
+    if (circuitBreaker.consecutive502s >= 5) {
       circuitBreaker.isOpen = true;
-      logMessage(`🔌 Circuit breaker OPENED after ${circuitBreaker.consecutive502s} consecutive 502 errors (shared server protection). Pausing for ${circuitBreaker.cooldownPeriod/60000} minutes...`);
+      logMessage(`🔌 Circuit breaker OPENED after ${circuitBreaker.consecutive502s} consecutive 502 errors (optimized protection). Pausing for ${circuitBreaker.cooldownPeriod/60000} minutes...`);
     }
   } else {
     // Reset 502 counter on different error types

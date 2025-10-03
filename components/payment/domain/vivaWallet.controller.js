@@ -617,73 +617,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     }
 
                     try {
-                        // Log email environment configuration
-                        logger.info({
-                            type: 'email_environment_check',
-                            message: 'Email environment configuration',
-                            emailTestMode: process.env.EMAIL_TEST_MODE,
-                            emailHost: process.env.EMAIL_HOST,
-                            emailPort: process.env.EMAIL_PORT,
-                            emailUsername: process.env.EMAIL_USERNAME ? 'SET' : 'NOT_SET',
-                            emailPassword: process.env.EMAIL_PASSWORD ? 'SET' : 'NOT_SET',
-                            emailNoReplySender: process.env.EMAIL_NO_REPLY_SENDER,
-                            hostUrl: process.env.HOST_URL,
-                            frontendUrl: process.env.FRONTEND_URL,
-                            timestamp: new Date().toISOString()
-                        });
-                        
-                        utilsLogger.logInfo({
-                            type: 'email_environment_check',
-                            message: 'Email environment configuration',
-                            emailTestMode: process.env.EMAIL_TEST_MODE,
-                            emailHost: process.env.EMAIL_HOST,
-                            emailPort: process.env.EMAIL_PORT,
-                            emailUsername: process.env.EMAIL_USERNAME ? 'SET' : 'NOT_SET',
-                            emailPassword: process.env.EMAIL_PASSWORD ? 'SET' : 'NOT_SET',
-                            emailNoReplySender: process.env.EMAIL_NO_REPLY_SENDER,
-                            hostUrl: process.env.HOST_URL,
-                            frontendUrl: process.env.FRONTEND_URL
-                        });
-
-                        // Log email attempt to file
-                        logger.info({
-                            type: 'order_confirmation_email_attempt',
-                            message: 'Attempting to send order confirmation email',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            timestamp: new Date().toISOString()
-                        });
-                        
-                        utilsLogger.logInfo({
-                            type: 'order_confirmation_email_attempt',
-                            message: 'Attempting to send order confirmation email',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            emailData: emailData
-                        });
-
                         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                        
-                        // Log successful email sending
-                        logger.info({
-                            type: 'order_confirmation_email_success',
-                            message: 'Order confirmation email sent successfully',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            timestamp: new Date().toISOString()
-                        });
-                        
-                        utilsLogger.logInfo({
-                            type: 'order_confirmation_email_success',
-                            message: 'Order confirmation email sent successfully',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email
-                        });
-                        
                     } catch (emailError) {
                         // Log email failure to file
                         logger.error({
@@ -698,20 +632,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 name: emailError.name
                             },
                             timestamp: new Date().toISOString()
-                        });
-                        
-                        utilsLogger.logError({
-                            type: 'order_confirmation_email_failure',
-                            message: 'Failed to send order confirmation email',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            error: {
-                                message: emailError.message,
-                                stack: emailError.stack,
-                                name: emailError.name
-                            },
-                            emailData: emailData
                         });
                         
                         // Log the error but don't fail the webhook
@@ -839,40 +759,8 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                     };
 
                     try {
-                        // Log email environment configuration for payment failure
-                        logger.info({
-                            type: 'email_environment_check_payment_failure',
-                            message: 'Email environment configuration for payment failure',
-                            emailTestMode: process.env.EMAIL_TEST_MODE,
-                            emailHost: process.env.EMAIL_HOST,
-                            emailPort: process.env.EMAIL_PORT,
-                            emailUsername: process.env.EMAIL_USERNAME ? 'SET' : 'NOT_SET',
-                            emailPassword: process.env.EMAIL_PASSWORD ? 'SET' : 'NOT_SET',
-                            emailNoReplySender: process.env.EMAIL_NO_REPLY_SENDER,
-                            hostUrl: process.env.HOST_URL,
-                            frontendUrl: process.env.FRONTEND_URL,
-                            timestamp: new Date().toISOString()
-                        });
-                        
-                        logger.info({
-                            type: 'payment_failure_email_attempt',
-                            message: 'Attempting to send payment failure email',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            timestamp: new Date().toISOString()
-                        });
                         
                         await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                        
-                        logger.info({
-                            type: 'payment_failure_email_success',
-                            message: 'Payment failure email sent successfully',
-                            orderId: order.id,
-                            orderCode: order.order_code,
-                            userEmail: order.user.email,
-                            timestamp: new Date().toISOString()
-                        });
                         
                     } catch (emailError) {
                         logger.error({
