@@ -80,9 +80,79 @@ router.post(
  *     summary: Get all shipping methods
  *     tags: 
  *       - ADMIN - Shipping Methods
+ *     parameters:
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [method_order, shipping_method, createdAt, id]
+ *         description: Sort by field
+ *         default: method_order
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *         description: Sort order
+ *         default: ASC
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *         description: Number of items per page
+ *         default: 100
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *         description: Number of items to skip
+ *         default: 0
+ *       - in: query
+ *         name: show_deleted
+ *         schema:
+ *           type: boolean
+ *         description: Include deleted shipping methods
+ *         default: false
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search in name, display_name, carrier, or service
  *     responses:
  *       200:
- *         description: List of shipping methods
+ *         description: List of shipping methods with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     shippingMethods:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/ShippingMethod'
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                         total_pages:
+ *                           type: integer
+ *                         current_page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         offset:
+ *                           type: integer
  */
 router.get("/", shippingMethodController.getAllShippingMethods);
 

@@ -82,13 +82,87 @@ module.exports.createShippingMethod = async (req, res) => {
 // Get all shipping methods (admin view - includes disabled methods)
 module.exports.getAllShippingMethods = async (req, res) => {
     try {
-        const { include_disabled = false } = req.query;
+        const { 
+            sort_by = 'method_order', 
+            order = 'ASC', 
+            limit = 100, 
+            offset = 0, 
+            show_deleted = false,
+            search = ''
+        } = req.query;
         
-        const whereClause = include_disabled === 'true' ? {} : { is_enabled: true };
+        // Build where clause
+        const whereClause = {};
+        console.log(show_deleted);
+        // Handle show_deleted parameter
+        if (show_deleted === 'true' || show_deleted === true) {
+            whereClause.deletedAt = { [Op.ne]: null }; // Show only deleted methods
+            console.log("where>>>", whereClause);
+        } else if (show_deleted === 'false' || show_deleted === false) {
+            whereClause.deletedAt = null; // Show only active methods
+        }
+        // If show_deleted is not provided, show only active methods by default
+        // Handle search parameter
+        if (search) {
+            const searchConditions = [
+                { name: { [Op.like]: `%${search}%` } },
+                { display_name: { [Op.like]: `%${search}%` } },
+                { carrier: { [Op.like]: `%${search}%` } },
+                { service: { [Op.like]: `%${search}%` } }
+            ];
+            
+            // If we already have deletedAt condition, combine it with search
+            if (whereClause.deletedAt) {
+                whereClause[Op.and] = [
+                    { deletedAt: whereClause.deletedAt },
+                    { [Op.or]: searchConditions }
+                ];
+                delete whereClause.deletedAt; // Remove the old deletedAt condition
+            } else {
+                whereClause[Op.or] = searchConditions;
+            }
+        }
         
+        // Parse limit and offset
+        const parsedLimit = parseInt(limit) || 100;
+        const parsedOffset = parseInt(offset) || 0;
+        
+        // Build order clause
+        const orderClause = [];
+        if (sort_by === 'method_order') {
+            orderClause.push(['method_order', order.toUpperCase()]);
+        } else if (sort_by === 'shipping_method') {
+            orderClause.push(['shipping_method', order.toUpperCase()]);
+        } else if (sort_by === 'createdAt') {
+            orderClause.push(['createdAt', order.toUpperCase()]);
+        } else if (sort_by === 'id') {
+            orderClause.push(['id', order.toUpperCase()]);
+        } else {
+            orderClause.push(['method_order', 'ASC']);
+        }
+        orderClause.push(['createdAt', 'DESC']);
+        
+        // Debug: Check if there are any deleted records
+        const deletedCount = await ShippingMethod.count({ 
+            where: { deletedAt: { [Op.ne]: null } },
+            paranoid: false // This allows us to count deleted records
+        });
+        console.log('Total deleted records:', deletedCount);
+        
+        // Get total count for pagination
+        const totalCount = await ShippingMethod.count({ 
+            where: whereClause,
+            paranoid: false // This allows us to count deleted records
+        });
+        
+        // Get shipping methods with pagination
+        console.log('Final whereClause:', JSON.stringify(whereClause, null, 2));
         const shippingMethods = await ShippingMethod.findAll({
             where: whereClause,
-            order: [['method_order', 'ASC'], ['createdAt', 'DESC']],
+            order: orderClause,
+            limit: parsedLimit,
+            offset: parsedOffset,
+            paranoid: false, // This allows us to query deleted records
             include: [
                 {
                     model: User,
@@ -97,8 +171,22 @@ module.exports.getAllShippingMethods = async (req, res) => {
                 }
             ]
         });
+        console.log('Found shipping methods:', shippingMethods.length);
         
-        return successResponse(res, shippingMethods, "Shipping methods retrieved successfully");
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+        const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
+        
+        return successResponse(res, {
+            shippingMethods,
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parsedLimit,
+                offset: parsedOffset
+            }
+        }, "Shipping methods retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
