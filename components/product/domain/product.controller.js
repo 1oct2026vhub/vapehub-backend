@@ -1689,6 +1689,682 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             throw new Error('Invalid input parameters');
         }
 
+        // OPTIMIZED: Use raw SQL queries with strategic parallelization for maximum performance
+
+        // 1. Get product basic info with raw SQL (MUST run first for validation)
+        const productResult = await Product.sequelize.query(`
+            SELECT 
+                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
+                p.createdAt, p.updatedAt
+            FROM products p
+            WHERE p.id = :product_id 
+            AND p.status = 'published'
+            AND p.deletedAt IS NULL
+        `, {
+            replacements: { product_id },
+            type: Product.sequelize.QueryTypes.SELECT
+        });
+
+        if (productResult.length === 0) {
+            throw new Error('Product not found');
+        }
+
+        const product = productResult[0];
+
+        // 2. PARALLEL BATCH 1: Independent queries that don't depend on variants
+        const [
+            categoriesResult,
+            brandsResult,
+            productImagesResult,
+            productAttributeTermsResult,
+            dealsResult
+        ] = await Promise.all([
+            // Get product categories with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    c.id, c.name, c.slug, pc.is_primary
+                FROM product_categories pc
+                JOIN categories c ON pc.category_id = c.id
+                WHERE pc.product_id = :product_id
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Get product brands with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    b.id, b.name, b.slug, pb.is_primary
+                FROM product_brands pb
+                JOIN brands b ON pb.brand_id = b.id
+                WHERE pb.product_id = :product_id
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Get product images with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    id, product_id, image_url, is_primary
+                FROM product_images
+                WHERE product_id = :product_id
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Get product attribute terms with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page,
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                FROM product_attribute_terms pat
+                JOIN attributes a ON pat.attribute_id = a.id
+                JOIN attribute_terms t ON pat.term_id = t.id
+                WHERE pat.product_id = :product_id
+                AND pat.deleted_at IS NULL
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Get deals with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    d.id, d.name, d.slug, d.deal_type, d.required_qty, d.get_qty,
+                    d.fixed_price, d.discount_percent, d.tiered_qty_json,
+                    d.valid_from, d.valid_to
+                FROM deal_products dp
+                JOIN deals d ON dp.deal_id = d.id
+                WHERE dp.product_id = :product_id
+                AND d.is_active = 1 
+                AND d.is_deleted = 0 
+                AND d.valid_from <= NOW() 
+                AND d.valid_to >= NOW()
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        // 3. Get variants with raw SQL (only active ones) - MUST run before variant-dependent queries
+        const variantsResult = await Product.sequelize.query(`
+            SELECT 
+                id, product_id, slug, price, regular_price, discount_price,
+                stock, stock_status, status, low_stock_threshold,
+                created_at, updated_at
+            FROM product_variants
+            WHERE product_id = :product_id 
+            AND status = 'active'
+            AND deleted_at IS NULL
+        `, {
+            replacements: { product_id },
+            type: Product.sequelize.QueryTypes.SELECT
+        });
+
+        // 4. PARALLEL BATCH 2: Variant-dependent queries (can run in parallel after variants are fetched)
+        const [
+            variantAttributesResult,
+            variantImagesResult
+        ] = await Promise.all([
+            // Get variant attributes with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    pva.variant_id, pva.attribute_id, pva.term_id,
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                FROM product_variant_attributes pva
+                JOIN attributes a ON pva.attribute_id = a.id
+                JOIN attribute_terms t ON pva.term_id = t.id
+                WHERE pva.variant_id IN (
+                    SELECT id FROM product_variants 
+                    WHERE product_id = :product_id AND status = 'active'
+                )
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Get variant images with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    id, variant_id, image_url, alt_text, is_primary, sort_order
+                FROM product_variant_images
+                WHERE variant_id IN (
+                    SELECT id FROM product_variants 
+                    WHERE product_id = :product_id AND status = 'active'
+                )
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        // 5. PARALLEL BATCH 3: Loyalty settings and reviews (can run in parallel with each other)
+        const [loyaltySettings, reviewsResult] = await Promise.all([
+            // Get loyalty settings (keep this as ORM since it's a simple query)
+            LoyaltyPointsSettings.findOne({
+                where: { status: true },
+                order: [['createdAt', 'DESC']]
+            }),
+
+            // Get reviews for the product with raw SQL
+            Product.sequelize.query(`
+                SELECT 
+                    r.id, r.product_id, r.user_id, r.order_id, r.user_name, r.company_name,
+                    r.rating, r.comment, r.verified_by, r.testimonial, r.created_at,
+                    u.first_name, u.last_name, u.profile_pic_url,
+                    o.order_unique_id
+                FROM reviews r
+                LEFT JOIN users u ON u.id = r.user_id
+                LEFT JOIN orders o ON o.id = r.order_id
+                WHERE r.product_id = :product_id
+                ORDER BY r.created_at DESC
+            `, {
+                replacements: { product_id },
+                type: Product.sequelize.QueryTypes.SELECT
+            })
+        ]);
+
+        // OPTIMIZED: Process raw SQL results into structured data
+        // Create maps for efficient data lookup
+        const variantAttributesMap = new Map();
+        variantAttributesResult.forEach(va => {
+            if (!variantAttributesMap.has(va.variant_id)) {
+                variantAttributesMap.set(va.variant_id, []);
+            }
+            variantAttributesMap.get(va.variant_id).push({
+                attribute: {
+                    id: va.attr_id,
+                    name: va.attr_name,
+                    type: va.attr_type,
+                    image_url: va.attr_image_url
+                },
+                term: {
+                    id: va.term_id,
+                    name: va.term_name,
+                    slug: va.term_slug
+                }
+            });
+        });
+
+        const variantImagesMap = new Map();
+        variantImagesResult.forEach(img => {
+            if (!variantImagesMap.has(img.variant_id)) {
+                variantImagesMap.set(img.variant_id, []);
+            }
+            variantImagesMap.get(img.variant_id).push({
+                id: img.id,
+                variant_id: img.variant_id,
+                image_url: img.image_url,
+                alt_text: img.alt_text,
+                is_primary: Boolean(img.is_primary),
+                sort_order: img.sort_order
+            });
+        });
+
+        // Create structured variants with attributes and images
+        const structuredVariants = variantsResult.map(variant => ({
+            id: variant.id,
+            product_id: variant.product_id,
+            slug: variant.slug,
+            price: variant.price,
+            regular_price: variant.regular_price,
+            discount_price: variant.discount_price,
+            stock: variant.stock,
+            stock_status: variant.stock_status,
+            status: variant.status,
+            low_stock_threshold: variant.low_stock_threshold,
+            created_at: variant.created_at,
+            updated_at: variant.updated_at,
+            variantAttributes: variantAttributesMap.get(variant.id) || [],
+            variantImages: variantImagesMap.get(variant.id) || []
+        }));
+
+        // Group attributes and their terms (OPTIMIZED)
+        const attributeTermsMap = new Map();
+        productAttributeTermsResult.forEach((pat) => {
+            const attributeId = pat.attr_id;
+            if (!attributeTermsMap.has(attributeId)) {
+                attributeTermsMap.set(attributeId, {
+                    attribute: {
+                        id: pat.attr_id,
+                        name: pat.attr_name,
+                        type: pat.attr_type,
+                        image_url: pat.attr_image_url,
+                        is_visible_page: Boolean(pat.is_visible_page),
+                        used_in_variation: Boolean(pat.used_in_variation)
+                    },
+                    terms: []
+                });
+            }
+            
+            // Check if the term is used in variation
+            if (pat.used_in_variation) {
+                // Check if this term has any corresponding variants
+                const hasVariants = structuredVariants.some(variant => 
+                    variant.variantAttributes.some(va => 
+                        va.attribute.id === pat.attr_id && va.term.id === pat.term_id
+                    )
+                );
+                
+                // Only add the term if it has variants
+                if (hasVariants) {
+                    attributeTermsMap.get(attributeId).terms.push({
+                        id: pat.term_id,
+                        name: pat.term_name,
+                        slug: pat.term_slug,
+                        used_in_variation: Boolean(pat.used_in_variation),
+                        is_visible_page: Boolean(pat.is_visible_page)
+                    });
+                }
+            } else {
+                // If not used in variation, add it regardless
+                attributeTermsMap.get(attributeId).terms.push({
+                    id: pat.term_id,
+                    name: pat.term_name,
+                    slug: pat.term_slug,
+                    used_in_variation: Boolean(pat.used_in_variation),
+                    is_visible_page: Boolean(pat.is_visible_page)
+                });
+            }
+        });
+
+        // Filter variants based on provided attribute terms (OPTIMIZED)
+        const filteredVariants = structuredVariants.filter(variant => {
+            return attribute_terms.every(filter => {
+                return variant.variantAttributes.some(va => 
+                    va.attribute.id === filter.attribute_id && 
+                    va.term.id === filter.term_id
+                );
+            });
+        });
+        // Get available terms for other attributes
+        const availableTermsMap = new Map();
+        filteredVariants.forEach(variant => {
+            variant.variantAttributes.forEach(va => {
+                const attributeId = va.attribute.id;
+                if (!attribute_terms.some(f => f.attribute_id === attributeId)) {
+                    if (!availableTermsMap.has(attributeId)) {
+                        availableTermsMap.set(attributeId, {
+                            attribute: {
+                                id: va.attribute.id,
+                                name: va.attribute.name,
+                                type: va.attribute.type,
+                                image_url: va.attribute.image_url
+                            },
+                            terms: new Set()
+                        });
+                    }
+                    availableTermsMap.get(attributeId).terms.add(JSON.stringify({
+                        id: va.term.id,
+                        name: va.term.name,
+                        slug: va.term.slug,
+                        stock_status: variant.stock_status,
+                        is_in_stock: variant.stock > 0
+                    }));
+                }
+            });
+        });
+
+        // Convert Sets to arrays and parse JSON strings
+        availableTermsMap.forEach(value => {
+            value.terms = Array.from(value.terms).map(term => JSON.parse(term));
+        });
+
+        // Calculate stock summary
+        const stockSummary = {
+            total: filteredVariants.length,
+            in_stock: filteredVariants.filter(v => v.stock > 0).length,
+            low_stock: filteredVariants.filter(v => 
+                v.stock > 0 && v.stock <= v.low_stock_threshold
+            ).length,
+            out_of_stock: filteredVariants.filter(v => v.stock <= 0).length
+        };
+
+        // Process reviews for the product - OPTIMIZED: Single pass processing
+        const reviewsMapForProduct = new Map();
+        let totalRating = 0;
+        let verifiedCount = 0;
+        let testimonialCount = 0;
+        const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        
+        // Single pass: process reviews and calculate statistics simultaneously
+        reviewsResult.forEach(review => {
+            if (!reviewsMapForProduct.has(review.id)) {
+                const processedReview = {
+                    id: review.id,
+                    user_id: review.user_id,
+                    order_id: review.order_id,
+                    user_name: review.user_name,
+                    company_name: review.company_name,
+                    rating: review.rating,
+                    comment: review.comment,
+                    verified_by: review.verified_by,
+                    testimonial: review.testimonial,
+                    created_at: review.created_at,
+                    user: review.user_id ? {
+                        first_name: review.first_name,
+                        last_name: review.last_name,
+                        profile_pic_url: review.profile_pic_url
+                    } : null,
+                    order: review.order_id ? {
+                        order_unique_id: review.order_unique_id
+                    } : null
+                };
+                
+                reviewsMapForProduct.set(review.id, processedReview);
+                
+                // Calculate statistics in the same loop
+                totalRating += review.rating;
+                ratingDistribution[review.rating]++;
+                if (review.verified_by) verifiedCount++;
+                if (review.testimonial) testimonialCount++;
+            }
+        });
+        
+        const processedReviews = Array.from(reviewsMapForProduct.values());
+        
+        // Calculate review statistics - OPTIMIZED: Pre-calculated values
+        const reviewStats = {
+            total_reviews: processedReviews.length,
+            average_rating: processedReviews.length > 0 ? Math.round((totalRating / processedReviews.length) * 10) / 10 : 0,
+            rating_distribution: ratingDistribution,
+            verified_reviews: verifiedCount,
+            testimonials: testimonialCount
+        };
+
+        // Prepare variant information with images (OPTIMIZED)
+        const product_category = categoriesResult && categoriesResult.length > 0 ? {
+            id: categoriesResult[0].id,
+            name: categoriesResult[0].name,
+            slug: categoriesResult[0].slug
+        } : null;
+        const product_brand = brandsResult && brandsResult.length > 0 ? {
+            id: brandsResult[0].id,
+            name: brandsResult[0].name,
+            slug: brandsResult[0].slug
+        } : null;
+        // Prepare all categories and brands
+        const all_product_categories = categoriesResult ? categoriesResult.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug
+        })) : [];
+        const all_product_brands = brandsResult ? brandsResult.map(brand => ({
+            id: brand.id,
+            name: brand.name,
+            slug: brand.slug
+        })) : [];
+        const product_description = product.description;
+
+        // Extract puff count based on filtered attribute terms or largest from all
+        let puffCount = null;
+        
+        // Check if the filtered attribute terms include a number-of-puffs attribute (OPTIMIZED)
+        const filteredPuffAttribute = attribute_terms.find(filter => {
+            const attribute = productAttributeTermsResult.find(pat => 
+                pat.attr_id === filter.attribute_id
+            );
+            return attribute && attribute.attr_name === 'number-of-puffs';
+        });
+        
+        if (filteredPuffAttribute) {
+            // Use the specific filtered puff attribute term
+            const puffAttribute = productAttributeTermsResult.find(pat => 
+                pat.attr_id === filteredPuffAttribute.attribute_id && 
+                pat.term_id === filteredPuffAttribute.term_id
+            );
+            
+            if (puffAttribute && puffAttribute.term_name) {
+                const termName = puffAttribute.term_name;
+                const puffMatches = termName.match(/(\d+)/g);
+                
+                if (puffMatches) {
+                    const count = Math.max(...puffMatches.map(Number));
+                    if (termName.toLowerCase().includes('up to')) {
+                        puffCount = `~${count} puffs`;
+                    } else {
+                        puffCount = termName;
+                    }
+                }
+            }
+        } else {
+            // Fallback to largest puff count from all product attribute terms
+            if (productAttributeTermsResult) {
+                const puffAttributes = productAttributeTermsResult.filter(pat => 
+                    pat.attr_name === 'number-of-puffs'
+                );
+                
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    
+                    puffAttributes.forEach(puffAttribute => {
+                        if (puffAttribute.term_name) {
+                            // Find all numbers in the string
+                            const puffMatches = puffAttribute.term_name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                // Use the largest number in the string
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = puffAttribute.term_name;
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
+                    }
+                }
+            }
+        }
+        // Transform variantsResult to match getMinPriceVariant expected structure
+        const transformedVariants = variantsResult.map(variant => ({
+            id: variant.id,
+            slug: variant.slug,
+            price: variant.price,
+            regular_price: variant.regular_price,
+            discount_price: variant.discount_price,
+            stock: variant.stock,
+            stock_status: variant.stock_status,
+            status: variant.status,
+            variantImages: variantImagesMap.get(variant.id) || []
+        }));
+        
+        // Set ProductImages for getMinPriceVariant fallback
+        product.ProductImages = productImagesResult.map(img => ({
+            id: img.id,
+            product_id: img.product_id,
+            image_url: img.image_url,
+            is_primary: Boolean(img.is_primary)
+        }));
+        
+        product.variants = transformedVariants;
+        // Get min price variant (OPTIMIZED)
+        const minPriceVariant = getMinPriceVariant(product);
+        const finalVariants = filteredVariants.map(variant => {
+            // Get primary image or first image
+            const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
+            
+            return {
+                id: variant.id,
+                slug: variant.slug,
+                price: variant.price,
+                regular_price: variant.regular_price,
+                discount_price: variant.discount_price,
+                stock: variant.stock,
+                stock_status: variant.stock_status,
+                status: variant.status,
+                is_in_stock: variant.stock > 0,
+                primary_image: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    alt_text: primaryImage.alt_text,
+                    is_primary: Boolean(primaryImage.is_primary),
+                    sort_order: primaryImage.sort_order
+                } : null,
+                all_images: variant.variantImages.map(img => ({
+                    id: img.id,
+                    url: img.image_url,
+                    alt_text: img.alt_text,
+                    is_primary: Boolean(img.is_primary),
+                    sort_order: img.sort_order
+                })),
+                attributes: variant.variantAttributes.map(va => ({
+                    attribute_id: va.attribute.id,
+                    attribute_name: va.attribute.name,
+                    attribute_image_url: va.attribute.image_url,
+                    term_id: va.term.id,
+                    term_name: va.term.name,
+                    term_slug: va.term.slug
+                })),
+                created_at: variant.created_at,
+                updated_at: variant.updated_at,
+                product_categories: all_product_categories,
+                product_brands: all_product_brands,
+                product_description
+            };
+        });
+        // Prepare product images (OPTIMIZED)
+        const productImages = productImagesResult.map(img => ({
+            id: img.id,
+            url: img.image_url,
+            is_primary: Boolean(img.is_primary)
+        }));
+
+        // Get primary product image
+        const primaryProductImage = productImagesResult.find(img => img.is_primary) || productImagesResult[0];
+
+        // Prepare filtered attribute terms with full data (OPTIMIZED)
+        const filteredAttributeTerms = attribute_terms.map(filter => {
+            const attribute = productAttributeTermsResult.find(pat => 
+                pat.attr_id === filter.attribute_id
+            );
+            
+            // Find all terms for this attribute from product variants
+            const allTermsForAttribute = new Set();
+            
+            // Add terms from product attribute terms
+            productAttributeTermsResult
+                .filter(pat => pat.attr_id === filter.attribute_id)
+                .forEach(pat => {
+                    allTermsForAttribute.add(JSON.stringify({
+                        id: pat.term_id,
+                        name: pat.term_name,
+                        slug: pat.term_slug,
+                        description: '', // Not available in raw SQL result
+                        is_selected: pat.term_id === filter.term_id
+                    }));
+                });
+            
+            // Add terms from variant attributes
+            structuredVariants.forEach(variant => {
+                variant.variantAttributes
+                    .filter(va => va.attribute.id === filter.attribute_id)
+                    .forEach(va => {
+                        allTermsForAttribute.add(JSON.stringify({
+                            id: va.term.id,
+                            name: va.term.name,
+                            slug: va.term.slug,
+                            description: '', // Not available in raw SQL result
+                            is_selected: va.term.id === filter.term_id
+                        }));
+                    });
+            });
+            // Convert Set to array and parse JSON strings
+            const terms = Array.from(allTermsForAttribute).map(term => JSON.parse(term));
+            
+            if (attribute) {
+                return {
+                    attribute: {
+                        id: attribute.attr_id,
+                        name: attribute.attr_name,
+                        type: attribute.attr_type,
+                        image_url: attribute.attr_image_url,
+                        // slug: '', // Not available in raw SQL result
+                        // description: '' // Not available in raw SQL result
+                    },
+                    terms: terms
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
+        const response = {
+            product: {
+                id: product.id,
+                name: product.name,
+                slug: product.slug,
+                description: product.description, // Use direct description from SQL result
+                created_at: product.createdAt,
+                updated_at: product.updatedAt,
+                category: product_category,
+                brand: product_brand,
+                product_categories: all_product_categories,
+                product_brands: all_product_brands,
+                primary_image: primaryProductImage ? {
+                    id: primaryProductImage.id,
+                    url: primaryProductImage.image_url,
+                    is_primary: Boolean(primaryProductImage.is_primary)
+                } : null,
+                all_images: productImages,
+                attribute_terms: Array.from(attributeTermsMap.values()),
+                deals: dealsResult, // Use raw SQL result
+                loyaltySettings: loyaltySettings ? {
+                    program_name: loyaltySettings.program_name,
+                    points_value: parseFloat(loyaltySettings.points_value),
+                    loyalty_amount: loyaltySettings.loyalty_amount,
+                    loyalty_amount_type: loyaltySettings.loyalty_amount_type,
+                    minimum_points_redemption: loyaltySettings.minimum_points_redemption,
+                    minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
+                    min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                    status: loyaltySettings.status
+                } : null,
+                flavors: [], // Not available in raw SQL result
+                flavor_count: 0, // Not available in raw SQL result
+                puff_count: puffCount,
+                price: minPriceVariant ? minPriceVariant.price : product.price,
+                regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
+                discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
+                min_price_variant: minPriceVariant,
+                reviews: processedReviews,
+                review_stats: reviewStats
+            },
+            variants: finalVariants.map(variant => ({
+                ...variant,
+                created_at: variant.created_at,
+                updated_at: variant.updated_at
+            })),
+            available_terms: Array.from(availableTermsMap.values()),
+            filtered_attribute_terms: filteredAttributeTerms,
+            stock_summary: stockSummary
+        };
+
+        return successResponse(res, response, 'Variants filtered successfully');
+    } catch (error) {
+        logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
+    try {
+        const { product_id, attribute_terms } = req.body;
+        
+        // Validate input
+        if (!product_id || !attribute_terms || !Array.isArray(attribute_terms)) {
+            throw new Error('Invalid input parameters');
+        }
+
         // OPTIMIZED: Use raw SQL queries for maximum performance
 
         // 1. Get product basic info with raw SQL
