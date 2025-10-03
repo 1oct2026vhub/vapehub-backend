@@ -108,6 +108,13 @@ module.exports.createCategory = async (req, res, next) => {
             return errorResponse(res, { message: "Category name already exists" }, "Category name already exists", 400);
         }
 
+        // Check if the category slug already exists
+        const categorySlugExists = await Category.findOne({ where: { slug } });
+        if (categorySlugExists) {
+            await t.rollback();
+            return errorResponse(res, { message: "Category slug already exists" }, "Category slug already exists", 400);
+        }
+
         
         // Validate parent category
         if (parent_id && !(await Category.findByPk(parent_id))) {

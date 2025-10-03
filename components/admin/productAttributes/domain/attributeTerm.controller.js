@@ -18,7 +18,6 @@ module.exports.createTerm = async (req, res, next) => {
             description 
         } = req.body;
         const { id: updated_by } = req.user;
-
         // Check if attribute exists
         const attribute = await Attribute.findByPk(attribute_id, { transaction });
         if (!attribute) {
@@ -27,7 +26,7 @@ module.exports.createTerm = async (req, res, next) => {
         }
 
         // Check if term slug exists for this attribute
-        const existingTerm = await AttributeTerm.findOne({
+        const existingTermInSameAttribute = await AttributeTerm.findOne({
             where: {
                 attribute_id,
                 slug: slug.toLowerCase()
@@ -35,9 +34,23 @@ module.exports.createTerm = async (req, res, next) => {
             transaction
         });
 
-        if (existingTerm) {
+        if (existingTermInSameAttribute) {
             await transaction.rollback();
             return errorResponse(res, { message: "Term with this slug already exists for this attribute" }, "Duplicate slug", 400);
+        }
+
+        // Check if term slug exists in any other attribute
+        const existingTermInOtherAttribute = await AttributeTerm.findOne({
+            where: {
+                attribute_id: { [Op.ne]: attribute_id }, // Not equal to current attribute_id
+                slug: slug.toLowerCase()
+            },
+            transaction
+        });
+
+        if (existingTermInOtherAttribute) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Term with this slug already exists in another attribute" }, "Duplicate slug across attributes", 400);
         }
 
         // Create term
@@ -89,7 +102,8 @@ module.exports.updateTerm = async (req, res, next) => {
 
         // If slug is changing, check for duplicates
         if (slug && slug.toLowerCase() !== term.slug) {
-            const existingTerm = await AttributeTerm.findOne({
+            // Check if slug exists in the same attribute
+            const existingTermInSameAttribute = await AttributeTerm.findOne({
                 where: {
                     attribute_id: term.attribute_id,
                     slug: slug.toLowerCase()
@@ -97,9 +111,23 @@ module.exports.updateTerm = async (req, res, next) => {
                 transaction
             });
 
-            if (existingTerm) {
+            if (existingTermInSameAttribute) {
                 await transaction.rollback();
                 return errorResponse(res, { message: "Term with this slug already exists for this attribute" }, "Duplicate slug", 400);
+            }
+
+            // Check if slug exists in any other attribute
+            const existingTermInOtherAttribute = await AttributeTerm.findOne({
+                where: {
+                    attribute_id: { [Op.ne]: term.attribute_id }, // Not equal to current attribute_id
+                    slug: slug.toLowerCase()
+                },
+                transaction
+            });
+
+            if (existingTermInOtherAttribute) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "Term with this slug already exists in another attribute" }, "Duplicate slug across attributes", 400);
             }
         }
 
@@ -313,7 +341,6 @@ module.exports.getTerms = async (req, res, next) => {
             keyword = '',
             show_deleted = false
         } = req.query;
-        console.log(attribute_id);
         // Validate sort_by field
         const allowedSortFields = ['id', 'name', 'slug', 'created_at', 'updated_at'];
         const sortField = allowedSortFields.includes(sort_by) ? sort_by : 'created_at';
