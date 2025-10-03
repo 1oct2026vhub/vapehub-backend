@@ -116,6 +116,13 @@ module.exports.createBrand = async (req, res, next) => {
             return errorResponse(res, { message: "Brand name already exists" }, "Brand name already exists", 400);
         }
 
+        // Check if the brand slug already exists
+        const brandSlugExists = await Brand.findOne({ where: { slug } });
+        if (brandSlugExists) {
+            await t.rollback();
+            return errorResponse(res, { message: "Brand slug already exists" }, "Brand slug already exists", 400);
+        }
+
         // Upload logo image to S3
         if (file) {
             try {
