@@ -313,6 +313,7 @@ module.exports.getOrders = async (req, res) => {
 //         return errorResponse(res, error, {message: "Failed to fetch orders"});
 //     }
 // };
+
 module.exports.placeOrder = async (req, res, next) => {
     const transaction = await sequelize.transaction();
     try {

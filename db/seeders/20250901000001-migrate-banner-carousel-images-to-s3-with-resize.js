@@ -13,22 +13,22 @@ const SAFETY_CONFIG = {
   maxImageSize: 50 * 1024 * 1024, // 50MB max per image
   maxConcurrentProcessing: 1, // Process one image at a time
   
-  // Timeout limits
-  downloadTimeout: 45000, // 45 seconds max download
-  processingTimeout: 120000, // 2 minutes max processing per image
-  uploadTimeout: 60000, // 1 minute max upload
+  // Timeout limits (OPTIMIZED)
+  downloadTimeout: 30000, // 30 seconds max download (optimized)
+  processingTimeout: 60000, // 1 minute max processing per image (optimized)
+  uploadTimeout: 30000, // 30 seconds max upload (optimized)
   
-  // Rate limiting
-  delayBetweenImages: 12000, // 12 seconds between images
-  delayAfterError: 30000, // 30 seconds after error
+  // Rate limiting (OPTIMIZED)
+  delayBetweenImages: 3000, // 3 seconds between images (optimized)
+  delayAfterError: 10000, // 10 seconds after error (optimized)
   
-  // Batch processing
-  batchSize: 5, // Process 5 images then break
-  breakDuration: 60000, // 1 minute break between batches
+  // Batch processing (OPTIMIZED)
+  batchSize: 10, // Process 10 images then break (optimized)
+  breakDuration: 15000, // 15 seconds break between batches (optimized)
   
-  // Memory cleanup
+  // Memory cleanup (OPTIMIZED)
   forceGarbageCollection: true,
-  memoryCheckInterval: 3, // Check memory every 3 images
+  memoryCheckInterval: 5, // Check memory every 5 images (optimized)
 };
 
 // Progress tracking for failed downloads
@@ -375,13 +375,44 @@ async function downloadImageFromS3(imageUrl) {
     }
 
     console.log(`📥 Downloading from S3 key: ${s3Key}`);
+    console.log(`🔍 Full S3 URL: ${imageUrl}`);
 
     // Download from S3
     const s3 = require('../../config/awsConfig');
-    const result = await s3.getObject({
-      Bucket: process.env.AWS_S3_BUCKET,
-      Key: s3Key
-    }).promise();
+    let result;
+    
+    try {
+      result = await s3.getObject({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: s3Key
+      }).promise();
+    } catch (s3Error) {
+      console.log(`⚠️ S3 image not found, trying to download from original URL: ${imageUrl}`);
+      
+      try {
+        // Fallback: Download from original URL using axios
+        const axios = require('axios');
+        const response = await axios({
+          method: 'GET',
+          url: imageUrl,
+          responseType: 'arraybuffer',
+          timeout: 30000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        
+        result = {
+          Body: Buffer.from(response.data),
+          ContentType: response.headers['content-type'] || 'image/jpeg'
+        };
+        
+        console.log(`✅ Successfully downloaded from original URL as fallback`);
+      } catch (fallbackError) {
+        console.log(`❌ Fallback download also failed: ${fallbackError.message}`);
+        throw fallbackError; // Re-throw to be caught by outer catch
+      }
+    }
 
     console.log(`✅ Downloaded from S3: ${(result.Body.length / 1024 / 1024).toFixed(2)}MB`);
     return result.Body;
@@ -604,11 +635,11 @@ async function downloadResizeAndUploadToS3(imageUrl, folder = 'banners', s3Key =
 }
 
 /**
- * Migrate banner images from current DB URLs to S3 with multiple sizes
+ * Migrate banner images: Take image_url, resize to mid/low, upload to S3, update database
  */
 async function migrateBannerImagesWithResize(crossServerMigration, queryInterface, Sequelize, imageStats) {
   try {
-    // Get ALL banner images (including those already in S3)
+    // Get ALL banner images with original image_url
     const bannersWithImages = await queryInterface.sequelize.query(`
       SELECT id, title, image_url, image_url_mid, image_url_low
       FROM BannerImages 
@@ -625,91 +656,52 @@ async function migrateBannerImagesWithResize(crossServerMigration, queryInterfac
       imageStats.processed++;
       
       console.log(`🔄 Processing banner: ${banner.title || `ID ${banner.id}`}`);
+      console.log(`📌 Source image_url: ${banner.image_url}`);
       
-      // For banners with S3 URLs in wrong region, download original and create resized versions
-      if ((banner.image_url.includes('s3') || banner.image_url.includes('cloudfront')) && 
-          (banner.image_url.includes('ap-south-1') || banner.image_url_mid?.includes('ap-south-1') || banner.image_url_low?.includes('ap-south-1'))) {
-        console.log(`🔄 Downloading and resizing banner from old region: ${banner.title || `ID ${banner.id}`}`);
-        console.log(`   Source image_url: ${banner.image_url}`);
+      // Take the original image_url and create mid/low versions
+      const sourceUrl = banner.image_url;
+      
+      try {
+        // Create resized versions (mid and low) from the original image_url
+        const imageUrls = await smartImageMigrationWithMultipleSizes(
+          sourceUrl, 
+          'banners', 
+          imageStats, 
+          RESIZE_CONFIGS.banners,
+          true // Force resize to create mid/low versions
+        );
         
-        // Use the existing main image as source and create all sizes
-        let sourceUrl = banner.image_url;
-        let forceResize = true; // Force resize since we need to create missing sizes
-        
-        try {
-          const result = await smartImageMigrationWithMultipleSizes(
-            sourceUrl,
-            'banners',
-            banner.id,
-            'BannerImages',
-            queryInterface,
-            forceResize
-          );
+        if (imageUrls.mid || imageUrls.low) {
+          // Update database with mid and low URLs
+          await queryInterface.sequelize.query(`
+            UPDATE BannerImages 
+            SET image_url_mid = ?, 
+                image_url_low = ?, 
+                updatedAt = NOW() 
+            WHERE id = ?
+          `, {
+            replacements: [
+              imageUrls.mid || banner.image_url_mid,  // Update mid URL
+              imageUrls.low || banner.image_url_low,   // Update low URL
+              banner.id
+            ]
+          });
           
-          if (result.success) {
-            imageStats.migrated++;
-            console.log(`✅ Successfully created resized banner images: ${banner.title || `ID ${banner.id}`}`);
-          } else {
-            imageStats.failed++;
-            console.log(`❌ Failed to create resized banner images: ${banner.title || `ID ${banner.id}`}`);
-          }
-        } catch (error) {
-          imageStats.failed++;
-          console.log(`❌ Error processing banner: ${banner.title || `ID ${banner.id}`} - ${error.message}`);
+          imageStats.updated++;
+          console.log(`✅ Updated banner with mid/low sizes: ${banner.title || `ID ${banner.id}`}`);
+          console.log(`   - Mid: ${imageUrls.mid ? '✅' : '❌'}`);
+          console.log(`   - Low: ${imageUrls.low ? '✅' : '❌'}`);
+        } else {
+          console.log(`❌ Failed to create mid/low versions for banner: ${banner.title || `ID ${banner.id}`}`);
         }
-        
-        continue;
-      }
-      
-      // For banners with other URL patterns, process normally
-      let sourceUrl = banner.image_url;
-      let forceResize = false;
-      
-      console.log(`📌 Using main image URL as source: ${sourceUrl}`);
-      
-      if (forceResize) {
-        console.log(`🔄 Force resizing S3 image: ${banner.title || `ID ${banner.id}`}`);
-      }
-      
-      // Smart migration with multiple sizes: check if exists, resize and upload if needed, get URLs for all sizes
-      const imageUrls = await smartImageMigrationWithMultipleSizes(
-        sourceUrl, 
-        'banners', 
-        imageStats, 
-        RESIZE_CONFIGS.banners,
-        forceResize
-      );
-      
-      if (imageUrls.high || imageUrls.mid || imageUrls.low) {
-        await queryInterface.sequelize.query(`
-          UPDATE BannerImages 
-          SET image_url = ?, 
-              image_url_mid = ?, 
-              image_url_low = ?, 
-              updatedAt = NOW() 
-          WHERE id = ?
-        `, {
-          replacements: [
-            imageUrls.high || banner.image_url,  // Keep original if high res failed
-            imageUrls.mid || banner.image_url_mid,  // Keep original if mid res failed
-            imageUrls.low || banner.image_url_low,  // Keep original if low res failed
-            banner.id
-          ]
-        });
-        
-        imageStats.updated++;
-        console.log(`✅ Updated banner with multiple sizes: ${banner.title || `ID ${banner.id}`}`);
-        console.log(`   - High: ${imageUrls.high ? '✅' : '❌'}`);
-        console.log(`   - Mid: ${imageUrls.mid ? '✅' : '❌'}`);
-        console.log(`   - Low: ${imageUrls.low ? '✅' : '❌'}`);
-      } else {
-        console.log(`❌ Failed to process banner image: ${banner.title || `ID ${banner.id}`}`);
+      } catch (error) {
+        console.log(`❌ Error processing banner: ${banner.title || `ID ${banner.id}`} - ${error.message}`);
       }
       
       // Add delay between processing to avoid rate limiting
       if (imageStats.processed < bannersWithImages.length) {
-        console.log(`⏳ Waiting 8 seconds before next image (rate limiting protection)...`);
-        await new Promise(resolve => setTimeout(resolve, 8000));
+        console.log(`⏳ Waiting 3 seconds before next image (optimized rate limiting)...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
       // Save progress periodically (every 3 items)
@@ -748,102 +740,52 @@ async function migrateCarouselImagesWithResize(crossServerMigration, queryInterf
       
       console.log(`🔄 Processing carousel: ${carousel.title || `ID ${carousel.id}`}`);
       
-      // Handle carousels with old vapehub.co.uk URLs in image_url_mid or image_url_low
-      let sourceUrl = carousel.image_url;
-      let forceResize = false;
-      let hasOldUrls = false;
+      console.log(`📌 Source image_url: ${carousel.image_url}`);
       
-      // Check if we have old vapehub.co.uk URLs to process
-      if (carousel.image_url_low && carousel.image_url_low.includes('vapehub.co.uk/wp-content')) {
-        // Try to use existing S3 image as source if available, otherwise use old URL
-        if (carousel.image_url && (carousel.image_url.includes('s3') || carousel.image_url.includes('cloudfront'))) {
-          sourceUrl = carousel.image_url;
-          forceResize = true;
-          hasOldUrls = true;
-          console.log(`🔄 Using existing S3 image as source (old URL in image_url_low): ${sourceUrl}`);
-        } else {
-          sourceUrl = carousel.image_url_low;
-          hasOldUrls = true;
-          console.log(`📌 Using old database URL from image_url_low: ${sourceUrl}`);
-        }
-      } else if (carousel.image_url_mid && carousel.image_url_mid.includes('vapehub.co.uk/wp-content')) {
-        // Try to use existing S3 image as source if available, otherwise use old URL
-        if (carousel.image_url && (carousel.image_url.includes('s3') || carousel.image_url.includes('cloudfront'))) {
-          sourceUrl = carousel.image_url;
-          forceResize = true;
-          hasOldUrls = true;
-          console.log(`🔄 Using existing S3 image as source (old URL in image_url_mid): ${sourceUrl}`);
-        } else {
-          sourceUrl = carousel.image_url_mid;
-          hasOldUrls = true;
-          console.log(`📌 Using old database URL from image_url_mid: ${sourceUrl}`);
-        }
-      } else if (carousel.image_url && carousel.image_url.includes('vapehub.co.uk/wp-content')) {
-        sourceUrl = carousel.image_url;
-        hasOldUrls = true;
-        console.log(`📌 Using old database URL from image_url: ${sourceUrl}`);
-      } else if (carousel.image_url && (carousel.image_url.includes('s3') || carousel.image_url.includes('cloudfront'))) {
-        // If main image_url is S3 but mid/low have old URLs, use the S3 URL as source
-        if ((carousel.image_url_mid && carousel.image_url_mid.includes('vapehub.co.uk/wp-content')) ||
-            (carousel.image_url_low && carousel.image_url_low.includes('vapehub.co.uk/wp-content'))) {
-          sourceUrl = carousel.image_url;
-          forceResize = true;
-          hasOldUrls = true;
-          console.log(`🔄 Main image is S3 but mid/low have old URLs, will resize from S3: ${sourceUrl}`);
-        }
-      }
+      // Take the original image_url and create mid/low versions
+      const sourceUrl = carousel.image_url;
       
-      if (!hasOldUrls) {
-        console.log(`⏭️ Skipping carousel (no old URLs to process): ${carousel.title || `ID ${carousel.id}`}`);
-        console.log(`   Current image_url: ${carousel.image_url}`);
-        console.log(`   Current image_url_mid: ${carousel.image_url_mid}`);
-        console.log(`   Current image_url_low: ${carousel.image_url_low}`);
-        continue;
-      }
-      
-      if (forceResize) {
-        console.log(`🔄 Force resizing S3 image: ${carousel.title || `ID ${carousel.id}`}`);
-      }
-      
-      // Smart migration with multiple sizes: check if exists, resize and upload if needed, get URLs for all sizes
-      const imageUrls = await smartImageMigrationWithMultipleSizes(
-        sourceUrl, 
-        'carousels', 
-        imageStats, 
-        RESIZE_CONFIGS.carousels,
-        forceResize
-      );
-      
-      if (imageUrls.high || imageUrls.mid || imageUrls.low) {
-        await queryInterface.sequelize.query(`
-          UPDATE Carousels 
-          SET image_url = ?, 
-              image_url_mid = ?, 
-              image_url_low = ?, 
-              updatedAt = NOW() 
-          WHERE id = ?
-        `, {
-          replacements: [
-            imageUrls.high || carousel.image_url,  // Keep original if high res failed
-            imageUrls.mid || carousel.image_url_mid,  // Keep original if mid res failed
-            imageUrls.low || carousel.image_url_low,  // Keep original if low res failed
-            carousel.id
-          ]
-        });
+      try {
+        // Create resized versions (mid and low) from the original image_url
+        const imageUrls = await smartImageMigrationWithMultipleSizes(
+          sourceUrl, 
+          'carousels', 
+          imageStats, 
+          RESIZE_CONFIGS.carousels,
+          true // Force resize to create mid/low versions
+        );
         
-        imageStats.updated++;
-        console.log(`✅ Updated carousel with multiple sizes: ${carousel.title || `ID ${carousel.id}`}`);
-        console.log(`   - High: ${imageUrls.high ? '✅' : '❌'}`);
-        console.log(`   - Mid: ${imageUrls.mid ? '✅' : '❌'}`);
-        console.log(`   - Low: ${imageUrls.low ? '✅' : '❌'}`);
-      } else {
-        console.log(`❌ Failed to process carousel image: ${carousel.title || `ID ${carousel.id}`}`);
+        if (imageUrls.mid || imageUrls.low) {
+          // Update database with mid and low URLs
+          await queryInterface.sequelize.query(`
+            UPDATE Carousels 
+            SET image_url_mid = ?, 
+                image_url_low = ?, 
+                updatedAt = NOW() 
+            WHERE id = ?
+          `, {
+            replacements: [
+              imageUrls.mid || carousel.image_url_mid,  // Update mid URL
+              imageUrls.low || carousel.image_url_low,   // Update low URL
+              carousel.id
+            ]
+          });
+          
+          imageStats.updated++;
+          console.log(`✅ Updated carousel with mid/low sizes: ${carousel.title || `ID ${carousel.id}`}`);
+          console.log(`   - Mid: ${imageUrls.mid ? '✅' : '❌'}`);
+          console.log(`   - Low: ${imageUrls.low ? '✅' : '❌'}`);
+        } else {
+          console.log(`❌ Failed to create mid/low versions for carousel: ${carousel.title || `ID ${carousel.id}`}`);
+        }
+      } catch (error) {
+        console.log(`❌ Error processing carousel: ${carousel.title || `ID ${carousel.id}`} - ${error.message}`);
       }
       
       // Add delay between processing to avoid rate limiting
       if (imageStats.processed < carouselsWithImages.length) {
-        console.log(`⏳ Waiting 8 seconds before next image (rate limiting protection)...`);
-        await new Promise(resolve => setTimeout(resolve, 8000));
+        console.log(`⏳ Waiting 3 seconds before next image (optimized rate limiting)...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
       
       // Save progress periodically (every 3 items)
@@ -1204,10 +1146,41 @@ async function downloadImageFromS3WithTimeout(imageUrl) {
 
       // Download from S3 with size check
       const s3 = require('../../config/awsConfig');
-      const result = await s3.getObject({
-        Bucket: process.env.AWS_S3_BUCKET,
-        Key: s3Key
-      }).promise();
+      let result;
+      
+      try {
+        result = await s3.getObject({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: s3Key
+        }).promise();
+      } catch (s3Error) {
+        console.log(`⚠️ S3 image not found, trying to download from original URL: ${imageUrl}`);
+        
+        try {
+          // Fallback: Download from original URL using axios
+          const axios = require('axios');
+          const response = await axios({
+            method: 'GET',
+            url: imageUrl,
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+          
+          result = {
+            Body: Buffer.from(response.data),
+            ContentType: response.headers['content-type'] || 'image/jpeg'
+          };
+          
+          console.log(`✅ Successfully downloaded from original URL as fallback`);
+        } catch (fallbackError) {
+          console.log(`❌ Fallback download also failed: ${fallbackError.message}`);
+          clearTimeout(timeoutId);
+          return resolve(null);
+        }
+      }
 
       // Check image size
       if (result.Body.length > SAFETY_CONFIG.maxImageSize) {
