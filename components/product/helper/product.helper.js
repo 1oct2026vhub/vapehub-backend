@@ -1404,6 +1404,14 @@ const fetchProducts = async (query, status = 'published') => {
             AND d.valid_to >= NOW()
           )
         ` : ''}
+        AND EXISTS (
+          SELECT 1 FROM product_variants pv_active
+          WHERE pv_active.product_id = p.id
+          AND pv_active.status = 'active'
+          AND pv_active.deleted_at IS NULL
+          AND pv_active.price IS NOT NULL
+          AND pv_active.price > 0
+        )
       )
       SELECT 
         a.id as attribute_id, 
