@@ -8,43 +8,24 @@ module.exports = {
     const CHUNK_SIZE = 1000;
     
     try {
-      // Step 0: Clear existing order data from new database
+      // Step 0: Check existing data and resume from where it stopped
       const [existingOrdersCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM orders`);
       const [existingOrderItemsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_items`);
       const [existingOrderAddressesCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_addresses`);
       const [existingOrderLogsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_logs`);
       
-      const transaction = await queryInterface.sequelize.transaction();
+      console.log(`📊 Existing data counts:`);
+      console.log(`   Orders: ${existingOrdersCount[0].count}`);
+      console.log(`   Order Items: ${existingOrderItemsCount[0].count}`);
+      console.log(`   Order Addresses: ${existingOrderAddressesCount[0].count}`);
+      console.log(`   Order Logs: ${existingOrderLogsCount[0].count}`);
       
-      try {
-        // Clear order-related tables in correct order (respecting foreign keys)
-        // Delete in order: child tables first, then parent tables
-        await queryInterface.sequelize.query(`DELETE FROM order_logs`, { transaction });
-        await queryInterface.sequelize.query(`DELETE FROM order_items`, { transaction });
-        await queryInterface.sequelize.query(`DELETE FROM orders`, { transaction });
-        await queryInterface.sequelize.query(`DELETE FROM order_addresses`, { transaction });
-        
-        // Reset auto-increment counters
-        await queryInterface.sequelize.query(`ALTER TABLE orders AUTO_INCREMENT = 1`, { transaction });
-        await queryInterface.sequelize.query(`ALTER TABLE order_items AUTO_INCREMENT = 1`, { transaction });
-        await queryInterface.sequelize.query(`ALTER TABLE order_addresses AUTO_INCREMENT = 1`, { transaction });
-        await queryInterface.sequelize.query(`ALTER TABLE order_logs AUTO_INCREMENT = 1`, { transaction });
-        
-        await transaction.commit();
-        
-        // Verify tables are empty
-        const [ordersCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM orders`);
-        const [orderItemsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_items`);
-        const [orderAddressesCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_addresses`);
-        const [orderLogsCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM order_logs`);
-        
-        if (ordersCount[0].count > 0 || orderItemsCount[0].count > 0 || orderAddressesCount[0].count > 0 || orderLogsCount[0].count > 0) {
-          throw new Error('❌ Tables are not empty after cleanup. Migration aborted.');
-        }
-        
-      } catch (cleanupError) {
-        await transaction.rollback();
-        throw cleanupError;
+      // Check if migration was already completed
+      if (existingOrdersCount[0].count > 0) {
+        console.log(`✅ Migration already started/completed. Found ${existingOrdersCount[0].count} existing orders.`);
+        console.log(`🔄 Resuming migration from existing data...`);
+      } else {
+        console.log(`🚀 Starting fresh migration...`);
       }
       
       // Connect to old database
@@ -63,11 +44,13 @@ module.exports = {
         AND old_u.user_email != ''
       `);
 
-      // Create temporary table in new database
+      // Create regular table for user mapping (not temporary to avoid transaction scope issues)
+      await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_user_mapping`);
       await queryInterface.sequelize.query(`
-        CREATE TEMPORARY TABLE temp_user_mapping (
+        CREATE TABLE temp_user_mapping (
           old_user_id BIGINT,
-          new_user_id BIGINT
+          new_user_id BIGINT,
+          INDEX idx_old_user_id (old_user_id)
         )
       `);
 
@@ -218,7 +201,7 @@ module.exports = {
         SELECT COUNT(*) as total_count
         FROM vh_posts old_o
         WHERE old_o.post_type = 'shop_order'
-        AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
+        AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-cancelled', 'wc-failed', 'wc-refunded')
       `);
       
       const totalOrders = orderCountResult.total_count;
@@ -228,6 +211,19 @@ module.exports = {
         await crossServerMigration.closeOldDbConnection();
         return;
       }
+
+      // Step 2.5: Get list of already migrated order IDs from new database
+      const [migratedOrderIds] = await queryInterface.sequelize.query(`
+        SELECT DISTINCT SUBSTRING_INDEX(SUBSTRING_INDEX(order_code, '-', 2), '-', -1) as old_order_id
+        FROM orders 
+        WHERE order_code IS NOT NULL 
+        AND order_code LIKE 'ORD-%'
+      `);
+      
+      const migratedIds = migratedOrderIds.map(row => row.old_order_id);
+      const migratedIdsList = migratedIds.length > 0 ? migratedIds.join(',') : '0';
+      
+      console.log(`📋 Found ${migratedIds.length} already migrated orders. Will skip these during migration.`);
 
       // Step 3: Process orders in chunks
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -241,34 +237,39 @@ module.exports = {
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_orders_chunk`, { transaction });
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping_chunk`, { transaction });
           
-                     // Step 3a: Fetch orders for this chunk from old database
-           const chunkOrders = await crossServerMigration.fetchFromOldDb(`
-             SELECT 
-               old_o.ID as id,
-               pm_customer.meta_value as customer_id,
-               COALESCE(pm_total.meta_value, 0) as total,
-               COALESCE(pm_tax.meta_value, 0) as discount_price,
-               old_o.post_status as status,
-               COALESCE(old_o.post_date, NOW()) as date_created_gmt,
-               COALESCE(old_o.post_modified, NOW()) as date_updated_gmt,
-               pm_email.meta_value as billing_email,
-               CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_unique_id,
-               CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_code,
-               COALESCE(pm_total.meta_value, 0) as sub_total
-             FROM vh_posts old_o
-             LEFT JOIN vh_postmeta pm_customer ON old_o.ID = pm_customer.post_id AND pm_customer.meta_key = '_customer_user'
-             LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
-             LEFT JOIN vh_postmeta pm_tax ON old_o.ID = pm_tax.post_id AND pm_tax.meta_key = '_order_tax'
-             LEFT JOIN vh_postmeta pm_email ON old_o.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
-             WHERE old_o.post_type = 'shop_order'
-             AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending')
-             LIMIT ${CHUNK_SIZE} OFFSET ${offset}
-           `);
+          // Step 3a: Fetch orders for this chunk from old database (skip already migrated)
+          const chunkOrders = await crossServerMigration.fetchFromOldDb(`
+            SELECT 
+              old_o.ID as id,
+              pm_customer.meta_value as customer_id,
+              COALESCE(pm_total.meta_value, 0) as total,
+              COALESCE(pm_tax.meta_value, 0) as discount_price,
+              old_o.post_status as status,
+              COALESCE(old_o.post_date, NOW()) as date_created_gmt,
+              COALESCE(old_o.post_modified, NOW()) as date_updated_gmt,
+              pm_email.meta_value as billing_email,
+              CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_unique_id,
+              CONCAT('ORD-', old_o.ID, '-', DATE_FORMAT(COALESCE(old_o.post_date, NOW()), '%Y%m%d')) as order_code,
+              COALESCE(pm_total.meta_value, 0) as sub_total
+            FROM vh_posts old_o
+            LEFT JOIN vh_postmeta pm_customer ON old_o.ID = pm_customer.post_id AND pm_customer.meta_key = '_customer_user'
+            LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
+            LEFT JOIN vh_postmeta pm_tax ON old_o.ID = pm_tax.post_id AND pm_tax.meta_key = '_order_tax'
+            LEFT JOIN vh_postmeta pm_email ON old_o.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
+            WHERE old_o.post_type = 'shop_order'
+            AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-cancelled', 'wc-failed', 'wc-refunded')
+            AND old_o.ID NOT IN (${migratedIdsList})
+            LIMIT ${CHUNK_SIZE} OFFSET ${offset}
+          `);
 
            // Skip this chunk if no orders found
            if (chunkOrders.length === 0) {
+             console.log(`   ⏭️  Chunk ${chunkIndex + 1}: No new orders to migrate (all already migrated)`);
+             await transaction.commit();
              continue;
            }
+
+           console.log(`   📦 Found ${chunkOrders.length} new orders to migrate in this chunk`);
 
            // Create temporary table for this chunk in new database
            await queryInterface.sequelize.query(`
@@ -288,23 +289,41 @@ module.exports = {
              )
            `, { transaction });
 
-           // Insert chunk data with user mapping
+           // Insert chunk data with user mapping (handle unmapped users)
            for (const order of chunkOrders) {
+             // Get mapped user ID or NULL for guest orders (outside transaction)
+             let mappedUserId = null;
+             
+             if (order.customer_id && order.customer_id !== '0') {
+               try {
+                 const [userMappingResult] = await queryInterface.sequelize.query(`
+                   SELECT new_user_id FROM temp_user_mapping WHERE old_user_id = ?
+                 `, {
+                   replacements: [order.customer_id],
+                   type: queryInterface.sequelize.QueryTypes.SELECT
+                 });
+                 
+                 if (userMappingResult && userMappingResult.length > 0) {
+                   mappedUserId = userMappingResult[0].new_user_id;
+                 }
+               } catch (error) {
+                 console.log(`   ⚠️  Could not map user ID ${order.customer_id}, using NULL`);
+                 mappedUserId = null;
+               }
+             }
+             
              await queryInterface.sequelize.query(`
                INSERT INTO temp_orders_chunk (
                  id, customer_id, user_id, total, discount_price, status, 
                  date_created_gmt, date_updated_gmt, billing_email, 
                  order_unique_id, order_code, sub_total
-               )
-               SELECT ?, ?, um.new_user_id, ?, ?, ?, ?, ?, ?, ?, ?, ?
-               FROM temp_user_mapping um
-               WHERE um.old_user_id = ?
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              `, {
                replacements: [
-                 order.id, order.customer_id, order.total, order.discount_price, 
+                 order.id, order.customer_id, mappedUserId, order.total, order.discount_price, 
                  order.status, order.date_created_gmt, order.date_updated_gmt, 
                  order.billing_email, order.order_unique_id, order.order_code, 
-                 order.sub_total, order.customer_id
+                 order.sub_total
                ],
                transaction
              });
@@ -708,7 +727,21 @@ module.exports = {
         }
       }
 
-      // Step 4: Clean up temporary tables
+      // Step 4: Migration Summary
+      const [finalOrdersCount] = await queryInterface.sequelize.query(`SELECT COUNT(*) as count FROM orders WHERE order_code IS NOT NULL`);
+      const totalMigrated = finalOrdersCount[0].count - existingOrdersCount[0].count;
+      
+      console.log(`\n📊 Migration Summary:`);
+      console.log(`   📈 Orders before migration: ${existingOrdersCount[0].count}`);
+      console.log(`   📈 Orders after migration: ${finalOrdersCount[0].count}`);
+      console.log(`   ✅ New orders migrated: ${totalMigrated}`);
+      if (totalMigrated === 0) {
+        console.log(`   🎉 All orders were already migrated! No new data processed.`);
+      } else {
+        console.log(`   🚀 Successfully migrated ${totalMigrated} new orders`);
+      }
+
+      // Step 5: Clean up temporary tables
       await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_user_mapping`);
       // Also drop mapping tables created for this seeder run
       await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
@@ -758,6 +791,11 @@ module.exports = {
       const userMappingRate = ((qualityReport[0].total_orders - qualityReport[0].orders_without_users) / qualityReport[0].total_orders * 100).toFixed(2);
       const addressMappingRate = ((qualityReport[0].total_orders - qualityReport[0].orders_without_addresses) / qualityReport[0].total_orders * 100).toFixed(2);
       const productMappingRate = ((productMappingReport[0].total_order_items - productMappingReport[0].items_without_products) / productMappingReport[0].total_order_items * 100).toFixed(2);
+
+      // Clean up temporary tables
+      await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_user_mapping`);
+      await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_product_mapping`);
+      await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_variant_mapping`);
 
       // Close old database connection
       await crossServerMigration.closeOldDbConnection();
