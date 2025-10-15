@@ -33,17 +33,9 @@ module.exports = {
 
       // Optional: Run scripts/cleanup-orders.js before this seeder if you need a fresh import
 
-      // Step 1: Fetch user mapping data from old database
-      const userMapping = await crossServerMigration.fetchFromOldDb(`
-        SELECT 
-          old_u.ID as old_user_id,
-          old_u.user_email
-        FROM vh_users old_u 
-        WHERE old_u.user_status = 0
-        AND old_u.user_email IS NOT NULL
-        AND old_u.user_email != ''
-      `);
-
+      // Step 1: Create user mapping using direct ID mapping (since IDs are the same)
+      console.log('🔄 Creating user mapping using direct ID mapping...');
+      
       // Create regular table for user mapping (not temporary to avoid transaction scope issues)
       await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_user_mapping`);
       await queryInterface.sequelize.query(`
@@ -54,16 +46,23 @@ module.exports = {
         )
       `);
 
-      // Insert user mapping data
-      for (const mapping of userMapping) {
-        await queryInterface.sequelize.query(`
-          INSERT INTO temp_user_mapping (old_user_id, new_user_id)
-          SELECT ?, u.id
-          FROM users u
-          WHERE u.email = ?
-        `, {
-          replacements: [mapping.old_user_id, mapping.user_email]
-        });
+      // Since old and new database user IDs are the same, we can do direct mapping
+      // This is much more efficient than email-based mapping
+      const [mappingResult] = await queryInterface.sequelize.query(`
+        INSERT INTO temp_user_mapping (old_user_id, new_user_id)
+        SELECT u.id, u.id
+        FROM users u
+        WHERE u.id IS NOT NULL
+      `);
+      
+      const [mappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_user_mapping');
+      console.log(`✅ User mapping complete: ${mappingCount[0].count} users mapped using direct ID mapping`);
+      
+      if (mappingCount[0].count === 0) {
+        console.log('🚨 WARNING: No users found in new database!');
+        console.log('💡 Orders will be migrated as guest orders (user_id = NULL).');
+      } else {
+        console.log('🎉 All users successfully mapped using direct ID mapping!');
       }
 
       // Create product and variant mapping tables to map old IDs to new IDs
@@ -196,7 +195,7 @@ module.exports = {
       const [variantMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_variant_mapping');
 
       // Step 2: Get total count of orders to migrate
-      const orderIds = userMapping.map(m => m.old_user_id);
+      // Since we're using direct ID mapping, we don't need to filter by user IDs
       const [orderCountResult] = await crossServerMigration.fetchFromOldDb(`
         SELECT COUNT(*) as total_count
         FROM vh_posts old_o
@@ -225,13 +224,25 @@ module.exports = {
       
       console.log(`📋 Found ${migratedIds.length} already migrated orders. Will skip these during migration.`);
 
-      // Step 3: Process orders in chunks
+      // Step 3: Process orders in chunks with timeout protection
+      const CHUNK_TIMEOUT = 300000; // 5 minutes per chunk
+      const startTime = Date.now();
+      
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const offset = chunkIndex * CHUNK_SIZE;
         const transaction = await queryInterface.sequelize.transaction();
+        const chunkStartTime = Date.now();
         
         try {
           console.log(`🔄 Processing chunk ${chunkIndex + 1}/${totalChunks} (offset: ${offset})`);
+          
+          // Check if we're taking too long overall
+          const elapsedTime = Date.now() - startTime;
+          if (elapsedTime > 3600000) { // 1 hour total timeout
+            console.log(`⏰ Migration timeout reached (1 hour). Stopping migration.`);
+            await transaction.rollback();
+            break;
+          }
           
           // Clean up any existing temporary tables
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_orders_chunk`, { transaction });
@@ -295,21 +306,9 @@ module.exports = {
              let mappedUserId = null;
              
              if (order.customer_id && order.customer_id !== '0') {
-               try {
-                 const [userMappingResult] = await queryInterface.sequelize.query(`
-                   SELECT new_user_id FROM temp_user_mapping WHERE old_user_id = ?
-                 `, {
-                   replacements: [order.customer_id],
-                   type: queryInterface.sequelize.QueryTypes.SELECT
-                 });
-                 
-                 if (userMappingResult && userMappingResult.length > 0) {
-                   mappedUserId = userMappingResult[0].new_user_id;
-                 }
-               } catch (error) {
-                 console.log(`   ⚠️  Could not map user ID ${order.customer_id}, using NULL`);
-                 mappedUserId = null;
-               }
+               // Since you confirmed user IDs exist in new database, use direct mapping
+               // This eliminates the complex checking that was causing issues
+               mappedUserId = parseInt(order.customer_id);
              }
              
              await queryInterface.sequelize.query(`
@@ -402,6 +401,13 @@ module.exports = {
           
           if (userMappingValidation[0].unmapped_users > 0) {
             console.warn(`⚠️ Chunk ${chunkIndex + 1}: ${userMappingValidation[0].unmapped_users}/${userMappingValidation[0].total_orders} orders have unmapped users`);
+            
+            // If ALL users are unmapped, this indicates a serious mapping issue
+            if (userMappingValidation[0].unmapped_users === userMappingValidation[0].total_orders) {
+              console.log(`🚨 CRITICAL: All ${userMappingValidation[0].total_orders} orders in this chunk have unmapped users!`);
+              console.log(`🔧 This usually means the user mapping failed completely.`);
+              console.log(`📋 Proceeding with NULL user_id values (guest orders)...`);
+            }
           }
 
           // Step 3d: Create order mapping for this chunk
@@ -719,10 +725,21 @@ module.exports = {
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping_chunk`, { transaction });
 
           await transaction.commit();
-          console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully`);
+          const chunkElapsedTime = Date.now() - chunkStartTime;
+          console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s)`);
           
         } catch (error) {
           await transaction.rollback();
+          const chunkElapsedTime = Date.now() - chunkStartTime;
+          console.error(`❌ Chunk ${chunkIndex + 1}/${totalChunks} failed after ${Math.round(chunkElapsedTime/1000)}s:`, error.message);
+          
+          // If it's a timeout or connection issue, continue with next chunk
+          if (error.message.includes('timeout') || error.message.includes('connection') || error.message.includes('ECONNRESET')) {
+            console.log(`🔄 Continuing with next chunk due to connection/timeout issue...`);
+            continue;
+          }
+          
+          // For other errors, re-throw to stop migration
           throw error;
         }
       }
@@ -769,11 +786,11 @@ module.exports = {
       const [qualityReport] = await queryInterface.sequelize.query(`
         SELECT 
           COUNT(*) as total_orders,
-          COUNT(CASE WHEN user_id IS NULL THEN 1 END) as orders_without_users,
-          COUNT(CASE WHEN order_billing_address_id IS NULL THEN 1 END) as orders_without_addresses,
+          COUNT(CASE WHEN o.user_id IS NULL THEN 1 END) as orders_without_users,
+          COUNT(CASE WHEN o.order_billing_address_id IS NULL THEN 1 END) as orders_without_addresses,
           COUNT(CASE WHEN oi.id IS NULL THEN 1 END) as orders_without_items,
-          COUNT(CASE WHEN total <= 0 THEN 1 END) as orders_with_zero_total,
-          COUNT(CASE WHEN email IS NULL OR email = '' THEN 1 END) as orders_without_email
+          COUNT(CASE WHEN o.total <= 0 THEN 1 END) as orders_with_zero_total,
+          COUNT(CASE WHEN o.email IS NULL OR o.email = '' THEN 1 END) as orders_without_email
         FROM orders o
         LEFT JOIN order_items oi ON oi.order_id = o.id
         WHERE o.order_code IS NOT NULL

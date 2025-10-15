@@ -4,6 +4,7 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
+const { processProductVariantImageInMultipleSizes } = require("../../../../library/imageResize/productVariantImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
 const { sequelize } = require("../../../../models");
@@ -963,26 +964,64 @@ module.exports.uploadVariantImages = async (req, res) => {
             );
         }
 
-        // Upload files to AWS S3
+        // Upload files to AWS S3 and generate resized versions
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
                 const { originalname, mimetype, buffer } = image;
                 const fileName = generateUniqueFileName(originalname);
+                const s3Key = `products/${variant.product_id}/variants/${variant_id}/${fileName}`;
+                
+                // Upload original image
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
-                    Key: `products/${variant.product_id}/variants/${variant_id}/${fileName}`,
+                    Key: s3Key,
                     Body: buffer,
                     ContentType: mimetype
                 };
 
-                return uploadFiletToS3(params);
+                const originalUpload = await uploadFiletToS3(params);
+                
+                // Generate resized versions
+                console.log(`🖼️ Generating resized versions for variant image: ${originalname}`);
+                
+                let resizedResults = {};
+                try {
+                    resizedResults = await processProductVariantImageInMultipleSizes(
+                        buffer, 
+                        originalname, 
+                        variant_id, 
+                        mimetype, 
+                        s3Key
+                    );
+                    
+                    console.log(`📊 Variant resize results:`, Object.keys(resizedResults).map(size => 
+                        `${size}: ${resizedResults[size] ? 'Success' : 'Failed'}`
+                    ).join(', '));
+                } catch (resizeError) {
+                    console.error(`❌ Resize error for variant image ${originalname}:`, resizeError.message);
+                    // Continue with original upload even if resize fails
+                    resizedResults = {
+                        low: null,
+                        mid: null,
+                        high: null
+                    };
+                }
+                
+                return {
+                    ...originalUpload,
+                    resizedResults,
+                    originalS3Key: s3Key
+                };
             })
         );
 
-        // Save uploaded images in ProductVariantImage table
-        const imageRecords = uploadedImages.map(({ Location }, index) => ({
+        // Save uploaded images in ProductVariantImage table with resized URLs
+        const imageRecords = uploadedImages.map(({ Location, resizedResults }, index) => ({
             variant_id,
             image_url: Location,
+            image_url_low: resizedResults.low?.url || null,
+            image_url_mid: resizedResults.mid?.url || null,
+            image_url_high: resizedResults.high?.url || null,
             is_primary: existingPrimaryImage ? false : index === 0, // First image is primary if no primary exists
             updated_by
         }));
@@ -991,18 +1030,29 @@ module.exports.uploadVariantImages = async (req, res) => {
 
         await transaction.commit();
 
-        // Fetch variant with updated images
+        // Fetch variant with updated images including resized URLs
         const updatedVariant = await ProductVariant.findByPk(variant_id, {
             include: [{ 
                 model: ProductVariantImage,
                 as: 'variantImages',
+                attributes: [
+                    'id', 
+                    'variant_id', 
+                    'image_url', 
+                    'image_url_low',
+                    'image_url_mid',
+                    'image_url_high',
+                    'is_primary',
+                    'sort_order',
+                    'alt_text'
+                ],
                 order: [['is_primary', 'DESC']] // Primary image first
             }]
         });
 
         return successResponse(res, {
             variant: updatedVariant,
-            message: "Variant images uploaded successfully"
+            message: "Variant images uploaded and resized successfully"
         });
 
     } catch (error) {

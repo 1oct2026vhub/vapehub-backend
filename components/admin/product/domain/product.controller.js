@@ -4,6 +4,7 @@ const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { processProductImageInMultipleSizes } = require("../../../../library/imageResize/productImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
@@ -1201,6 +1202,7 @@ module.exports.restoreProduct = async (req, res, next) => {
 };
 
 module.exports.uploadImage = async (req, res) => {
+    console.log('Uploading image', req.files)
     const transaction = await Product.sequelize.transaction();
     try {
         const { files } = req;
@@ -1226,44 +1228,92 @@ module.exports.uploadImage = async (req, res) => {
             where: { product_id, is_primary: true }
         });
 
-        // Upload files to AWS S3
+        // Upload files to AWS S3 and generate resized versions
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
                 const { originalname, mimetype, buffer } = image;
                 const fileName = generateUniqueFileName(originalname);
+                const s3Key = `products/${product_id}/${fileName}`;
+                
+                // Upload original image
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
-                    Key: `products/${product_id}/${fileName}`,
+                    Key: s3Key,
                     Body: buffer,
                     ContentType: mimetype
                 };
 
-                return uploadFiletToS3(params);
+                const originalUpload = await uploadFiletToS3(params);
+                
+                // Generate resized versions using URL pattern
+                console.log(`🖼️ Generating resized versions for: ${originalname}`);
+                console.log(`📊 Environment check - AWS_S3_BUCKET: ${process.env.AWS_S3_BUCKET}`);
+                
+                let resizedResults = {};
+                try {
+                    resizedResults = await processProductImageInMultipleSizes(
+                        buffer, 
+                        originalname, 
+                        product_id, 
+                        mimetype, 
+                        s3Key
+                    );
+                    
+                    console.log(`📊 Resize results:`, Object.keys(resizedResults).map(size => 
+                        `${size}: ${resizedResults[size] ? 'Success' : 'Failed'}`
+                    ).join(', '));
+                } catch (resizeError) {
+                    console.error(`❌ Resize error for ${originalname}:`, resizeError.message);
+                    // Continue with original upload even if resize fails
+                    resizedResults = {
+                        thumb: null,
+                        low: null,
+                        mid: null,
+                        high: null,
+                        normal: null
+                    };
+                }
+                
+                return {
+                    ...originalUpload,
+                    resizedResults,
+                    originalS3Key: s3Key
+                };
             })
         );
 
-        // Save uploaded images in ProductImage table
-        const imageRecords = uploadedImages.map(({ Location, Key }, index) => ({
-            product_id,
-            image_url: Location,
-            is_primary: existingPrimaryImage ? false : index === 0,
-            updated_by: req.user.id
-        }));
+                // Save uploaded images in ProductImage table with resized URLs
+                const imageRecords = uploadedImages.map(({ Location, Key, resizedResults }, index) => ({
+                    product_id,
+                    image_url: Location,
+                    image_url_low: resizedResults.low?.url || null,
+                    image_url_mid: resizedResults.mid?.url || null,
+                    image_url_high: resizedResults.high?.url || null,
+                    is_primary: existingPrimaryImage ? false : index === 0,
+                    updated_by: req.user.id
+                }));
 
         const createdImages = await ProductImage.bulkCreate(imageRecords, { transaction });
 
         await transaction.commit();
 
-        // Fetch the created images to get their IDs
-        const savedImages = await ProductImage.findAll({
-            where: {
-                product_id,
-                image_url: {
-                    [Op.in]: uploadedImages.map(img => img.Location)
-                }
-            },
-            attributes: ['id', 'image_url', 'is_primary']
-        });
+                // Fetch the created images to get their IDs and resized URLs
+                const savedImages = await ProductImage.findAll({
+                    where: {
+                        product_id,
+                        image_url: {
+                            [Op.in]: uploadedImages.map(img => img.Location)
+                        }
+                    },
+                    attributes: [
+                        'id', 
+                        'image_url', 
+                        'image_url_low',
+                        'image_url_mid',
+                        'image_url_high',
+                        'is_primary'
+                    ]
+                });
 
         // Create a map of image URLs to their IDs
         const imageUrlToIdMap = {};
@@ -1271,13 +1321,25 @@ module.exports.uploadImage = async (req, res) => {
             imageUrlToIdMap[img.image_url] = img.id;
         });
 
+                // Format images for API response using database fields
+                const formattedImages = savedImages.map(savedImage => {
+                    return {
+                        id: savedImage.id,
+                        is_primary: savedImage.is_primary,
+                        urls: {
+                            original: savedImage.image_url,
+                            low: savedImage.image_url_low,
+                            mid: savedImage.image_url_mid,
+                            high: savedImage.image_url_high
+                        },
+                        // Legacy support
+                        image_url: savedImage.image_url
+                    };
+                });
+
         return successResponse(res, {
-            message: "Images uploaded and associated successfully",
-            images: uploadedImages.map(({ Location, Key }) => ({
-                id: imageUrlToIdMap[Location],
-                url: Location,
-                key: Key,
-            }))
+            message: "Images uploaded and resized successfully",
+            images: formattedImages
         });
 
     } catch (error) {
@@ -1319,14 +1381,36 @@ module.exports.deleteProductImage = async (req, res) => {
         // Extract the S3 key from the image URL
         const imageKey = productImage.image_url.split(".amazonaws.com/")[1];
 
-        // Initialize S3 client
+        // Delete the original image and all resized versions from AWS S3
         const s3 = new AWS.S3();
-
-        // Delete the image from AWS S3
+        
+        // Delete original image
         await s3.deleteObject({
             Bucket: process.env.AWS_S3_BUCKET,
             Key: imageKey
         }).promise();
+        
+                // Delete resized versions if they exist
+                const resizedKeys = [
+                    productImage.image_url_low,
+                    productImage.image_url_mid,
+                    productImage.image_url_high
+                ].filter(url => url).map(url => {
+                    // Extract S3 key from URL
+                    return url.split(".amazonaws.com/")[1];
+                });
+        
+        if (resizedKeys.length > 0) {
+            const deleteParams = {
+                Bucket: process.env.AWS_S3_BUCKET,
+                Delete: {
+                    Objects: resizedKeys.map(key => ({ Key: key }))
+                }
+            };
+            
+            await s3.deleteObjects(deleteParams).promise();
+            console.log(`✅ Deleted ${resizedKeys.length} resized versions`);
+        }
 
         // Remove the image record from the database
         await productImage.destroy({ transaction });
