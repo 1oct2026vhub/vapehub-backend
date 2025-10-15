@@ -778,7 +778,6 @@ module.exports.placeOrder = async (req, res, next) => {
             where: { id: user_id },
             attributes: ['id', 'email']
         });
-
         if (user && user.email) {
             // Check if user has mail subscription and hasn't used discount yet
             const mailSubscription = await MailSubscription.findOne({
@@ -797,7 +796,7 @@ module.exports.placeOrder = async (req, res, next) => {
                     }
                 });
 
-                if (mailSettings && mailSettings.discount_amount > 0) {
+                if (mailSettings && parseFloat(mailSettings.discount_amount) > 0) {
                     const discountAmount = mailSettings.discount_amount;
                     const discountType = mailSettings.discount_type;
 
@@ -910,7 +909,6 @@ module.exports.placeOrder = async (req, res, next) => {
                         
                     }
                 });
-
                 if (!worldpayResponse.data) {
                     throw new Error('No response data from Worldpay');
                 }
@@ -948,7 +946,8 @@ module.exports.placeOrder = async (req, res, next) => {
             referral_id: referralId,
             payment_method_id: paymentMethodRecord.id,
             loyalty_flag: loyalty_flag,
-            loyalty_discount: loyaltyDiscount
+            loyalty_discount: loyaltyDiscount,
+            mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
         }, { transaction });
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
