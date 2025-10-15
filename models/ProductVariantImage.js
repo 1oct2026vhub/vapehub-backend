@@ -78,6 +78,21 @@ module.exports = (sequelize, DataTypes) => {
         isUrl: true
       }
     },
+    image_url_low: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'Low resolution image URL (256x256)'
+    },
+    image_url_mid: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'Mid resolution image URL (600x600)'
+    },
+    image_url_high: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'High resolution image URL (1200x1200)'
+    },
     alt_text: {
       type: DataTypes.STRING(255),
       allowNull: true
