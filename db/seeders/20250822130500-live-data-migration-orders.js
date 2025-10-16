@@ -5,7 +5,8 @@ const CrossServerMigration = require('../../utils/cross-server-migration');
 module.exports = {
   async up(queryInterface, Sequelize) {
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
-    const CHUNK_SIZE = 1000;
+    const CHUNK_SIZE = 200; // Even smaller chunk size for better performance on staging
+    const BATCH_INTERVAL = 2000; // 2 second interval between batches (optional)
     
     try {
       // Step 0: Check existing data and resume from where it stopped
@@ -225,7 +226,7 @@ module.exports = {
       console.log(`📋 Found ${migratedIds.length} already migrated orders. Will skip these during migration.`);
 
       // Step 3: Process orders in chunks with timeout protection
-      const CHUNK_TIMEOUT = 300000; // 5 minutes per chunk
+      const CHUNK_TIMEOUT = 180000; // 3 minutes per chunk (reduced for staging)
       const startTime = Date.now();
       
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -249,6 +250,7 @@ module.exports = {
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping_chunk`, { transaction });
           
           // Step 3a: Fetch orders for this chunk from old database (skip already migrated)
+          // Only fetch orders with valid customer IDs to reduce processing time
           const chunkOrders = await crossServerMigration.fetchFromOldDb(`
             SELECT 
               old_o.ID as id,
@@ -727,6 +729,12 @@ module.exports = {
           await transaction.commit();
           const chunkElapsedTime = Date.now() - chunkStartTime;
           console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s)`);
+          
+          // Add interval between batches to reduce database load
+          if (BATCH_INTERVAL > 0 && chunkIndex < totalChunks - 1) {
+            console.log(`⏳ Waiting ${BATCH_INTERVAL/1000}s before next batch...`);
+            await new Promise(resolve => setTimeout(resolve, BATCH_INTERVAL));
+          }
           
         } catch (error) {
           await transaction.rollback();
