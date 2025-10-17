@@ -663,26 +663,59 @@ module.exports = {
 
           // Step 3f.1: Validate address mapping for this chunk
           console.log(`🔍 Validating address mapping for chunk ${chunkIndex + 1}...`);
+          const addressValidationStartTime = Date.now();
+          
+          // Simplified validation to avoid complex JOINs
           const [addressMappingValidation] = await queryInterface.sequelize.query(`
             SELECT 
               COUNT(*) as total_orders,
-              COUNT(CASE WHEN o.order_billing_address_id IS NULL THEN 1 END) as unmapped_addresses
-            FROM orders o
-            INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
+              COUNT(CASE WHEN order_billing_address_id IS NULL THEN 1 END) as unmapped_addresses
+            FROM orders 
+            WHERE id IN (SELECT new_order_id FROM temp_order_mapping_chunk)
           `, { transaction });
+          
+          const addressValidationTime = Date.now() - addressValidationStartTime;
+          console.log(`✅ Address validation completed in ${addressValidationTime}ms`);
           
           if (addressMappingValidation[0].unmapped_addresses > 0) {
             console.warn(`⚠️ Chunk ${chunkIndex + 1}: ${addressMappingValidation[0].unmapped_addresses}/${addressMappingValidation[0].total_orders} orders have unmapped addresses`);
+          } else {
+            console.log(`✅ All ${addressMappingValidation[0].total_orders} orders have addresses mapped`);
           }
 
           // Also set orders.phone from billing phone if available
-          await queryInterface.sequelize.query(`
-            UPDATE orders o
-            INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bphone ON pm_bphone.post_id = om.old_order_id AND pm_bphone.meta_key = '_billing_phone'
-            SET o.phone = COALESCE(o.phone, pm_bphone.meta_value)
-            WHERE pm_bphone.meta_value IS NOT NULL
-          `, { transaction });
+          console.log(`📞 Setting phone numbers from billing data...`);
+          const phoneUpdateStartTime = Date.now();
+          
+          // Get phone data from old database first to avoid cross-database JOIN
+          const phoneData = await crossServerMigration.fetchFromOldDb(`
+            SELECT 
+              o.ID as order_id,
+              pm_bphone.meta_value as billing_phone
+            FROM vh_posts o
+            LEFT JOIN vh_postmeta pm_bphone ON o.ID = pm_bphone.post_id AND pm_bphone.meta_key = '_billing_phone'
+            WHERE o.ID IN (${chunkOrders.map(order => order.id).join(',')})
+            AND pm_bphone.meta_value IS NOT NULL
+          `);
+          
+          // Update phone numbers individually to avoid cross-database JOIN
+          for (const phoneInfo of phoneData) {
+            const [orderMapping] = await queryInterface.sequelize.query(`
+              SELECT new_order_id FROM temp_order_mapping_chunk WHERE old_order_id = ?
+            `, { replacements: [phoneInfo.order_id], transaction });
+            
+            if (orderMapping.length > 0) {
+              await queryInterface.sequelize.query(`
+                UPDATE orders SET phone = ? WHERE id = ?
+              `, { 
+                replacements: [phoneInfo.billing_phone, orderMapping[0].new_order_id], 
+                transaction 
+              });
+            }
+          }
+          
+          const phoneUpdateTime = Date.now() - phoneUpdateStartTime;
+          console.log(`✅ Phone numbers updated in ${phoneUpdateTime}ms`);
 
           // Attempt to set legacy order_address_id if the column exists (ignore error if not)
           try {
