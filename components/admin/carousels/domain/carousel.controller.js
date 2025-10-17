@@ -1,58 +1,169 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Carousel } = require("../../../../models");
-const { uploadFiletToS3 } = require("../../../../library/s3/s3Helper");
 const { Op, Sequelize } = require("sequelize");
+const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3 } = require("../../../../library/s3/s3Helper");
+const path = require('path');
 
-// Helper function to handle image upload
-const uploadImageToS3 = async (file, prefix) => {
-    const response = await uploadFiletToS3({
-        Bucket: process.env.AWS_S3_BUCKET,
-        Key: `carousels/${prefix}-${Date.now()}-${file.originalname}`,
-        Body: file.buffer,
-        ContentType: file.mimetype
+// Carousel responsive image resize configurations (WebP with JPG fallback)
+const CAROUSEL_RESIZE_CONFIGS = {
+  desktop_wide: {
+    width: 3240,
+    height: 540,
+    quality: 92,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Critical for large screens
+  },
+  desktop: {
+    width: 2020,
+    height: 340,
+    quality: 90,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Most common desktop size
+  },
+  laptop: {
+    width: 1620,
+    height: 270,
+    quality: 88,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Common laptop size
+  },
+  tablet_landscape: {
+    width: 1010,
+    height: 170,
+    quality: 85,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Tablet landscape
+  },
+  tablet_portrait: {
+    width: 960,
+    height: 160,
+    quality: 85,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Tablet portrait
+  },
+  mobile: {
+    width: 480,
+    height: 80,
+    quality: 80,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Critical for mobile
+  }
+};
+
+/**
+ * Generate multiple responsive images using migration-style resizing
+ * @param {Buffer} imageBuffer - Original image buffer
+ * @param {string} baseS3Key - Base S3 key for the original image
+ * @param {boolean} fastMode - If true, only generate high-priority images immediately
+ * @returns {Promise<Object>} - Object with all responsive image URLs
+ */
+async function generateResponsiveImagesWithMigrationStyle(imageBuffer, baseS3Key, fastMode = false) {
+  try {
+    console.log(`🔄 Generating responsive carousel images using parallel processing${fastMode ? ' (FAST MODE)' : ''}...`);
+    const startTime = Date.now();
+    
+    const baseFileName = path.basename(baseS3Key, path.extname(baseS3Key));
+    const directory = path.dirname(baseS3Key);
+    
+    // Filter configs based on mode
+    const configsToProcess = fastMode 
+      ? Object.entries(CAROUSEL_RESIZE_CONFIGS).filter(([_, config]) => config.priority === 'high')
+      : Object.entries(CAROUSEL_RESIZE_CONFIGS);
+    
+    console.log(`${fastMode ? '⚡ Fast mode' : '🐌 Full mode'}: Processing ${configsToProcess.length}/${Object.keys(CAROUSEL_RESIZE_CONFIGS).length} sizes`);
+    
+    // Create parallel processing promises for selected responsive sizes
+    const resizePromises = configsToProcess.map(async ([sizeKey, config]) => {
+      try {
+        console.log(`📐 Starting ${sizeKey}: ${config.width}x${config.height}`);
+        
+        // Try WebP first, fallback to JPG if it fails
+        let sizeS3Key, uploadParams, uploadResult;
+        let success = false;
+        
+        // First attempt: WebP format
+        try {
+          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.webp`;
+          uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: sizeS3Key,
+            Body: imageBuffer,
+            ContentType: 'image/webp'
+          };
+          
+          uploadResult = await uploadImageToS3WithResize(uploadParams, config);
+          
+          if (uploadResult && uploadResult.Location) {
+            const url = generateCloudFrontUrlForS3(sizeS3Key);
+            console.log(`✅ ${sizeKey} uploaded as WebP: ${url}`);
+            return { sizeKey, url, success: true };
+          }
+        } catch (webpError) {
+          console.log(`⚠️ WebP failed for ${sizeKey}, trying JPG fallback: ${webpError.message}`);
+        }
+        
+        // Fallback: JPG format if WebP failed
+        try {
+          const jpgConfig = { ...config, format: 'jpeg' };
+          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.jpg`;
+          uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: sizeS3Key,
+            Body: imageBuffer,
+            ContentType: 'image/jpeg'
+          };
+          
+          uploadResult = await uploadImageToS3WithResize(uploadParams, jpgConfig);
+          
+          if (uploadResult && uploadResult.Location) {
+            const url = generateCloudFrontUrlForS3(sizeS3Key);
+            console.log(`✅ ${sizeKey} uploaded as JPG fallback: ${url}`);
+            return { sizeKey, url, success: true };
+          }
+        } catch (jpgError) {
+          console.log(`❌ Both WebP and JPG failed for ${sizeKey}: ${jpgError.message}`);
+        }
+        
+        return { sizeKey, url: null, success: false };
+        
+    } catch (error) {
+        console.error(`❌ Error processing ${sizeKey}:`, error.message);
+        return { sizeKey, url: null, success: false };
+      }
     });
     
-    // Ensure we return a string URL, not the full S3 response object
-    if (response && response.Location) {
-        return response.Location;
-    }
-    throw new Error('Failed to get image URL from S3');
-};
-
-// Helper function to validate display order
-const validateDisplayOrder = async (display_order, currentOrder) => {
-    if (display_order && display_order !== currentOrder) {
-        const existing = await Carousel.findOne({ where: { display_order } });
-        if (existing) {
-            const error = new Error("display_order already exists");
-            error.statusCode = 400;
-            throw error;
-        }
-    }
-};
-
-// Helper function to delete image from S3
-const deleteImageFromS3 = async (imageUrl) => {
-    if (!imageUrl) return;
-
-    // Check if URL is from S3 bucket
-    const bucketUrl = process.env.AWS_S3_BUCKET;
-    if (!imageUrl.startsWith(bucketUrl)) return;
-
-    try {
-        const key = imageUrl.split('/').pop();
-        await deleteFile(`carousels/${key}`);
-    } catch (error) {
-        logger.error('Error deleting image from S3:', error);
-        // Don't throw error as this is not critical
-    }
-};
-
-// Add this new helper function at the top
-const getNextDisplayOrder = async () => {
-    const maxOrder = await Carousel.max('display_order');
-    return (maxOrder || 0) + 1;
-};
+    // Wait for all resize operations to complete in parallel
+    console.log('⏳ Processing 6 responsive sizes in parallel...');
+    const results = await Promise.all(resizePromises);
+    
+    // Convert results to object format
+    const responsiveUrls = {};
+    let successCount = 0;
+    
+    results.forEach(({ sizeKey, url, success }) => {
+      responsiveUrls[sizeKey] = url;
+      if (success) successCount++;
+    });
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    console.log(`🎉 Responsive carousel image generation completed in ${duration}ms!`);
+    console.log(`📊 Successfully generated ${successCount}/6 responsive images`);
+    
+    return responsiveUrls;
+    
+  } catch (error) {
+    console.error('❌ Error in responsive carousel image generation:', error);
+    throw error;
+  }
+}
 
 module.exports.getCarousels = async (req, res) => {
     try {
@@ -84,18 +195,19 @@ module.exports.getCarousels = async (req, res) => {
 
         // Calculate offset for pagination
         const offset = (page - 1) * limit;
-        // Handle deleted filter
-        if (deleted === 'true') {
-            whereClause.deletedAt = { [Op.ne]: null };
-        } else {
-            whereClause.deletedAt = null;
-        }
+
         // Get total count for pagination
         const total = await Carousel.count({
             where: whereClause,
             paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
+        // Handle deleted filter
+        if (deleted === 'true') {
+            whereClause.deletedAt = { [Op.ne]: null };
+        } else {
+            whereClause.deletedAt = null;
+        }
         // Get carousels with pagination
         const carousels = await Carousel.findAll({
             where: whereClause,
@@ -105,11 +217,20 @@ module.exports.getCarousels = async (req, res) => {
             paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
+        // Format carousels with responsive image data
+        const formattedCarousels = carousels.map(carousel => {
+            const carouselData = carousel.toJSON();
+            return {
+                ...carouselData,
+                responsive_images: carousel.getResponsiveUrls()
+            };
+        });
+
         return successResponse(res, {
             total,
             page: parseInt(page),
             limit: parseInt(limit),
-            results: carousels
+            results: formattedCarousels
         }, 'Carousels retrieved successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -119,11 +240,11 @@ module.exports.getCarousels = async (req, res) => {
 module.exports.createCarousel = async (req, res) => {
     try {
         const user_id = req?.user?.id;
-        const { title, description, redirect_url } = req.body;  // Removed display_order from here
+        const { title, description, status, redirect_url } = req.body;
         const files = req.files;
 
-        if (!files.image || !files.image_low) {
-            const error = new Error("Both images (original and low) are required");
+        if (!files.image) {
+            const error = new Error("Carousel image is required");
             error.statusCode = 400;
             throw error;
         }
@@ -131,30 +252,270 @@ module.exports.createCarousel = async (req, res) => {
         // Get next display order automatically
         const display_order = await getNextDisplayOrder();
 
-        // Upload images and get URLs
-        let image_url, image_url_low;
-        try {
-            [image_url, image_url_low] = await Promise.all([
-                uploadImageToS3(files.image[0], 'original'),
-                uploadImageToS3(files.image_low[0], 'low')
-            ]);
-        } catch (error) {
-            throw new Error(`Image upload failed: ${error.message}`);
+        // Validate input image
+        console.log('📊 Input image validation:');
+        console.log(`📁 File name: ${files.image[0].originalname}`);
+        console.log(`📊 File size: ${files.image[0].buffer.length} bytes`);
+        console.log(`📋 MIME type: ${files.image[0].mimetype}`);
+        
+        if (!files.image[0].buffer || files.image[0].buffer.length === 0) {
+            const error = new Error("Uploaded image is empty or corrupted");
+            error.statusCode = 400;
+            throw error;
         }
 
-        const carousel = await Carousel.create({
-            display_order,  // Automatically calculated display order
+        // Generate base S3 key for the original image (using simple path like migration)
+        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
+        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const baseS3Key = `carousels/${baseFileName}${fileExtension}`;
+        
+        // Upload original image to S3 first
+        const image_url = await uploadFiletToS3({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: baseS3Key,
+            Body: files.image[0].buffer,
+            ContentType: files.image[0].mimetype
+        }).then(response => response.Location);
+        
+        console.log('✅ Original carousel image uploaded successfully');
+
+        // Generate responsive images using migration-style resizing
+        console.log('🔄 Generating responsive carousel images using migration approach...');
+        console.log('📁 Base S3 Key:', baseS3Key);
+        console.log('📊 Image buffer for processing:', {
+            length: files.image[0].buffer.length,
+            type: typeof files.image[0].buffer,
+            isBuffer: Buffer.isBuffer(files.image[0].buffer)
+        });
+        
+        // Generate critical images first for fast response, then background generate others
+        const useFastMode = process.env.NODE_ENV === 'development' || process.env.FAST_IMAGE_GENERATION === 'true';
+        const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
+            files.image[0].buffer, 
+            baseS3Key,
+            useFastMode // Use fast mode in development or when explicitly enabled
+        );
+
+        // Schedule background generation of remaining images (only if fast mode was used)
+        if (useFastMode && responsiveUrls) {
+            setTimeout(async () => {
+                try {
+                    console.log('🔄 Starting background generation of remaining responsive images...');
+                    const remainingUrls = await generateResponsiveImagesWithMigrationStyle(
+                        files.image[0].buffer, 
+                        baseS3Key,
+                        false // Full mode for background generation
+                    );
+                    
+                    // Update carousel with remaining URLs
+                    const carouselToUpdate = await Carousel.findOne({ where: { image_url } });
+                    if (carouselToUpdate) {
+                        // Update only the missing fields
+                        const updateData = {};
+                        Object.entries(remainingUrls).forEach(([sizeKey, url]) => {
+                            if (url && !responsiveUrls[sizeKey]) {
+                                updateData[`image_url_${sizeKey}`] = url;
+                            }
+                        });
+                        
+                        if (Object.keys(updateData).length > 0) {
+                            updateData.responsive_urls = { ...responsiveUrls, ...remainingUrls };
+                            await carouselToUpdate.update(updateData);
+                            console.log('✅ Background responsive images generated and saved');
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Background image generation failed:', error.message);
+                }
+            }, 1000); // Start background job after 1 second
+        }
+
+        console.log('📊 Generated responsive URLs:', Object.keys(responsiveUrls));
+        console.log('🔗 Responsive URLs result:', responsiveUrls);
+        console.log('🔍 Detailed responsive URLs check:');
+        console.log('  - desktop_wide:', responsiveUrls.desktop_wide);
+        console.log('  - desktop:', responsiveUrls.desktop);
+        console.log('  - laptop:', responsiveUrls.laptop);
+        console.log('  - tablet_landscape:', responsiveUrls.tablet_landscape);
+        console.log('  - tablet_portrait:', responsiveUrls.tablet_portrait);
+        console.log('  - mobile:', responsiveUrls.mobile);
+
+        // Ensure all responsive URL fields are properly initialized
+        const carouselData = {
+            display_order,
             image_url,
-            image_url_low,
             title,
             description,
+            status,
             redirect_url,
-            updated_by: user_id
-        });
+            updated_by: user_id,
+            // Include responsive URLs in the create call - ensure all fields are set
+            image_url_desktop_wide: responsiveUrls.desktop_wide || null,
+            image_url_desktop: responsiveUrls.desktop || null,
+            image_url_laptop: responsiveUrls.laptop || null,
+            image_url_tablet_landscape: responsiveUrls.tablet_landscape || null,
+            image_url_tablet_portrait: responsiveUrls.tablet_portrait || null,
+            image_url_mobile: responsiveUrls.mobile || null,
+            responsive_urls: responsiveUrls
+        };
 
-        return successResponse(res, carousel, 'Carousel created successfully');
+        console.log('💾 Carousel data to be saved:', carouselData);
+        const carousel = await Carousel.create(carouselData);
+
+        console.log('💾 Carousel saved with responsive URLs');
+
+        // Format response with responsive image data
+        const formattedCarousel = {
+            ...carousel.toJSON(),
+            responsive_images: carousel.getResponsiveUrls()
+        };
+
+        return successResponse(res, formattedCarousel, 'Carousel created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    }
+};
+
+// Helper function to validate display order
+const validateDisplayOrder = async (display_order, currentOrder) => {
+    if (display_order && display_order !== currentOrder) {
+        const existing = await Carousel.findOne({ where: { display_order } });
+        if (existing) {
+            const error = new Error("display_order already exists");
+            error.statusCode = 400;
+            throw error;
+        }
+    }
+};
+
+// Helper function to handle image upload
+const uploadImageToS3 = async (file, prefix) => {
+    const response = await uploadFiletToS3({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: `carousels/${prefix}-${Date.now()}-${file.originalname}`,
+        Body: file.buffer,
+        ContentType: file.mimetype
+    });
+    
+    // Ensure we return a string URL, not the full S3 response object
+    if (response && response.Location) {
+        return response.Location;
+    }
+    throw new Error('Failed to get image URL from S3');
+};
+
+// Helper function to delete image from S3
+const deleteImageFromS3 = async (imageUrl) => {
+    if (!imageUrl) return;
+
+    // Check if URL is from S3 bucket
+    const bucketUrl = process.env.AWS_S3_BUCKET;
+    if (!imageUrl.startsWith(bucketUrl)) return;
+
+    try {
+        const key = imageUrl.split('/').pop();
+        await deleteFile(`carousels/${key}`);
+    } catch (error) {
+        console.error('Error deleting image from S3:', error);
+        // Don't throw error as this is not critical
+    }
+};
+
+/**
+ * Delete all responsive images from S3 for a given base S3 key
+ * @param {string} baseS3Key - Base S3 key (e.g., "carousels/filename.jpg")
+ */
+const deleteAllResizedImages = async (baseS3Key) => {
+    if (!baseS3Key) return;
+
+    try {
+        console.log(`🗑️ Deleting all responsive carousel images for: ${baseS3Key}`);
+        
+        // Extract base filename without extension
+        const baseFileName = path.basename(baseS3Key, path.extname(baseS3Key));
+        const directory = path.dirname(baseS3Key);
+        
+        // Get all responsive size keys from CAROUSEL_RESIZE_CONFIGS
+        const responsiveSizeKeys = Object.keys(CAROUSEL_RESIZE_CONFIGS);
+        
+        // Delete all responsive image files (both WebP and JPG fallbacks)
+        const deletePromises = [];
+        
+        for (const sizeKey of responsiveSizeKeys) {
+            // Delete WebP version
+            const webpKey = `${directory}/${baseFileName}-${sizeKey}.webp`;
+            deletePromises.push(
+                deleteFile(webpKey).catch(error => {
+                    console.log(`⚠️ Failed to delete WebP ${sizeKey}: ${error.message}`);
+                })
+            );
+            
+            // Delete JPG fallback version
+            const jpgKey = `${directory}/${baseFileName}-${sizeKey}.jpg`;
+            deletePromises.push(
+                deleteFile(jpgKey).catch(error => {
+                    console.log(`⚠️ Failed to delete JPG ${sizeKey}: ${error.message}`);
+                })
+            );
+        }
+        
+        // Also delete the original image
+        deletePromises.push(
+            deleteFile(baseS3Key).catch(error => {
+                console.log(`⚠️ Failed to delete original image: ${error.message}`);
+            })
+        );
+        
+        // Wait for all deletions to complete
+        await Promise.all(deletePromises);
+        
+        console.log(`✅ All responsive carousel images deleted for: ${baseFileName}`);
+        
+    } catch (error) {
+        console.error('❌ Error deleting responsive carousel images:', error);
+        // Don't throw error as this is not critical for carousel deletion
+    }
+};
+
+// Helper function to update carousel images with responsive resizing
+const updateCarouselImages = async (carousel, files) => {
+    if (files.image) {
+        // Delete all existing responsive images from S3 (using new system)
+        if (carousel.image_url) {
+            const urlParts = carousel.image_url.split('/');
+            const fileName = urlParts[urlParts.length - 1];
+            const baseS3Key = `carousels/${fileName}`;
+            await deleteAllResizedImages(baseS3Key);
+        }
+
+        // Generate new base S3 key
+        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
+        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const newBaseS3Key = `carousels/${baseFileName}${fileExtension}`;
+        
+        // Upload new original image
+        carousel.image_url = await uploadFiletToS3({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: newBaseS3Key,
+            Body: files.image[0].buffer,
+            ContentType: files.image[0].mimetype
+        }).then(response => response.Location);
+
+        // Generate responsive images using migration-style resizing
+        console.log('🔄 Updating responsive carousel images using migration approach...');
+        const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
+            files.image[0].buffer, 
+            newBaseS3Key
+        );
+
+        // Update all responsive image URLs using helper method
+        carousel.updateResponsiveUrls(responsiveUrls);
+    }
+    
+    // Keep backward compatibility for image_low if provided separately
+    if (files.image_low) {
+        await deleteImageFromS3(carousel.image_url_low);
+        carousel.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
     }
 };
 
@@ -162,7 +523,7 @@ module.exports.updateCarousel = async (req, res) => {
     try {
         const { id } = req.params;
         const user_id = req?.user?.id;
-        const { title, description, status, redirect_url } = req.body;  // Removed display_order from here
+        const { title, description, status, redirect_url } = req.body;
         const files = req.files;
 
         const carousel = await Carousel.findByPk(id);
@@ -173,18 +534,7 @@ module.exports.updateCarousel = async (req, res) => {
         }
 
         if (files) {
-            try {
-                if (files.image) {
-                    await deleteImageFromS3(carousel.image_url);
-                    carousel.image_url = await uploadImageToS3(files.image[0], 'original');
-                }
-                if (files.image_low) {
-                    await deleteImageFromS3(carousel.image_url_low);
-                    carousel.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
-                }
-            } catch (error) {
-                throw new Error(`Image upload failed: ${error.message}`);
-            }
+            await updateCarouselImages(carousel, files);
         }
 
         Object.assign(carousel, {
@@ -196,7 +546,14 @@ module.exports.updateCarousel = async (req, res) => {
         });
 
         await carousel.save();
-        return successResponse(res, carousel, 'Carousel updated successfully');
+        
+        // Format response with responsive image data
+        const formattedCarousel = {
+            ...carousel.toJSON(),
+            responsive_images: carousel.getResponsiveUrls()
+        };
+        
+        return successResponse(res, formattedCarousel, 'Carousel updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -227,7 +584,16 @@ module.exports.deleteCarousel = async (req, res) => {
                 }
             );
 
-            // Delete the carousel
+            // Delete all responsive images from S3
+            if (carousel.image_url) {
+                // Extract the S3 key from the full URL
+                const urlParts = carousel.image_url.split('/');
+                const fileName = urlParts[urlParts.length - 1];
+                const baseS3Key = `carousels/${fileName}`;
+                await deleteAllResizedImages(baseS3Key);
+            }
+
+            // Soft delete the carousel (marks as deleted but keeps record)
             await carousel.destroy({ transaction: t });
         });
 
@@ -240,21 +606,26 @@ module.exports.deleteCarousel = async (req, res) => {
 module.exports.getCarouselDetails = async (req, res) => {
     try {
         const { id } = req.params;
-
         const carousel = await Carousel.findByPk(id);
-        
         if (!carousel) {
             const error = new Error("Carousel not found");
             error.statusCode = 404;
             throw error;
         }
 
-        return successResponse(res, carousel, 'Carousel details retrieved successfully');
+        // Format carousel with responsive image data
+        const formattedCarousel = {
+            ...carousel.toJSON(),
+            responsive_images: carousel.getResponsiveUrls()
+        };
+        
+        return successResponse(res, formattedCarousel, 'Carousel details retrieved successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
 };
 
+// Add this new function to handle display order shuffling
 module.exports.shuffleDisplayOrder = async (req, res) => {
     try {
         const { id } = req.params;
@@ -322,8 +693,46 @@ module.exports.shuffleDisplayOrder = async (req, res) => {
             order: [['display_order', 'ASC']]
         });
 
-        return successResponse(res, updatedCarousels, 'Display order updated successfully');
+        // Format carousels with responsive image data
+        const formattedCarousels = updatedCarousels.map(carousel => {
+            const carouselData = carousel.toJSON();
+            return {
+                ...carouselData,
+                responsive_images: carousel.getResponsiveUrls()
+            };
+        });
+
+        return successResponse(res, formattedCarousels, 'Display order updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    }
+};
+
+// Add this helper function at the top with other helpers
+const getNextDisplayOrder = async () => {
+    const maxOrder = await Carousel.max('display_order');
+    return (maxOrder || 0) + 1;
+}; 
+
+// Restore a soft-deleted carousel
+module.exports.restoreCarousel = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Find the carousel including soft-deleted
+        const carousel = await Carousel.findByPk(id, { paranoid: false });
+        if (!carousel) {
+            return res.status(404).json({ success: false, message: "Carousel not found" });
+        }
+        await carousel.restore();
+        
+        // Format carousel with responsive image data
+        const formattedCarousel = {
+            ...carousel.toJSON(),
+            responsive_images: carousel.getResponsiveUrls()
+        };
+        
+        return res.json({ success: true, message: "Carousel restored successfully", data: formattedCarousel });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
     }
 }; 

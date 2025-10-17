@@ -11,6 +11,35 @@ module.exports = (sequelize, DataTypes) => {
                 onUpdate: "CASCADE",
             });
         }
+
+        // Helper method to get responsive URLs
+        getResponsiveUrls() {
+            return this.responsive_urls || {
+                desktop_wide: this.image_url_desktop_wide,
+                desktop: this.image_url_desktop,
+                laptop: this.image_url_laptop,
+                tablet_landscape: this.image_url_tablet_landscape,
+                tablet_portrait: this.image_url_tablet_portrait,
+                mobile: this.image_url_mobile
+            };
+        }
+
+        // Helper method to update all responsive URLs at once
+        updateResponsiveUrls(urls) {
+            this.image_url_desktop_wide = urls.desktop_wide;
+            this.image_url_desktop = urls.desktop;
+            this.image_url_laptop = urls.laptop;
+            this.image_url_tablet_landscape = urls.tablet_landscape;
+            this.image_url_tablet_portrait = urls.tablet_portrait;
+            this.image_url_mobile = urls.mobile;
+            this.responsive_urls = urls;
+        }
+
+        // Helper method to get specific size URL
+        getImageUrl(size = 'desktop') {
+            const urls = this.getResponsiveUrls();
+            return urls[size] || this.image_url;
+        }
     }
     Carousel.init(
         {
@@ -42,6 +71,41 @@ module.exports = (sequelize, DataTypes) => {
             image_url_low: {
                 type: DataTypes.TEXT,
                 allowNull: true
+            },
+            image_url_desktop_wide: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Desktop Wide (3240x540) - Ultra-wide displays'
+            },
+            image_url_desktop: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Desktop (2020x340) - Standard desktop screens'
+            },
+            image_url_laptop: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Laptop (1620x270) - Laptop screens'
+            },
+            image_url_tablet_landscape: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Tablet Landscape (1010x170) - Tablets landscape'
+            },
+            image_url_tablet_portrait: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Tablet Portrait (960x160) - Tablets portrait'
+            },
+            image_url_mobile: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+                comment: 'Mobile (480x80) - Mobile devices'
+            },
+            responsive_urls: {
+                type: DataTypes.JSON,
+                allowNull: true,
+                comment: 'JSON object containing all responsive image URLs'
             },
             title: {
                 type: DataTypes.STRING,

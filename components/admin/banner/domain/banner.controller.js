@@ -1,7 +1,169 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { BannerImage } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
-const { uploadFiletToS3, deleteFile } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3 } = require("../../../../library/s3/s3Helper");
+// Removed old imports - using new migration-style system
+const path = require('path');
+
+// Banner responsive image resize configurations (WebP with JPG fallback)
+const BANNER_RESIZE_CONFIGS = {
+  desktop_wide: {
+    width: 3240,
+    height: 540,
+    quality: 92,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Critical for large screens
+  },
+  desktop: {
+    width: 2020,
+    height: 340,
+    quality: 90,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Most common desktop size
+  },
+  laptop: {
+    width: 1620,
+    height: 270,
+    quality: 88,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Common laptop size
+  },
+  tablet_landscape: {
+    width: 1010,
+    height: 170,
+    quality: 85,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Tablet landscape
+  },
+  tablet_portrait: {
+    width: 960,
+    height: 160,
+    quality: 85,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'medium' // Tablet portrait
+  },
+  mobile: {
+    width: 480,
+    height: 80,
+    quality: 80,
+    format: 'webp',
+    maintainAspectRatio: true,
+    priority: 'high' // Critical for mobile
+  }
+};
+
+/**
+ * Generate multiple responsive images using migration-style resizing
+ * @param {Buffer} imageBuffer - Original image buffer
+ * @param {string} baseS3Key - Base S3 key for the original image
+ * @returns {Promise<Object>} - Object with all responsive image URLs
+ */
+async function generateResponsiveImagesWithMigrationStyle(imageBuffer, baseS3Key, fastMode = false) {
+  try {
+    console.log(`🔄 Generating responsive banner images using parallel processing${fastMode ? ' (FAST MODE)' : ''}...`);
+    const startTime = Date.now();
+    
+    const baseFileName = path.basename(baseS3Key, path.extname(baseS3Key));
+    const directory = path.dirname(baseS3Key);
+    
+    // Filter configs based on mode
+    const configsToProcess = fastMode 
+      ? Object.entries(BANNER_RESIZE_CONFIGS).filter(([_, config]) => config.priority === 'high')
+      : Object.entries(BANNER_RESIZE_CONFIGS);
+    
+    console.log(`${fastMode ? '⚡ Fast mode' : '🐌 Full mode'}: Processing ${configsToProcess.length}/${Object.keys(BANNER_RESIZE_CONFIGS).length} sizes`);
+    
+    // Create parallel processing promises for selected responsive sizes
+    const resizePromises = configsToProcess.map(async ([sizeKey, config]) => {
+      try {
+        console.log(`📐 Starting ${sizeKey}: ${config.width}x${config.height}`);
+        
+        // Try WebP first, fallback to JPG if it fails
+        let sizeS3Key, uploadParams, uploadResult;
+        let success = false;
+        
+        // First attempt: WebP format
+        try {
+          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.webp`;
+          uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: sizeS3Key,
+            Body: imageBuffer,
+            ContentType: 'image/webp'
+          };
+          
+          uploadResult = await uploadImageToS3WithResize(uploadParams, config);
+          
+          if (uploadResult && uploadResult.Location) {
+            const url = generateCloudFrontUrlForS3(sizeS3Key);
+            console.log(`✅ ${sizeKey} uploaded as WebP: ${url}`);
+            return { sizeKey, url, success: true };
+          }
+        } catch (webpError) {
+          console.log(`⚠️ WebP failed for ${sizeKey}, trying JPG fallback: ${webpError.message}`);
+        }
+        
+        // Fallback: JPG format if WebP failed
+        try {
+          const jpgConfig = { ...config, format: 'jpeg' };
+          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.jpg`;
+          uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: sizeS3Key,
+            Body: imageBuffer,
+            ContentType: 'image/jpeg'
+          };
+          
+          uploadResult = await uploadImageToS3WithResize(uploadParams, jpgConfig);
+          
+          if (uploadResult && uploadResult.Location) {
+            const url = generateCloudFrontUrlForS3(sizeS3Key);
+            console.log(`✅ ${sizeKey} uploaded as JPG fallback: ${url}`);
+            return { sizeKey, url, success: true };
+          }
+        } catch (jpgError) {
+          console.log(`❌ Both WebP and JPG failed for ${sizeKey}: ${jpgError.message}`);
+        }
+        
+        return { sizeKey, url: null, success: false };
+        
+      } catch (error) {
+        console.error(`❌ Error processing ${sizeKey}:`, error.message);
+        return { sizeKey, url: null, success: false };
+      }
+    });
+    
+    // Wait for all resize operations to complete in parallel
+    console.log('⏳ Processing 6 responsive sizes in parallel...');
+    const results = await Promise.all(resizePromises);
+    
+    // Convert results to object format
+    const responsiveUrls = {};
+    let successCount = 0;
+    
+    results.forEach(({ sizeKey, url, success }) => {
+      responsiveUrls[sizeKey] = url;
+      if (success) successCount++;
+    });
+    
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    console.log(`🎉 Responsive banner image generation completed in ${duration}ms!`);
+    console.log(`📊 Successfully generated ${successCount}/6 responsive images`);
+    
+    return responsiveUrls;
+    
+  } catch (error) {
+    console.error('❌ Error in responsive image generation:', error);
+    throw error;
+  }
+}
 
 module.exports.getBanners = async (req, res) => {
     try {
@@ -55,11 +217,20 @@ module.exports.getBanners = async (req, res) => {
             paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
         });
 
+        // Format banners with responsive image data
+        const formattedBanners = banners.map(banner => {
+            const bannerData = banner.toJSON();
+            return {
+                ...bannerData,
+                responsive_images: banner.getResponsiveUrls()
+            };
+        });
+
         return successResponse(res, {
             total,
             page: parseInt(page),
             limit: parseInt(limit),
-            results: banners
+            results: formattedBanners
         }, 'Banners retrieved successfully');
     } catch (error) {
         console.log(error);
@@ -73,8 +244,8 @@ module.exports.createBanner = async (req, res) => {
         const { title, description, status, redirect_url } = req.body;
         const files = req.files;
 
-        if (!files.image || !files.image_low) {
-            const error = new Error("Both images (original and low) are required");
+        if (!files.image) {
+            const error = new Error("Banner image is required");
             error.statusCode = 400;
             throw error;
         }
@@ -82,26 +253,90 @@ module.exports.createBanner = async (req, res) => {
         // Get next display order automatically
         const display_order = await getNextDisplayOrder();
 
-        // Upload images to S3
-        const [image_url, image_url_low] = await Promise.all([
-            uploadFiletToS3({
-                Bucket: process.env.AWS_S3_BUCKET,
-                Key: `banners/original-${Date.now()}-${files.image[0].originalname}`,
-                Body: files.image[0].buffer,
-                ContentType: files.image[0].mimetype
-            }).then(response => response.Location),
-            uploadFiletToS3({
-                Bucket: process.env.AWS_S3_BUCKET,
-                Key: `banners/low-${Date.now()}-${files.image_low[0].originalname}`,
-                Body: files.image_low[0].buffer,
-                ContentType: files.image_low[0].mimetype
-            }).then(response => response.Location)
-        ]);
+        // Validate input image
+        console.log('📊 Input image validation:');
+        console.log(`📁 File name: ${files.image[0].originalname}`);
+        console.log(`📊 File size: ${files.image[0].buffer.length} bytes`);
+        console.log(`📋 MIME type: ${files.image[0].mimetype}`);
+        
+        if (!files.image[0].buffer || files.image[0].buffer.length === 0) {
+            const error = new Error("Uploaded image is empty or corrupted");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Generate base S3 key for the original image (using simple path like migration)
+        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
+        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const baseS3Key = `banners/${baseFileName}${fileExtension}`;
+        
+        // Upload original image to S3 first
+        const image_url = await uploadFiletToS3({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: baseS3Key,
+            Body: files.image[0].buffer,
+            ContentType: files.image[0].mimetype
+        }).then(response => response.Location);
+        
+        console.log('✅ Original image uploaded successfully');
+
+        // Generate responsive images using migration-style resizing
+        console.log('🔄 Generating responsive banner images using migration approach...');
+        console.log('📁 Base S3 Key:', baseS3Key);
+        console.log('📊 Image buffer for processing:', {
+            length: files.image[0].buffer.length,
+            type: typeof files.image[0].buffer,
+            isBuffer: Buffer.isBuffer(files.image[0].buffer)
+        });
+        
+        // Generate critical images first for fast response, then background generate others
+        const useFastMode = process.env.NODE_ENV === 'development' || process.env.FAST_IMAGE_GENERATION === 'true';
+        const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
+            files.image[0].buffer, 
+            baseS3Key,
+            useFastMode // Use fast mode in development or when explicitly enabled
+        );
+
+        // Schedule background generation of remaining images (only if fast mode was used)
+        if (useFastMode && responsiveUrls) {
+            setTimeout(async () => {
+                try {
+                    console.log('🔄 Starting background generation of remaining responsive banner images...');
+                    const remainingUrls = await generateResponsiveImagesWithMigrationStyle(
+                        files.image[0].buffer, 
+                        baseS3Key,
+                        false // Full mode for background generation
+                    );
+                    
+                    // Update banner with remaining URLs
+                    const bannerToUpdate = await BannerImage.findOne({ where: { image_url } });
+                    if (bannerToUpdate) {
+                        // Update only the missing fields
+                        const updateData = {};
+                        Object.entries(remainingUrls).forEach(([sizeKey, url]) => {
+                            if (url && !responsiveUrls[sizeKey]) {
+                                updateData[`image_url_${sizeKey}`] = url;
+                            }
+                        });
+                        
+                        if (Object.keys(updateData).length > 0) {
+                            updateData.responsive_urls = { ...responsiveUrls, ...remainingUrls };
+                            await bannerToUpdate.update(updateData);
+                            console.log('✅ Background responsive banner images generated and saved');
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Background banner image generation failed:', error.message);
+                }
+            }, 1000); // Start background job after 1 second
+        }
+
+        console.log('📊 Generated responsive URLs:', Object.keys(responsiveUrls));
+        console.log('🔗 Responsive URLs result:', responsiveUrls);
 
         const banner = await BannerImage.create({
             display_order,
             image_url,
-            image_url_low,
             title,
             description,
             status,
@@ -109,7 +344,19 @@ module.exports.createBanner = async (req, res) => {
             updated_by: user_id
         });
 
-        return successResponse(res, banner, 'Banner created successfully');
+        // Set responsive URLs using helper method
+        banner.updateResponsiveUrls(responsiveUrls);
+        await banner.save();
+
+        console.log('💾 Banner saved with responsive URLs');
+
+        // Format response with responsive image data
+        const formattedBanner = {
+            ...banner.toJSON(),
+            responsive_images: banner.getResponsiveUrls()
+        };
+
+        return successResponse(res, formattedBanner, 'Banner created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -149,17 +396,103 @@ const deleteImageFromS3 = async (imageUrl) => {
         const key = imageUrl.split('/').pop();
         await deleteFile(`banners/${key}`);
     } catch (error) {
-        logger.error('Error deleting image from S3:', error);
+        console.error('Error deleting image from S3:', error);
         // Don't throw error as this is not critical
     }
 };
 
-// Helper function to update banner images
+/**
+ * Delete all responsive images from S3 for a given base S3 key
+ * @param {string} baseS3Key - Base S3 key (e.g., "banners/filename.jpg")
+ */
+const deleteAllResizedImages = async (baseS3Key) => {
+    if (!baseS3Key) return;
+
+    try {
+        console.log(`🗑️ Deleting all responsive images for: ${baseS3Key}`);
+        
+        // Extract base filename without extension
+        const baseFileName = path.basename(baseS3Key, path.extname(baseS3Key));
+        const directory = path.dirname(baseS3Key);
+        
+        // Get all responsive size keys from BANNER_RESIZE_CONFIGS
+        const responsiveSizeKeys = Object.keys(BANNER_RESIZE_CONFIGS);
+        
+        // Delete all responsive image files (both WebP and JPG fallbacks)
+        const deletePromises = [];
+        
+        for (const sizeKey of responsiveSizeKeys) {
+            // Delete WebP version
+            const webpKey = `${directory}/${baseFileName}-${sizeKey}.webp`;
+            deletePromises.push(
+                deleteFile(webpKey).catch(error => {
+                    console.log(`⚠️ Failed to delete WebP ${sizeKey}: ${error.message}`);
+                })
+            );
+            
+            // Delete JPG fallback version
+            const jpgKey = `${directory}/${baseFileName}-${sizeKey}.jpg`;
+            deletePromises.push(
+                deleteFile(jpgKey).catch(error => {
+                    console.log(`⚠️ Failed to delete JPG ${sizeKey}: ${error.message}`);
+                })
+            );
+        }
+        
+        // Also delete the original image
+        deletePromises.push(
+            deleteFile(baseS3Key).catch(error => {
+                console.log(`⚠️ Failed to delete original image: ${error.message}`);
+            })
+        );
+        
+        // Wait for all deletions to complete
+        await Promise.all(deletePromises);
+        
+        console.log(`✅ All responsive images deleted for: ${baseFileName}`);
+        
+    } catch (error) {
+        console.error('❌ Error deleting responsive images:', error);
+        // Don't throw error as this is not critical for banner deletion
+    }
+};
+
+// Helper function to update banner images with responsive resizing
 const updateBannerImages = async (banner, files) => {
     if (files.image) {
-        await deleteImageFromS3(banner.image_url);
-        banner.image_url = await uploadImageToS3(files.image[0], 'original');
+        // Delete all existing responsive images from S3 (using new system)
+        if (banner.image_url) {
+            const urlParts = banner.image_url.split('/');
+            const fileName = urlParts[urlParts.length - 1];
+            const baseS3Key = `banners/${fileName}`;
+            await deleteAllResizedImages(baseS3Key);
+        }
+
+        // Generate new base S3 key
+        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
+        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const newBaseS3Key = `banners/${baseFileName}${fileExtension}`;
+        
+        // Upload new original image
+        banner.image_url = await uploadFiletToS3({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: newBaseS3Key,
+            Body: files.image[0].buffer,
+            ContentType: files.image[0].mimetype
+        }).then(response => response.Location);
+
+        // Generate responsive images using migration-style resizing
+        console.log('🔄 Updating responsive banner images using migration approach...');
+        const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
+            files.image[0].buffer, 
+            newBaseS3Key
+        );
+
+        // Update all responsive image URLs using helper method
+        banner.updateResponsiveUrls(responsiveUrls);
     }
+    
+    // Keep backward compatibility for image_low if provided separately
     if (files.image_low) {
         await deleteImageFromS3(banner.image_url_low);
         banner.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
@@ -193,7 +526,14 @@ module.exports.updateBanner = async (req, res) => {
         });
 
         await banner.save();
-        return successResponse(res, banner, 'Banner updated successfully');
+        
+        // Format response with responsive image data
+        const formattedBanner = {
+            ...banner.toJSON(),
+            responsive_images: banner.getResponsiveUrls()
+        };
+        
+        return successResponse(res, formattedBanner, 'Banner updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -224,7 +564,16 @@ module.exports.deleteBanner = async (req, res) => {
                 }
             );
 
-            // Delete the banner
+            // Delete all responsive images from S3
+            if (banner.image_url) {
+                // Extract the S3 key from the full URL
+                const urlParts = banner.image_url.split('/');
+                const fileName = urlParts[urlParts.length - 1];
+                const baseS3Key = `banners/${fileName}`;
+                await deleteAllResizedImages(baseS3Key);
+            }
+
+            // Soft delete the banner (marks as deleted but keeps record)
             await banner.destroy({ transaction: t });
         });
 
@@ -244,7 +593,13 @@ module.exports.getBannerDetails = async (req, res) => {
             throw error;
         }
 
-        return successResponse(res, banner, 'Banner details retrieved successfully');
+        // Format banner with responsive image data
+        const formattedBanner = {
+            ...banner.toJSON(),
+            responsive_images: banner.getResponsiveUrls()
+        };
+        
+        return successResponse(res, formattedBanner, 'Banner details retrieved successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -323,7 +678,16 @@ module.exports.shuffleDisplayOrder = async (req, res) => {
             order: [['display_order', 'ASC']]
         });
 
-        return successResponse(res, updatedBanners, 'Display order updated successfully');
+        // Format banners with responsive image data
+        const formattedBanners = updatedBanners.map(banner => {
+            const bannerData = banner.toJSON();
+            return {
+                ...bannerData,
+                responsive_images: banner.getResponsiveUrls()
+            };
+        });
+
+        return successResponse(res, formattedBanners, 'Display order updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -345,7 +709,14 @@ module.exports.restoreBanner = async (req, res) => {
             return res.status(404).json({ success: false, message: "Banner not found" });
         }
         await banner.restore();
-        return res.json({ success: true, message: "Banner restored successfully", data: banner });
+        
+        // Format banner with responsive image data
+        const formattedBanner = {
+            ...banner.toJSON(),
+            responsive_images: banner.getResponsiveUrls()
+        };
+        
+        return res.json({ success: true, message: "Banner restored successfully", data: formattedBanner });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }

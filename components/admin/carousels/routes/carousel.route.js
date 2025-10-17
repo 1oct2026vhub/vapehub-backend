@@ -32,8 +32,24 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *           type: integer
  *         image_url:
  *           type: string
+ *         image_url_desktop_wide:
+ *           type: string
+ *         image_url_desktop:
+ *           type: string
+ *         image_url_laptop:
+ *           type: string
+ *         image_url_tablet_landscape:
+ *           type: string
+ *         image_url_tablet_portrait:
+ *           type: string
+ *         image_url_mobile:
+ *           type: string
+ *         image_url_mid:
+ *           type: string
  *         image_url_low:
  *           type: string
+ *         responsive_urls:
+ *           type: object
  *         title:
  *           type: string
  *         description:
@@ -148,21 +164,24 @@ router.get('/',
  *             type: object
  *             required:
  *               - image
- *               - image_low
  *             properties:
  *               image:
  *                 type: string
  *                 format: binary
- *               image_low:
- *                 type: string
- *                 format: binary
+ *                 description: Main image file (will be resized to 6 responsive sizes)
  *               title:
  *                 type: string
+ *                 description: Carousel title
  *               description:
  *                 type: string
+ *                 description: Carousel description
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *                 description: Carousel status
  *               redirect_url:
  *                 type: string
- *                 description: URL for redirection (#, valid URL, or path)
+ *                 description: Redirect URL when clicked
  *     responses:
  *       201:
  *         description: Carousel created successfully
