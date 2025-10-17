@@ -862,74 +862,77 @@ const getReferralStats = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
-        const referrer = await Referral.findOne({
-            where: {
-                referred_user_id: userId
-            }
-        });
+        // Execute all queries in parallel for better performance
+        const [
+            referrer,
+            totalReferrals,
+            pendingReferrals,
+            referralMethods,
+            totalRecentReferrals,
+            recentReferrals
+        ] = await Promise.all([
+            // Get referrer info
+            Referral.findOne({
+                where: {
+                    referred_user_id: userId
+                }
+            }),
 
-        // Get total referrals count
-        const totalReferrals = await Referral.count({
-            where: {
-                referrer_id: userId,
-                status: 'completed'
-            }
-        });
+            // Get total referrals count
+            Referral.count({
+                where: {
+                    referrer_id: userId,
+                    status: 'completed'
+                }
+            }),
 
-        // Get pending referrals count
-        const pendingReferrals = await Referral.count({
-            where: {
-                referrer_id: userId,
-                status: 'pending'
-            }
-        });
+            // Get pending referrals count
+            Referral.count({
+                where: {
+                    referrer_id: userId,
+                    status: 'pending'
+                }
+            }),
 
-        // Get total points earned
-        const totalPoints = await Referral.sum('points_awarded', {
-            where: {
-                referrer_id: userId,
-                status: 'completed'
-            }
-        });
+            // Get active referral methods
+            ReferralMethod.findAll({
+                where: { status: 'active'}, //, primary: true
+                order: [['created_at', 'DESC']],
+                attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status']
+            }),
 
-        // Get active referral methods
-        const referralMethods = await ReferralMethod.findAll({
-            where: { status: 'active'}, //, primary: true
-            order: [['created_at', 'DESC']],
-            attributes: ['id', 'referral_value_type', 'referral_value', 'refer_type', 'status']
-        });
+            // Get total count of recent referrals for pagination
+            Referral.count({
+                where: {
+                    referrer_id: userId,
+                    status: {
+                        [Op.in]: ['completed', 'applied']
+                    }
+                }
+            }),
+
+            // Get recent referrals with user details (paginated)
+            Referral.findAll({
+                where: {
+                    referrer_id: userId,
+                    status: {
+                        [Op.in]: ['completed', 'applied']
+                    }
+                },
+                include: [{
+                    model: User,
+                    as: 'referredUser',
+                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
+                }],
+                order: [['created_at', 'DESC']],
+                limit,
+                offset
+            })
+        ]);
 
         // Separate referral methods based on refer_type
         const referralMethod = referralMethods.find(method => method.refer_type === 'referral');
         const referrerMethod = referralMethods.find(method => method.refer_type === 'referrer');
-
-        // Get total count of recent referrals for pagination
-        const totalRecentReferrals = await Referral.count({
-            where: {
-                referrer_id: userId,
-                status: {
-                    [Op.in]: ['completed', 'applied']
-                }
-            }
-        });
-
-        // Get recent referrals with user details (paginated)
-        const recentReferrals = await Referral.findAll({
-            where: {
-                referrer_id: userId,
-                status: {
-                    [Op.in]: ['completed', 'applied']
-                }
-            },
-            include: [{
-                model: User,
-                as: 'referredUser',
-                attributes: ['id', 'first_name', 'last_name', 'email', 'phone']
-            }],
-            order: [['created_at', 'DESC']],
-            limit,
-            offset
-        });
 
         const response = {
             total_referrals: totalReferrals || 0,
