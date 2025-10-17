@@ -6,8 +6,9 @@ module.exports = {
   async up(queryInterface, Sequelize) {
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
     // Use smaller chunk size for staging and production environments
-    const CHUNK_SIZE = 50;
-    const BATCH_INTERVAL = 2000; // 2 second interval between batches (optional)
+        // Use very small chunk size to avoid lock timeouts
+        const CHUNK_SIZE = 5;
+        const BATCH_INTERVAL = 3000; // 3 second interval between batches
     
     try {
       // Step 0: Check existing data and resume from where it stopped
@@ -545,13 +546,41 @@ module.exports = {
 
           // Step 3d: Create order mapping for this chunk
           console.log(`🔗 Creating order mapping for chunk ${chunkIndex + 1}...`);
-          await queryInterface.sequelize.query(`
-            CREATE TEMPORARY TABLE temp_order_mapping_chunk AS
-            SELECT old_o.id as old_order_id, new_o.id as new_order_id
-            FROM temp_orders_chunk old_o
-            INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
-          `, { transaction });
-          console.log(`✅ Order mapping created`);
+          const mappingStartTime = Date.now();
+          
+          try {
+            await queryInterface.sequelize.query(`
+              CREATE TEMPORARY TABLE temp_order_mapping_chunk AS
+              SELECT old_o.id as old_order_id, new_o.id as new_order_id
+              FROM temp_orders_chunk old_o
+              INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
+            `, { 
+              transaction,
+              lock: false, // Disable locking to avoid timeout
+              timeout: 30000 // 30 second timeout
+            });
+            
+            const mappingTime = Date.now() - mappingStartTime;
+            console.log(`✅ Order mapping created in ${mappingTime}ms`);
+          } catch (error) {
+            console.error(`❌ Order mapping failed: ${error.message}`);
+            console.log(`🔄 Retrying order mapping with shorter timeout...`);
+            
+            // Retry with shorter timeout and no lock
+            await queryInterface.sequelize.query(`
+              CREATE TEMPORARY TABLE temp_order_mapping_chunk AS
+              SELECT old_o.id as old_order_id, new_o.id as new_order_id
+              FROM temp_orders_chunk old_o
+              INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
+            `, { 
+              transaction,
+              lock: false,
+              timeout: 10000 // 10 second timeout
+            });
+            
+            const mappingTime = Date.now() - mappingStartTime;
+            console.log(`✅ Order mapping created in ${mappingTime}ms (retry)`);
+          }
 
           // Step 3d.1: Set auto-increment to continue from the highest order ID
           console.log(`🔧 Setting auto-increment for orders table...`);
@@ -983,9 +1012,14 @@ module.exports = {
           console.error(`   Stack: ${error.stack}`);
           console.error(`   Chunk offset: ${offset}, Chunk size: ${CHUNK_SIZE}`);
           
-          // If it's a timeout or connection issue, continue with next chunk
-          if (error.message.includes('timeout') || error.message.includes('connection') || error.message.includes('ECONNRESET')) {
-            console.log(`🔄 Continuing with next chunk due to connection/timeout issue...`);
+          // If it's a timeout, connection, or lock issue, continue with next chunk
+          if (error.message.includes('timeout') || 
+              error.message.includes('connection') || 
+              error.message.includes('ECONNRESET') ||
+              error.message.includes('Lock wait timeout') ||
+              error.message.includes('lock wait timeout')) {
+            console.log(`🔄 Continuing with next chunk due to connection/timeout/lock issue...`);
+            console.log(`🔧 Consider reducing CHUNK_SIZE for better performance in staging`);
             continue;
           }
           
