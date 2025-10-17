@@ -360,38 +360,69 @@ module.exports = {
           let mappedUsers = 0;
           let totalUsers = 0;
           
-          for (const order of chunkOrders) {
+          console.log(`🔍 Processing ${chunkOrders.length} orders for user mapping...`);
+          
+          for (let i = 0; i < chunkOrders.length; i++) {
+            const order = chunkOrders[i];
+            console.log(`🔍 Processing order ${i + 1}/${chunkOrders.length}: ID=${order.id}, CustomerID=${order.customer_id}, Email=${order.billing_email}`);
+            
             // Get mapped user ID or NULL for guest orders (outside transaction)
             let mappedUserId = null;
             
             if (order.customer_id && order.customer_id !== '0') {
               totalUsers++;
-              // Use email-based mapping for staging, direct ID mapping for local
-              if (process.env.NODE_ENV === 'staging' || process.env.NODE_ENV === 'production') {
-                // Email-based mapping for staging/production
-                if (order.billing_email) {
-                  try {
-                    const [user] = await queryInterface.sequelize.query(`
-                      SELECT id FROM users WHERE email = ?
-                    `, { replacements: [order.billing_email] });
-                    if (user.length > 0) {
-                      mappedUserId = user[0].id;
-                      mappedUsers++;
-                    }
-                  } catch (error) {
-                    console.error(`⚠️ User mapping error for email ${order.billing_email}:`);
-                    console.error(`   Error: ${error.message}`);
-                    console.error(`   Order ID: ${order.id}`);
+              console.log(`🔍 Order ${order.id}: Has customer ID ${order.customer_id}, attempting user mapping...`);
+              
+              // Try email-based mapping first (works for all environments)
+              if (order.billing_email) {
+                console.log(`🔍 Order ${order.id}: Trying email-based mapping for ${order.billing_email}...`);
+                try {
+                  const [user] = await queryInterface.sequelize.query(`
+                    SELECT id FROM users WHERE email = ?
+                  `, { replacements: [order.billing_email] });
+                  if (user.length > 0) {
+                    mappedUserId = user[0].id;
+                    mappedUsers++;
+                    console.log(`✅ Order ${order.id}: Mapped user: ${order.billing_email} -> User ID: ${mappedUserId}`);
+                  } else {
+                    console.log(`⚠️ Order ${order.id}: No user found for email: ${order.billing_email}`);
                   }
+                } catch (error) {
+                  console.error(`⚠️ Order ${order.id}: User mapping error for email ${order.billing_email}:`);
+                  console.error(`   Error: ${error.message}`);
+                  console.error(`   Order ID: ${order.id}`);
                 }
               } else {
-                // Direct ID mapping for local development
-                mappedUserId = parseInt(order.customer_id);
-                mappedUsers++;
+                console.log(`⚠️ Order ${order.id}: No billing email provided`);
               }
+              
+              // Fallback to direct ID mapping if email mapping failed
+              if (!mappedUserId) {
+                console.log(`🔍 Order ${order.id}: Email mapping failed, trying direct ID mapping for ${order.customer_id}...`);
+                try {
+                  const [user] = await queryInterface.sequelize.query(`
+                    SELECT id FROM users WHERE id = ?
+                  `, { replacements: [parseInt(order.customer_id)] });
+                  if (user.length > 0) {
+                    mappedUserId = user[0].id;
+                    mappedUsers++;
+                    console.log(`✅ Order ${order.id}: Mapped user by ID: ${order.customer_id} -> User ID: ${mappedUserId}`);
+                  } else {
+                    console.log(`⚠️ Order ${order.id}: No user found for ID: ${order.customer_id}`);
+                  }
+                } catch (error) {
+                  console.error(`⚠️ Order ${order.id}: Direct ID mapping error for ID ${order.customer_id}:`);
+                  console.error(`   Error: ${error.message}`);
+                }
+              }
+            } else {
+              console.log(`🔍 Order ${order.id}: No customer ID or guest order (customer_id: ${order.customer_id})`);
             }
-             
-             await queryInterface.sequelize.query(`
+            
+            console.log(`🔍 Order ${order.id}: Final mappedUserId = ${mappedUserId}`);
+            
+            console.log(`💾 Order ${order.id}: Inserting into temp_orders_chunk...`);
+            await queryInterface.sequelize.query(`
                INSERT INTO temp_orders_chunk (
                  id, customer_id, user_id, total, discount_price, status, 
                  date_created_gmt, date_updated_gmt, billing_email, 
@@ -406,7 +437,10 @@ module.exports = {
                ],
                transaction
              });
+             console.log(`✅ Order ${order.id}: Successfully inserted into temp_orders_chunk`);
            }
+
+          console.log(`🔍 Completed processing all ${chunkOrders.length} orders for chunk ${chunkIndex + 1}`);
 
           // Log user mapping success rate
           if (totalUsers > 0) {
@@ -419,7 +453,9 @@ module.exports = {
           }
 
           // Step 3b: Temporarily disable foreign key checks for this chunk
+          console.log(`🔧 Disabling foreign key checks for chunk ${chunkIndex + 1}...`);
           await queryInterface.sequelize.query(`SET FOREIGN_KEY_CHECKS = 0`, { transaction });
+          console.log(`✅ Foreign key checks disabled`);
 
           // Step 3c: Insert orders for this chunk
           console.log(`💾 Inserting ${chunkOrders.length} orders into database...`);
@@ -487,12 +523,14 @@ module.exports = {
           console.log(`✅ Inserted orders in ${insertTime}ms`);
 
           // Step 3c.1: Validate user mapping for this chunk
+          console.log(`🔍 Validating user mapping for chunk ${chunkIndex + 1}...`);
           const [userMappingValidation] = await queryInterface.sequelize.query(`
             SELECT 
               COUNT(*) as total_orders,
               COUNT(CASE WHEN user_id IS NULL THEN 1 END) as unmapped_users
             FROM temp_orders_chunk
           `, { transaction });
+          console.log(`📊 User mapping validation: ${userMappingValidation[0].total_orders} total orders, ${userMappingValidation[0].unmapped_users} unmapped users`);
           
           if (userMappingValidation[0].unmapped_users > 0) {
             console.warn(`⚠️ Chunk ${chunkIndex + 1}: ${userMappingValidation[0].unmapped_users}/${userMappingValidation[0].total_orders} orders have unmapped users`);
@@ -506,19 +544,24 @@ module.exports = {
           }
 
           // Step 3d: Create order mapping for this chunk
+          console.log(`🔗 Creating order mapping for chunk ${chunkIndex + 1}...`);
           await queryInterface.sequelize.query(`
             CREATE TEMPORARY TABLE temp_order_mapping_chunk AS
             SELECT old_o.id as old_order_id, new_o.id as new_order_id
             FROM temp_orders_chunk old_o
             INNER JOIN orders new_o ON new_o.order_code = old_o.order_code
           `, { transaction });
+          console.log(`✅ Order mapping created`);
 
           // Step 3d.1: Set auto-increment to continue from the highest order ID
+          console.log(`🔧 Setting auto-increment for orders table...`);
           const [maxOrderId] = await queryInterface.sequelize.query(`SELECT MAX(old_order_id) as max_id FROM temp_order_mapping_chunk`, { transaction });
           const nextOrderId = (maxOrderId[0]?.max_id || 0) + 1;
           await queryInterface.sequelize.query(`ALTER TABLE orders AUTO_INCREMENT = ${nextOrderId}`, { transaction });
+          console.log(`✅ Auto-increment set to ${nextOrderId}`);
 
           // Step 3e: Insert order addresses for this chunk (populate from WooCommerce billing meta)
+          console.log(`🏠 Inserting order addresses for chunk ${chunkIndex + 1}...`);
           await queryInterface.sequelize.query(`
             INSERT INTO order_addresses (
               order_id, user_id, name, last_name, company_name, country, street,
@@ -556,8 +599,10 @@ module.exports = {
             LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bpostcode ON pm_bpostcode.post_id = old_o.id AND pm_bpostcode.meta_key = '_billing_postcode'
             LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bphone ON pm_bphone.post_id = old_o.id AND pm_bphone.meta_key = '_billing_phone'
           `, { transaction });
+          console.log(`✅ Order addresses inserted`);
 
           // Step 3f: Update order address references
+          console.log(`🔗 Updating order address references...`);
           await queryInterface.sequelize.query(`
             UPDATE orders o
             INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
@@ -565,8 +610,10 @@ module.exports = {
             SET o.order_billing_address_id = oa.id, o.order_shipping_address_id = oa.id
             WHERE oa.deleted_at IS NULL
           `, { transaction });
+          console.log(`✅ Order address references updated`);
 
           // Step 3f.1: Validate address mapping for this chunk
+          console.log(`🔍 Validating address mapping for chunk ${chunkIndex + 1}...`);
           const [addressMappingValidation] = await queryInterface.sequelize.query(`
             SELECT 
               COUNT(*) as total_orders,
@@ -602,8 +649,10 @@ module.exports = {
           }
 
           // Step 3g: Insert order items for this chunk - Extract from WooCommerce order tables
+          console.log(`📦 Fetching order items for chunk ${chunkIndex + 1}...`);
           let orderItemData = [];
           if (chunkOrders.length > 0) {
+            console.log(`🔍 Fetching order items for ${chunkOrders.length} orders...`);
             orderItemData = await crossServerMigration.fetchFromOldDb(`
               SELECT 
                 o.ID as order_id,
@@ -622,14 +671,18 @@ module.exports = {
                 AND o.ID IN (${chunkOrders.map(o => o.id).join(',')})
               GROUP BY o.ID, oi.order_item_id, oi.order_item_name
             `);
+            console.log(`✅ Fetched ${orderItemData.length} order items`);
           }
 
           // Insert order items with proper product/variant mapping
+          console.log(`📦 Processing ${orderItemData.length} order items...`);
           let successfulItems = 0;
           let failedItems = 0;
           let skippedItems = 0;
           
-          for (const item of orderItemData) {
+          for (let i = 0; i < orderItemData.length; i++) {
+            const item = orderItemData[i];
+            console.log(`🔍 Processing order item ${i + 1}/${orderItemData.length}: Order ${item.order_id}, Product ${item.product_id}`);
             try {
               // First try to get the mapped product/variant IDs
               const [mappingResult] = await queryInterface.sequelize.query(`
@@ -766,8 +819,10 @@ module.exports = {
           }
           
           // Log item mapping statistics for this chunk
+          console.log(`📊 Order items processed: ${successfulItems} successful, ${failedItems} failed, ${skippedItems} skipped`);
 
           // Step 3h: Insert order logs for this chunk
+          console.log(`📝 Inserting order logs for chunk ${chunkIndex + 1}...`);
           await queryInterface.sequelize.query(`
             INSERT INTO order_logs (
               order_id, user_id, status, label, additional_info, createdAt, updatedAt
@@ -783,11 +838,15 @@ module.exports = {
             FROM orders o
             INNER JOIN temp_order_mapping_chunk om ON o.id = om.new_order_id
           `, { transaction });
+          console.log(`✅ Order logs inserted`);
 
           // Step 3i: Re-enable foreign key checks
+          console.log(`🔧 Re-enabling foreign key checks...`);
           await queryInterface.sequelize.query(`SET FOREIGN_KEY_CHECKS = 1`, { transaction });
+          console.log(`✅ Foreign key checks re-enabled`);
 
           // Step 3i.1: Final data quality check for this chunk
+          console.log(`🔍 Running quality check for chunk ${chunkIndex + 1}...`);
           const [chunkQualityCheck] = await queryInterface.sequelize.query(`
             SELECT 
               COUNT(*) as total_orders,
@@ -816,10 +875,14 @@ module.exports = {
           }
 
           // Step 3j: Clean up temporary tables for this chunk
+          console.log(`🧹 Cleaning up temporary tables for chunk ${chunkIndex + 1}...`);
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_orders_chunk`, { transaction });
           await queryInterface.sequelize.query(`DROP TEMPORARY TABLE IF EXISTS temp_order_mapping_chunk`, { transaction });
+          console.log(`✅ Temporary tables cleaned up`);
 
+          console.log(`💾 Committing transaction for chunk ${chunkIndex + 1}...`);
           await transaction.commit();
+          console.log(`✅ Transaction committed successfully`);
           const chunkElapsedTime = Date.now() - chunkStartTime;
           const progressPercentage = (((chunkIndex + 1) / totalChunks) * 100).toFixed(1);
           console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s) - ${progressPercentage}% complete`);
