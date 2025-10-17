@@ -29,8 +29,31 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *           type: integer
  *         image_url:
  *           type: string
+ *           description: Original banner image URL
+ *         image_url_desktop_wide:
+ *           type: string
+ *           description: Desktop wide image URL (3240x540)
+ *         image_url_desktop:
+ *           type: string
+ *           description: Desktop image URL (2020x340)
+ *         image_url_laptop:
+ *           type: string
+ *           description: Laptop image URL (1620x270)
+ *         image_url_tablet_landscape:
+ *           type: string
+ *           description: Tablet landscape image URL (1010x170)
+ *         image_url_tablet_portrait:
+ *           type: string
+ *           description: Tablet portrait image URL (960x160)
+ *         image_url_mobile:
+ *           type: string
+ *           description: Mobile image URL (480x80)
  *         image_url_low:
  *           type: string
+ *           description: Low resolution image URL (for backward compatibility)
+ *         responsive_urls:
+ *           type: object
+ *           description: JSON object containing all responsive image URLs
  *         title:
  *           type: string
  *         description:
@@ -145,26 +168,46 @@ router.get('/',
  *             type: object
  *             required:
  *               - image
- *               - image_low
  *             properties:
  *               image:
  *                 type: string
  *                 format: binary
+ *                 description: Main banner image (will be automatically resized to 6 responsive sizes)
  *               image_low:
  *                 type: string
  *                 format: binary
+ *                 description: Optional low resolution image (for backward compatibility)
  *               title:
  *                 type: string
+ *                 description: Banner title
  *               description:
  *                 type: string
+ *                 description: Banner description
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
+ *                 description: Banner status
  *               redirect_url:
  *                 type: string
+ *                 description: Redirect URL when banner is clicked
  *     responses:
  *       201:
- *         description: Banner created successfully
+ *         description: Banner created successfully with responsive images
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Banner'
+ *       400:
+ *         description: Bad request - Invalid file or validation error
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
  */
 router.post('/', 
     [...authMiddlewareAdmin, validateImageUpload, validateRequest(createBannerValidation)], 
@@ -195,18 +238,24 @@ router.post('/',
  *               image:
  *                 type: string
  *                 format: binary
+ *                 description: Main banner image (will be automatically resized to 6 responsive sizes)
  *               image_low:
  *                 type: string
  *                 format: binary
+ *                 description: Optional low resolution image (for backward compatibility)
  *               title:
  *                 type: string
+ *                 description: Banner title
  *               description:
  *                 type: string
+ *                 description: Banner description
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
+ *                 description: Banner status
  *               redirect_url:
  *                 type: string
+ *                 description: Redirect URL when banner is clicked
  *     responses:
  *       200:
  *         description: Banner updated successfully
