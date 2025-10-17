@@ -562,44 +562,93 @@ module.exports = {
 
           // Step 3e: Insert order addresses for this chunk (populate from WooCommerce billing meta)
           console.log(`🏠 Inserting order addresses for chunk ${chunkIndex + 1}...`);
-          await queryInterface.sequelize.query(`
-            INSERT INTO order_addresses (
-              order_id, user_id, name, last_name, company_name, country, street,
-              apartment, town, county, region, post_code, phone, token, created_at, updated_at, deleted_at
-            )
+          console.log(`🔍 Starting order addresses query...`);
+          const addressInsertStartTime = Date.now();
+          // Fetch address data in batches to avoid timeout while getting real data
+          console.log(`🔍 Fetching address data from old database...`);
+          const addressDataStartTime = Date.now();
+          
+          // Get address data from old database for this chunk
+          const orderIds = chunkOrders.map(order => order.id).join(',');
+          const addressData = await crossServerMigration.fetchFromOldDb(`
             SELECT 
-              om.new_order_id as order_id,
-              o.user_id as user_id,
-              COALESCE(pm_bfn.meta_value, SUBSTRING_INDEX(old_o.billing_email, '@', 1), 'Customer') as name,
-              COALESCE(pm_bln.meta_value, NULL) as last_name,
-              COALESCE(pm_bcompany.meta_value, NULL) as company_name,
-              COALESCE(pm_bcountry.meta_value, NULL) as country,
-              NULLIF(TRIM(CONCAT(COALESCE(pm_baddr1.meta_value, ''), ' ', COALESCE(pm_baddr2.meta_value, ''))), '') as street,
-              NULL as apartment,
-              COALESCE(pm_bcity.meta_value, NULL) as town,
-              COALESCE(pm_bstate.meta_value, NULL) as county,
-              NULL as region,
-              COALESCE(pm_bpostcode.meta_value, NULL) as post_code,
-              COALESCE(pm_bphone.meta_value, NULL) as phone,
-              NULL as token,
-              old_o.date_created_gmt as created_at,
-              old_o.date_updated_gmt as updated_at,
-              CASE WHEN old_o.status IN ('cancelled', 'failed') THEN old_o.date_updated_gmt ELSE NULL END as deleted_at
-            FROM temp_orders_chunk old_o
-            INNER JOIN temp_order_mapping_chunk om ON old_o.id = om.old_order_id
-            INNER JOIN orders o ON o.id = om.new_order_id
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bfn ON pm_bfn.post_id = old_o.id AND pm_bfn.meta_key = '_billing_first_name'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bln ON pm_bln.post_id = old_o.id AND pm_bln.meta_key = '_billing_last_name'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcompany ON pm_bcompany.post_id = old_o.id AND pm_bcompany.meta_key = '_billing_company'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcountry ON pm_bcountry.post_id = old_o.id AND pm_bcountry.meta_key = '_billing_country'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_baddr1 ON pm_baddr1.post_id = old_o.id AND pm_baddr1.meta_key = '_billing_address_1'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_baddr2 ON pm_baddr2.post_id = old_o.id AND pm_baddr2.meta_key = '_billing_address_2'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bcity ON pm_bcity.post_id = old_o.id AND pm_bcity.meta_key = '_billing_city'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bstate ON pm_bstate.post_id = old_o.id AND pm_bstate.meta_key = '_billing_state'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bpostcode ON pm_bpostcode.post_id = old_o.id AND pm_bpostcode.meta_key = '_billing_postcode'
-            LEFT JOIN ${process.env.OLD_DB_NAME || 'vapehub_live'}.vh_postmeta pm_bphone ON pm_bphone.post_id = old_o.id AND pm_bphone.meta_key = '_billing_phone'
-          `, { transaction });
-          console.log(`✅ Order addresses inserted`);
+              o.ID as order_id,
+              MAX(CASE WHEN pm.meta_key = '_billing_first_name' THEN pm.meta_value END) as billing_first_name,
+              MAX(CASE WHEN pm.meta_key = '_billing_last_name' THEN pm.meta_value END) as billing_last_name,
+              MAX(CASE WHEN pm.meta_key = '_billing_company' THEN pm.meta_value END) as billing_company,
+              MAX(CASE WHEN pm.meta_key = '_billing_country' THEN pm.meta_value END) as billing_country,
+              MAX(CASE WHEN pm.meta_key = '_billing_address_1' THEN pm.meta_value END) as billing_address_1,
+              MAX(CASE WHEN pm.meta_key = '_billing_address_2' THEN pm.meta_value END) as billing_address_2,
+              MAX(CASE WHEN pm.meta_key = '_billing_city' THEN pm.meta_value END) as billing_city,
+              MAX(CASE WHEN pm.meta_key = '_billing_state' THEN pm.meta_value END) as billing_state,
+              MAX(CASE WHEN pm.meta_key = '_billing_postcode' THEN pm.meta_value END) as billing_postcode,
+              MAX(CASE WHEN pm.meta_key = '_billing_phone' THEN pm.meta_value END) as billing_phone
+            FROM vh_posts o
+            LEFT JOIN vh_postmeta pm ON o.ID = pm.post_id 
+              AND pm.meta_key IN (
+                '_billing_first_name', '_billing_last_name', '_billing_company', '_billing_country',
+                '_billing_address_1', '_billing_address_2', '_billing_city', '_billing_state',
+                '_billing_postcode', '_billing_phone'
+              )
+            WHERE o.ID IN (${orderIds})
+            GROUP BY o.ID
+          `);
+          
+          const addressFetchTime = Date.now() - addressDataStartTime;
+          console.log(`✅ Fetched address data for ${addressData.length} orders in ${addressFetchTime}ms`);
+          
+          // Insert addresses with real data using individual inserts for better control
+          console.log(`🏠 Inserting order addresses with real data...`);
+          for (const addrData of addressData) {
+            // Find the corresponding new order ID and user_id from orders table
+            const [orderMapping] = await queryInterface.sequelize.query(`
+              SELECT om.new_order_id, o.user_id 
+              FROM temp_order_mapping_chunk om
+              INNER JOIN orders o ON o.id = om.new_order_id
+              WHERE om.old_order_id = ?
+            `, { 
+              replacements: [addrData.order_id],
+              transaction 
+            });
+            
+            if (orderMapping.length > 0) {
+              const newOrderId = orderMapping[0].new_order_id;
+              const userId = orderMapping[0].user_id;
+              
+              // Prepare name field with proper fallback logic
+              const originalOrder = chunkOrders.find(o => o.id == addrData.order_id);
+              const emailName = originalOrder?.billing_email ? originalOrder.billing_email.split('@')[0] : 'Customer';
+              const customerName = addrData.billing_first_name || emailName || 'Customer';
+              
+              await queryInterface.sequelize.query(`
+                INSERT INTO order_addresses (
+                  order_id, user_id, name, last_name, company_name, country, street,
+                  apartment, town, county, region, post_code, phone, token, created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)
+              `, {
+                replacements: [
+                  newOrderId,
+                  userId,
+                  customerName,
+                  addrData.billing_last_name || null,
+                  addrData.billing_company || null,
+                  addrData.billing_country || null,
+                  addrData.billing_address_1 || null,
+                  addrData.billing_address_2 || null,
+                  addrData.billing_city || null,
+                  addrData.billing_state || null,
+                  null, // region
+                  addrData.billing_postcode || null,
+                  addrData.billing_phone || null,
+                  null  // token
+                ],
+                transaction
+              });
+            }
+          }
+          
+          const addressInsertTime = Date.now() - addressInsertStartTime;
+          console.log(`✅ Order addresses inserted in ${addressInsertTime}ms`);
 
           // Step 3f: Update order address references
           console.log(`🔗 Updating order address references...`);
