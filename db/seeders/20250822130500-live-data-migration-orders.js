@@ -5,7 +5,8 @@ const CrossServerMigration = require('../../utils/cross-server-migration');
 module.exports = {
   async up(queryInterface, Sequelize) {
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
-    const CHUNK_SIZE = 200; // Even smaller chunk size for better performance on staging
+    // Use smaller chunk size for staging and production environments
+    const CHUNK_SIZE = 50;
     const BATCH_INTERVAL = 2000; // 2 second interval between batches (optional)
     
     try {
@@ -31,6 +32,48 @@ module.exports = {
       
       // Connect to old database
       await crossServerMigration.connectToOldDb();
+
+      // Debug: Get total order count from old database
+      console.log('🔍 Fetching total order count from old database...');
+      
+      try {
+        // Test with a simple query first
+        console.log('🔍 Testing simple query...');
+        const [testResult] = await crossServerMigration.fetchFromOldDb(`SELECT 1 as test`);
+        console.log('✅ Simple query result:', testResult);
+        
+        // Now try the order count query
+        console.log('🔍 Fetching order count...');
+        const [oldOrderCount] = await crossServerMigration.fetchFromOldDb(`
+          SELECT COUNT(*) as total_orders
+          FROM vh_posts 
+          WHERE post_type = 'shop_order'
+          AND post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-cancelled', 'wc-failed', 'wc-refunded')
+        `);
+        
+        console.log('🔍 Raw query result:', oldOrderCount);
+        
+        // Handle both array and object results
+        let totalOrders = 0;
+        if (Array.isArray(oldOrderCount) && oldOrderCount.length > 0 && oldOrderCount[0]) {
+          totalOrders = oldOrderCount[0].total_orders || 0;
+        } else if (oldOrderCount && typeof oldOrderCount === 'object' && oldOrderCount.total_orders) {
+          totalOrders = oldOrderCount.total_orders || 0;
+        }
+        
+        if (totalOrders > 0) {
+          console.log(`📊 Old Database Total Orders: ${totalOrders}`);
+        } else {
+          console.log('⚠️ Could not extract order count from result');
+          console.log('🔍 Result type:', typeof oldOrderCount);
+          console.log('🔍 Result structure:', oldOrderCount);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching order count from old database:');
+        console.error(`   Error: ${error.message}`);
+        console.error(`   Stack: ${error.stack}`);
+        console.error(`   Environment: ${process.env.NODE_ENV}`);
+      }
 
       // Optional: Run scripts/cleanup-orders.js before this seeder if you need a fresh import
 
@@ -237,10 +280,16 @@ module.exports = {
         try {
           console.log(`🔄 Processing chunk ${chunkIndex + 1}/${totalChunks} (offset: ${offset})`);
           
-          // Check if we're taking too long overall
+          // Check if we're taking too long overall (6 hour timeout for staging/production)
           const elapsedTime = Date.now() - startTime;
-          if (elapsedTime > 3600000) { // 1 hour total timeout
-            console.log(`⏰ Migration timeout reached (1 hour). Stopping migration.`);
+          const timeoutMs = 6 * 3600000; // 6 hours
+          const elapsedHours = (elapsedTime / 3600000).toFixed(2);
+          const remainingHours = ((timeoutMs - elapsedTime) / 3600000).toFixed(2);
+          
+          console.log(`⏰ Time tracking: ${elapsedHours}h elapsed, ${remainingHours}h remaining`);
+          
+          if (elapsedTime > timeoutMs) {
+            console.log(`⏰ Migration timeout reached (6 hours). Stopping migration.`);
             await transaction.rollback();
             break;
           }
@@ -251,6 +300,8 @@ module.exports = {
           
           // Step 3a: Fetch orders for this chunk from old database (skip already migrated)
           // Only fetch orders with valid customer IDs to reduce processing time
+          console.log(`🔍 Fetching orders from old database for chunk ${chunkIndex + 1}...`);
+          const fetchStartTime = Date.now();
           const chunkOrders = await crossServerMigration.fetchFromOldDb(`
             SELECT 
               old_o.ID as id,
@@ -274,6 +325,9 @@ module.exports = {
             AND old_o.ID NOT IN (${migratedIdsList})
             LIMIT ${CHUNK_SIZE} OFFSET ${offset}
           `);
+
+          const fetchTime = Date.now() - fetchStartTime;
+          console.log(`✅ Fetched ${chunkOrders.length} orders in ${fetchTime}ms`);
 
            // Skip this chunk if no orders found
            if (chunkOrders.length === 0) {
@@ -302,16 +356,40 @@ module.exports = {
              )
            `, { transaction });
 
-           // Insert chunk data with user mapping (handle unmapped users)
-           for (const order of chunkOrders) {
-             // Get mapped user ID or NULL for guest orders (outside transaction)
-             let mappedUserId = null;
-             
-             if (order.customer_id && order.customer_id !== '0') {
-               // Since you confirmed user IDs exist in new database, use direct mapping
-               // This eliminates the complex checking that was causing issues
-               mappedUserId = parseInt(order.customer_id);
-             }
+          // Insert chunk data with user mapping (handle unmapped users)
+          let mappedUsers = 0;
+          let totalUsers = 0;
+          
+          for (const order of chunkOrders) {
+            // Get mapped user ID or NULL for guest orders (outside transaction)
+            let mappedUserId = null;
+            
+            if (order.customer_id && order.customer_id !== '0') {
+              totalUsers++;
+              // Use email-based mapping for staging, direct ID mapping for local
+              if (process.env.NODE_ENV === 'staging' || process.env.NODE_ENV === 'production') {
+                // Email-based mapping for staging/production
+                if (order.billing_email) {
+                  try {
+                    const [user] = await queryInterface.sequelize.query(`
+                      SELECT id FROM users WHERE email = ?
+                    `, { replacements: [order.billing_email] });
+                    if (user.length > 0) {
+                      mappedUserId = user[0].id;
+                      mappedUsers++;
+                    }
+                  } catch (error) {
+                    console.error(`⚠️ User mapping error for email ${order.billing_email}:`);
+                    console.error(`   Error: ${error.message}`);
+                    console.error(`   Order ID: ${order.id}`);
+                  }
+                }
+              } else {
+                // Direct ID mapping for local development
+                mappedUserId = parseInt(order.customer_id);
+                mappedUsers++;
+              }
+            }
              
              await queryInterface.sequelize.query(`
                INSERT INTO temp_orders_chunk (
@@ -330,10 +408,22 @@ module.exports = {
              });
            }
 
+          // Log user mapping success rate
+          if (totalUsers > 0) {
+            const mappingRate = ((mappedUsers / totalUsers) * 100).toFixed(1);
+            console.log(`📊 Chunk ${chunkIndex + 1}: ${mappedUsers}/${totalUsers} users mapped (${mappingRate}%)`);
+            
+            if (mappingRate < 50) {
+              console.log(`⚠️ Low user mapping rate detected - this may indicate data issues`);
+            }
+          }
+
           // Step 3b: Temporarily disable foreign key checks for this chunk
           await queryInterface.sequelize.query(`SET FOREIGN_KEY_CHECKS = 0`, { transaction });
 
           // Step 3c: Insert orders for this chunk
+          console.log(`💾 Inserting ${chunkOrders.length} orders into database...`);
+          const insertStartTime = Date.now();
           await queryInterface.sequelize.query(`
             INSERT IGNORE INTO orders (
               id, user_id, coupon_id, total, discount_price, status, shipping_method_id,
@@ -392,6 +482,9 @@ module.exports = {
               CASE WHEN status = 'completed' THEN 1 ELSE 0 END as ordered
             FROM temp_orders_chunk
           `, { transaction });
+
+          const insertTime = Date.now() - insertStartTime;
+          console.log(`✅ Inserted orders in ${insertTime}ms`);
 
           // Step 3c.1: Validate user mapping for this chunk
           const [userMappingValidation] = await queryInterface.sequelize.query(`
@@ -728,7 +821,8 @@ module.exports = {
 
           await transaction.commit();
           const chunkElapsedTime = Date.now() - chunkStartTime;
-          console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s)`);
+          const progressPercentage = (((chunkIndex + 1) / totalChunks) * 100).toFixed(1);
+          console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s) - ${progressPercentage}% complete`);
           
           // Add interval between batches to reduce database load
           if (BATCH_INTERVAL > 0 && chunkIndex < totalChunks - 1) {
@@ -739,7 +833,10 @@ module.exports = {
         } catch (error) {
           await transaction.rollback();
           const chunkElapsedTime = Date.now() - chunkStartTime;
-          console.error(`❌ Chunk ${chunkIndex + 1}/${totalChunks} failed after ${Math.round(chunkElapsedTime/1000)}s:`, error.message);
+          console.error(`❌ Chunk ${chunkIndex + 1}/${totalChunks} failed after ${Math.round(chunkElapsedTime/1000)}s:`);
+          console.error(`   Error: ${error.message}`);
+          console.error(`   Stack: ${error.stack}`);
+          console.error(`   Chunk offset: ${offset}, Chunk size: ${CHUNK_SIZE}`);
           
           // If it's a timeout or connection issue, continue with next chunk
           if (error.message.includes('timeout') || error.message.includes('connection') || error.message.includes('ECONNRESET')) {
