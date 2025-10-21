@@ -44,5 +44,6 @@ router.use('/mail-subscription-settings', require('./mailSubscriptionSettings/ro
 router.use('/contactus', require('./contactus/routes/contactus.route'));
 router.use('/welcome-content', require('./welcomeContent/routes/welcomeContent.route'));
 router.use('/feature-content', require('./featureContent/routes/featureContent.route'));
+router.use('/settings', require('./settings/routes/settings.route'));
 
 module.exports = router;
