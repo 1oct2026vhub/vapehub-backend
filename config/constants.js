@@ -191,5 +191,19 @@ module.exports = {
         'BUY_MORE_SAVE_MORE',
         'BUNDLE',
         'QUANTITY_DISCOUNT'
+    ],
+
+    // Legal content settings constants
+    LEGAL_CONTENT_KEYS: {
+        'DELIVERY INFORMATION': 'delivery_information',
+        'PRIVACY POLICY': 'privacy_policy',
+        'RETURNS POLICY': 'returns_policy',
+        'TERMS CONDITIONS': 'terms_conditions'
+    },
+    LEGAL_CONTENT_KEY_ENUMS: [
+        'delivery_information',
+        'privacy_policy',
+        'returns_policy',
+        'terms_conditions'
     ]
 }
