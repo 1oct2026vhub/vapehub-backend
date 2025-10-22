@@ -166,9 +166,10 @@ const createSetting = async (req, res, next) => {
             return errorResponse(res, { message: 'Content cannot be empty' }, 'Empty content', 400);
         }
 
-        // Check if setting with same content_key already exists
+        // Check if setting with same content_key already exists (only active records)
         const existingSetting = await Settings.findOne({
             where: { content_key }
+            // paranoid: true is default, so only active records are found
         });
 
         let setting;
@@ -176,7 +177,8 @@ const createSetting = async (req, res, next) => {
         let statusCode;
 
         if (existingSetting) {
-            // Update existing setting
+            console.log('updating active setting');
+            // Update existing active setting
             await existingSetting.update({
                 content: sanitizedContent,
                 is_active
@@ -186,7 +188,7 @@ const createSetting = async (req, res, next) => {
             message = 'Setting updated successfully';
             statusCode = 200;
         } else {
-            // Create new setting
+            // Create new setting (this will create a new record even if a soft-deleted one exists)
             setting = await Settings.create({
                 content_key,
                 content: sanitizedContent,
