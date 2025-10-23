@@ -18,7 +18,7 @@ const seoController = {
           slug: sanitizedSlug,
           noIndex: false
         },
-        attributes: ['id', 'slug', 'title', 'description', 'focusKeyword', 'noIndex']
+        attributes: ['id', 'slug', 'title', 'description', 'description_text', 'focusKeyword', 'noIndex']
       });
       
       if (!seoMeta) {
