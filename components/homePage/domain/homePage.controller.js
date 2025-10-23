@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -2139,148 +2139,29 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
 
         let entityData = null;
 
-        // Fetch entity data based on entity_type
-        switch (entity_type) {
-            case 'category':
-                const category = await Category.findByPk(entity_id, {
-                    attributes: ['id', 'name', 'description', 'logo_url']
-                });
-                if (category) {
-                    entityData = {
-                        entity_type: 'category',
-                        entity_id: category.id,
-                        name: category.name,
-                        description: category.description,
-                        logo_url: category.logo_url
-                    };
-                }
-                break;
+        // Get SEO data from SeoMeta table using entity_id
+        const seoData = await SeoMeta.findOne({
+            where: {
+                entityType: entity_type,
+                entityId: entity_id
+            },
+            attributes: ['id', 'entityType', 'entityId', 'title', 'description', 'description_text', 'focusKeyword', 'slug', 'canonicalUrl', 'ogImage', 'noIndex']
+        });
 
-            case 'brand':
-                const brand = await Brand.findByPk(entity_id, {
-                    attributes: ['id', 'name', 'description', 'logo_url']
-                });
-                if (brand) {
-                    entityData = {
-                        entity_type: 'brand',
-                        entity_id: brand.id,
-                        name: brand.name,
-                        description: brand.description,
-                        logo_url: brand.logo_url
-                    };
-                }
-                break;
-
-            case 'product':
-                const product = await Product.findByPk(entity_id, {
-                    attributes: ['id', 'name', 'description'],
-                    include: [{
-                        model: ProductImage,
-                        as: 'ProductImages',
-                        where: { is_primary: true },
-                        attributes: ['image_url'],
-                        required: false
-                    }]
-                });
-                if (product) {
-                    entityData = {
-                        entity_type: 'product',
-                        entity_id: product.id,
-                        name: product.name,
-                        description: product.description,
-                        logo_url: product.ProductImages && product.ProductImages.length > 0 
-                            ? product.ProductImages[0].image_url 
-                            : null
-                    };
-                }
-                break;
-
-            case 'product_variant':
-                const productVariant = await ProductVariant.findByPk(entity_id, {
-                    attributes: ['id', 'product_id', 'description', 'slug'],
-                    include: [{
-                        model: Product,
-                        as: 'product',
-                        attributes: ['id', 'name', 'description'],
-                        include: [{
-                            model: ProductImage,
-                            as: 'ProductImages',
-                            where: { is_primary: true },
-                            attributes: ['image_url'],
-                            required: false
-                        }]
-                    }]
-                });
-                if (productVariant && productVariant.product) {
-                    // Use variant description or product name
-                    const variantDescription = productVariant.description || productVariant.product.description;
-                    
-                    entityData = {
-                        entity_type: 'product_variant',
-                        entity_id: productVariant.id,
-                        name: productVariant.product.name,
-                        description: variantDescription,
-                        logo_url: productVariant.product.ProductImages && productVariant.product.ProductImages.length > 0 
-                            ? productVariant.product.ProductImages[0].image_url 
-                            : null
-                    };
-                }
-                break;
-
-            case 'deal':
-                const deal = await Deal.findByPk(entity_id, {
-                    attributes: ['id', 'name', 'deal_type', 'required_qty', 'get_qty', 'fixed_price', 'discount_percent', 'image_url']
-                });
-                if (deal) {
-                    // Generate description from deal details
-                    let description = '';
-                    if (deal.fixed_price && deal.required_qty) {
-                        description = `Get ${deal.required_qty} for £${deal.fixed_price}`;
-                    } else if (deal.discount_percent) {
-                        description = `Get ${deal.discount_percent}% off`;
-                    } else if (deal.deal_type === 'buy_x_get_y' && deal.required_qty && deal.get_qty) {
-                        description = `Buy ${deal.required_qty} get ${deal.get_qty} free`;
-                    } else {
-                        description = `Special deal: ${deal.name}`;
-                    }
-                    
-                    entityData = {
-                        entity_type: 'deal',
-                        entity_id: deal.id,
-                        name: deal.name,
-                        description: description,
-                        logo_url: deal.image_url
-                    };
-                }
-                break;
-
-            case 'blog':
-            case 'blog_category':
-                const blog = await require('../../../models').Blog.findByPk(entity_id, {
-                    attributes: ['id', 'title', 'content', 'image_url']
-                });
-                if (blog) {
-                    // Use first 200 characters of content as description
-                    const description = blog.content 
-                        ? blog.content.substring(0, 200).replace(/<[^>]*>/g, '') + '...'
-                        : '';
-                    
-                    entityData = {
-                        entity_type: entity_type,
-                        entity_id: blog.id,
-                        name: blog.title,
-                        description: description,
-                        logo_url: blog.image_url
-                    };
-                }
-                break;
-
-            default:
-                return errorResponse(res, 
-                    { message: `Unsupported entity type: ${entity_type}` }, 
-                    `Unsupported entity type: ${entity_type}`, 
-                    400
-                );
+        if (seoData) {
+            entityData = {
+                entity_type: seoData.entityType,
+                entity_id: seoData.entityId,
+                name: seoData.title || 'Untitled',
+                description: seoData.description,
+                logo_url: seoData.ogImage
+            };
+        } else {
+            return errorResponse(res, 
+                { message: `SEO data not found for entity type: ${entity_type} with ID: ${entity_id}` }, 
+                `SEO data not found`, 
+                404
+            );
         }
 
         if (!entityData) {
