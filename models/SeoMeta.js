@@ -30,6 +30,11 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    description_text: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Additional description text for SEO purposes'
+    },
     focusKeyword: {
       type: DataTypes.STRING,
       allowNull: true
