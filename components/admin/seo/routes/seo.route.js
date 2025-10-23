@@ -27,6 +27,9 @@ const seoController = require('../domain/seo.controller');
  *         description:
  *           type: string
  *           description: Meta description
+ *         description_text:
+ *           type: string
+ *           description: Additional description text for SEO purposes
  *         focusKeyword:
  *           type: string
  *           description: Focus keyword for SEO
@@ -157,7 +160,7 @@ router.post(
  *         name: keyword
  *         schema:
  *           type: string
- *         description: Search keyword for title, description, focus keyword, or slug
+ *         description: Search keyword for title, description, description_text, focus keyword, or slug
  *       - in: query
  *         name: noIndex
  *         schema:

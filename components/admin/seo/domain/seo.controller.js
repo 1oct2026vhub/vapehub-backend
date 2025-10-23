@@ -203,6 +203,7 @@ const seoController = {
         whereClause[Op.or] = [
           { title: { [Op.like]: `%${keyword.toLowerCase()}%` } },
           { description: { [Op.like]: `%${keyword.toLowerCase()}%` } },
+          { description_text: { [Op.like]: `%${keyword.toLowerCase()}%` } },
           { focusKeyword: { [Op.like]: `%${keyword.toLowerCase()}%` } },
           { slug: { [Op.like]: `%${keyword.toLowerCase()}%` } }
         ];
