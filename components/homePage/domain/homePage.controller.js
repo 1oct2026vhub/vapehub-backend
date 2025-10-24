@@ -2120,35 +2120,52 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
     try {
         const { slug } = req.query;
 
-        // Validate input
-        if (!slug) {
-            return errorResponse(res, { message: "Slug parameter is required" }, "Slug parameter is required", 400);
+        // Enhanced input validation
+        if (!slug || typeof slug !== 'string') {
+            return errorResponse(res, 
+                { message: "Valid slug parameter is required" }, 
+                "Invalid slug parameter", 
+                400
+            );
         }
 
-        // Find slug relation to identify entity type and ID
+        const trimmedSlug = slug.trim();
+        if (!trimmedSlug) {
+            return errorResponse(res, 
+                { message: "Slug cannot be empty" }, 
+                "Empty slug provided", 
+                400
+            );
+        }
+
+        // Step 1: Find slug relation
         const slugRelation = await SlugRelation.findOne({
-            where: { slug: slug.trim() },
+            where: { slug: trimmedSlug },
             attributes: ['slug', 'entity_type', 'entity_id']
         });
 
         if (!slugRelation) {
-            return errorResponse(res, { message: "Slug not found" }, "Slug not found", 404);
+            return errorResponse(res, 
+                { message: "Slug not found" }, 
+                "Slug not found", 
+                404
+            );
         }
 
         const { entity_type, entity_id } = slugRelation;
-
         let entityData = null;
 
-        // Get SEO data from SeoMeta table using entity_id
+        // Step 2: Try to get SEO data from SeoMeta table first
         const seoData = await SeoMeta.findOne({
             where: {
                 entityType: entity_type,
-                entityId: entity_id
+                entityId: entity_id.toString() // Convert to string for UUID comparison
             },
             attributes: ['id', 'entityType', 'entityId', 'title', 'description', 'description_text', 'focusKeyword', 'slug', 'canonicalUrl', 'ogImage', 'noIndex']
         });
 
         if (seoData) {
+            // Use SEO data if available
             entityData = {
                 entity_type: seoData.entityType,
                 entity_id: seoData.entityId,
@@ -2157,29 +2174,235 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
                 logo_url: seoData.ogImage
             };
         } else {
-            return errorResponse(res, 
-                { message: `SEO data not found for entity type: ${entity_type} with ID: ${entity_id}` }, 
-                `SEO data not found`, 
-                404
-            );
-        }
-
-        if (!entityData) {
-            return errorResponse(res, 
-                { message: `Entity not found for slug: ${slug}` }, 
-                `Entity not found`, 
-                404
-            );
+            // Step 3: Check if dynamic SEO is enabled (defaults to false if not set)
+            const dynamicSeoEnabled = process.env.DYNAMIC_SEO === 'true';
+            
+            if (dynamicSeoEnabled) {
+                // Use fallback to direct entity data fetching
+                entityData = await getEntityDataByType(entity_type, entity_id);
+                
+                if (!entityData) {
+                    return errorResponse(res, 
+                        { message: `Entity not found for slug: ${trimmedSlug}` }, 
+                        "Entity not found", 
+                        404
+                    );
+                }
+            } else {
+                // Dynamic SEO disabled - return error if no SEO data found
+                return errorResponse(res, 
+                    { message: `SEO data not found for entity type: ${entity_type} with ID: ${entity_id}. Dynamic SEO is disabled.` }, 
+                    "SEO data not found", 
+                    404
+                );
+            }
         }
 
         return successResponse(res, {
-            slug: slug,
+            slug: trimmedSlug,
             ...entityData
         }, 'SEO meta data retrieved successfully');
 
     } catch (error) {
-        console.error('Error in getSeoMetaBySlug:', error);
+        logger.error('Error in getSeoMetaBySlug:', {
+            error: error.message,
+            stack: error.stack,
+            slug: req.query?.slug,
+            timestamp: new Date().toISOString()
+        });
         return errorResponse(res, error, error.message || 'Failed to retrieve SEO meta data');
+    }
+};
+
+/**
+ * Remove HTML tags and clean formatting from text content, optimized for SEO
+ * @param {string} text - Text content that may contain HTML and formatting
+ * @param {number} maxLength - Maximum character length (default: 160 for SEO)
+ * @returns {string|null} Clean text without HTML tags and formatting or null if input is null/undefined
+ */
+const removeHtmlTags = (text, maxLength = 160) => {
+    if (!text) return null;
+    
+    // Remove HTML tags
+    let cleanText = text.replace(/<[^>]*>/g, '');
+    
+    // Replace multiple newlines with single space
+    cleanText = cleanText.replace(/\n+/g, ' ');
+    
+    // Replace multiple spaces with single space
+    cleanText = cleanText.replace(/\s+/g, ' ');
+    
+    // Trim whitespace
+    cleanText = cleanText.trim();
+    
+    // Truncate to SEO-optimal length (160 characters)
+    if (cleanText && cleanText.length > maxLength) {
+        cleanText = cleanText.substring(0, maxLength).trim();
+        // Ensure we don't cut words in the middle - find last space
+        const lastSpace = cleanText.lastIndexOf(' ');
+        if (lastSpace > maxLength * 0.8) { // Only if we're not cutting too much
+            cleanText = cleanText.substring(0, lastSpace);
+        }
+        cleanText += '...';
+    }
+    
+    return cleanText || null;
+};
+
+/**
+ * Fetch entity data based on entity_type (Fallback method)
+ * @param {string} entity_type - The type of entity
+ * @param {number} entity_id - The ID of the entity
+ * @returns {Object|null} Entity data or null if not found
+ */
+const getEntityDataByType = async (entity_type, entity_id) => {
+    let entityData = null;
+
+    try {
+        switch (entity_type) {
+            case 'category':
+                const category = await Category.findByPk(entity_id, {
+                    attributes: ['id', 'name', 'description', 'logo_url']
+                });
+                if (category) {
+                    entityData = {
+                        entity_type: 'category',
+                        entity_id: category.id,
+                        name: category.name,
+                        description: removeHtmlTags(category.description),
+                        logo_url: category.logo_url
+                    };
+                }
+                break;
+
+            case 'brand':
+                const brand = await Brand.findByPk(entity_id, {
+                    attributes: ['id', 'name', 'description', 'logo_url']
+                });
+                if (brand) {
+                    entityData = {
+                        entity_type: 'brand',
+                        entity_id: brand.id,
+                        name: brand.name,
+                        description: removeHtmlTags(brand.description),
+                        logo_url: brand.logo_url
+                    };
+                }
+                break;
+
+            case 'product':
+                const product = await Product.findByPk(entity_id, {
+                    attributes: ['id', 'name', 'description'],
+                    include: [{
+                        model: ProductImage,
+                        as: 'ProductImages',
+                        where: { is_primary: true },
+                        attributes: ['image_url'],
+                        required: false
+                    }]
+                });
+                if (product) {
+                    entityData = {
+                        entity_type: 'product',
+                        entity_id: product.id,
+                        name: product.name,
+                        description: removeHtmlTags(product.description),
+                        logo_url: product.ProductImages && product.ProductImages.length > 0 
+                            ? product.ProductImages[0].image_url 
+                            : null
+                    };
+                }
+                break;
+
+            case 'product_variant':
+                const productVariant = await ProductVariant.findByPk(entity_id, {
+                    attributes: ['id', 'product_id', 'description', 'slug'],
+                    include: [{
+                        model: Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'description'],
+                        include: [{
+                            model: ProductImage,
+                            as: 'ProductImages',
+                            where: { is_primary: true },
+                            attributes: ['image_url'],
+                            required: false
+                        }]
+                    }]
+                });
+                if (productVariant && productVariant.product) {
+                    // Use variant description or product name
+                    const variantDescription = productVariant.description || productVariant.product.description;
+                    const cleanDescription = removeHtmlTags(variantDescription);
+                    
+                    entityData = {
+                        entity_type: 'product_variant',
+                        entity_id: productVariant.id,
+                        name: productVariant.product.name,
+                        description: cleanDescription,
+                        logo_url: productVariant.product.ProductImages && productVariant.product.ProductImages.length > 0 
+                            ? productVariant.product.ProductImages[0].image_url 
+                            : null
+                    };
+                }
+                break;
+
+            case 'deal':
+                const deal = await Deal.findByPk(entity_id, {
+                    attributes: ['id', 'name', 'deal_type', 'required_qty', 'get_qty', 'fixed_price', 'discount_percent', 'image_url']
+                });
+                if (deal) {
+                    // Generate description from deal details
+                    let description = '';
+                    if (deal.fixed_price && deal.required_qty) {
+                        description = `Get ${deal.required_qty} for £${deal.fixed_price}`;
+                    } else if (deal.discount_percent) {
+                        description = `Get ${deal.discount_percent}% off`;
+                    } else if (deal.deal_type === 'buy_x_get_y' && deal.required_qty && deal.get_qty) {
+                        description = `Buy ${deal.required_qty} get ${deal.get_qty} free`;
+                    } else {
+                        description = `Special deal: ${deal.name}`;
+                    }
+                    
+                    entityData = {
+                        entity_type: 'deal',
+                        entity_id: deal.id,
+                        name: deal.name,
+                        description: description,
+                        logo_url: deal.image_url
+                    };
+                }
+                break;
+
+            case 'blog':
+            case 'blog_category':
+                const blog = await require('../../../models').Blog.findByPk(entity_id, {
+                    attributes: ['id', 'title', 'content', 'image_url']
+                });
+                if (blog) {
+                    // Use content as description, removing HTML tags and limiting to 160 chars for SEO
+                    const description = removeHtmlTags(blog.content, 160);
+                    
+                    entityData = {
+                        entity_type: entity_type,
+                        entity_id: blog.id,
+                        name: blog.title,
+                        description: description,
+                        logo_url: blog.image_url
+                    };
+                }
+                break;
+
+            default:
+                logger.warn(`Unsupported entity type: ${entity_type} for entity_id: ${entity_id}`);
+                return null;
+        }
+
+        return entityData;
+
+    } catch (error) {
+        logger.error(`Error fetching entity data for ${entity_type}:${entity_id}:`, error);
+        return null;
     }
 };
 
