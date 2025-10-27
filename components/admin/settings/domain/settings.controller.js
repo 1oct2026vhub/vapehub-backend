@@ -44,8 +44,15 @@ const getAllSettings = async (req, res, next) => {
             whereClause.is_active = is_active === 'true';
         }
 
-        // Handle deleted filter - let Sequelize handle paranoid mode automatically
-        // We don't need to manually set deletedAt in whereClause when using paranoid: true
+        // Handle deleted filter
+        let paranoidMode = true; // Default: exclude deleted records
+        let whereClauseWithDeleted = { ...whereClause };
+
+        if (deleted === 'true') {
+            // When deleted=true, fetch ONLY deleted records
+            paranoidMode = false; // Include deleted records
+            whereClauseWithDeleted.deleted_at = { [Op.ne]: null }; // Only deleted records
+        }
 
         // Validate sort_by field to prevent SQL injection and use correct column names
         const allowedSortFields = ['id', 'content_key', 'content', 'is_active', 'created_at', 'updated_at'];
@@ -56,17 +63,17 @@ const getAllSettings = async (req, res, next) => {
 
         // Get total count for pagination
         const total = await Settings.count({
-            where: whereClause,
-            paranoid: deleted !== 'true'
+            where: whereClauseWithDeleted,
+            paranoid: paranoidMode
         });
 
         // Get settings with pagination
         const settings = await Settings.findAll({
-            where: whereClause,
+            where: whereClauseWithDeleted,
             order: [[validatedSortBy, order.toUpperCase()]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: deleted !== 'true'
+            paranoid: paranoidMode
         });
 
         return successResponse(res, {

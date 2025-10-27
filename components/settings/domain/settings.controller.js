@@ -40,7 +40,6 @@ const getLegalContent = async (req, res, next) => {
         // Add metadata about available content types
         const availableContentTypes = legalSettings.map(setting => setting.content_key);
         const missingContentTypes = legalKeys.filter(key => !availableContentTypes.includes(key));
-
         return successResponse(res, {
             legal_content: legalContent,
             metadata: {
