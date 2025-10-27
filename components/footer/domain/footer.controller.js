@@ -3,8 +3,10 @@ const { FooterSection, FooterLink, Connect } = require('../../../models');
 const getFooterSections = async (req, res) => {
   try {
     const { is_active } = req.query;
-    // Build where clause for filtering by active status if provided
-    const where = {};
+    // Build where clause - default to active records only
+    const where = { is_active: true }; // Default: only active records
+    
+    // Allow override to include inactive records if explicitly requested
     if (is_active !== undefined) {
       where.is_active = is_active === 'true';
     }
@@ -15,6 +17,7 @@ const getFooterSections = async (req, res) => {
       include: [{
         model: FooterLink,
         as: 'links',
+        where: { is_active: true }, // Only include active links
         order: [['order', 'ASC']]
       }]
     });
