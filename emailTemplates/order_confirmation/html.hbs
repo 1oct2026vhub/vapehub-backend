@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,6 +11,7 @@
             padding: 0;
             background: #f4f6fb;
         }
+
         .email-container {
             max-width: 600px;
             margin: 30px auto;
@@ -18,24 +20,34 @@
             box-shadow: 0 8px 32px rgba(44, 62, 80, 0.10);
             overflow: hidden;
         }
+
         .header {
-            background: linear-gradient(90deg, #2e8b57 0%, #3cb371 100%);
+            border-radius: 14px;
+            border: 1px solid var(--Natural-10, #FFF);
+            background: linear-gradient(90deg, #083122 0%, #035335 50%, #083122 100%);
+
+            /* ads */
+            box-shadow: -1px 4px 24px 0 rgba(0, 0, 0, 0.24);
             padding: 32px 0 16px 0;
             text-align: center;
         }
+
         .logo {
             max-width: 160px;
             margin-bottom: 10px;
         }
+
         .content {
             padding: 32px 24px 24px 24px;
         }
+
         h2 {
             color: #2e8b57;
             margin-bottom: 8px;
             font-size: 28px;
             font-weight: 700;
         }
+
         .order-details {
             background: #f8fafc;
             border-radius: 12px;
@@ -43,17 +55,20 @@
             margin: 24px 0;
             box-shadow: 0 2px 8px rgba(44, 62, 80, 0.04);
         }
+
         .order-details h3 {
             margin-top: 0;
             color: #222;
             font-size: 20px;
             font-weight: 600;
         }
+
         .order-details p {
             margin: 6px 0;
             color: #444;
             font-size: 15px;
         }
+
         .status-badge {
             display: inline-block;
             padding: 6px 18px;
@@ -66,6 +81,7 @@
             margin-left: 10px;
             text-transform: capitalize;
         }
+
         .items-table {
             width: 100%;
             border-collapse: separate;
@@ -76,10 +92,13 @@
             overflow: hidden;
             box-shadow: 0 1px 4px rgba(44, 62, 80, 0.06);
         }
-        .items-table th, .items-table td {
+
+        .items-table th,
+        .items-table td {
             padding: 14px 12px;
             text-align: left;
         }
+
         .items-table th {
             background: #f2f6f9;
             color: #2e8b57;
@@ -87,35 +106,44 @@
             font-weight: 700;
             border-bottom: 2px solid #e0e6ed;
         }
+
         .items-table td {
             font-size: 15px;
             color: #333;
             border-bottom: 1px solid #f0f0f0;
         }
+
         .items-table tr:last-child td {
             border-bottom: none;
         }
+
         .item-name {
             font-weight: 600;
         }
-        .item-quantity, .item-price {
+
+        .item-quantity,
+        .item-price {
             text-align: center;
         }
+
         .total-row td {
             background: #f8fafc;
             font-weight: 600;
             color: #222;
         }
+
         .total-label {
             text-align: right;
             padding-right: 16px;
         }
+
         .total-price {
             color: #2e8b57;
             font-size: 18px;
             font-weight: 700;
             text-align: center;
         }
+
         .tracking-info {
             margin: 32px 0 0 0;
             padding: 20px;
@@ -124,6 +152,7 @@
             color: #2e8b57;
             font-size: 15px;
         }
+
         .footer {
             background: #f2f6f9;
             text-align: center;
@@ -132,13 +161,25 @@
             font-size: 13px;
             border-top: 1px solid #e0e6ed;
         }
+
         @media (max-width: 650px) {
-            .email-container { margin: 10px; }
-            .content, .order-details { padding: 16px; }
-            .items-table th, .items-table td { padding: 10px 6px; }
+            .email-container {
+                margin: 10px;
+            }
+
+            .content,
+            .order-details {
+                padding: 16px;
+            }
+
+            .items-table th,
+            .items-table td {
+                padding: 10px 6px;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="email-container">
         <div class="header">
@@ -149,7 +190,8 @@
         <div class="content">
             <h2>Order Confirmation</h2>
             <p style="font-size:16px; color:#222;">Hello {{userName}},</p>
-            <p style="font-size:15px; color:#444;">Thank you for shopping with VapeHub! We're excited to confirm that we've received your order and it's being processed.</p>
+            <p style="font-size:15px; color:#444;">Thank you for shopping with VapeHub! We're excited to confirm that
+                we've received your order and it's being processed.</p>
             <div class="order-details">
                 <h3>Order Summary</h3>
                 <p><strong>Order Number:</strong> #{{orderCode}}</p>
@@ -196,7 +238,8 @@
                         {{#if mailSubscriptionDiscount}}
                         <tr class="total-row">
                             <td colspan="2" class="total-label">Mail Subscription Discount</td>
-                            <td class="mail-subscription-discount" style="color:#e67e22;">-£{{mailSubscriptionDiscount}}</td>
+                            <td class="mail-subscription-discount" style="color:#e67e22;">-£{{mailSubscriptionDiscount}}
+                            </td>
                         </tr>
                         {{/if}}
                         <tr class="total-row">
@@ -219,4 +262,5 @@
         </div>
     </div>
 </body>
-</html> 
+
+</html>
