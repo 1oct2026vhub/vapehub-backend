@@ -2415,7 +2415,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
 module.exports.getEntitySlugs = async (req, res, next) => {
     try {
         // Define the entity names we want to find
-        const targetEntities = ['nic salt', 'big puff vape kits'];
+        const targetEntities = ['NIC SALTS', 'REFILLABLE POD KITS' , 'POD KITS'];
         
         // First, find the entities by name (MySQL compatible)
         const entities = await Category.findAll({
@@ -2453,10 +2453,12 @@ module.exports.getEntitySlugs = async (req, res, next) => {
             
             // Determine the flag based on entity name
             let flag = null;
-            if (entity.name.toLowerCase().includes('big puff vape kits')) {
-                flag = 'big puff vape kits';
-            } else if (entity.name.toLowerCase().includes('nic salts')) {
-                flag = 'nic salts';
+            if (entity.name.toLowerCase().includes('REFILLABLE POD KITS')) {
+                flag = 'REFILLABLE POD KITS';
+            } else if (entity.name.toLowerCase().includes('NIC SALTS')) {
+                flag = 'NIC SALTS';
+            }else if (entity.name.toLowerCase().includes('POD KITS')) {
+                flag = 'POD KITS';
             }
             
             return {
