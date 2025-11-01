@@ -755,6 +755,7 @@ module.exports.getProductByid = async (req, res, next) => {
                     'id', 
                     'name', 
                     'slug', 
+                    'description',
                     'deal_type', 
                     'required_qty', 
                     'get_qty', 
@@ -1661,6 +1662,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 id: deal.id,
                 name: deal.name,
                 slug: deal.slug,
+                description: deal.description,
                 image_url: deal.image_url,
                 deal_type: deal.deal_type,
                 required_qty: deal.required_qty,
@@ -1773,7 +1775,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             // Get deals with raw SQL
             Product.sequelize.query(`
                 SELECT 
-                    d.id, d.name, d.slug, d.deal_type, d.required_qty, d.get_qty,
+                    d.id, d.name, d.slug, d.description, d.deal_type, d.required_qty, d.get_qty,
                     d.fixed_price, d.discount_percent, d.tiered_qty_json,
                     d.valid_from, d.valid_to
                 FROM deal_products dp
@@ -3119,6 +3121,7 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
                         'id', 
                         'name', 
                         'slug', 
+                        'description',
                         'deal_type', 
                         'required_qty', 
                         'get_qty', 
@@ -3611,6 +3614,7 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                         'id', 
                         'name', 
                         'slug', 
+                        'description',
                         'deal_type', 
                         'required_qty', 
                         'get_qty', 
@@ -3836,7 +3840,8 @@ module.exports.getCategoriesWithDeals = async (req, res, next) => {
                             attributes: [
                                 'id', 
                                 'name', 
-                                'slug', 
+                                'slug',
+                                'description',
                                 'deal_type', 
                                 'required_qty', 
                                 'get_qty', 
@@ -3990,6 +3995,7 @@ module.exports.getAllDeals = async (req, res, next) => {
                 'id', 
                 'name', 
                 'slug', 
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -4018,6 +4024,7 @@ module.exports.getAllDeals = async (req, res, next) => {
             id: deal.id,
             name: deal.name,
             slug: deal.slug,
+            description: deal.description,
             deal_type: deal.deal_type,
             required_qty: deal.required_qty,
             get_qty: deal.get_qty,

@@ -54,6 +54,9 @@ const upload = multer({
  *         slug:
  *           type: string
  *           description: URL-friendly version of the deal name
+ *         description:
+ *           type: string
+ *           description: Description of the deal
  *         deal_type:
  *           type: string
  *           enum: [BUY_N_FOR_FIXED, BUY_X_GET_Y_FREE, BUY_MORE_SAVE_MORE, BUNDLE, QUANTITY_DISCOUNT]
@@ -124,6 +127,9 @@ const upload = multer({
  *               slug:
  *                 type: string
  *                 description: URL-friendly version of the deal name (optional, will be auto-generated if not provided)
+ *               description:
+ *                 type: string
+ *                 description: Description of the deal (optional)
  *               deal_type:
  *                 type: string
  *                 enum: [BUY_N_FOR_FIXED, BUY_X_GET_Y_FREE, BUY_MORE_SAVE_MORE, BUNDLE, QUANTITY_DISCOUNT]

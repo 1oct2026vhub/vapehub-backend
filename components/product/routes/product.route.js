@@ -1842,6 +1842,10 @@ router.get('/categories-with-deals',
  *                           slug:
  *                             type: string
  *                             description: Deal slug
+ *                           description:
+ *                             type: string
+ *                             description: Deal description
+ *                             nullable: true
  *                           deal_type:
  *                             type: string
  *                             description: Type of deal
