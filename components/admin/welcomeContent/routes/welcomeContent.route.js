@@ -341,4 +341,94 @@ router.post("/:id/restore",
     welcomeContentController.restoreWelcomeContent
 );
 
+/**
+ * @swagger
+ * /api/admin/welcome-content/{id}/permanent:
+ *   delete:
+ *     summary: Permanently delete welcome content and its image from S3
+ *     tags:
+ *       - ADMIN - Welcome Content
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Welcome content ID
+ *     responses:
+ *       200:
+ *         description: Welcome content permanently deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Welcome content not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete("/:id/permanent", 
+    [authMiddleware(true), validateRequest(welcomeContentIdValidation)],
+    welcomeContentController.permanentDeleteWelcomeContent
+);
+
+/**
+ * @swagger
+ * /api/admin/welcome-content/{id}/image:
+ *   delete:
+ *     summary: Remove image from welcome content and S3 bucket
+ *     tags:
+ *       - ADMIN - Welcome Content
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Welcome content ID
+ *     responses:
+ *       200:
+ *         description: Image removed successfully from S3 and database
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     welcomeContent:
+ *                       $ref: '#/components/schemas/WelcomeContent'
+ *                     message:
+ *                       type: string
+ *       400:
+ *         description: No image found for this welcome content
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Welcome content not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete("/:id/image", 
+    [authMiddleware(true), validateRequest(welcomeContentIdValidation)],
+    welcomeContentController.removeWelcomeContentImage
+);
+
 module.exports = router;
