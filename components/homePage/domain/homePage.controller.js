@@ -113,7 +113,8 @@ const getDealsForEntity = async (entityType, entityId) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -209,7 +210,8 @@ const getDealsForEntity = async (entityType, entityId) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -617,7 +619,8 @@ const getDealsForEntityOriginal = async (entityType, entityId) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -713,7 +716,8 @@ const getDealsForEntityOriginal = async (entityType, entityId) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -2349,19 +2353,21 @@ const getEntityDataByType = async (entity_type, entity_id) => {
 
             case 'deal':
                 const deal = await Deal.findByPk(entity_id, {
-                    attributes: ['id', 'name', 'deal_type', 'required_qty', 'get_qty', 'fixed_price', 'discount_percent', 'image_url']
+                    attributes: ['id', 'name', 'deal_type', 'required_qty', 'get_qty', 'fixed_price', 'discount_percent', 'image_url', 'description']
                 });
                 if (deal) {
-                    // Generate description from deal details
-                    let description = '';
-                    if (deal.fixed_price && deal.required_qty) {
-                        description = `Get ${deal.required_qty} for £${deal.fixed_price}`;
-                    } else if (deal.discount_percent) {
-                        description = `Get ${deal.discount_percent}% off`;
-                    } else if (deal.deal_type === 'buy_x_get_y' && deal.required_qty && deal.get_qty) {
-                        description = `Buy ${deal.required_qty} get ${deal.get_qty} free`;
-                    } else {
-                        description = `Special deal: ${deal.name}`;
+                    // Use saved description if available, otherwise generate from deal details
+                    let description = deal.description || '';
+                    if (!description) {
+                        if (deal.fixed_price && deal.required_qty) {
+                            description = `Get ${deal.required_qty} for £${deal.fixed_price}`;
+                        } else if (deal.discount_percent) {
+                            description = `Get ${deal.discount_percent}% off`;
+                        } else if (deal.deal_type === 'buy_x_get_y' && deal.required_qty && deal.get_qty) {
+                            description = `Buy ${deal.required_qty} get ${deal.get_qty} free`;
+                        } else {
+                            description = `Special deal: ${deal.name}`;
+                        }
                     }
                     
                     entityData = {
