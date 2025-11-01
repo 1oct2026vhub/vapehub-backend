@@ -17,6 +17,12 @@ const createDealValidation = [
         .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
         .withMessage('Slug can only contain lowercase letters, numbers, and hyphens'),
 
+    body('description')
+        .optional()
+        .trim()
+        .isLength({ max: 2000 })
+        .withMessage('Description must not exceed 2000 characters'),
+
     body('deal_type')
         .notEmpty()
         .withMessage('Deal type is required')

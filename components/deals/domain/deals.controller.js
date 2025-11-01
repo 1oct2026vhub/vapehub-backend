@@ -87,7 +87,8 @@ module.exports.listAllDeals = async (req, res, next) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 
@@ -122,7 +123,8 @@ module.exports.getDealById = async (req, res, next) => {
             attributes: [
                 'id', 
                 'name', 
-                'slug', 
+                'slug',
+                'description',
                 'deal_type', 
                 'required_qty', 
                 'get_qty', 

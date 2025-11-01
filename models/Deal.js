@@ -43,6 +43,10 @@ module.exports = (sequelize, DataTypes) => {
                 }
             }
         },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
         deal_type: {
             type: DataTypes.ENUM(DEAL_TYPE_ENUMS),
             allowNull: false
