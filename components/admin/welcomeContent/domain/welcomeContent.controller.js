@@ -33,10 +33,26 @@ const deleteImageFromS3 = async (imageUrl) => {
   if (!imageUrl) return;
   
   try {
-    const urlParts = imageUrl.split('/');
-    const key = urlParts.slice(-2).join('/'); // Get folder/filename from URL
+    let s3Key;
     
-    await deleteFile(key);
+    // Extract S3 key based on URL format
+    if (imageUrl.includes('.amazonaws.com/')) {
+      // S3 direct URL format: https://bucket.s3.region.amazonaws.com/folder/filename
+      s3Key = imageUrl.split('.amazonaws.com/')[1];
+    } else if (imageUrl.includes('cloudfront') || imageUrl.includes('cf-')) {
+      // CloudFront URL format: https://d1234567890.cloudfront.net/folder/filename
+      const urlParts = imageUrl.split('/');
+      s3Key = urlParts.slice(3).join('/'); // Remove domain parts
+    } else {
+      // Fallback: assume last two parts are folder/filename
+      const urlParts = imageUrl.split('/');
+      s3Key = urlParts.slice(-2).join('/');
+    }
+    
+    if (s3Key) {
+      await deleteFile(s3Key);
+      console.log(`✅ Successfully deleted image from S3: ${s3Key}`);
+    }
   } catch (error) {
     console.error('Error deleting image from S3:', error);
     // Don't throw error as this is cleanup operation
@@ -285,6 +301,34 @@ module.exports.restoreWelcomeContent = async (req, res) => {
   }
 };
 
+module.exports.permanentDeleteWelcomeContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find welcome content including soft-deleted ones
+    const welcomeContent = await WelcomeContent.findByPk(id, { paranoid: false });
+    
+    if (!welcomeContent) {
+      return errorResponse(res, 'Welcome content not found', 404);
+    }
+
+    // Delete image from S3 if exists
+    if (welcomeContent.image_url) {
+      await deleteImageFromS3(welcomeContent.image_url);
+    }
+
+    // Permanently delete the content (hard delete)
+    await welcomeContent.destroy({ force: true });
+
+    return successResponse(res, { 
+      message: 'Welcome content permanently deleted successfully' 
+    });
+  } catch (error) {
+    console.error('Error in permanentDeleteWelcomeContent:', error);
+    return errorResponse(res, 'Failed to permanently delete welcome content', 500);
+  }
+};
+
 module.exports.getActiveWelcomeContent = async (req, res) => {
   try {
     const welcomeContent = await WelcomeContent.findOne({
@@ -307,5 +351,51 @@ module.exports.getActiveWelcomeContent = async (req, res) => {
   } catch (error) {
     console.error('Error in getActiveWelcomeContent:', error);
     return errorResponse(res, 'Failed to retrieve active welcome content', 500);
+  }
+};
+
+module.exports.removeWelcomeContentImage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const welcomeContent = await WelcomeContent.findByPk(id);
+    
+    if (!welcomeContent) {
+      return errorResponse(res, 'Welcome content not found', 404);
+    }
+
+    if (!welcomeContent.image_url) {
+      return errorResponse(res, 'No image found for this welcome content', 400);
+    }
+
+    // Delete image from S3
+    await deleteImageFromS3(welcomeContent.image_url);
+
+    // Update welcome content to remove image URL
+    await welcomeContent.update({
+      image_url: null,
+      updated_by: userId
+    });
+
+    // Fetch updated content with user info
+    const updatedContent = await WelcomeContent.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'updater',
+          attributes: ['id', 'first_name', 'last_name', 'email'],
+          required: false
+        }
+      ]
+    });
+
+    return successResponse(res, { 
+      welcomeContent: updatedContent,
+      message: 'Image removed successfully from S3 and database' 
+    });
+  } catch (error) {
+    console.error('Error in removeWelcomeContentImage:', error);
+    return errorResponse(res, 'Failed to remove image', 500);
   }
 };
