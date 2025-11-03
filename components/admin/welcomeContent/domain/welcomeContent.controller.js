@@ -250,6 +250,7 @@ module.exports.createOrUpdateWelcomeContent = async (req, res) => {
   }
 };
 
+
 module.exports.deleteWelcomeContent = async (req, res) => {
   try {
     const { id } = req.params;
