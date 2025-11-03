@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Brand, SlugRelation, sequelize, Product, Menu } = require("../../../../models");
+const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
@@ -268,11 +268,17 @@ module.exports.deleteBrand = async (req, res, next) => {
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
 
-        // Check if brand has any associated products
-        const productCount = await Product.count({
-            where: {
-                brand_id: id
-            }
+        // Check if brand has any associated (non-deleted) products via product_brands
+        const productCount = await ProductBrand.count({
+            where: { brand_id: id },
+            include: [
+                {
+                    model: Product,
+                    required: true,
+                    attributes: [],
+                    where: { deletedAt: null }
+                }
+            ]
         });
         if (productCount > 0) {
             await t.rollback();
