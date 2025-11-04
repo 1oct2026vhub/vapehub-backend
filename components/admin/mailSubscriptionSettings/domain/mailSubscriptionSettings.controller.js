@@ -421,7 +421,7 @@ module.exports = {
             
             const whereClause = {
                 deletedAt: null,
-                // subscribed: true
+                subscribed: true
             };
 
             if (search) {
@@ -430,13 +430,13 @@ module.exports = {
                 };
             }
 
-            // Optional filter by subscribed status
+            // Default is subscribed=true; only when explicitly false list unsubscribers
             if (typeof subscribed !== 'undefined') {
                 const normalized = String(subscribed).toLowerCase();
-                if (['true', '1'].includes(normalized)) {
-                    whereClause.subscribed = true;
-                } else if (['false', '0'].includes(normalized)) {
+                if (['false', '0'].includes(normalized)) {
                     whereClause.subscribed = false;
+                } else {
+                    whereClause.subscribed = true;
                 }
             }
 
@@ -450,11 +450,6 @@ module.exports = {
 
             const totalPages = Math.ceil(count / limit);
 
-            // Get total unsubscribers count (independent of current pagination)
-            const unsubscribersCount = await MailSubscription.count({
-                where: { deletedAt: null, subscribed: false }
-            });
-
             return successResponse(res, {
                 subscribers,
                 pagination: {
@@ -462,8 +457,7 @@ module.exports = {
                     page: parseInt(page),
                     limit: parseInt(limit),
                     totalPages
-                },
-                unsubscribersCount
+                }
             }, 'Subscribers retrieved successfully');
 
         } catch (error) {
@@ -477,6 +471,10 @@ module.exports = {
         try {
             const totalSubscribers = await MailSubscription.count({
                 where: { deletedAt: null, subscribed: true }
+            });
+
+            const unsubscribersCount = await MailSubscription.count({
+                where: { deletedAt: null, subscribed: false }
             });
 
             const recentSubscribers = await MailSubscription.count({
@@ -514,7 +512,8 @@ module.exports = {
             return successResponse(res, {
                 totalSubscribers,
                 recentSubscribers,
-                frequencyStats
+                frequencyStats,
+                unsubscribersCount
             }, 'Subscriber statistics retrieved successfully');
 
         } catch (error) {
