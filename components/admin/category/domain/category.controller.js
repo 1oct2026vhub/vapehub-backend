@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category, SlugRelation, sequelize, Product, Menu } = require("../../../../models");
+const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
@@ -279,11 +279,17 @@ module.exports.deleteCategory = async (req, res, next) => {
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
 
-        // Check if there are any products associated with this category
-        const productsCount = await Product.count({
-            where: {
-                category_id: id
-            }
+        // Check if there are any (non-deleted) products associated with this category via product_categories
+        const productsCount = await ProductCategory.count({
+            where: { category_id: id },
+            include: [
+                {
+                    model: Product,
+                    required: true,
+                    attributes: [],
+                    where: { deletedAt: null }
+                }
+            ]
         });
         if (productsCount > 0) {
             await t.rollback();
