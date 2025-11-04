@@ -149,6 +149,11 @@ router.post('/', [
  *         schema:
  *           type: string
  *         description: Search subscribers by email
+ *       - in: query
+ *         name: subscribed
+ *         schema:
+ *           type: boolean
+ *         description: When true lists subscribers; when false lists unsubscribers
  *     responses:
  *       200:
  *         description: Subscribers retrieved successfully
@@ -176,8 +181,12 @@ router.post('/', [
  *                           createdAt:
  *                             type: string
  *                             format: date-time
+ *                           subscribed:
+ *                             type: boolean
  *                     pagination:
  *                       $ref: '#/components/schemas/Pagination'
+ *                     unsubscribersCount:
+ *                       type: integer
  *                 message:
  *                   type: string
  *       500:

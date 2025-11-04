@@ -416,7 +416,7 @@ module.exports = {
     // Get all subscribers for admin selection
     async getAllSubscribers(req, res) {
         try {
-            const { page = 1, limit = 50, search = '' } = req.query;
+            const { page = 1, limit = 50, search = '', subscribed } = req.query;
             const offset = (page - 1) * limit;
             
             const whereClause = {
@@ -430,6 +430,16 @@ module.exports = {
                 };
             }
 
+            // Optional filter by subscribed status
+            if (typeof subscribed !== 'undefined') {
+                const normalized = String(subscribed).toLowerCase();
+                if (['true', '1'].includes(normalized)) {
+                    whereClause.subscribed = true;
+                } else if (['false', '0'].includes(normalized)) {
+                    whereClause.subscribed = false;
+                }
+            }
+
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
                 attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
@@ -440,6 +450,11 @@ module.exports = {
 
             const totalPages = Math.ceil(count / limit);
 
+            // Get total unsubscribers count (independent of current pagination)
+            const unsubscribersCount = await MailSubscription.count({
+                where: { deletedAt: null, subscribed: false }
+            });
+
             return successResponse(res, {
                 subscribers,
                 pagination: {
@@ -447,7 +462,8 @@ module.exports = {
                     page: parseInt(page),
                     limit: parseInt(limit),
                     totalPages
-                }
+                },
+                unsubscribersCount
             }, 'Subscribers retrieved successfully');
 
         } catch (error) {
