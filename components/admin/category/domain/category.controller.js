@@ -319,6 +319,92 @@ module.exports.deleteCategory = async (req, res, next) => {
 };
 
 /**
+ * Bulk soft-deletes categories by IDs.
+ */
+module.exports.bulkDeleteCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedCategories = [];
+        const notDeletedCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                const category = await Category.findByPk(id, { transaction: t });
+                if (!category) {
+                    await t.rollback();
+                    notDeletedCategories.push({ id, reason: 'Category not found' });
+                    continue;
+                }
+
+                // Check active associated products
+                const productsCount = await ProductCategory.count({
+                    where: { category_id: id },
+                    include: [{
+                        model: Product,
+                        required: true,
+                        attributes: [],
+                        where: { deletedAt: null }
+                    }],
+                    transaction: t
+                });
+                if (productsCount > 0) {
+                    await t.rollback();
+                    notDeletedCategories.push({ id, name: category.name, reason: `Category has ${productsCount} associated product${productsCount > 1 ? 's' : ''}` });
+                    continue;
+                }
+
+                // Check active children
+                const childrenCount = await Category.count({ where: { parent_id: id, deletedAt: null }, transaction: t });
+                if (childrenCount > 0) {
+                    await t.rollback();
+                    notDeletedCategories.push({ id, name: category.name, reason: `Category has ${childrenCount} active child categor${childrenCount > 1 ? 'ies' : 'y'}` });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('category', id, t);
+
+                // Soft delete the category
+                await category.destroy({ transaction: t });
+
+                // Update SEO noIndex
+                await seoService.updateNoIndex('category', id, true);
+
+                await t.commit();
+                deletedCategories.push({ id, name: category.name });
+            } catch (error) {
+                await t.rollback();
+                notDeletedCategories.push({ id: Number(rawId), reason: error.message || 'Failed to delete category' });
+            }
+        }
+
+        const responseData = {
+            deleted: deletedCategories,
+            not_deleted: notDeletedCategories,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedCategories.length,
+                not_deleted_count: notDeletedCategories.length,
+            },
+        };
+
+        const statusCode = deletedCategories.length > 0 ? 200 : 400;
+        const message = deletedCategories.length === ids.length
+            ? 'All categories deleted successfully'
+            : deletedCategories.length > 0
+                ? 'Some categories deleted successfully'
+                : 'No categories were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Restores a soft-deleted category by ID.
  */
 module.exports.restoreCategory = async (req, res, next) => {
@@ -346,6 +432,95 @@ module.exports.restoreCategory = async (req, res, next) => {
         return successResponse(res, {}, "Category restored successfully", 200);
     } catch (error) {
         await t.rollback();
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted categories by IDs.
+ */
+module.exports.bulkRestoreCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredCategories = [];
+        const notRestoredCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find category including soft-deleted ones
+                const category = await Category.findOne({ 
+                    where: { id }, 
+                    paranoid: false,
+                    transaction: t 
+                });
+                
+                if (!category) {
+                    await t.rollback();
+                    notRestoredCategories.push({ 
+                        id, 
+                        reason: 'Category not found' 
+                    });
+                    continue;
+                }
+
+                // Check if category is already restored (not soft-deleted)
+                if (!category.deletedAt) {
+                    await t.rollback();
+                    notRestoredCategories.push({ 
+                        id, 
+                        name: category.name,
+                        reason: 'Category is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the category
+                await category.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on category status (outside transaction)
+                await seoService.updateCategoryNoIndex(id);
+
+                restoredCategories.push({ 
+                    id: category.id, 
+                    name: category.name,
+                    slug: category.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredCategories.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore category' 
+                });
+            }
+        }
+
+        const responseData = {
+            restored: restoredCategories,
+            not_restored: notRestoredCategories,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredCategories.length,
+                not_restored_count: notRestoredCategories.length,
+            },
+        };
+
+        const statusCode = restoredCategories.length > 0 ? 200 : 400;
+        const message = restoredCategories.length === ids.length
+            ? 'All categories restored successfully'
+            : restoredCategories.length > 0
+                ? 'Some categories restored successfully'
+                : 'No categories were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
         return errorResponse(res, error, error.message);
     }
 };

@@ -416,18 +416,28 @@ module.exports = {
     // Get all subscribers for admin selection
     async getAllSubscribers(req, res) {
         try {
-            const { page = 1, limit = 50, search = '' } = req.query;
+            const { page = 1, limit = 50, search = '', subscribed } = req.query;
             const offset = (page - 1) * limit;
             
             const whereClause = {
                 deletedAt: null,
-                // subscribed: true
+                subscribed: true
             };
 
             if (search) {
                 whereClause.email = {
                     [require('sequelize').Op.like]: `%${search}%`
                 };
+            }
+
+            // Default is subscribed=true; only when explicitly false list unsubscribers
+            if (typeof subscribed !== 'undefined') {
+                const normalized = String(subscribed).toLowerCase();
+                if (['false', '0'].includes(normalized)) {
+                    whereClause.subscribed = false;
+                } else {
+                    whereClause.subscribed = true;
+                }
             }
 
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
@@ -461,6 +471,10 @@ module.exports = {
         try {
             const totalSubscribers = await MailSubscription.count({
                 where: { deletedAt: null, subscribed: true }
+            });
+
+            const unsubscribersCount = await MailSubscription.count({
+                where: { deletedAt: null, subscribed: false }
             });
 
             const recentSubscribers = await MailSubscription.count({
@@ -498,7 +512,8 @@ module.exports = {
             return successResponse(res, {
                 totalSubscribers,
                 recentSubscribers,
-                frequencyStats
+                frequencyStats,
+                unsubscribersCount
             }, 'Subscriber statistics retrieved successfully');
 
         } catch (error) {
