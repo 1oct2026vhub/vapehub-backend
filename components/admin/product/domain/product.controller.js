@@ -1277,6 +1277,98 @@ module.exports.restoreProduct = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk restores soft-deleted products by IDs.
+ */
+module.exports.bulkRestoreProducts = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredProducts = [];
+        const notRestoredProducts = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Product.sequelize.transaction();
+            try {
+                // Find the product, including soft-deleted ones
+                const product = await Product.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+                
+                if (!product) {
+                    await t.rollback();
+                    notRestoredProducts.push({ 
+                        id, 
+                        reason: 'Product not found' 
+                    });
+                    continue;
+                }
+
+                // Check if the product is already active (not deleted)
+                if (!product.deletedAt) {
+                    await t.rollback();
+                    notRestoredProducts.push({ 
+                        id, 
+                        name: product.name,
+                        reason: 'Product is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the product
+                await product.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on product status and published state (outside transaction)
+                const noIndex = product.status !== 'published';
+                await SeoService.updateNoIndex('product', id, noIndex);
+
+                restoredProducts.push({ 
+                    id: product.id, 
+                    name: product.name,
+                    slug: product.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredProducts.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore product' 
+                });
+                logger.error(`Error restoring product ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            restored: restoredProducts,
+            not_restored: notRestoredProducts,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredProducts.length,
+                not_restored_count: notRestoredProducts.length,
+            },
+        };
+
+        const statusCode = restoredProducts.length > 0 ? 200 : 400;
+        const message = restoredProducts.length === ids.length
+            ? 'All products restored successfully'
+            : restoredProducts.length > 0
+                ? 'Some products restored successfully'
+                : 'No products were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk restore products error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.uploadImage = async (req, res) => {
     console.log('Uploading image', req.files)
     const transaction = await Product.sequelize.transaction();
