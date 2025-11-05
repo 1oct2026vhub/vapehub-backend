@@ -307,6 +307,86 @@ module.exports.deleteBrand = async (req, res, next) => {
 };
 
 /**
+ * Bulk soft-deletes brands by IDs.
+ */
+module.exports.bulkDeleteBrands = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedBrands = [];
+        const notDeletedBrands = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                const brand = await Brand.findByPk(id, { transaction: t });
+                if (!brand) {
+                    await t.rollback();
+                    notDeletedBrands.push({ id, reason: 'Brand not found' });
+                    continue;
+                }
+
+                // Check active associated products
+                const productCount = await ProductBrand.count({
+                    where: { brand_id: id },
+                    include: [
+                        {
+                            model: Product,
+                            required: true,
+                            attributes: [],
+                            where: { deletedAt: null }
+                        }
+                    ],
+                    transaction: t
+                });
+                if (productCount > 0) {
+                    await t.rollback();
+                    notDeletedBrands.push({ id, name: brand.name, reason: `Brand has ${productCount} associated product${productCount > 1 ? 's' : ''}` });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('brand', id, t);
+
+                // Soft delete the brand
+                await brand.destroy({ transaction: t });
+
+                // Update SEO noIndex
+                await seoService.updateNoIndex('brand', id, true);
+
+                await t.commit();
+                deletedBrands.push({ id, name: brand.name });
+            } catch (error) {
+                await t.rollback();
+                notDeletedBrands.push({ id, reason: error.message || 'Failed to delete brand' });
+            }
+        }
+
+        const responseData = {
+            deleted: deletedBrands,
+            not_deleted: notDeletedBrands,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedBrands.length,
+                not_deleted_count: notDeletedBrands.length,
+            },
+        };
+
+        const statusCode = deletedBrands.length > 0 ? 200 : 400;
+        const message = deletedBrands.length === ids.length
+            ? 'All brands deleted successfully'
+            : deletedBrands.length > 0
+                ? 'Some brands deleted successfully'
+                : 'No brands were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Restores a soft-deleted brand by ID.
  */
 module.exports.restoreBrand = async (req, res, next) => {
@@ -334,6 +414,95 @@ module.exports.restoreBrand = async (req, res, next) => {
         return successResponse(res, {}, "Brand restored successfully", 200);
     } catch (error) {
         await t.rollback();
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted brands by IDs.
+ */
+module.exports.bulkRestoreBrands = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredBrands = [];
+        const notRestoredBrands = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find brand including soft-deleted ones
+                const brand = await Brand.findOne({ 
+                    where: { id }, 
+                    paranoid: false,
+                    transaction: t 
+                });
+                
+                if (!brand) {
+                    await t.rollback();
+                    notRestoredBrands.push({ 
+                        id, 
+                        reason: 'Brand not found' 
+                    });
+                    continue;
+                }
+
+                // Check if brand is already restored (not soft-deleted)
+                if (!brand.deletedAt) {
+                    await t.rollback();
+                    notRestoredBrands.push({ 
+                        id, 
+                        name: brand.name,
+                        reason: 'Brand is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the brand
+                await brand.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on brand status (outside transaction)
+                await seoService.updateBrandNoIndex(id);
+
+                restoredBrands.push({ 
+                    id: brand.id, 
+                    name: brand.name,
+                    slug: brand.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredBrands.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore brand' 
+                });
+            }
+        }
+
+        const responseData = {
+            restored: restoredBrands,
+            not_restored: notRestoredBrands,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredBrands.length,
+                not_restored_count: notRestoredBrands.length,
+            },
+        };
+
+        const statusCode = restoredBrands.length > 0 ? 200 : 400;
+        const message = restoredBrands.length === ids.length
+            ? 'All brands restored successfully'
+            : restoredBrands.length > 0
+                ? 'Some brands restored successfully'
+                : 'No brands were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
         return errorResponse(res, error, error.message);
     }
 };
