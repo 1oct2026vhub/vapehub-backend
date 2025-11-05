@@ -1157,6 +1157,82 @@ module.exports.deleteProduct = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk soft-deletes products by IDs.
+ */
+module.exports.bulkDeleteProducts = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedProducts = [];
+        const notDeletedProducts = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Product.sequelize.transaction();
+            try {
+                // Find the product by ID
+                const product = await Product.findByPk(id, { transaction: t });
+                
+                if (!product) {
+                    await t.rollback();
+                    notDeletedProducts.push({ 
+                        id, 
+                        reason: 'Product not found' 
+                    });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('product', id, t);
+
+                // Update SEO noIndex to true before deletion
+                await SeoService.updateNoIndex('product', id, true);
+
+                // Perform a soft delete
+                await product.destroy({ transaction: t });
+
+                await t.commit();
+                
+                deletedProducts.push({ 
+                    id: product.id, 
+                    name: product.name,
+                    slug: product.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedProducts.push({ 
+                    id, 
+                    reason: error.message || 'Failed to delete product' 
+                });
+                logger.error(`Error deleting product ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            deleted: deletedProducts,
+            not_deleted: notDeletedProducts,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedProducts.length,
+                not_deleted_count: notDeletedProducts.length,
+            },
+        };
+
+        const statusCode = deletedProducts.length > 0 ? 200 : 400;
+        const message = deletedProducts.length === ids.length
+            ? 'All products deleted successfully'
+            : deletedProducts.length > 0
+                ? 'Some products deleted successfully'
+                : 'No products were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk delete products error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.restoreProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
@@ -1197,6 +1273,98 @@ module.exports.restoreProduct = async (req, res, next) => {
     } catch (error) {
         await transaction.rollback();
         logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted products by IDs.
+ */
+module.exports.bulkRestoreProducts = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredProducts = [];
+        const notRestoredProducts = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Product.sequelize.transaction();
+            try {
+                // Find the product, including soft-deleted ones
+                const product = await Product.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+                
+                if (!product) {
+                    await t.rollback();
+                    notRestoredProducts.push({ 
+                        id, 
+                        reason: 'Product not found' 
+                    });
+                    continue;
+                }
+
+                // Check if the product is already active (not deleted)
+                if (!product.deletedAt) {
+                    await t.rollback();
+                    notRestoredProducts.push({ 
+                        id, 
+                        name: product.name,
+                        reason: 'Product is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the product
+                await product.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on product status and published state (outside transaction)
+                const noIndex = product.status !== 'published';
+                await SeoService.updateNoIndex('product', id, noIndex);
+
+                restoredProducts.push({ 
+                    id: product.id, 
+                    name: product.name,
+                    slug: product.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredProducts.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore product' 
+                });
+                logger.error(`Error restoring product ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            restored: restoredProducts,
+            not_restored: notRestoredProducts,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredProducts.length,
+                not_restored_count: notRestoredProducts.length,
+            },
+        };
+
+        const statusCode = restoredProducts.length > 0 ? 200 : 400;
+        const message = restoredProducts.length === ids.length
+            ? 'All products restored successfully'
+            : restoredProducts.length > 0
+                ? 'Some products restored successfully'
+                : 'No products were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk restore products error:', error);
         return errorResponse(res, error, error.message);
     }
 };
