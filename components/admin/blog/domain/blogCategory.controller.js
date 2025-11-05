@@ -331,4 +331,158 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
         await t.rollback();
         return errorResponse(res, error, error.message);
     }
+};
+
+module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedCategories = [];
+        const notDeletedCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                const category = await BlogCategory.findByPk(id, { transaction: t });
+                if (!category) {
+                    await t.rollback();
+                    notDeletedCategories.push({ id, reason: 'Category not found' });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('blog_category', id, t);
+
+                // Soft delete the category
+                await category.destroy({ transaction: t });
+
+                // Update SEO noIndex
+                await seoService.updateNoIndex('blog_category', id, true);
+
+                await t.commit();
+
+                deletedCategories.push({
+                    id: category.id,
+                    name: category.name,
+                    slug: category.slug
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedCategories.push({
+                    id,
+                    reason: error.message || 'Failed to delete category'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deletedCategories.length,
+            not_deleted_count: notDeletedCategories.length
+        };
+
+        if (deletedCategories.length === 0) {
+            return errorResponse(res, {
+                deleted: deletedCategories,
+                not_deleted: notDeletedCategories,
+                summary
+            }, 'No categories were deleted', 400);
+        }
+
+        return successResponse(res, {
+            deleted: deletedCategories,
+            not_deleted: notDeletedCategories,
+            summary
+        }, `Successfully deleted ${deletedCategories.length} categor${deletedCategories.length === 1 ? 'y' : 'ies'}`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.bulkRestoreBlogCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredCategories = [];
+        const notRestoredCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find category including soft-deleted ones
+                const category = await BlogCategory.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+
+                if (!category) {
+                    await t.rollback();
+                    notRestoredCategories.push({
+                        id,
+                        reason: 'Category not found'
+                    });
+                    continue;
+                }
+
+                // Check if category is already active (not deleted)
+                if (!category.deleted_at) {
+                    await t.rollback();
+                    notRestoredCategories.push({
+                        id,
+                        name: category.name,
+                        reason: 'Category is already active (not deleted)'
+                    });
+                    continue;
+                }
+
+                // Restore the category
+                await category.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on category status (outside transaction)
+                await seoService.updateBlogCategoryNoIndex(id, category.status);
+
+                restoredCategories.push({
+                    id: category.id,
+                    name: category.name,
+                    slug: category.slug
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredCategories.push({
+                    id,
+                    reason: error.message || 'Failed to restore category'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restoredCategories.length,
+            not_restored_count: notRestoredCategories.length
+        };
+
+        if (restoredCategories.length === 0) {
+            return errorResponse(res, {
+                restored: restoredCategories,
+                not_restored: notRestoredCategories,
+                summary
+            }, 'No categories were restored', 400);
+        }
+
+        return successResponse(res, {
+            restored: restoredCategories,
+            not_restored: notRestoredCategories,
+            summary
+        }, `Successfully restored ${restoredCategories.length} categor${restoredCategories.length === 1 ? 'y' : 'ies'}`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
 }; 
