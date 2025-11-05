@@ -270,74 +270,6 @@ router.post('/posts',
 
 /**
  * @swagger
- * /api/admin/blog/posts/{id}:
- *   put:
- *     summary: Update a blog post
- *     tags:
- *       - ADMIN - Blog Posts
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *               content:
- *                 type: string
- *                 description: HTML content of the blog post
- *                 example: "<h1>Blog Title</h1><p>This is a paragraph with <strong>bold</strong> text.</p>"
- *               slug:
- *                 type: string
- *               status:
- *                 type: string
- *                 enum: [draft, published, archived]
- *                 description: The blog post status
- *               image:
- *                 type: string
- *                 format: binary
- *               published_at:
- *                 type: string
- *                 format: date-time
- *               categories:
- *                 type: array
- *                 items:
- *                   type: integer
- *               tags:
- *                 type: array
- *                 items:
- *                   type: integer
- *     responses:
- *       200:
- *         description: Blog post updated successfully
- *       400:
- *         description: Validation error
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Blog post not found
- *       500:
- *         description: Internal server error
- */
-router.put('/posts/:id',
-    [
-        authMiddleware(true), 
-        uploadFileValidation,
-        validateRequest(blogUpdateValidation)
-    ],
-    blogController.updateBlog
-);
-
-/**
- * @swagger
  * /api/admin/blog/posts/bulk-delete:
  *   delete:
  *     summary: Bulk delete blog posts
@@ -414,6 +346,74 @@ router.put('/posts/bulk-restore',
         ])
     ],
     blogController.bulkRestoreBlogs
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/posts/{id}:
+ *   put:
+ *     summary: Update a blog post
+ *     tags:
+ *       - ADMIN - Blog Posts
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *                 description: HTML content of the blog post
+ *                 example: "<h1>Blog Title</h1><p>This is a paragraph with <strong>bold</strong> text.</p>"
+ *               slug:
+ *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [draft, published, archived]
+ *                 description: The blog post status
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               published_at:
+ *                 type: string
+ *                 format: date-time
+ *               categories:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *     responses:
+ *       200:
+ *         description: Blog post updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Blog post not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/posts/:id',
+    [
+        authMiddleware(true), 
+        uploadFileValidation,
+        validateRequest(blogUpdateValidation)
+    ],
+    blogController.updateBlog
 );
 
 /**

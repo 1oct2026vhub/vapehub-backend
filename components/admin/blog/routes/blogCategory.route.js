@@ -158,65 +158,6 @@ router.post('/', [authMiddleware(true), uploadFileValidation, validateRequest(bl
 
 /**
  * @swagger
- * /api/admin/blog/categories/{id}:
- *   put:
- *     tags:
- *       - ADMIN - Blog Categories
- *     security:
- *       - bearerAuth: []
- *     summary: Update a blog category with an optional image upload
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Blog category ID
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 description: Category name
- *                 example: "Updated Technology"
- *               slug:
- *                 type: string
- *                 description: SEO-friendly slug
- *                 example: "updated-technology"
- *               description:
- *                 type: string
- *                 description: Category description
- *                 example: "Updated technology category description"
- *               parent_id:
- *                 type: integer
- *                 description: ID of the parent category (optional)
- *                 example: 1
- *               status:
- *                 type: string
- *                 enum: [active, inactive]
- *                 description: Category status
- *               image:
- *                 type: string
- *                 format: binary
- *                 description: Category image file (png, jpg, jpeg, webp)
- *     responses:
- *       200:
- *         description: Blog category updated successfully
- *       400:
- *         description: Validation error
- *       404:
- *         description: Blog category not found
- *       500:
- *         description: Internal server error
- */
-router.put('/:id', [authMiddleware(true), uploadFileValidation, validateRequest(blogCategoryUpdatesValidation)], blogCategoryController.updateBlogCategory);
-
-/**
- * @swagger
  * /api/admin/blog/categories/bulk-delete:
  *   delete:
  *     summary: Bulk delete blog categories
@@ -294,6 +235,65 @@ router.put('/bulk-restore',
     ],
     blogCategoryController.bulkRestoreBlogCategories
 );
+
+/**
+ * @swagger
+ * /api/admin/blog/categories/{id}:
+ *   put:
+ *     tags:
+ *       - ADMIN - Blog Categories
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Update a blog category with an optional image upload
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Blog category ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Category name
+ *                 example: "Updated Technology"
+ *               slug:
+ *                 type: string
+ *                 description: SEO-friendly slug
+ *                 example: "updated-technology"
+ *               description:
+ *                 type: string
+ *                 description: Category description
+ *                 example: "Updated technology category description"
+ *               parent_id:
+ *                 type: integer
+ *                 description: ID of the parent category (optional)
+ *                 example: 1
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive]
+ *                 description: Category status
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Category image file (png, jpg, jpeg, webp)
+ *     responses:
+ *       200:
+ *         description: Blog category updated successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Blog category not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/:id', [authMiddleware(true), uploadFileValidation, validateRequest(blogCategoryUpdatesValidation)], blogCategoryController.updateBlogCategory);
 
 /**
  * @swagger

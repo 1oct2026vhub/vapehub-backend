@@ -172,55 +172,6 @@ router.post('/',
 
 /**
  * @swagger
- * /api/admin/blog/tags/{id}:
- *   put:
- *     summary: Update a blog tag
- *     tags:
- *       - ADMIN - Blog Tags
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Blog tag ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 description: Tag name
- *               slug:
- *                 type: string
- *                 description: SEO-friendly slug
- *     responses:
- *       200:
- *         description: Tag updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   $ref: '#/components/schemas/BlogTag'
- *       404:
- *         description: Tag not found
- */
-router.put('/:id',
-    [authMiddleware(true), validateRequest(blogTagUpdatesValidation)],
-    blogTagController.updateBlogTag
-);
-
-/**
- * @swagger
  * /api/admin/blog/tags/bulk-delete:
  *   delete:
  *     summary: Bulk delete blog tags
@@ -297,6 +248,55 @@ router.put('/bulk-restore',
         ])
     ],
     blogTagController.bulkRestoreBlogTags
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/tags/{id}:
+ *   put:
+ *     summary: Update a blog tag
+ *     tags:
+ *       - ADMIN - Blog Tags
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Blog tag ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Tag name
+ *               slug:
+ *                 type: string
+ *                 description: SEO-friendly slug
+ *     responses:
+ *       200:
+ *         description: Tag updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/BlogTag'
+ *       404:
+ *         description: Tag not found
+ */
+router.put('/:id',
+    [authMiddleware(true), validateRequest(blogTagUpdatesValidation)],
+    blogTagController.updateBlogTag
 );
 
 /**
