@@ -1157,6 +1157,82 @@ module.exports.deleteProduct = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk soft-deletes products by IDs.
+ */
+module.exports.bulkDeleteProducts = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedProducts = [];
+        const notDeletedProducts = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Product.sequelize.transaction();
+            try {
+                // Find the product by ID
+                const product = await Product.findByPk(id, { transaction: t });
+                
+                if (!product) {
+                    await t.rollback();
+                    notDeletedProducts.push({ 
+                        id, 
+                        reason: 'Product not found' 
+                    });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('product', id, t);
+
+                // Update SEO noIndex to true before deletion
+                await SeoService.updateNoIndex('product', id, true);
+
+                // Perform a soft delete
+                await product.destroy({ transaction: t });
+
+                await t.commit();
+                
+                deletedProducts.push({ 
+                    id: product.id, 
+                    name: product.name,
+                    slug: product.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedProducts.push({ 
+                    id, 
+                    reason: error.message || 'Failed to delete product' 
+                });
+                logger.error(`Error deleting product ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            deleted: deletedProducts,
+            not_deleted: notDeletedProducts,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedProducts.length,
+                not_deleted_count: notDeletedProducts.length,
+            },
+        };
+
+        const statusCode = deletedProducts.length > 0 ? 200 : 400;
+        const message = deletedProducts.length === ids.length
+            ? 'All products deleted successfully'
+            : deletedProducts.length > 0
+                ? 'Some products deleted successfully'
+                : 'No products were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk delete products error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.restoreProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
