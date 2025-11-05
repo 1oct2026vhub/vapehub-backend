@@ -419,6 +419,95 @@ module.exports.restoreBrand = async (req, res, next) => {
 };
 
 /**
+ * Bulk restores soft-deleted brands by IDs.
+ */
+module.exports.bulkRestoreBrands = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredBrands = [];
+        const notRestoredBrands = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find brand including soft-deleted ones
+                const brand = await Brand.findOne({ 
+                    where: { id }, 
+                    paranoid: false,
+                    transaction: t 
+                });
+                
+                if (!brand) {
+                    await t.rollback();
+                    notRestoredBrands.push({ 
+                        id, 
+                        reason: 'Brand not found' 
+                    });
+                    continue;
+                }
+
+                // Check if brand is already restored (not soft-deleted)
+                if (!brand.deletedAt) {
+                    await t.rollback();
+                    notRestoredBrands.push({ 
+                        id, 
+                        name: brand.name,
+                        reason: 'Brand is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the brand
+                await brand.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on brand status (outside transaction)
+                await seoService.updateBrandNoIndex(id);
+
+                restoredBrands.push({ 
+                    id: brand.id, 
+                    name: brand.name,
+                    slug: brand.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredBrands.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore brand' 
+                });
+            }
+        }
+
+        const responseData = {
+            restored: restoredBrands,
+            not_restored: notRestoredBrands,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredBrands.length,
+                not_restored_count: notRestoredBrands.length,
+            },
+        };
+
+        const statusCode = restoredBrands.length > 0 ? 200 : 400;
+        const message = restoredBrands.length === ids.length
+            ? 'All brands restored successfully'
+            : restoredBrands.length > 0
+                ? 'Some brands restored successfully'
+                : 'No brands were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Bulk updates brands from an Excel file.
  * If a brand does not exist, a new brand will be created.
  */
