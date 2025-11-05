@@ -176,6 +176,86 @@ router.post('/', [authMiddleware(true), uploadFileValidation, validateRequest(ca
 
 /**
  * @swagger
+ * /api/admin/category/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted categories
+ *     tags:
+ *      - ADMIN - Categories
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed (may include partial success)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     restored:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                     not_restored:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           reason:
+ *                             type: string
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_requested:
+ *                           type: integer
+ *                         restored_count:
+ *                           type: integer
+ *                         not_restored_count:
+ *                           type: integer
+ *       400:
+ *         description: Bad request or no categories restored
+ */
+router.put('/bulk-restore', [
+  authMiddleware(true),
+  validateRequest([
+    check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+    check('ids.*').isInt().withMessage('Each ID must be an integer'),
+  ]),
+], categoryController.bulkRestoreCategories);
+
+/**
+ * @swagger
  * /api/admin/category/{id}:
  *   put:
  *     tags:

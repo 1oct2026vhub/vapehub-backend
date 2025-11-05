@@ -437,6 +437,95 @@ module.exports.restoreCategory = async (req, res, next) => {
 };
 
 /**
+ * Bulk restores soft-deleted categories by IDs.
+ */
+module.exports.bulkRestoreCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredCategories = [];
+        const notRestoredCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find category including soft-deleted ones
+                const category = await Category.findOne({ 
+                    where: { id }, 
+                    paranoid: false,
+                    transaction: t 
+                });
+                
+                if (!category) {
+                    await t.rollback();
+                    notRestoredCategories.push({ 
+                        id, 
+                        reason: 'Category not found' 
+                    });
+                    continue;
+                }
+
+                // Check if category is already restored (not soft-deleted)
+                if (!category.deletedAt) {
+                    await t.rollback();
+                    notRestoredCategories.push({ 
+                        id, 
+                        name: category.name,
+                        reason: 'Category is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Restore the category
+                await category.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on category status (outside transaction)
+                await seoService.updateCategoryNoIndex(id);
+
+                restoredCategories.push({ 
+                    id: category.id, 
+                    name: category.name,
+                    slug: category.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredCategories.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore category' 
+                });
+            }
+        }
+
+        const responseData = {
+            restored: restoredCategories,
+            not_restored: notRestoredCategories,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredCategories.length,
+                not_restored_count: notRestoredCategories.length,
+            },
+        };
+
+        const statusCode = restoredCategories.length > 0 ? 200 : 400;
+        const message = restoredCategories.length === ids.length
+            ? 'All categories restored successfully'
+            : restoredCategories.length > 0
+                ? 'Some categories restored successfully'
+                : 'No categories were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Bulk updates categories from an Excel file.
  * If a category does not exist, a new category will be created.
  */
