@@ -243,7 +243,7 @@ router.delete('/bulk-delete', [
 /**
  * @swagger
  * /api/admin/attribute-terms/bulk-restore:
- *   patch:
+ *   put:
  *     summary: Bulk restore soft-deleted attribute terms
  *     tags:
  *      - ADMIN - Attribute Terms
@@ -312,7 +312,7 @@ router.delete('/bulk-delete', [
  *       400:
  *         description: Bad request or no terms restored
  */
-router.patch('/bulk-restore', [
+router.put('/bulk-restore', [
   authMiddleware(true),
   validateRequest([
     check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),

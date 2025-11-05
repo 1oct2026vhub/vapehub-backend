@@ -215,7 +215,7 @@ router.delete('/bulk-delete', [
 /**
  * @swagger
  * /api/admin/attributes/bulk-restore:
- *   patch:
+ *   put:
  *     summary: Bulk restore soft-deleted attributes
  *     tags:
  *      - ADMIN - Attributes
@@ -284,7 +284,7 @@ router.delete('/bulk-delete', [
  *       400:
  *         description: Bad request or no attributes restored
  */
-router.patch('/bulk-restore', [
+router.put('/bulk-restore', [
   authMiddleware(true),
   validateRequest([
     check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
