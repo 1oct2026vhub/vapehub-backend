@@ -341,6 +341,242 @@ module.exports.restoreAttribute = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk soft-deletes attributes by IDs.
+ */
+module.exports.bulkDeleteAttributes = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const { id: deleted_by } = req.user;
+
+        const deletedAttributes = [];
+        const notDeletedAttributes = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Attribute.sequelize.transaction();
+            try {
+                // Find attribute
+                const attribute = await Attribute.findByPk(id, { transaction: t });
+                
+                if (!attribute) {
+                    await t.rollback();
+                    notDeletedAttributes.push({ 
+                        id, 
+                        reason: 'Attribute not found' 
+                    });
+                    continue;
+                }
+
+                // Check if attribute is used in any product variants
+                const productVariantAttributes = await ProductVariantAttribute.findOne({
+                    where: { 
+                        attribute_id: id,
+                        deleted_at: null
+                    },
+                    include: [{
+                        model: ProductVariant,
+                        as: 'variant',
+                        where: { deleted_at: null },
+                        required: true
+                    }],
+                    transaction: t
+                });
+
+                if (productVariantAttributes) {
+                    await t.rollback();
+                    notDeletedAttributes.push({ 
+                        id, 
+                        name: attribute.name,
+                        reason: 'Cannot delete attribute that is being used in product variants. Please remove from products first.' 
+                    });
+                    continue;
+                }
+
+                // Check if attribute has any associated terms
+                const attributeTerms = await AttributeTerm.findOne({
+                    where: { 
+                        attribute_id: id,
+                        deleted_at: null
+                    },
+                    transaction: t
+                });
+
+                if (attributeTerms) {
+                    await t.rollback();
+                    notDeletedAttributes.push({ 
+                        id, 
+                        name: attribute.name,
+                        reason: 'Cannot delete attribute that has terms. Please delete all terms first.' 
+                    });
+                    continue;
+                }
+
+                // Update the deleted_by before soft delete
+                await attribute.update({
+                    updated_by: deleted_by
+                }, { transaction: t });
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('attribute', id, t);
+
+                // Soft delete the attribute
+                await attribute.destroy({ transaction: t });
+
+                await t.commit();
+                
+                deletedAttributes.push({ 
+                    id: attribute.id, 
+                    name: attribute.name,
+                    slug: attribute.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedAttributes.push({ 
+                    id, 
+                    reason: error.message || 'Failed to delete attribute' 
+                });
+                logger.error(`Error deleting attribute ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            deleted: deletedAttributes,
+            not_deleted: notDeletedAttributes,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedAttributes.length,
+                not_deleted_count: notDeletedAttributes.length,
+            },
+        };
+
+        const statusCode = deletedAttributes.length > 0 ? 200 : 400;
+        const message = deletedAttributes.length === ids.length
+            ? 'All attributes deleted successfully'
+            : deletedAttributes.length > 0
+                ? 'Some attributes deleted successfully'
+                : 'No attributes were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk delete attributes error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted attributes by IDs.
+ */
+module.exports.bulkRestoreAttributes = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const { id: updated_by } = req.user;
+
+        const restoredAttributes = [];
+        const notRestoredAttributes = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await Attribute.sequelize.transaction();
+            try {
+                // Find the soft-deleted attribute
+                const attribute = await Attribute.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+                
+                if (!attribute) {
+                    await t.rollback();
+                    notRestoredAttributes.push({ 
+                        id, 
+                        reason: 'Attribute not found' 
+                    });
+                    continue;
+                }
+
+                // Check if the attribute is already active
+                if (!attribute.deleted_at) {
+                    await t.rollback();
+                    notRestoredAttributes.push({ 
+                        id, 
+                        name: attribute.name,
+                        reason: 'Attribute is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Check if slug is still unique before restore
+                const existingAttribute = await Attribute.findOne({
+                    where: Sequelize.where(
+                        Sequelize.fn('LOWER', Sequelize.col('slug')),
+                        attribute.slug.toLowerCase()
+                    ),
+                    transaction: t
+                });
+
+                if (existingAttribute) {
+                    await t.rollback();
+                    notRestoredAttributes.push({ 
+                        id, 
+                        name: attribute.name,
+                        reason: 'Cannot restore attribute. An attribute with this slug already exists.' 
+                    });
+                    continue;
+                }
+
+                // Update the updated_by
+                await attribute.update({
+                    updated_by
+                }, { transaction: t });
+
+                // Restore the attribute
+                await attribute.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(attribute.slug, 'attribute', attribute.id, t);
+
+                await t.commit();
+
+                restoredAttributes.push({ 
+                    id: attribute.id, 
+                    name: attribute.name,
+                    slug: attribute.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredAttributes.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore attribute' 
+                });
+                logger.error(`Error restoring attribute ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            restored: restoredAttributes,
+            not_restored: notRestoredAttributes,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredAttributes.length,
+                not_restored_count: notRestoredAttributes.length,
+            },
+        };
+
+        const statusCode = restoredAttributes.length > 0 ? 200 : 400;
+        const message = restoredAttributes.length === ids.length
+            ? 'All attributes restored successfully'
+            : restoredAttributes.length > 0
+                ? 'Some attributes restored successfully'
+                : 'No attributes were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk restore attributes error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.getAttribute = async (req, res, next) => {
     try {
         const { id } = req.params;

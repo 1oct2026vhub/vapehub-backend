@@ -287,6 +287,217 @@ module.exports.restoreTerm = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk soft-deletes attribute terms by IDs.
+ */
+module.exports.bulkDeleteTerms = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const { id: deleted_by } = req.user;
+
+        const deletedTerms = [];
+        const notDeletedTerms = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await AttributeTerm.sequelize.transaction();
+            try {
+                // Find term
+                const term = await AttributeTerm.findByPk(id, { transaction: t });
+                
+                if (!term) {
+                    await t.rollback();
+                    notDeletedTerms.push({ 
+                        id, 
+                        reason: 'Term not found' 
+                    });
+                    continue;
+                }
+
+                // Check if term is used in any product variants
+                const productVariantAttribute = await ProductVariantAttribute.findOne({
+                    where: { 
+                        term_id: id,
+                        deleted_at: null
+                    },
+                    include: [{
+                        model: ProductVariant,
+                        as: 'variant',
+                        where: { deleted_at: null },
+                        required: true
+                    }],
+                    transaction: t
+                });
+
+                if (productVariantAttribute) {
+                    await t.rollback();
+                    notDeletedTerms.push({ 
+                        id, 
+                        name: term.name,
+                        reason: 'Cannot delete term that is being used in product variants' 
+                    });
+                    continue;
+                }
+
+                // Update before soft delete
+                await term.update({ updated_by: deleted_by }, { transaction: t });
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('attribute_term', id, t);
+
+                // Soft delete the term
+                await term.destroy({ transaction: t });
+
+                await t.commit();
+                
+                deletedTerms.push({ 
+                    id: term.id, 
+                    name: term.name,
+                    slug: term.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedTerms.push({ 
+                    id, 
+                    reason: error.message || 'Failed to delete term' 
+                });
+                logger.error(`Error deleting term ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            deleted: deletedTerms,
+            not_deleted: notDeletedTerms,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedTerms.length,
+                not_deleted_count: notDeletedTerms.length,
+            },
+        };
+
+        const statusCode = deletedTerms.length > 0 ? 200 : 400;
+        const message = deletedTerms.length === ids.length
+            ? 'All terms deleted successfully'
+            : deletedTerms.length > 0
+                ? 'Some terms deleted successfully'
+                : 'No terms were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk delete terms error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted attribute terms by IDs.
+ */
+module.exports.bulkRestoreTerms = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const { id: updated_by } = req.user;
+
+        const restoredTerms = [];
+        const notRestoredTerms = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await AttributeTerm.sequelize.transaction();
+            try {
+                // Find the soft-deleted term
+                const term = await AttributeTerm.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+                
+                if (!term) {
+                    await t.rollback();
+                    notRestoredTerms.push({ 
+                        id, 
+                        reason: 'Term not found' 
+                    });
+                    continue;
+                }
+
+                // Check if the term is already active
+                if (!term.deleted_at) {
+                    await t.rollback();
+                    notRestoredTerms.push({ 
+                        id, 
+                        name: term.name,
+                        reason: 'Term is already active (not deleted)' 
+                    });
+                    continue;
+                }
+
+                // Check if slug is still unique within the same attribute before restore
+                const existingTerm = await AttributeTerm.findOne({
+                    where: {
+                        attribute_id: term.attribute_id,
+                        slug: term.slug,
+                        id: { [Op.ne]: id }
+                    },
+                    transaction: t
+                });
+
+                if (existingTerm) {
+                    await t.rollback();
+                    notRestoredTerms.push({ 
+                        id, 
+                        name: term.name,
+                        reason: 'Cannot restore term. A term with this slug already exists in this attribute.' 
+                    });
+                    continue;
+                }
+
+                await term.update({ updated_by }, { transaction: t });
+                await term.restore({ transaction: t });
+
+                // Recreate slug relation
+                await slugManager.createOrUpdateSlug(term.slug, 'attribute_term', term.id, t);
+
+                await t.commit();
+
+                restoredTerms.push({ 
+                    id: term.id, 
+                    name: term.name,
+                    slug: term.slug 
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredTerms.push({ 
+                    id, 
+                    reason: error.message || 'Failed to restore term' 
+                });
+                logger.error(`Error restoring term ${id}:`, error);
+            }
+        }
+
+        const responseData = {
+            restored: restoredTerms,
+            not_restored: notRestoredTerms,
+            summary: {
+                total_requested: ids.length,
+                restored_count: restoredTerms.length,
+                not_restored_count: notRestoredTerms.length,
+            },
+        };
+
+        const statusCode = restoredTerms.length > 0 ? 200 : 400;
+        const message = restoredTerms.length === ids.length
+            ? 'All terms restored successfully'
+            : restoredTerms.length > 0
+                ? 'Some terms restored successfully'
+                : 'No terms were restored';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        logger.error('Bulk restore terms error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 // Get Term by ID
 module.exports.getTerm = async (req, res, next) => {
     try {
