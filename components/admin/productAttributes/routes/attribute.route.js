@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const { validateRequest } = require('../../../../utils/validationMiddleware');
+const { check } = require("express-validator");
 const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadImageMiddleware, uploadExcelMiddleware, removeAttributeImageValidator } = require('../helper/attribute.validatior');
 const attributeController = require('../domain/attribute.controller');
 const { authMiddleware } = require('../../../../library/middleware');
@@ -130,6 +131,166 @@ router.post('/',
     ],
     attributeController.createAttribute
 );
+
+/**
+ * @swagger
+ * /api/admin/attributes/bulk-delete:
+ *   delete:
+ *     tags:
+ *       - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Bulk soft delete attributes by IDs
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed (may include partial success)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deleted:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                     not_deleted:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           reason:
+ *                             type: string
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_requested:
+ *                           type: integer
+ *                         deleted_count:
+ *                           type: integer
+ *                         not_deleted_count:
+ *                           type: integer
+ *       400:
+ *         description: Bad request or no attributes deleted
+ */
+router.delete('/bulk-delete', [
+  authMiddleware(true),
+  validateRequest([
+    check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+    check('ids.*').isInt().withMessage('Each ID must be an integer'),
+  ]),
+], attributeController.bulkDeleteAttributes);
+
+/**
+ * @swagger
+ * /api/admin/attributes/bulk-restore:
+ *   patch:
+ *     summary: Bulk restore soft-deleted attributes
+ *     tags:
+ *      - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed (may include partial success)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     restored:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                     not_restored:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           reason:
+ *                             type: string
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         total_requested:
+ *                           type: integer
+ *                         restored_count:
+ *                           type: integer
+ *                         not_restored_count:
+ *                           type: integer
+ *       400:
+ *         description: Bad request or no attributes restored
+ */
+router.patch('/bulk-restore', [
+  authMiddleware(true),
+  validateRequest([
+    check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+    check('ids.*').isInt().withMessage('Each ID must be an integer'),
+  ]),
+], attributeController.bulkRestoreAttributes);
 
 /**
  * @swagger
