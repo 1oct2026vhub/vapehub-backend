@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+const { check } = require("express-validator");
 const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadXlxFileMiddleware } = require("../helper/category.validator");
 
 /**
@@ -230,6 +231,43 @@ router.put('/:id', [authMiddleware(true), uploadFileValidation, validateRequest(
 
 /**
  * @swagger
+ * /api/admin/category/bulk-delete:
+ *   delete:
+ *     tags:
+ *       - ADMIN - Categories
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Bulk soft delete categories by IDs
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed (may include partial success)
+ *       400:
+ *         description: Bad request or no categories deleted
+ */
+router.delete('/bulk-delete', [
+  authMiddleware(true),
+  validateRequest([
+    check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+    check('ids.*').isInt().withMessage('Each ID must be an integer'),
+  ]),
+], categoryController.bulkDeleteCategories);
+
+/**
+ * @swagger
  * /api/admin/category/{id}:
  *   delete:
  *     tags:
@@ -248,7 +286,6 @@ router.put('/:id', [authMiddleware(true), uploadFileValidation, validateRequest(
  *         description: Deleted
  */
 router.delete('/:id', [authMiddleware(true), validateRequest(categoryIdValidation)], categoryController.deleteCategory);
-
 
 /**
  * @swagger
