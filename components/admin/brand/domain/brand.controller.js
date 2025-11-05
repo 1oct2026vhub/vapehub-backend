@@ -307,6 +307,86 @@ module.exports.deleteBrand = async (req, res, next) => {
 };
 
 /**
+ * Bulk soft-deletes brands by IDs.
+ */
+module.exports.bulkDeleteBrands = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedBrands = [];
+        const notDeletedBrands = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                const brand = await Brand.findByPk(id, { transaction: t });
+                if (!brand) {
+                    await t.rollback();
+                    notDeletedBrands.push({ id, reason: 'Brand not found' });
+                    continue;
+                }
+
+                // Check active associated products
+                const productCount = await ProductBrand.count({
+                    where: { brand_id: id },
+                    include: [
+                        {
+                            model: Product,
+                            required: true,
+                            attributes: [],
+                            where: { deletedAt: null }
+                        }
+                    ],
+                    transaction: t
+                });
+                if (productCount > 0) {
+                    await t.rollback();
+                    notDeletedBrands.push({ id, name: brand.name, reason: `Brand has ${productCount} associated product${productCount > 1 ? 's' : ''}` });
+                    continue;
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('brand', id, t);
+
+                // Soft delete the brand
+                await brand.destroy({ transaction: t });
+
+                // Update SEO noIndex
+                await seoService.updateNoIndex('brand', id, true);
+
+                await t.commit();
+                deletedBrands.push({ id, name: brand.name });
+            } catch (error) {
+                await t.rollback();
+                notDeletedBrands.push({ id, reason: error.message || 'Failed to delete brand' });
+            }
+        }
+
+        const responseData = {
+            deleted: deletedBrands,
+            not_deleted: notDeletedBrands,
+            summary: {
+                total_requested: ids.length,
+                deleted_count: deletedBrands.length,
+                not_deleted_count: notDeletedBrands.length,
+            },
+        };
+
+        const statusCode = deletedBrands.length > 0 ? 200 : 400;
+        const message = deletedBrands.length === ids.length
+            ? 'All brands deleted successfully'
+            : deletedBrands.length > 0
+                ? 'Some brands deleted successfully'
+                : 'No brands were deleted';
+
+        return successResponse(res, responseData, message, statusCode);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Restores a soft-deleted brand by ID.
  */
 module.exports.restoreBrand = async (req, res, next) => {

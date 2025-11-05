@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const brandController = require("../domain/brand.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+const { check } = require("express-validator");
 const { 
     brandIdValidation, 
     brandValidation, 
@@ -92,6 +93,43 @@ const {
  *         description: Invalid request parameters
  */
 router.get('/', authMiddleware(true), brandController.listAllBrands);
+
+/**
+ * @swagger
+ * /api/admin/brand/bulk-delete:
+ *   delete:
+ *     tags:
+ *       - ADMIN - Brands
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Bulk soft delete brands by IDs
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed (may include partial success)
+ *       400:
+ *         description: Bad request or no brands deleted
+ */
+router.delete('/bulk-delete', [
+  authMiddleware(true),
+  validateRequest([
+    check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+    check('ids.*').isInt().withMessage('Each ID must be an integer'),
+  ]),
+], brandController.bulkDeleteBrands);
 
 /**
  * @swagger
