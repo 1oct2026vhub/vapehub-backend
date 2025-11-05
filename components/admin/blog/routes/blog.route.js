@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const blogController = require("../domain/blog.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+const { check } = require("express-validator");
 const {
     blogIdValidation,
     blogValidation,
@@ -265,6 +266,86 @@ router.post('/posts',
         validateRequest(blogValidation)
     ],
     blogController.createBlog
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/posts/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete blog posts
+ *     tags:
+ *       - ADMIN - Blog Posts
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no blog posts deleted
+ */
+router.delete('/posts/bulk-delete',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogController.bulkDeleteBlogs
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/posts/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted blog posts
+ *     tags:
+ *       - ADMIN - Blog Posts
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no blog posts restored
+ */
+router.put('/posts/bulk-restore',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogController.bulkRestoreBlogs
 );
 
 /**

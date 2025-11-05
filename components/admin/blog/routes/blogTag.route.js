@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const blogTagController = require("../domain/blogTag.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+const { check } = require("express-validator");
 const {
     blogTagIdValidation,
     blogTagValidation,
@@ -171,6 +172,86 @@ router.post('/',
 
 /**
  * @swagger
+ * /api/admin/blog/tags/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete blog tags
+ *     tags:
+ *       - ADMIN - Blog Tags
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no tags deleted
+ */
+router.delete('/bulk-delete',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogTagController.bulkDeleteBlogTags
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/tags/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted blog tags
+ *     tags:
+ *       - ADMIN - Blog Tags
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no tags restored
+ */
+router.put('/bulk-restore',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogTagController.bulkRestoreBlogTags
+);
+
+/**
+ * @swagger
  * /api/admin/blog/tags/{id}:
  *   put:
  *     summary: Update a blog tag
@@ -243,6 +324,35 @@ router.put('/:id',
 router.delete('/:id',
     [authMiddleware(true), validateRequest(blogTagIdValidation)],
     blogTagController.deleteBlogTag
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/tags/{id}/restore:
+ *   put:
+ *     summary: Restore a soft-deleted blog tag
+ *     tags:
+ *       - ADMIN - Blog Tags
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Blog tag ID to restore
+ *     responses:
+ *       200:
+ *         description: Blog tag restored successfully
+ *       404:
+ *         description: Blog tag not found
+ *       400:
+ *         description: Blog tag is not deleted
+ */
+router.put('/:id/restore',
+    [authMiddleware(true), validateRequest(blogTagIdValidation)],
+    blogTagController.restoreBlogTag
 );
 
 

@@ -203,3 +203,132 @@ module.exports.restoreBlogTag = async (req, res, next) => {
     }
 };
 
+module.exports.bulkDeleteBlogTags = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedTags = [];
+        const notDeletedTags = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            try {
+                const tag = await BlogTag.findByPk(id);
+                if (!tag) {
+                    notDeletedTags.push({ id, reason: 'Blog tag not found' });
+                    continue;
+                }
+
+                await tag.destroy();
+
+                deletedTags.push({
+                    id: tag.id,
+                    name: tag.name,
+                    slug: tag.slug
+                });
+            } catch (error) {
+                notDeletedTags.push({
+                    id,
+                    reason: error.message || 'Failed to delete tag'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deletedTags.length,
+            not_deleted_count: notDeletedTags.length
+        };
+
+        if (deletedTags.length === 0) {
+            return errorResponse(res, {
+                deleted: deletedTags,
+                not_deleted: notDeletedTags,
+                summary
+            }, 'No tags were deleted', 400);
+        }
+
+        return successResponse(res, {
+            deleted: deletedTags,
+            not_deleted: notDeletedTags,
+            summary
+        }, `Successfully deleted ${deletedTags.length} tag(s)`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.bulkRestoreBlogTags = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredTags = [];
+        const notRestoredTags = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            try {
+                // Find tag including soft-deleted ones
+                const tag = await BlogTag.findOne({
+                    where: { id },
+                    paranoid: false
+                });
+
+                if (!tag) {
+                    notRestoredTags.push({
+                        id,
+                        reason: 'Blog tag not found'
+                    });
+                    continue;
+                }
+
+                // Check if tag is already active (not deleted)
+                // Note: Sequelize converts deleted_at to deletedAt in camelCase
+                if (!tag.deletedAt && !tag.deleted_at) {
+                    notRestoredTags.push({
+                        id,
+                        name: tag.name,
+                        reason: 'Blog tag is already active (not deleted)'
+                    });
+                    continue;
+                }
+
+                await tag.restore();
+
+                restoredTags.push({
+                    id: tag.id,
+                    name: tag.name,
+                    slug: tag.slug
+                });
+            } catch (error) {
+                notRestoredTags.push({
+                    id,
+                    reason: error.message || 'Failed to restore tag'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restoredTags.length,
+            not_restored_count: notRestoredTags.length
+        };
+
+        if (restoredTags.length === 0) {
+            return errorResponse(res, {
+                restored: restoredTags,
+                not_restored: notRestoredTags,
+                summary
+            }, 'No tags were restored', 400);
+        }
+
+        return successResponse(res, {
+            restored: restoredTags,
+            not_restored: notRestoredTags,
+            summary
+        }, `Successfully restored ${restoredTags.length} tag(s)`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+

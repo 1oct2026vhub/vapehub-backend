@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const blogCategoryController = require("../domain/blogCategory.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
+const { check } = require("express-validator");
 const {
     blogCategoryIdValidation,
     blogCategoryValidation,
@@ -154,6 +155,86 @@ router.get('/:id', [authMiddleware(true), validateRequest(blogCategoryIdValidati
  *         description: Internal server error
  */
 router.post('/', [authMiddleware(true), uploadFileValidation, validateRequest(blogCategoryValidation)], blogCategoryController.createBlogCategory);
+
+/**
+ * @swagger
+ * /api/admin/blog/categories/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete blog categories
+ *     tags:
+ *       - ADMIN - Blog Categories
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no categories deleted
+ */
+router.delete('/bulk-delete',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogCategoryController.bulkDeleteBlogCategories
+);
+
+/**
+ * @swagger
+ * /api/admin/blog/categories/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted blog categories
+ *     tags:
+ *       - ADMIN - Blog Categories
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no categories restored
+ */
+router.put('/bulk-restore',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    blogCategoryController.bulkRestoreBlogCategories
+);
 
 /**
  * @swagger

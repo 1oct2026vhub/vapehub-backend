@@ -434,3 +434,157 @@ module.exports.restoreBlog = async (req, res) => {
         errorResponse(res, error);
     }
 };
+
+module.exports.bulkDeleteBlogs = async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedBlogs = [];
+        const notDeletedBlogs = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                const blog = await Blog.findByPk(id, { transaction: t });
+                if (!blog) {
+                    await t.rollback();
+                    notDeletedBlogs.push({ id, reason: 'Blog post not found' });
+                    continue;
+                }
+
+                // Delete slug using static method
+                await slugManager.deleteSlug('blog', id, t);
+
+                // Soft delete the blog
+                await blog.destroy({ transaction: t });
+
+                // Update SEO noIndex to true before deletion
+                await seoService.updateNoIndex('blog', id, true);
+
+                await t.commit();
+
+                deletedBlogs.push({
+                    id: blog.id,
+                    title: blog.title,
+                    slug: blog.slug
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedBlogs.push({
+                    id,
+                    reason: error.message || 'Failed to delete blog post'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deletedBlogs.length,
+            not_deleted_count: notDeletedBlogs.length
+        };
+
+        if (deletedBlogs.length === 0) {
+            return errorResponse(res, {
+                deleted: deletedBlogs,
+                not_deleted: notDeletedBlogs,
+                summary
+            }, 'No blog posts were deleted', 400);
+        }
+
+        successResponse(res, {
+            deleted: deletedBlogs,
+            not_deleted: notDeletedBlogs,
+            summary
+        }, `Successfully deleted ${deletedBlogs.length} blog post(s)`);
+    } catch (error) {
+        errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.bulkRestoreBlogs = async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredBlogs = [];
+        const notRestoredBlogs = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            const t = await sequelize.transaction();
+            try {
+                // Find blog including soft-deleted ones
+                const blog = await Blog.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
+
+                if (!blog) {
+                    await t.rollback();
+                    notRestoredBlogs.push({
+                        id,
+                        reason: 'Blog post not found'
+                    });
+                    continue;
+                }
+
+                // Check if blog is already active (not deleted)
+                if (!blog.deleted_at) {
+                    await t.rollback();
+                    notRestoredBlogs.push({
+                        id,
+                        title: blog.title,
+                        reason: 'Blog post is already active (not deleted)'
+                    });
+                    continue;
+                }
+
+                // Restore the blog
+                await blog.restore({ transaction: t });
+
+                // Recreate slug using static method
+                await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, t);
+
+                await t.commit();
+
+                // Update SEO noIndex based on blog status (outside transaction)
+                await seoService.updateBlogPostNoIndex(blog.id, blog.status, blog.published_at);
+
+                restoredBlogs.push({
+                    id: blog.id,
+                    title: blog.title,
+                    slug: blog.slug
+                });
+            } catch (error) {
+                await t.rollback();
+                notRestoredBlogs.push({
+                    id,
+                    reason: error.message || 'Failed to restore blog post'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restoredBlogs.length,
+            not_restored_count: notRestoredBlogs.length
+        };
+
+        if (restoredBlogs.length === 0) {
+            return errorResponse(res, {
+                restored: restoredBlogs,
+                not_restored: notRestoredBlogs,
+                summary
+            }, 'No blog posts were restored', 400);
+        }
+
+        successResponse(res, {
+            restored: restoredBlogs,
+            not_restored: notRestoredBlogs,
+            summary
+        }, `Successfully restored ${restoredBlogs.length} blog post(s)`);
+    } catch (error) {
+        errorResponse(res, error, error.message);
+    }
+};
