@@ -46,10 +46,22 @@ const restoreValidation = [
         .withMessage('ID must be an integer')
 ];
 
+const shuffleOrderValidation = [
+    param('id')
+        .isInt()
+        .withMessage('ID must be an integer'),
+    check('new_order')
+        .isInt()
+        .withMessage('new_order must be an integer')
+        .notEmpty()
+        .withMessage('new_order is required')
+];
+
 module.exports = {
     shopByCategoryIdValidation,
     createShopByCategoryValidation,
     updateShopByCategoryValidation,
-    restoreValidation
+    restoreValidation,
+    shuffleOrderValidation
 };
 

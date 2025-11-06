@@ -8,7 +8,8 @@ const {
     shopByCategoryIdValidation,
     createShopByCategoryValidation,
     updateShopByCategoryValidation,
-    restoreValidation
+    restoreValidation,
+    shuffleOrderValidation
 } = require("../helper/shopByCategory.validator");
 
 // Configure multer for file uploads (image)
@@ -138,6 +139,43 @@ router.put('/bulk-restore',
     ],
     shopByCategoryController.bulkRestoreShopByCategories
 );
+
+/**
+ * @swagger
+ * /api/admin/shopByCategory/{id}/shuffle-order:
+ *   put:
+ *     summary: Reorder a shop by category
+ *     tags:
+ *       - ADMIN - Shop By Category
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - new_order
+ *             properties:
+ *               new_order:
+ *                 type: integer
+ *                 description: New order position
+ *     responses:
+ *       200:
+ *         description: Order updated successfully
+ *       400:
+ *         description: Validation error or new_order is required
+ *       404:
+ *         description: Shop by category not found
+ */
+router.put('/:id/shuffle-order', [authMiddleware(true), validateRequest(shuffleOrderValidation)], shopByCategoryController.shuffleOrder);
 
 /**
  * @swagger
