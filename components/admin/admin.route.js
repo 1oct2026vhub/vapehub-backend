@@ -46,5 +46,6 @@ router.use('/welcome-content', require('./welcomeContent/routes/welcomeContent.r
 router.use('/feature-content', require('./featureContent/routes/featureContent.route'));
 router.use('/settings', require('./settings/routes/settings.route'));
 router.use('/popularCategory', require('./popularCategory/routes/popularCategory.route'));
+router.use('/shopByCategory', require('./shopByCategory/routes/shopByCategory.route'));
 
 module.exports = router;
