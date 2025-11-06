@@ -336,6 +336,76 @@ module.exports.restoreShopByCategory = async (req, res, next) => {
 };
 
 /**
+ * Shuffle/reorder shop by category (order field)
+ */
+module.exports.shuffleOrder = async (req, res, next) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { new_order } = req.body;
+
+        if (new_order === undefined) {
+            await t.rollback();
+            return errorResponse(res, { message: "new_order is required" }, "new_order is required", 400);
+        }
+
+        const currentItem = await ShopByCategory.findByPk(id);
+        if (!currentItem) {
+            await t.rollback();
+            return errorResponse(res, { message: "Shop by category not found" }, "Shop by category not found", 404);
+        }
+
+        if (currentItem.order < new_order) {
+            // Moving down: Decrease order of items between old and new position
+            await ShopByCategory.update(
+                { order: Sequelize.literal('`order` - 1') },
+                {
+                    where: {
+                        order: {
+                            [Op.gt]: currentItem.order,
+                            [Op.lte]: new_order
+                        }
+                    },
+                    transaction: t
+                }
+            );
+        } else if (currentItem.order > new_order) {
+            // Moving up: Increase order of items between new and old position
+            await ShopByCategory.update(
+                { order: Sequelize.literal('`order` + 1') },
+                {
+                    where: {
+                        order: {
+                            [Op.gte]: new_order,
+                            [Op.lt]: currentItem.order
+                        }
+                    },
+                    transaction: t
+                }
+            );
+        }
+
+        // Update current item's order
+        await currentItem.update({ order: parseInt(new_order) }, { transaction: t });
+
+        await t.commit();
+
+        const updated = await ShopByCategory.findByPk(id, {
+            include: [{
+                model: Category,
+                as: 'category',
+                attributes: ['id', 'name', 'slug', 'description', 'logo_url']
+            }]
+        });
+
+        return successResponse(res, updated, "Order updated successfully");
+    } catch (error) {
+        await t.rollback();
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
  * Bulk soft-deletes shop by categories by IDs.
  */
 module.exports.bulkDeleteShopByCategories = async (req, res, next) => {
