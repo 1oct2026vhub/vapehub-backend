@@ -338,6 +338,106 @@ module.exports.restoreFeatureContent = async (req, res) => {
   }
 };
 
+/**
+ * Bulk soft-delete feature content by IDs
+ */
+module.exports.bulkDeleteFeatureContent = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    const deleted = [];
+    const notDeleted = [];
+
+    const items = await FeatureContent.findAll({
+      where: { id: { [Op.in]: ids } },
+      include: [{ model: FeatureContentIcon, as: 'icon', required: false }]
+    });
+
+    for (const item of items) {
+      try {
+        if (item.icon) {
+          await deleteIconFromS3(item.icon.icon_url);
+          await FeatureContentIcon.destroy({ where: { id: item.icon_id } });
+        }
+        await item.destroy();
+        deleted.push({ id: item.id, title: item.title });
+      } catch (err) {
+        notDeleted.push({ id: item.id, title: item.title, reason: err.message || 'Failed to delete' });
+      }
+    }
+
+    const foundIds = items.map(i => i.id);
+    const notFoundIds = ids.filter(id => !foundIds.includes(Number(id)));
+    notFoundIds.forEach(id => notDeleted.push({ id: Number(id), reason: 'Feature content not found' }));
+
+    const summary = {
+      total_requested: ids.length,
+      deleted_count: deleted.length,
+      not_deleted_count: notDeleted.length
+    };
+
+    if (deleted.length === 0) {
+      return errorResponse(res, { deleted, not_deleted: notDeleted, summary }, 'No feature content were deleted', 400);
+    }
+
+    return successResponse(res, { deleted, not_deleted: notDeleted, summary }, `Successfully deleted ${deleted.length} item(s)`);
+  } catch (error) {
+    console.error('Error in bulkDeleteFeatureContent:', error);
+    return errorResponse(res, error, error.message || 'Failed to delete feature content');
+  }
+};
+
+/**
+ * Bulk restore soft-deleted feature content by IDs
+ */
+module.exports.bulkRestoreFeatureContent = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    const restored = [];
+    const notRestored = [];
+
+    for (const rawId of ids) {
+      const id = Number(rawId);
+      try {
+        const item = await FeatureContent.findByPk(id, {
+          paranoid: false,
+          include: [{ model: FeatureContentIcon, as: 'icon', attributes: ['id', 'file_name', 'icon_url', 'createdAt'], required: false }]
+        });
+
+        if (!item) {
+          notRestored.push({ id, reason: 'Feature content not found' });
+          continue;
+        }
+        if (!item.deletedAt) {
+          notRestored.push({ id, title: item.title, reason: 'Feature content is already active (not deleted)' });
+          continue;
+        }
+
+        await item.restore();
+        restored.push({ id: item.id, title: item.title });
+      } catch (err) {
+        notRestored.push({ id, reason: err.message || 'Failed to restore' });
+      }
+    }
+
+    const summary = {
+      total_requested: ids.length,
+      restored_count: restored.length,
+      not_restored_count: notRestored.length
+    };
+
+    if (restored.length === 0) {
+      return errorResponse(res, { restored, not_restored: notRestored, summary }, 'No feature content were restored', 400);
+    }
+
+    return successResponse(res, { restored, not_restored: notRestored, summary }, `Successfully restored ${restored.length} item(s)`);
+  } catch (error) {
+    console.error('Error in bulkRestoreFeatureContent:', error);
+    return errorResponse(res, error, error.message || 'Failed to restore feature content');
+  }
+};
+
 module.exports.getFeatureContentIcons = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, sort = 'createdAt', order = 'DESC', deleted } = req.query;

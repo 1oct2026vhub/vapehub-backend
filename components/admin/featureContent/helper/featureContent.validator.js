@@ -198,5 +198,13 @@ module.exports = {
     featureContentUpdateValidation,
     filterValidations,
     iconFilterValidations,
-    uploadFileValidation
+    uploadFileValidation,
+    bulkFeatureContentValidation: [
+        body('ids')
+            .isArray({ min: 1 })
+            .withMessage('IDs must be a non-empty array'),
+        body('ids.*')
+            .isInt({ min: 1 })
+            .withMessage('Each ID must be a positive integer')
+    ]
 };
