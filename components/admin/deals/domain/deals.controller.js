@@ -1,8 +1,8 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant } = require("../../../../models");
-const { DEAL_TYPES } = require('../../../../config/constants');
 const { Op } = require('sequelize');
+const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
 const { uploadFiletToS3, generateUniqueFileName } = require('../../../../library/s3');
@@ -409,6 +409,92 @@ module.exports.restoreDeal = async (req, res, next) => {
 
         await deal.restore();
         successResponse(res, deal, 'Deal restored successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk soft-delete deals by IDs
+ */
+module.exports.bulkDeleteDeals = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedDeals = [];
+        const notDeletedDeals = [];
+
+        const dealsToDelete = await Deal.findAll({ where: { id: { [Op.in]: ids } } });
+
+        for (const deal of dealsToDelete) {
+            try {
+                await deal.destroy();
+                deletedDeals.push({ id: deal.id, name: deal.name });
+            } catch (error) {
+                notDeletedDeals.push({ id: deal.id, name: deal.name, reason: error.message || 'Failed to delete deal' });
+            }
+        }
+
+        const foundIds = dealsToDelete.map(d => d.id);
+        const notFoundIds = ids.filter(id => !foundIds.includes(Number(id)));
+        notFoundIds.forEach(id => notDeletedDeals.push({ id: Number(id), reason: 'Deal not found' }));
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deletedDeals.length,
+            not_deleted_count: notDeletedDeals.length
+        };
+
+        if (deletedDeals.length === 0) {
+            return errorResponse(res, { deleted: deletedDeals, not_deleted: notDeletedDeals, summary }, 'No deals were deleted', 400);
+        }
+
+        return successResponse(res, { deleted: deletedDeals, not_deleted: notDeletedDeals, summary }, `Successfully deleted ${deletedDeals.length} deal(s)`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restore soft-deleted deals by IDs
+ */
+module.exports.bulkRestoreDeals = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredDeals = [];
+        const notRestoredDeals = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            try {
+                const deal = await Deal.findOne({ where: { id }, paranoid: false });
+                if (!deal) {
+                    notRestoredDeals.push({ id, reason: 'Deal not found' });
+                    continue;
+                }
+                if (!deal.deletedAt) {
+                    notRestoredDeals.push({ id, name: deal.name, reason: 'Deal is already active (not deleted)' });
+                    continue;
+                }
+                await deal.restore();
+                restoredDeals.push({ id: deal.id, name: deal.name });
+            } catch (error) {
+                notRestoredDeals.push({ id, reason: error.message || 'Failed to restore deal' });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restoredDeals.length,
+            not_restored_count: notRestoredDeals.length
+        };
+
+        if (restoredDeals.length === 0) {
+            return errorResponse(res, { restored: restoredDeals, not_restored: notRestoredDeals, summary }, 'No deals were restored', 400);
+        }
+
+        return successResponse(res, { restored: restoredDeals, not_restored: notRestoredDeals, summary }, `Successfully restored ${restoredDeals.length} deal(s)`);
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

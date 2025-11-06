@@ -304,6 +304,15 @@ const removeProductsFromDealValidation = [
             return true;
         })
 ];
+const bulkDealsValidation = [
+    body('ids')
+        .isArray({ min: 1 })
+        .withMessage('IDs must be a non-empty array'),
+    body('ids.*')
+        .isInt({ min: 1 })
+        .withMessage('Each ID must be a positive integer')
+];
+
 
 module.exports = {
     createDealValidation,
@@ -315,5 +324,6 @@ module.exports = {
     restoreDealValidation,
     addProductsToDealValidation,
     addProductToDealsValidation,
-    removeProductsFromDealValidation
+    removeProductsFromDealValidation,
+    bulkDealsValidation
 }; 
