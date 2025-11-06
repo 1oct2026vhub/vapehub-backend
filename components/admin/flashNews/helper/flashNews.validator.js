@@ -61,5 +61,13 @@ const flashNewsIdValidation = [
 module.exports = {
     createOrUpdateFlashNewsValidation,
     listAllFlashNewsValidation,
-    flashNewsIdValidation
+    flashNewsIdValidation,
+    bulkFlashNewsValidation: [
+        body('ids')
+            .isArray({ min: 1 })
+            .withMessage('IDs must be a non-empty array'),
+        body('ids.*')
+            .isInt({ min: 1 })
+            .withMessage('Each ID must be a positive integer')
+    ]
 }; 

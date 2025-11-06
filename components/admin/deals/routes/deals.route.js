@@ -14,7 +14,8 @@ const {
     restoreDealValidation,
     addProductsToDealValidation,
     addProductToDealsValidation,
-    removeProductsFromDealValidation
+    removeProductsFromDealValidation,
+    bulkDealsValidation
 } = require("../helper/deals.validator");
 
 // Configure multer for file uploads
@@ -177,6 +178,33 @@ const upload = multer({
  *         description: Unauthorized
  */
 router.post('/', [authMiddleware(true), upload.single('image'), validateRequest(createDealValidation)], dealsController.createDeal);
+/**
+ * @swagger
+ * /api/admin/deals/{id}:
+ *   delete:
+ *     summary: Delete a deal
+ *     tags: 
+ *       - Admin
+ *          - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Deal deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Deal not found
+ */
+// Bulk routes first
+router.delete('/bulk-delete', [authMiddleware(true), validateRequest(bulkDealsValidation)], dealsController.bulkDeleteDeals);
+router.put('/bulk-restore', [authMiddleware(true), validateRequest(bulkDealsValidation)], dealsController.bulkRestoreDeals);
 
 /**
  * @swagger
@@ -332,31 +360,8 @@ router.get('/:id', [authMiddleware(true), validateRequest(getDealByIdValidation)
  */
 router.get('/product/:productId', [authMiddleware(true), validateRequest(getDealsByProductValidation)], dealsController.getDealsByProduct);
 
-/**
- * @swagger
- * /api/admin/deals/{id}:
- *   delete:
- *     summary: Delete a deal
- *     tags: 
- *       - Admin
- *          - Deals
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Deal deleted successfully
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Deal not found
- */
-router.delete('/:id', [authMiddleware(true), validateRequest(deleteDealValidation)], dealsController.deleteDeal);
+// Single routes constrained
+router.delete('/:id(\\d+)', [authMiddleware(true), validateRequest(deleteDealValidation)], dealsController.deleteDeal);
 
 /**
  * @swagger
@@ -382,7 +387,7 @@ router.delete('/:id', [authMiddleware(true), validateRequest(deleteDealValidatio
  *       404:
  *         description: Deal not found
  */
-router.patch('/:id/restore', [authMiddleware(true), validateRequest(restoreDealValidation)], dealsController.restoreDeal);
+router.patch('/:id(\\d+)/restore', [authMiddleware(true), validateRequest(restoreDealValidation)], dealsController.restoreDeal);
 
 
 /**

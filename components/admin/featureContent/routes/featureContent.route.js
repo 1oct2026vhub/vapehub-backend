@@ -8,7 +8,8 @@ const {
     featureContentUpdateValidation,
     filterValidations,
     iconFilterValidations,
-    uploadFileValidation
+    uploadFileValidation,
+    bulkFeatureContentValidation
 } = require("../helper/featureContent.validator");
 
 /**
@@ -442,6 +443,74 @@ router.delete("/icons/:id",
 router.post("/",
     [authMiddleware(true), validateRequest(featureContentValidation)],
     featureContentController.createFeatureContent
+);
+
+/**
+ * @swagger
+ * /api/admin/feature-content/bulk-delete:
+ *   delete:
+ *     summary: Bulk soft-delete feature content
+ *     tags:
+ *       - ADMIN - Feature Content
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no feature content deleted
+ */
+router.delete("/bulk-delete",
+    [authMiddleware(true), validateRequest(bulkFeatureContentValidation)],
+    featureContentController.bulkDeleteFeatureContent
+);
+
+/**
+ * @swagger
+ * /api/admin/feature-content/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted feature content
+ *     tags:
+ *       - ADMIN - Feature Content
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no feature content restored
+ */
+router.put("/bulk-restore",
+    [authMiddleware(true), validateRequest(bulkFeatureContentValidation)],
+    featureContentController.bulkRestoreFeatureContent
 );
 
 /**

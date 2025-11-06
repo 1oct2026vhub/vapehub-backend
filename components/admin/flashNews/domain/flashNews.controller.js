@@ -206,3 +206,93 @@ module.exports.restoreFlashNews = async (req, res, next) => {
         return errorResponse(res, { message: error.message }, 'Internal server error', 500);
     }
 }; 
+
+/**
+ * Bulk soft delete flash news by IDs
+ */
+module.exports.bulkDeleteFlashNews = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const updated_by = req.user.id;
+
+        const deleted = [];
+        const notDeleted = [];
+
+        const items = await FlashNews.findAll({ where: { id: { [Op.in]: ids } } });
+        for (const item of items) {
+            try {
+                await item.update({ updated_by });
+                await item.destroy();
+                deleted.push({ id: item.id, label: item.label });
+            } catch (err) {
+                notDeleted.push({ id: item.id, label: item.label, reason: err.message || 'Failed to delete' });
+            }
+        }
+
+        const foundIds = items.map(i => i.id);
+        const notFoundIds = ids.filter(id => !foundIds.includes(Number(id)));
+        notFoundIds.forEach(id => notDeleted.push({ id: Number(id), reason: 'Flash news not found' }));
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deleted.length,
+            not_deleted_count: notDeleted.length
+        };
+
+        if (deleted.length === 0) {
+            return errorResponse(res, { deleted, not_deleted: notDeleted, summary }, 'No flash news were deleted', 400);
+        }
+
+        return successResponse(res, { deleted, not_deleted: notDeleted, summary }, `Successfully deleted ${deleted.length} item(s)`);
+    } catch (error) {
+        console.error('bulkDeleteFlashNews error:', error);
+        return errorResponse(res, { message: error.message }, 'Internal server error', 500);
+    }
+};
+
+/**
+ * Bulk restore soft-deleted flash news by IDs
+ */
+module.exports.bulkRestoreFlashNews = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        const updated_by = req.user.id;
+
+        const restored = [];
+        const notRestored = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            try {
+                const item = await FlashNews.findOne({
+                    where: { id, deleted_at: { [Op.ne]: null } },
+                    paranoid: false
+                });
+                if (!item) {
+                    notRestored.push({ id, reason: 'Deleted flash news not found' });
+                    continue;
+                }
+                await item.update({ updated_by });
+                await item.restore();
+                restored.push({ id: item.id, label: item.label });
+            } catch (err) {
+                notRestored.push({ id, reason: err.message || 'Failed to restore' });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restored.length,
+            not_restored_count: notRestored.length
+        };
+
+        if (restored.length === 0) {
+            return errorResponse(res, { restored, not_restored: notRestored, summary }, 'No flash news were restored', 400);
+        }
+
+        return successResponse(res, { restored, not_restored: notRestored, summary }, `Successfully restored ${restored.length} item(s)`);
+    } catch (error) {
+        console.error('bulkRestoreFlashNews error:', error);
+        return errorResponse(res, { message: error.message }, 'Internal server error', 500);
+    }
+};
