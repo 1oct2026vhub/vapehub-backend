@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const reviewController = require('../domain/review.controller');
 const { authMiddleware } = require('../../../../library/middleware');
+const { validateRequest } = require('../../../../utils/validationMiddleware');
+const { check } = require('express-validator');
 
 /**
  * @swagger
@@ -191,6 +193,116 @@ router.get('/', [authMiddleware(true)], reviewController.list);
 
 /**
  * @swagger
+ * /api/admin/review/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete reviews
+ *     tags: [Admin - Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no reviews deleted
+ */
+router.delete('/bulk-delete',
+  [
+    authMiddleware(true),
+    validateRequest([
+      check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+      check('ids.*').isInt().withMessage('Each ID must be an integer'),
+    ])
+  ],
+  reviewController.bulkDelete
+);
+
+/**
+ * @swagger
+ * /api/admin/review/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted reviews
+ *     tags: [Admin - Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no reviews restored
+ */
+router.put('/bulk-restore',
+  [
+    authMiddleware(true),
+    validateRequest([
+      check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+      check('ids.*').isInt().withMessage('Each ID must be an integer'),
+    ])
+  ],
+  reviewController.bulkRestore
+);
+
+/**
+ * @swagger
+ * /api/admin/review/products:
+ *   get:
+ *     summary: Get products for review selection (admin)
+ *     tags: [Admin - Reviews]
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Partial product name to search for. If omitted, returns the first 10 products.
+ *     responses:
+ *       200:
+ *         description: List of products (id, name)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   name:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/products', [authMiddleware(true)], reviewController.getProducts);
+
+/**
+ * @swagger
  * /api/admin/review/{id}:
  *   get:
  *     summary: Get a review by ID (admin)
@@ -330,34 +442,29 @@ router.delete('/:id', [authMiddleware(true)], reviewController.delete);
 
 /**
  * @swagger
- * /api/admin/review/products:
- *   get:
- *     summary: Get products for review selection (admin)
+ * /api/admin/review/{id}/restore:
+ *   put:
+ *     summary: Restore a soft-deleted review (admin)
  *     tags: [Admin - Reviews]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: q
+ *       - in: path
+ *         name: id
+ *         required: true
  *         schema:
- *           type: string
- *         required: false
- *         description: Partial product name to search for. If omitted, returns the first 10 products.
+ *           type: integer
+ *         description: Review ID
  *     responses:
  *       200:
- *         description: List of products (id, name)
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: integer
- *                   name:
- *                     type: string
+ *         description: Review restored
+ *       400:
+ *         description: Review is not deleted
+ *       404:
+ *         description: Review not found
  *       500:
  *         description: Server error
  */
-router.get('/products', [authMiddleware(true)], reviewController.getProducts);
+router.put('/:id/restore', [authMiddleware(true)], reviewController.restore);
 
 module.exports = router; 

@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const { check } = require('express-validator');
 const { authMiddleware } = require('../../../../library/middleware');
 const popularCategoryController = require("../domain/popularCategory.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
@@ -62,6 +63,86 @@ const {
  *         description: Successfully retrieved popular categories
  */
 router.get('/', authMiddleware(true), popularCategoryController.listPopularCategories);
+
+/**
+ * @swagger
+ * /api/admin/popularCategory/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete popular categories
+ *     tags:
+ *       - ADMIN - Popular Categories
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no popular categories deleted
+ */
+router.delete('/bulk-delete',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    popularCategoryController.bulkDeletePopularCategories
+);
+
+/**
+ * @swagger
+ * /api/admin/popularCategory/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted popular categories
+ *     tags:
+ *       - ADMIN - Popular Categories
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no popular categories restored
+ */
+router.put('/bulk-restore',
+    [
+        authMiddleware(true),
+        validateRequest([
+            check('ids').isArray({ min: 1 }).withMessage('IDs must be a non-empty array'),
+            check('ids.*').isInt().withMessage('Each ID must be an integer'),
+        ])
+    ],
+    popularCategoryController.bulkRestorePopularCategories
+);
 
 /**
  * @swagger

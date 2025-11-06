@@ -303,6 +303,155 @@ const couponController = {
       });
       return errorResponse(res, error, error.message);
     }
+  },
+
+  // Bulk soft delete coupons
+  async bulkDeleteCoupons(req, res) {
+    try {
+      const { ids } = req.body;
+
+      const deletedCoupons = [];
+      const notDeletedCoupons = [];
+
+      for (const rawId of ids) {
+        const id = Number(rawId);
+        try {
+          const coupon = await Coupon.findByPk(id);
+          
+          if (!coupon) {
+            notDeletedCoupons.push({ 
+              id, 
+              reason: 'Coupon not found' 
+            });
+            continue;
+          }
+
+          await coupon.destroy();
+
+          deletedCoupons.push({
+            id: coupon.id,
+            code: coupon.code,
+            description: coupon.description
+          });
+        } catch (error) {
+          logger.error('Error deleting coupon in bulk', { 
+            error: error.message,
+            couponId: id
+          });
+          notDeletedCoupons.push({
+            id,
+            reason: error.message || 'Failed to delete coupon'
+          });
+        }
+      }
+
+      const summary = {
+        total_requested: ids.length,
+        deleted_count: deletedCoupons.length,
+        not_deleted_count: notDeletedCoupons.length
+      };
+
+      if (deletedCoupons.length === 0) {
+        return errorResponse(res, {
+          deleted: deletedCoupons,
+          not_deleted: notDeletedCoupons,
+          summary
+        }, 'No coupons were deleted', 400);
+      }
+
+      return successResponse(res, {
+        deleted: deletedCoupons,
+        not_deleted: notDeletedCoupons,
+        summary
+      }, `Successfully deleted ${deletedCoupons.length} coupon(s)`);
+    } catch (error) {
+      logger.error('Error in bulk delete coupons', { 
+        error: error.message,
+        stack: error.stack,
+        user: req.user?.id
+      });
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Bulk restore soft-deleted coupons
+  async bulkRestoreCoupons(req, res) {
+    try {
+      const { ids } = req.body;
+
+      const restoredCoupons = [];
+      const notRestoredCoupons = [];
+
+      for (const rawId of ids) {
+        const id = Number(rawId);
+        try {
+          const coupon = await Coupon.findByPk(id, {
+            paranoid: false
+          });
+          
+          if (!coupon) {
+            notRestoredCoupons.push({ 
+              id, 
+              reason: 'Coupon not found' 
+            });
+            continue;
+          }
+
+          if (!coupon.deleted_at) {
+            notRestoredCoupons.push({ 
+              id,
+              code: coupon.code,
+              reason: 'Coupon is already active (not deleted)' 
+            });
+            continue;
+          }
+
+          await coupon.restore();
+
+          restoredCoupons.push({
+            id: coupon.id,
+            code: coupon.code,
+            description: coupon.description
+          });
+        } catch (error) {
+          logger.error('Error restoring coupon in bulk', { 
+            error: error.message,
+            couponId: id
+          });
+          notRestoredCoupons.push({
+            id,
+            reason: error.message || 'Failed to restore coupon'
+          });
+        }
+      }
+
+      const summary = {
+        total_requested: ids.length,
+        restored_count: restoredCoupons.length,
+        not_restored_count: notRestoredCoupons.length
+      };
+
+      if (restoredCoupons.length === 0) {
+        return errorResponse(res, {
+          restored: restoredCoupons,
+          not_restored: notRestoredCoupons,
+          summary
+        }, 'No coupons were restored', 400);
+      }
+
+      return successResponse(res, {
+        restored: restoredCoupons,
+        not_restored: notRestoredCoupons,
+        summary
+      }, `Successfully restored ${restoredCoupons.length} coupon(s)`);
+    } catch (error) {
+      logger.error('Error in bulk restore coupons', { 
+        error: error.message,
+        stack: error.stack,
+        user: req.user?.id
+      });
+      return errorResponse(res, error, error.message);
+    }
   }
 };
 
