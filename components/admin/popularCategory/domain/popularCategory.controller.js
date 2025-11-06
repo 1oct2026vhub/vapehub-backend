@@ -349,3 +349,169 @@ module.exports.shuffleOrder = async (req, res, next) => {
     }
 };
 
+/**
+ * Bulk soft-deletes popular categories by IDs.
+ */
+module.exports.bulkDeletePopularCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const deletedPopularCategories = [];
+        const notDeletedPopularCategories = [];
+
+        // Fetch existing records for given ids ordered by current order
+        const popularCategoriesToDelete = await PopularCategory.findAll({
+            where: { id: { [Op.in]: ids } },
+            order: [['order', 'ASC']]
+        });
+
+        for (const popularCategory of popularCategoriesToDelete) {
+            const t = await sequelize.transaction();
+            try {
+                // Update orders of items after the deleted item
+                await PopularCategory.update(
+                    { 
+                        order: Sequelize.literal('`order` - 1')
+                    },
+                    { 
+                        where: {
+                            order: { [Op.gt]: popularCategory.order }
+                        },
+                        transaction: t
+                    }
+                );
+
+                // Soft delete the popular category
+                await popularCategory.destroy({ transaction: t });
+                await t.commit();
+
+                deletedPopularCategories.push({
+                    id: popularCategory.id,
+                    title: popularCategory.title,
+                    order: popularCategory.order
+                });
+            } catch (error) {
+                await t.rollback();
+                notDeletedPopularCategories.push({
+                    id: popularCategory.id,
+                    title: popularCategory.title,
+                    reason: error.message || 'Failed to delete popular category'
+                });
+            }
+        }
+
+        // Handle IDs not found
+        const foundIds = popularCategoriesToDelete.map(pc => pc.id);
+        const notFoundIds = ids.filter(id => !foundIds.includes(Number(id)));
+        notFoundIds.forEach(id => {
+            notDeletedPopularCategories.push({
+                id: Number(id),
+                reason: 'Popular category not found'
+            });
+        });
+
+        const summary = {
+            total_requested: ids.length,
+            deleted_count: deletedPopularCategories.length,
+            not_deleted_count: notDeletedPopularCategories.length
+        };
+
+        if (deletedPopularCategories.length === 0) {
+            return errorResponse(res, {
+                deleted: deletedPopularCategories,
+                not_deleted: notDeletedPopularCategories,
+                summary
+            }, 'No popular categories were deleted', 400);
+        }
+
+        return successResponse(res, {
+            deleted: deletedPopularCategories,
+            not_deleted: notDeletedPopularCategories,
+            summary
+        }, `Successfully deleted ${deletedPopularCategories.length} popular category(ies)`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Bulk restores soft-deleted popular categories by IDs.
+ */
+module.exports.bulkRestorePopularCategories = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        const restoredPopularCategories = [];
+        const notRestoredPopularCategories = [];
+
+        for (const rawId of ids) {
+            const id = Number(rawId);
+            try {
+                // Find including soft-deleted
+                const popularCategory = await PopularCategory.findOne({
+                    where: { id },
+                    paranoid: false
+                });
+
+                if (!popularCategory) {
+                    notRestoredPopularCategories.push({
+                        id,
+                        reason: 'Popular category not found'
+                    });
+                    continue;
+                }
+
+                // Already active
+                if (!popularCategory.deletedAt) {
+                    notRestoredPopularCategories.push({
+                        id,
+                        title: popularCategory.title,
+                        reason: 'Popular category is already active (not deleted)'
+                    });
+                    continue;
+                }
+
+                // Restore
+                await popularCategory.restore();
+
+                // Assign to end of list
+                const maxOrder = await PopularCategory.max('order');
+                await popularCategory.update({ order: (maxOrder || 0) + 1 });
+
+                restoredPopularCategories.push({
+                    id: popularCategory.id,
+                    title: popularCategory.title,
+                    order: popularCategory.order
+                });
+            } catch (error) {
+                notRestoredPopularCategories.push({
+                    id,
+                    reason: error.message || 'Failed to restore popular category'
+                });
+            }
+        }
+
+        const summary = {
+            total_requested: ids.length,
+            restored_count: restoredPopularCategories.length,
+            not_restored_count: notRestoredPopularCategories.length
+        };
+
+        if (restoredPopularCategories.length === 0) {
+            return errorResponse(res, {
+                restored: restoredPopularCategories,
+                not_restored: notRestoredPopularCategories,
+                summary
+            }, 'No popular categories were restored', 400);
+        }
+
+        return successResponse(res, {
+            restored: restoredPopularCategories,
+            not_restored: notRestoredPopularCategories,
+            summary
+        }, `Successfully restored ${restoredPopularCategories.length} popular category(ies)`);
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
