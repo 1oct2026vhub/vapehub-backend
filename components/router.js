@@ -36,5 +36,6 @@ router.use("/seo", require("./seo/routes/seo.route"))
 router.use("/loyalty-points", require("./loyaltyPoints/routes/loyaltyPoints.route"))
 router.use("/settings", require("./settings/routes/settings.route"))
 router.use("/popularCategory", require("./popularCategory/routes/popularCategory.route"))
+router.use("/shopByCategory", require("./shopByCategory/routes/shopByCategory.route"))
 
 module.exports = router;
