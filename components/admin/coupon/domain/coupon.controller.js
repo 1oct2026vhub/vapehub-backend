@@ -39,7 +39,8 @@ const couponController = {
         entity_type,
         entity_id,
         start_date,
-        end_date
+        end_date,
+        deleted = false
       } = req.query;
 
       const offset = (page - 1) * limit;
@@ -86,11 +87,19 @@ const couponController = {
         }
       }
 
+      // Handle deleted filter
+      if (deleted === 'true') {
+        where.deleted_at = { [Op.ne]: null };
+      } else {
+        where.deleted_at = null;
+      }
+
       const { count, rows: coupons } = await Coupon.findAndCountAll({
         where,
         limit: parseInt(limit),
         offset: parseInt(offset),
-        order: [['created_at', 'DESC']]
+        order: [['created_at', 'DESC']],
+        paranoid: deleted !== 'true' // Only include soft-deleted records when deleted=true
       });
 
       // Filter out coupons that reference deleted entities and get entity details

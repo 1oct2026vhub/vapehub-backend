@@ -161,6 +161,11 @@ router.post('/',
  *         schema:
  *           type: integer
  *         description: Filter by specific entity ID
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: boolean
+ *         description: When true, returns only soft-deleted coupons; otherwise active only
  *     responses:
  *       200:
  *         description: List of coupons with pagination
