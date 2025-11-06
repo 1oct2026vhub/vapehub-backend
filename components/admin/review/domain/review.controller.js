@@ -193,6 +193,166 @@ module.exports = {
     }
   },
 
+  async restore(req, res) {
+    try {
+      const review = await Review.findByPk(req.params.id, {
+        paranoid: false
+      });
+      
+      if (!review) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+
+      if (!review.deleted_at) {
+        return res.status(400).json({ error: 'Review is not deleted' });
+      }
+
+      await review.restore();
+      res.json({ message: 'Review restored', review });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async bulkDelete(req, res) {
+    try {
+      const { ids } = req.body;
+
+      const deletedReviews = [];
+      const notDeletedReviews = [];
+
+      for (const rawId of ids) {
+        const id = Number(rawId);
+        try {
+          const review = await Review.findByPk(id);
+          
+          if (!review) {
+            notDeletedReviews.push({ 
+              id, 
+              reason: 'Review not found' 
+            });
+            continue;
+          }
+
+          await review.destroy();
+
+          deletedReviews.push({
+            id: review.id,
+            rating: review.rating,
+            comment: review.comment ? review.comment.substring(0, 50) + '...' : null
+          });
+        } catch (error) {
+          notDeletedReviews.push({
+            id,
+            reason: error.message || 'Failed to delete review'
+          });
+        }
+      }
+
+      const summary = {
+        total_requested: ids.length,
+        deleted_count: deletedReviews.length,
+        not_deleted_count: notDeletedReviews.length
+      };
+
+      if (deletedReviews.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No reviews were deleted',
+          deleted: deletedReviews,
+          not_deleted: notDeletedReviews,
+          summary
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Successfully deleted ${deletedReviews.length} review(s)`,
+        deleted: deletedReviews,
+        not_deleted: notDeletedReviews,
+        summary
+      });
+    } catch (err) {
+      console.error('Error in bulk delete reviews:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async bulkRestore(req, res) {
+    try {
+      const { ids } = req.body;
+
+      const restoredReviews = [];
+      const notRestoredReviews = [];
+
+      for (const rawId of ids) {
+        const id = Number(rawId);
+        try {
+          const review = await Review.findByPk(id, {
+            paranoid: false
+          });
+          
+          if (!review) {
+            notRestoredReviews.push({ 
+              id, 
+              reason: 'Review not found' 
+            });
+            continue;
+          }
+
+          if (!review.deleted_at) {
+            notRestoredReviews.push({ 
+              id,
+              rating: review.rating,
+              reason: 'Review is already active (not deleted)' 
+            });
+            continue;
+          }
+
+          await review.restore();
+
+          restoredReviews.push({
+            id: review.id,
+            rating: review.rating,
+            comment: review.comment ? review.comment.substring(0, 50) + '...' : null
+          });
+        } catch (error) {
+          notRestoredReviews.push({
+            id,
+            reason: error.message || 'Failed to restore review'
+          });
+        }
+      }
+
+      const summary = {
+        total_requested: ids.length,
+        restored_count: restoredReviews.length,
+        not_restored_count: notRestoredReviews.length
+      };
+
+      if (restoredReviews.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No reviews were restored',
+          restored: restoredReviews,
+          not_restored: notRestoredReviews,
+          summary
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Successfully restored ${restoredReviews.length} review(s)`,
+        restored: restoredReviews,
+        not_restored: notRestoredReviews,
+        summary
+      });
+    } catch (err) {
+      console.error('Error in bulk restore reviews:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
   // Unified function for fetching all or searching products by name
   async getProducts(req, res) {
     try {
