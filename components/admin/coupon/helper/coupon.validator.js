@@ -305,7 +305,11 @@ const validateQueryParams = [
   query('end_date')
     .optional()
     .isISO8601()
-    .withMessage('Invalid end date format')
+    .withMessage('Invalid end date format'),
+  query('deleted')
+    .optional()
+    .isIn(['true', 'false'])
+    .withMessage('Invalid deleted flag. Must be "true" or "false"')
 ];
 
 const validateIdParam = [
