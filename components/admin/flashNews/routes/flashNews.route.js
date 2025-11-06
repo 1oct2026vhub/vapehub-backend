@@ -6,7 +6,8 @@ const { validateRequest } = require('../../../../utils/validationMiddleware');
 const {
     createOrUpdateFlashNewsValidation,
     listAllFlashNewsValidation,
-    flashNewsIdValidation
+    flashNewsIdValidation,
+    bulkFlashNewsValidation
 } = require('../helper/flashNews.validator');
 
 // Common middleware for auth
@@ -49,6 +50,70 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *         description: Unauthorized
  */
 router.post('/', withValidation(createOrUpdateFlashNewsValidation), flashNewsController.createOrUpdateFlashNews);
+
+/**
+ * @swagger
+ * /api/admin/flash-news/bulk-delete:
+ *   delete:
+ *     tags: 
+ *       - Admin
+ *          - Flash News
+ *     summary: Bulk soft delete flash news
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no flash news deleted
+ */
+router.delete('/bulk-delete', withValidation(bulkFlashNewsValidation), flashNewsController.bulkDeleteFlashNews);
+
+/**
+ * @swagger
+ * /api/admin/flash-news/bulk-restore:
+ *   put:
+ *     tags: 
+ *       - Admin
+ *          - Flash News
+ *     summary: Bulk restore soft-deleted flash news
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no flash news restored
+ */
+router.put('/bulk-restore', withValidation(bulkFlashNewsValidation), flashNewsController.bulkRestoreFlashNews);
 
 /**
  * @swagger
