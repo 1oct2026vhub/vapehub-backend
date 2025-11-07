@@ -106,9 +106,8 @@ const upload = multer({
  * /api/admin/deals:
  *   post:
  *     summary: Create a new deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -183,9 +182,8 @@ router.post('/', [authMiddleware(true), upload.single('image'), validateRequest(
  * /api/admin/deals/{id}:
  *   delete:
  *     summary: Delete a deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -203,7 +201,69 @@ router.post('/', [authMiddleware(true), upload.single('image'), validateRequest(
  *         description: Deal not found
  */
 // Bulk routes first
+/**
+ * @swagger
+ * /api/admin/deals/bulk-delete:
+ *   delete:
+ *     summary: Bulk delete deals
+ *     tags:
+ *       - ADMIN - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *       400:
+ *         description: Bad request or no deals deleted
+ *       401:
+ *         description: Unauthorized
+ */
 router.delete('/bulk-delete', [authMiddleware(true), validateRequest(bulkDealsValidation)], dealsController.bulkDeleteDeals);
+/**
+ * @swagger
+ * /api/admin/deals/bulk-restore:
+ *   put:
+ *     summary: Bulk restore soft-deleted deals
+ *     tags:
+ *       - ADMIN - Deals
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: Bulk restore completed
+ *       400:
+ *         description: Bad request or no deals restored
+ *       401:
+ *         description: Unauthorized
+ */
 router.put('/bulk-restore', [authMiddleware(true), validateRequest(bulkDealsValidation)], dealsController.bulkRestoreDeals);
 
 /**
@@ -211,9 +271,8 @@ router.put('/bulk-restore', [authMiddleware(true), validateRequest(bulkDealsVali
  * /api/admin/deals/{id}:
  *   put:
  *     summary: Update an existing deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -245,9 +304,8 @@ router.put('/:id', [authMiddleware(true), upload.single('image'), validateReques
  * /api/admin/deals:
  *   get:
  *     summary: List all deals
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -297,9 +355,8 @@ router.get('/', [authMiddleware(true), validateRequest(listDealsValidation)], de
  * /api/admin/deals/types:
  *   get:
  *     summary: Get all deal types
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -315,9 +372,8 @@ router.get('/types', [authMiddleware(true)], dealsController.getDealTypes);
  * /api/admin/deals/{id}:
  *   get:
  *     summary: Get a specific deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -341,9 +397,8 @@ router.get('/:id', [authMiddleware(true), validateRequest(getDealByIdValidation)
  * /api/admin/deals/product/{productId}:
  *   get:
  *     summary: Get all deals for a specific product
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -368,9 +423,8 @@ router.delete('/:id(\\d+)', [authMiddleware(true), validateRequest(deleteDealVal
  * /api/admin/deals/{id}/restore:
  *   patch:
  *     summary: Restore a soft-deleted deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -395,9 +449,8 @@ router.patch('/:id(\\d+)/restore', [authMiddleware(true), validateRequest(restor
  * /api/admin/deals/{id}/products:
  *   post:
  *     summary: Add products to a deal
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -478,9 +531,8 @@ router.post('/:id/products', [authMiddleware(true), validateRequest(addProductsT
  * /api/admin/deals/product/{productId}:
  *   post:
  *     summary: Add a product to multiple deals
- *     tags: 
- *       - Admin
- *          - Deals
+ *     tags:
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -563,8 +615,7 @@ router.post('/product/:productId', [authMiddleware(true), validateRequest(addPro
  *   delete:
  *     summary: Remove products from a deal
  *     tags: 
- *       - Admin
- *          - Deals
+ *       - ADMIN - Deals
  *     security:
  *       - bearerAuth: []
  *     parameters:
