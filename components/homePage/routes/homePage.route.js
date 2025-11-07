@@ -17,6 +17,42 @@ const upload = multer({
 
 /**
  * @swagger
+ * /api/home/blocks:
+ *   get:
+ *     tags:
+ *       - HomePage
+ *     summary: Get home page blocks data
+ *     description: Returns active shop by category and popular category lists for the customer home page.
+ *     responses:
+ *       200:
+ *         description: Home page block retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     shopByCategories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     popularCategories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/blocks", homePageController.getHomePageBlock);
+
+/**
+ * @swagger
  * /api/home/carousel:
  *   get:
  *     tags:
