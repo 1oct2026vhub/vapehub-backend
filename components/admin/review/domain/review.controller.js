@@ -9,10 +9,25 @@ module.exports = {
       const offset = (page - 1) * limit;
       
       // Extract search and filter parameters
-      const { search, rating, testimonial, sortBy = 'created_at', sortOrder = 'DESC' } = req.query;
-      
+      const {
+        search,
+        rating,
+        testimonial,
+        sortBy = 'created_at',
+        sortOrder = 'DESC',
+        deleted
+      } = req.query;
+
       // Build where clause for filtering
       const whereClause = {};
+
+      // Deleted filter (soft deletes)
+      const includeDeleted = deleted === 'true';
+      const paranoid = !includeDeleted;
+
+      if (includeDeleted) {
+        whereClause.deleted_at = { [Op.ne]: null };
+      }
       
       // Filter by rating if provided
       if (rating && rating !== 'all') {
@@ -79,7 +94,8 @@ module.exports = {
         offset,
         limit,
         order: [[finalSortBy, finalSortOrder]],
-        distinct: true // Important for correct count with includes
+        distinct: true, // Important for correct count with includes
+        paranoid
       });
       // Transform the response to include user and product info
       const transformedReviews = rows.map(review => {
@@ -107,7 +123,8 @@ module.exports = {
           [require('sequelize').fn('COUNT', require('sequelize').col('rating')), 'count']
         ],
         group: ['rating'],
-        order: [['rating', 'DESC']]
+        order: [['rating', 'DESC']],
+        paranoid
       });
       
       // Transform rating stats
@@ -117,8 +134,8 @@ module.exports = {
       }, {});
       
       // Get testimonial statistics
-      const testimonialCount = await Review.count({ where: { testimonial: true } });
-      const nonTestimonialCount = await Review.count({ where: { testimonial: false } });
+      const testimonialCount = await Review.count({ where: { testimonial: true }, paranoid });
+      const nonTestimonialCount = await Review.count({ where: { testimonial: false }, paranoid });
       
       res.json({
         total: count,
@@ -130,11 +147,12 @@ module.exports = {
           rating: rating || 'all',
           testimonial: testimonial !== undefined ? testimonial : 'all',
           sortBy: finalSortBy,
-          sortOrder: finalSortOrder
+          sortOrder: finalSortOrder,
+          deleted: includeDeleted ? 'true' : 'false'
         },
         statistics: {
           ratingDistribution: ratingStatistics,
-          totalReviews: await Review.count(),
+          totalReviews: await Review.count({ paranoid }),
           testimonialStats: {
             testimonials: testimonialCount,
             regularReviews: nonTestimonialCount
