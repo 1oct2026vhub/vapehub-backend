@@ -94,6 +94,12 @@ const { check } = require('express-validator');
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Sort order (ASC or DESC)
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: When true, returns only soft-deleted reviews; when false (default) returns active reviews
  *     responses:
  *       200:
  *         description: List of all reviews with enhanced data

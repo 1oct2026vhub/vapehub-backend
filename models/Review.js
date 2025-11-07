@@ -121,10 +121,11 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'Review',
     tableName: 'reviews',
     timestamps: true,
-    // paranoid: true,
+    paranoid: true,
     underscored: true,
     createdAt: 'created_at',
-    updatedAt: 'updated_at'
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at'
   });
 
   return Review;
