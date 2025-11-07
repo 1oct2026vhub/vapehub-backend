@@ -428,7 +428,7 @@ module.exports.bulkRestoreBlogCategories = async (req, res, next) => {
                 }
 
                 // Check if category is already active (not deleted)
-                if (!category.deleted_at) {
+                if (!category.deletedAt) {
                     await t.rollback();
                     notRestoredCategories.push({
                         id,
