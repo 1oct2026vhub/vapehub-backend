@@ -200,9 +200,56 @@ const getLegalContentSummary = async (req, res, next) => {
     }
 };
 
+/**
+ * Get dispatch notice content
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+const getDispatchNotice = async (req, res, next) => {
+    try {
+        const dispatchNoticeKey = constants.LEGAL_CONTENT_KEYS['DISPATCH NOTICE'];
+
+        const setting = await Settings.findOne({
+            where: {
+                content_key: dispatchNoticeKey,
+                is_active: true
+            },
+            attributes: ['id', 'content_key', 'content', 'is_active', 'created_at', 'updated_at']
+        });
+
+        if (!setting) {
+            return errorResponse(
+                res,
+                { message: 'Dispatch notice content not found or is inactive' },
+                'Dispatch notice not found',
+                404
+            );
+        }
+
+        return successResponse(
+            res,
+            {
+                dispatch_notice: {
+                    id: setting.id,
+                    content: setting.content,
+                    is_active: setting.is_active,
+                    last_updated: setting.updated_at,
+                    created_at: setting.created_at
+                }
+            },
+            'Dispatch notice retrieved successfully'
+        );
+    } catch (error) {
+        logger.error('Get Dispatch Notice Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports = {
     getLegalContent,
     getLegalContentByKey,
     getAvailableContentTypes,
-    getLegalContentSummary
+    getLegalContentSummary,
+    getDispatchNotice
 };
