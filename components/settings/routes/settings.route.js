@@ -4,7 +4,8 @@ const {
     getLegalContent,
     getLegalContentByKey,
     getAvailableContentTypes,
-    getLegalContentSummary
+    getLegalContentSummary,
+    getDispatchNotice
 } = require('../domain/settings.controller');
 
 /**
@@ -113,6 +114,91 @@ const {
  *         - success
  *         - message
  * 
+ * /api/settings/dispatch-notice:
+ *   get:
+ *     tags:
+ *       - Settings
+ *     summary: Get dispatch notice
+ *     description: |
+ *       Retrieves the active dispatch notice content for end users.
+ *     operationId: getDispatchNotice
+ *     responses:
+ *       200:
+ *         description: Dispatch notice retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Dispatch notice retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     dispatch_notice:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Unique identifier for the dispatch notice content
+ *                           example: 5
+ *                         content:
+ *                           type: string
+ *                           description: HTML content of the dispatch notice
+ *                           example: "<h1>Dispatch Notice</h1><p>Orders placed before 2 PM ship the same day...</p>"
+ *                         is_active:
+ *                           type: boolean
+ *                           description: Whether the dispatch notice is active
+ *                           example: true
+ *                         last_updated:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Last update timestamp
+ *                           example: "2024-05-12T09:30:00Z"
+ *                         created_at:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Creation timestamp
+ *                           example: "2024-05-01T08:00:00Z"
+ *       404:
+ *         description: Dispatch notice not configured or inactive
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               not_found:
+ *                 summary: Dispatch notice not found
+ *                 value:
+ *                   success: false
+ *                   message: "Dispatch notice content not found or is inactive"
+ *                   error:
+ *                     code: "CONTENT_NOT_FOUND"
+ *                     details: "Dispatch notice has not been configured"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               server_error:
+ *                 summary: Server error response
+ *                 value:
+ *                   success: false
+ *                   message: "Internal server error"
+ *                   error:
+ *                     code: "DATABASE_ERROR"
+ *                     details: "Database connection failed"
+ */
+router.get('/dispatch-notice', getDispatchNotice);
+
+/**
+ * @swagger
  * /api/settings/legal-content:
  *   get:
  *     tags:
