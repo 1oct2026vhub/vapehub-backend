@@ -167,6 +167,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        image_url: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         hide_text: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
@@ -192,6 +196,11 @@ module.exports = (sequelize, DataTypes) => {
                     msg: 'Invalid icon position'
                 }
             }
+        },
+        list_on_active_product: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         }
     }, {
         sequelize,
