@@ -198,12 +198,14 @@ module.exports = {
         'DELIVERY INFORMATION': 'delivery_information',
         'PRIVACY POLICY': 'privacy_policy',
         'RETURNS POLICY': 'returns_policy',
-        'TERMS CONDITIONS': 'terms_conditions'
+        'TERMS CONDITIONS': 'terms_conditions',
+        'DISPATCH NOTICE': 'dispatch_notice'
     },
     LEGAL_CONTENT_KEY_ENUMS: [
         'delivery_information',
         'privacy_policy',
         'returns_policy',
-        'terms_conditions'
+        'terms_conditions',
+        'dispatch_notice'
     ]
 }
