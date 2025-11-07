@@ -1888,7 +1888,8 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
             stars,
             locale,
             attributeIds,
-            hasAttachments
+            hasAttachments,
+            sort = 'desc'
         } = req.query;
         
         // Get access token and business unit ID
@@ -1957,20 +1958,26 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
 
 
         // Process reviews
-        const processedReviews = response.data.productReviews.map(review => ({
-            id: review.id,
-            stars: review.stars,
-            title: review.title,
-            text: review.content,
-            createdAt: review.createdAt,
-            consumer: {
-                displayName: review.consumer?.displayName
-            },
-            language: review.language,
-            locale: review.locale,
-            hasAttachments: review.attachments?.length > 0,
-            attributes: review.attributeRatings || []
-        }));
+        const processedReviews = response.data.productReviews
+            .map(review => ({
+                id: review.id,
+                stars: review.stars,
+                title: review.title,
+                text: review.content,
+                createdAt: review.createdAt,
+                consumer: {
+                    displayName: review.consumer?.displayName
+                },
+                language: review.language,
+                locale: review.locale,
+                hasAttachments: review.attachments?.length > 0,
+                attributes: review.attributeRatings || []
+            }))
+            .sort((a, b) => {
+                const starA = Number(a.stars ?? 0);
+                const starB = Number(b.stars ?? 0);
+                return sort === 'asc' ? starA - starB : starB - starA;
+            });
 
         return successResponse(res, {
             reviews: processedReviews,

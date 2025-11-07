@@ -661,6 +661,12 @@ router.get('/trustpilot-review-summaries',
  *               items:
  *                 type: string
  *         description: Product SKU(s)
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         description: Sort order for reviews based on star rating (defaults to desc)
  *     responses:
  *       200:
  *         description: Successfully retrieved product reviews
@@ -729,7 +735,8 @@ router.get('/trustpilot-product-reviews',
                 // If parsing fails, treat as a single string value
                 return typeof value === 'string';
             }
-        }).withMessage('SKU must be a string or array')
+        }).withMessage('SKU must be a string or array'),
+        query('sort').optional().isIn(['asc', 'desc']).withMessage('Sort must be either asc or desc')
     ]),
     homePageController.getTrustpilotProductReviews
 );
