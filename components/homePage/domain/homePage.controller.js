@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1094,6 +1094,52 @@ module.exports.getBannerImages = async (req, res, next) => {
             ]
         });
         successResponse(res, banners, 'Success');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
+module.exports.getHomePageBlock = async (req, res, next) => {
+    try {
+        const [shopByCategories, popularCategories] = await Promise.all([
+            ShopByCategory.findAll({
+                where: {
+                    status: true,
+                    deletedAt: null
+                },
+                include: [{
+                    model: Category,
+                    as: 'category',
+                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'parent_id'],
+                    where: {
+                        deletedAt: null
+                    },
+                    required: true
+                }],
+                order: [['order', 'ASC']]
+            }),
+            PopularCategory.findAll({
+                where: {
+                    status: true,
+                    deletedAt: null
+                },
+                include: [{
+                    model: Category,
+                    as: 'category',
+                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'parent_id'],
+                    where: {
+                        deletedAt: null
+                    },
+                    required: true
+                }],
+                order: [['order', 'ASC']]
+            })
+        ]);
+
+        return successResponse(res, {
+            shopByCategories,
+            popularCategories
+        }, 'Home page block retrieved successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
