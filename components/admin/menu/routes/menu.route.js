@@ -147,6 +147,9 @@ router.get('/ordered',
  *               icon:
  *                 type: string
  *                 description: Icon path/class
+ *               image_url:
+ *                 type: string
+ *                 description: External image URL when no file is uploaded
  *               hide_text:
  *                 type: boolean
  *                 description: Hide label text (icon-only)
@@ -160,6 +163,9 @@ router.get('/ordered',
  *                 type: string
  *                 enum: [left, right, top, bottom]
  *                 description: Icon placement relative to label
+ *               list_on_active_product:
+ *                 type: boolean
+ *                 description: Show menu item only when the linked product is active
  *     responses:
  *       201:
  *         description: Menu item created successfully
@@ -220,6 +226,9 @@ router.post('/',
  *               icon:
  *                 type: string
  *                 description: Icon path/class
+ *               image_url:
+ *                 type: string
+ *                 description: External image URL when no file is uploaded
  *               hide_text:
  *                 type: boolean
  *                 description: Hide label text (icon-only)
@@ -233,6 +242,9 @@ router.post('/',
  *                 type: string
  *                 enum: [left, right, top, bottom]
  *                 description: Icon placement relative to label
+ *               list_on_active_product:
+ *                 type: boolean
+ *                 description: Show menu item only when the linked product is active
  *     responses:
  *       200:
  *         description: Menu item updated successfully
