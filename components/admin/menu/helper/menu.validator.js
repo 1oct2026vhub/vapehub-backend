@@ -1,4 +1,6 @@
 const { body, param, query } = require('express-validator');
+const multer = require('multer');
+const path = require('path');
 const db = require('../../../../models');
 const { Menu } = db;
 
@@ -62,6 +64,12 @@ const validateMenuCreate = [
         .withMessage('Icon must be a string')
         .trim(),
 
+    body('image_url')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Image URL must be a string')
+        .trim(),
+
     body('hide_text')
         .optional()
         .isBoolean()
@@ -89,6 +97,12 @@ const validateMenuCreate = [
         .optional()
         .isBoolean()
         .withMessage('Status must be a boolean')
+        .toBoolean(),
+
+    body('list_on_active_product')
+        .optional()
+        .isBoolean()
+        .withMessage('list_on_active_product must be a boolean')
         .toBoolean()
 ];
 
@@ -146,6 +160,12 @@ const validateMenuUpdate = [
         .withMessage('Icon must be a string')
         .trim(),
 
+    body('image_url')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Image URL must be a string')
+        .trim(),
+
     body('hide_text')
         .optional()
         .isBoolean()
@@ -173,6 +193,12 @@ const validateMenuUpdate = [
         .optional()
         .isBoolean()
         .withMessage('Status must be a boolean')
+        .toBoolean(),
+
+    body('list_on_active_product')
+        .optional()
+        .isBoolean()
+        .withMessage('list_on_active_product must be a boolean')
         .toBoolean()
 ];
 
@@ -220,9 +246,51 @@ const validateMenuFilters = [
         .trim()
 ];
 
+const storage = multer.memoryStorage();
+
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+        const ext = path.extname(file.originalname).toLowerCase();
+
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Only .png, .jpg, .jpeg, .webp files are allowed!'), false);
+        }
+
+        cb(null, true);
+    }
+});
+
+const uploadFileValidation = (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({
+                success: false,
+                message: 'File upload error',
+                errors: [{ path: 'image', msg: err.message }]
+            });
+        }
+
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid file type',
+                errors: [{ path: 'image', msg: err.message }]
+            });
+        }
+
+        next();
+    });
+};
+
 module.exports = {
     validateMenuCreate,
     validateMenuUpdate,
     validateMenuReorder,
-    validateMenuFilters
-}; 
+    validateMenuFilters,
+    uploadFileValidation
+};

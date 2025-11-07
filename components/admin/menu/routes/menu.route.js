@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const menuController = require("../domain/menu.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { validateMenuCreate, validateMenuUpdate, validateMenuReorder, validateMenuFilters } = require("../helper/menu.validator");
+const { validateMenuCreate, validateMenuUpdate, validateMenuReorder, validateMenuFilters, uploadFileValidation } = require("../helper/menu.validator");
 const { param, query } = require("express-validator");
 
 // Middleware for all routes
@@ -171,7 +171,7 @@ router.get('/ordered',
  *         description: Internal server error
  */
 router.post('/', 
-    [adminAuth, validateRequest(validateMenuCreate)],
+    [adminAuth, uploadFileValidation, validateRequest(validateMenuCreate)],
     menuController.createMenu
 );
 
@@ -246,7 +246,7 @@ router.post('/',
  *         description: Internal server error
  */
 router.put('/:id',
-    [adminAuth, validateRequest(validateMenuUpdate)],
+    [adminAuth, uploadFileValidation, validateRequest(validateMenuUpdate)],
     menuController.updateMenu
 );
 
