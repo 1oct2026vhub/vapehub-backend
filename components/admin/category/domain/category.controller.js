@@ -8,6 +8,55 @@ const seoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
+const removeCategoryMenus = async (categoryId, transaction) => {
+    const categoryMenus = await Menu.findAll({
+        where: {
+            entity_type: 'category',
+            entity_id: categoryId
+        },
+        transaction
+    });
+
+    if (!categoryMenus.length) {
+        return;
+    }
+
+    const parentIds = [
+        ...new Set(
+            categoryMenus
+                .map(menu => menu.menu_parent)
+                .filter(id => id !== null && id !== undefined)
+        )
+    ];
+
+    const menuIds = categoryMenus.map(menu => menu.id);
+
+    await Menu.destroy({
+        where: { id: menuIds },
+        transaction
+    });
+
+    if (!parentIds.length) {
+        return;
+    }
+
+    const parentMenus = await Menu.findAll({
+        where: { id: parentIds },
+        transaction
+    });
+
+    for (const parentMenu of parentMenus) {
+        const remainingChildren = await Menu.count({
+            where: { menu_parent: parentMenu.id },
+            transaction
+        });
+
+        if (remainingChildren === 0) {
+            await parentMenu.destroy({ transaction });
+        }
+    }
+};
+
 /**
  * Retrieves all categories.
  */
@@ -304,6 +353,9 @@ module.exports.deleteCategory = async (req, res, next) => {
         // Delete slug relation first
         await slugManager.deleteSlug('category', id, t);
 
+        // Remove related menu entries
+        await removeCategoryMenus(id, t);
+
         // Delete the category
         await category.destroy({ transaction: t });
 
@@ -366,6 +418,9 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
 
                 // Delete slug relation first
                 await slugManager.deleteSlug('category', id, t);
+
+                // Remove related menu entries
+                await removeCategoryMenus(id, t);
 
                 // Soft delete the category
                 await category.destroy({ transaction: t });
