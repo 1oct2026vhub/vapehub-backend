@@ -62,6 +62,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    sku: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      unique: true
+    },
     description: {
       type: DataTypes.TEXT,
       allowNull: true
