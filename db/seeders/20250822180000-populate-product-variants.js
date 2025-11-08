@@ -140,10 +140,10 @@ module.exports = {
           await queryInterface.sequelize.query(`
             INSERT INTO product_variants (
               id, product_id, slug, regular_price, price, discount_price,
-              weight, length, width, height, description, barcode,
+              weight, length, width, height, description, barcode, sku,
               stock, low_stock_threshold, stock_status, status,
               created_at, updated_at, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, {
             replacements: [
               variant.id,                    // Use exact ID from old DB
@@ -157,7 +157,8 @@ module.exports = {
               width,                         // Width
               height,                        // Height
               variant.description,           // Description
-              sku,                          // Barcode/SKU
+              sku,                          // Barcode
+              sku,                          // SKU
               stock,                        // Stock quantity
               5,                            // Low stock threshold (default)
               stockStatus,                  // Stock status
