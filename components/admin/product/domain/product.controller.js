@@ -11,6 +11,55 @@ const SeoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
+const removeProductMenus = async (productId, transaction) => {
+    const productMenus = await Menu.findAll({
+        where: {
+            entity_type: 'product',
+            entity_id: productId
+        },
+        transaction
+    });
+
+    if (!productMenus.length) {
+        return;
+    }
+
+    const parentIds = [
+        ...new Set(
+            productMenus
+                .map(menu => menu.menu_parent)
+                .filter(id => id !== null && id !== undefined)
+        )
+    ];
+
+    const menuIds = productMenus.map(menu => menu.id);
+
+    await Menu.destroy({
+        where: { id: menuIds },
+        transaction
+    });
+
+    if (!parentIds.length) {
+        return;
+    }
+
+    const parentMenus = await Menu.findAll({
+        where: { id: parentIds },
+        transaction
+    });
+
+    for (const parentMenu of parentMenus) {
+        const remainingChildren = await Menu.count({
+            where: { menu_parent: parentMenu.id },
+            transaction
+        });
+
+        if (remainingChildren === 0) {
+            await parentMenu.destroy({ transaction });
+        }
+    }
+};
+
 module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
@@ -1335,6 +1384,9 @@ module.exports.deleteProduct = async (req, res, next) => {
         // Update SEO noIndex to true before deletion
         await SeoService.updateNoIndex('product', id, true);
 
+        // Remove related menu entries
+        await removeProductMenus(id, transaction);
+
         // Perform a soft delete
         await product.destroy({ transaction });
 
@@ -1380,6 +1432,9 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
 
                 // Update SEO noIndex to true before deletion
                 await SeoService.updateNoIndex('product', id, true);
+
+                // Remove related menu entries
+                await removeProductMenus(id, t);
 
                 // Perform a soft delete
                 await product.destroy({ transaction: t });
