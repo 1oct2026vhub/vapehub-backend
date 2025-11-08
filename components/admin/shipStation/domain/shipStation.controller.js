@@ -39,12 +39,18 @@ async function createShipStationOrder(order) {
                 country: "GB",
                 phone: order.orderShippingAddress.phone,
             } : undefined,
-            items: order.orderItems ? order.orderItems.map(item => ({
-                sku: item.variant ? item.variant.slug : item.product.id,
-                name: item.variant ? `${item.product.name} - ${item.variant.slug}` : item.product.name,
+            items: order.orderItems ? order.orderItems.map(item => {
+                const variantSku = item.variant?.sku || item.variant?.slug || (item.variant?.id ? String(item.variant.id) : null);
+                const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
+                return {
+                sku: variantSku || productSku,
+                name: item.variant
+                    ? `${item.product.name} - ${(variantSku || item.variant.slug || item.variant.id)}`
+                    : item.product.name,
                 quantity: item.quantity,
                 unitPrice: item.unit_price,
-            })) : [],
+            };
+            }) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',

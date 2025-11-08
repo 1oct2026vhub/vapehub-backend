@@ -196,7 +196,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       ),
       product_data AS (
         SELECT 
-          p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price, 
+          p.id, p.updated_by, p.name, p.slug, p.sku, p.price, p.discount_price, 
           p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, 
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style, 
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 

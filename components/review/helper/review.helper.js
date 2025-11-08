@@ -142,7 +142,7 @@ async function sendInvitation(order, user) {
                     const primaryVariantImage = item.variant?.variantImages?.find(img => img.is_primary)?.image_url;
                    
                     return {
-                        sku: item.product.slug || item.product_id,
+                        sku: item.product?.sku || item.product?.slug || item.product_id,
                         name: item.product.name,
                         brand: process.env.BRAND_NAME,
                         imageUrl: primaryVariantImage || primaryProductImage || "",
