@@ -440,6 +440,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
     const variantRecord = await ProductVariant.create({
         product_id,
         slug: variant.slug,
+        sku: variant.sku,
         regular_price: variant.regular_price,
         price,
         discount_price: variant.discount_price,
@@ -474,6 +475,7 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
     await ProductVariant.update({
         ...updateData,
         price,
+        ...(updateData.sku !== undefined && { sku: updateData.sku }),
         updated_by
     }, {
         where: { id: variantId },

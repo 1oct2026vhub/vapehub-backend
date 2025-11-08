@@ -708,18 +708,40 @@ module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const {
-            name, slug, description, category_ids, brand_ids
+            name,
+            slug,
+            sku,
+            description,
+            price,
+            discount_price,
+            stock_quantity,
+            puff_count,
+            is_new,
+            battery_capacity,
+            coil_style,
+            device_style,
+            eliquid_capacity,
+            pod_coil_style,
+            pod_fill_style,
+            power_supply,
+            nicotine_strength,
+            nicotine_type,
+            vg_ratio,
+            vaping_style,
+            bottle_size,
+            category_ids,
+            brand_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
 
         // Validate required fields
-        if (!name || !slug) {
+        if (!name || !slug || !sku) {
             await transaction.rollback();
             return errorResponse(
                 res, 
-                { message: "Name and slug are required" }, 
-                "Missing required fields", 
+                { message: "Name, slug and sku are required" }, 
+                "Missing required fields",
                 400
             );
         }
@@ -727,6 +749,17 @@ module.exports.createProduct = async (req, res, next) => {
         // Clean the name and slug
         const cleanName = name.trim();
         const cleanSlug = slug.toLowerCase().trim();
+        const cleanSku = sku.trim();
+
+        if (!cleanSku) {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                { message: "SKU cannot be empty" },
+                "Invalid SKU",
+                400
+            );
+        }
 
         // Validate categories if provided
         if (category_ids && category_ids.length > 0) {
@@ -805,12 +838,54 @@ module.exports.createProduct = async (req, res, next) => {
             );
         }
 
+        const existingProductSku = await Product.findOne({
+            where: {
+                sku: cleanSku
+            },
+            transaction
+        });
+
+        if (existingProductSku) {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                {
+                    message: "This SKU already exists in another product",
+                    existing_product: {
+                        id: existingProductSku.id,
+                        name: existingProductSku.name,
+                        sku: existingProductSku.sku
+                    }
+                },
+                "Duplicate product SKU",
+                400
+            );
+        }
+
         // Create the product record
         const product = await Product.create(
             {
                 name: cleanName,
                 slug: cleanSlug,
+                sku: cleanSku,
                 description,
+                price,
+                discount_price,
+                stock_quantity,
+                puff_count,
+                is_new,
+                battery_capacity,
+                coil_style,
+                device_style,
+                eliquid_capacity,
+                pod_coil_style,
+                pod_fill_style,
+                power_supply,
+                nicotine_strength,
+                nicotine_type,
+                vg_ratio,
+                vaping_style,
+                bottle_size,
                 updated_by
             },
             { transaction }
@@ -907,7 +982,29 @@ module.exports.updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
-            name, slug, description, category_ids, brand_ids
+            name,
+            slug,
+            sku,
+            description,
+            price,
+            discount_price,
+            stock_quantity,
+            puff_count,
+            is_new,
+            battery_capacity,
+            coil_style,
+            device_style,
+            eliquid_capacity,
+            pod_coil_style,
+            pod_fill_style,
+            power_supply,
+            nicotine_strength,
+            nicotine_type,
+            vg_ratio,
+            vaping_style,
+            bottle_size,
+            category_ids,
+            brand_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -922,6 +1019,40 @@ module.exports.updateProduct = async (req, res, next) => {
         // Clean the input values if provided
         const cleanName = name?.trim();
         const cleanSlug = slug?.toLowerCase().trim();
+        const cleanSku = sku === undefined ? undefined : String(sku).trim();
+
+        if (sku !== undefined) {
+            if (!cleanSku) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "SKU cannot be empty" }, "Invalid SKU", 400);
+            }
+            if (cleanSku !== product.sku) {
+                const existingProductSku = await Product.findOne({
+                    where: {
+                        sku: cleanSku,
+                        id: { [Op.ne]: id }
+                    },
+                    transaction
+                });
+
+                if (existingProductSku) {
+                    await transaction.rollback();
+                    return errorResponse(
+                        res,
+                        {
+                            message: "Product with this SKU already exists",
+                            existing_product: {
+                                id: existingProductSku.id,
+                                name: existingProductSku.name,
+                                sku: existingProductSku.sku
+                            }
+                        },
+                        "Duplicate product SKU",
+                        400
+                    );
+                }
+            }
+        }
 
         // Check for duplicate name if name is being updated
         if (cleanName && cleanName !== product.name) {
@@ -1007,12 +1138,73 @@ module.exports.updateProduct = async (req, res, next) => {
 
 
         // Prepare update fields
-        const updatedFields = {
-            ...(cleanName && { name: cleanName }),
-            ...(cleanSlug && { slug: cleanSlug }),
-            ...(description && { description: description.trim() }),
-            updated_by
-        };
+        const updatedFields = {};
+
+        if (cleanName) {
+            updatedFields.name = cleanName;
+        }
+        if (cleanSlug) {
+            updatedFields.slug = cleanSlug;
+        }
+        if (sku !== undefined) {
+            updatedFields.sku = cleanSku;
+        }
+        if (description !== undefined) {
+            updatedFields.description = typeof description === 'string' ? description.trim() : description;
+        }
+        if (price !== undefined) {
+            updatedFields.price = price;
+        }
+        if (discount_price !== undefined) {
+            updatedFields.discount_price = discount_price;
+        }
+        if (stock_quantity !== undefined) {
+            updatedFields.stock_quantity = stock_quantity;
+        }
+        if (puff_count !== undefined) {
+            updatedFields.puff_count = puff_count;
+        }
+        if (is_new !== undefined) {
+            updatedFields.is_new = is_new;
+        }
+        if (battery_capacity !== undefined) {
+            updatedFields.battery_capacity = battery_capacity;
+        }
+        if (coil_style !== undefined) {
+            updatedFields.coil_style = coil_style;
+        }
+        if (device_style !== undefined) {
+            updatedFields.device_style = device_style;
+        }
+        if (eliquid_capacity !== undefined) {
+            updatedFields.eliquid_capacity = eliquid_capacity;
+        }
+        if (pod_coil_style !== undefined) {
+            updatedFields.pod_coil_style = pod_coil_style;
+        }
+        if (pod_fill_style !== undefined) {
+            updatedFields.pod_fill_style = pod_fill_style;
+        }
+        if (power_supply !== undefined) {
+            updatedFields.power_supply = power_supply;
+        }
+        if (nicotine_strength !== undefined) {
+            updatedFields.nicotine_strength = nicotine_strength;
+        }
+        if (nicotine_type !== undefined) {
+            updatedFields.nicotine_type = nicotine_type;
+        }
+        if (vg_ratio !== undefined) {
+            updatedFields.vg_ratio = vg_ratio;
+        }
+        if (vaping_style !== undefined) {
+            updatedFields.vaping_style = vaping_style;
+        }
+        if (bottle_size !== undefined) {
+            updatedFields.bottle_size = bottle_size;
+        }
+
+        updatedFields.updated_by = updated_by;
 
         // Update SEO metadata when slug changes
         if (cleanSlug && product.slug !== cleanSlug) {
