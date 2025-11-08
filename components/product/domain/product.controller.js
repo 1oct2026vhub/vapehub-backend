@@ -1035,8 +1035,12 @@ module.exports.getProductByid = async (req, res, next) => {
 module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
-        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
+        const { name, slug, sku, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
         const { id: updated_by } = req.user; // Authenticated user
+
+        if (!sku) {
+            throw new Error('SKU is required');
+        }
 
         // find product by slug
         const existingProduct = await Product.findOne({ where: { slug } });
@@ -1044,9 +1048,14 @@ module.exports.createProduct = async (req, res, next) => {
             throw new Error('Product already exists');
         }
 
+        const existingProductSku = await Product.findOne({ where: { sku } });
+        if (existingProductSku) {
+            throw new Error('Product with this SKU already exists');
+        }
+
         // Create the product
         const product = await Product.create(
-            { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, updated_by },
+            { name, slug, sku, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, updated_by },
             { transaction }
         );
 
@@ -1124,7 +1133,7 @@ module.exports.updateProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
+        const { name, slug, sku, description, price, discount_price, stock_quantity, puff_count, is_new, battery_capacity, coil_style, device_style, eliquid_capacity, pod_coil_style, pod_fill_style, power_supply, nicotine_strength, nicotine_type, vg_ratio, vaping_style, bottle_size, category_ids, brand_ids, flavour_ids, product_images } = req.body;
         const { id: updated_by } = req.user
 
         // Find the product
@@ -1134,9 +1143,18 @@ module.exports.updateProduct = async (req, res, next) => {
             throw new Error('Product not found');
         }
         // Update product fields
+        if (sku && sku !== product.sku) {
+            const existingProductSku = await Product.findOne({ where: { sku }, transaction });
+            if (existingProductSku && existingProductSku.id !== product.id) {
+                await transaction.rollback();
+                throw new Error('Product with this SKU already exists');
+            }
+        }
+
         const updatedFields = {
             ...(name && { name }),
             ...(slug && { slug }),
+            ...(sku && { sku }),
             ...(description && { description }),
             ...(price && { price }),
             ...(discount_price && { discount_price }),

@@ -13,6 +13,7 @@ async function getTrendingProducts(limit = 10) {
         p.id, 
         p.name, 
         p.slug, 
+        p.sku,
         p.price, 
         p.discount_price, 
         COUNT(DISTINCT o.id) AS order_count
@@ -27,7 +28,7 @@ async function getTrendingProducts(limit = 10) {
         AND p.status = 'published'
         AND o.status NOT IN ('cancelled', 'refunded')
       GROUP BY 
-        p.id, p.name, p.slug, p.price, p.discount_price
+        p.id, p.name, p.slug, p.sku, p.price, p.discount_price
       ORDER BY 
         order_count DESC
       LIMIT :limit
@@ -582,7 +583,7 @@ const fetchProducts = async (query, status = 'published') => {
       // 2. Get products with raw SQL (simplified includes)
       sequelize.query(`
         SELECT DISTINCT
-          p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
+          p.id, p.updated_by, p.name, p.slug, p.sku, p.price, p.discount_price,
           p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity,
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,

@@ -58,6 +58,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       unique: true
     },
+    sku: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
     regular_price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
