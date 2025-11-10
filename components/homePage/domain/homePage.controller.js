@@ -1694,14 +1694,17 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
             }
         );
         const businessUnit = businessUnitResponse.data;
-        const reviews = response.data.reviews;
+        const reviews = response.data.reviews || [];
+
+        // Sort reviews so that higher star ratings appear first
+        const sortedReviews = reviews.slice().sort((a, b) => (b?.stars || 0) - (a?.stars || 0));
 
         // Get score stars from business unit
         const scoreStars = businessUnit.score.stars;
         const trustScore = businessUnit.score.trustScore;
 
         // Process reviews with rating categorization
-        const processedReviews = reviews.map(review => {
+        const processedReviews = sortedReviews.map(review => {
             let ratingCategory;
             const stars = review.stars;
 
