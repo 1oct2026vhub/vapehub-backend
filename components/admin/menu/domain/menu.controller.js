@@ -422,7 +422,7 @@ const updateMenu = async (req, res) => {
 };
 
 /**
- * Delete a menu item and optionally its children
+ * Delete a menu item and all of its children
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @returns {Object} JSON response with success message
@@ -431,7 +431,6 @@ const deleteMenu = async (req, res) => {
     const transaction = await db.sequelize.transaction();
     try {
         const { id } = req.params;
-        const cascade = req.query.cascade === 'true';
 
         const menu = await Menu.findByPk(id, { transaction });
         if (!menu) {
@@ -439,19 +438,8 @@ const deleteMenu = async (req, res) => {
             return errorResponse(res, null, 'Menu item not found', 404);
         }
 
-        if (cascade) {
-            // Delete all children recursively
-            await deleteChildren(id, transaction);
-        } else {
-            // Move children to parent level
-            await Menu.update(
-                { menu_parent: menu.menu_parent },
-                { 
-                    where: { menu_parent: id },
-                    transaction
-                }
-            );
-        }
+        // Always delete all descendant menus recursively
+        await deleteChildren(id, transaction);
 
         await menu.destroy({ transaction });
         await transaction.commit();
