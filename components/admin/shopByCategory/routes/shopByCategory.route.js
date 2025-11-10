@@ -273,6 +273,27 @@ router.put('/:id', [authMiddleware(true), upload.single('image'), validateReques
 
 /**
  * @swagger
+ * /api/admin/shopByCategory/{id}/image:
+ *   delete:
+ *     summary: Remove image for a shop by category entry
+ *     tags:
+ *       - ADMIN - Shop By Category
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Shop by category image removed successfully
+ */
+router.delete('/:id/image', [authMiddleware(true), validateRequest(shopByCategoryIdValidation)], shopByCategoryController.removeShopByCategoryImage);
+
+/**
+ * @swagger
  * /api/admin/shopByCategory/{id}:
  *   delete:
  *     summary: Delete a shop by category (soft delete)
