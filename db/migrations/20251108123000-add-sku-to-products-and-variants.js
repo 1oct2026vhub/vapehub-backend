@@ -42,16 +42,6 @@ module.exports = {
         { transaction }
       );
 
-      await queryInterface.changeColumn(
-        'products',
-        'sku',
-        {
-          type: Sequelize.STRING(100),
-          allowNull: false
-        },
-        { transaction }
-      );
-
       await queryInterface.addConstraint('products', {
         fields: ['sku'],
         type: 'unique',
