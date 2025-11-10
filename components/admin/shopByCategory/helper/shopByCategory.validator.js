@@ -1,4 +1,31 @@
 const { check, param } = require('express-validator');
+const { Op } = require('sequelize');
+const db = require('../../../../models');
+const { ShopByCategory } = db;
+
+const ensureUniqueShopByCategory = async (value, { req }) => {
+    if (value === undefined || value === null) {
+        return true;
+    }
+
+    const where = { category_id: value };
+    const currentId = req.params?.id ? Number(req.params.id) : null;
+
+    if (currentId) {
+        where.id = { [Op.ne]: currentId };
+    }
+
+    const existing = await ShopByCategory.findOne({
+        where,
+        paranoid: false
+    });
+
+    if (existing) {
+        throw new Error('Shop by category already exists for this category');
+    }
+
+    return true;
+};
 
 const shopByCategoryIdValidation = [
     param('id')
@@ -11,7 +38,8 @@ const createShopByCategoryValidation = [
         .isInt()
         .withMessage('Category ID must be an integer')
         .notEmpty()
-        .withMessage('Category ID is required'),
+        .withMessage('Category ID is required')
+        .custom(ensureUniqueShopByCategory),
     check('status')
         .optional()
         .isBoolean()
@@ -29,7 +57,8 @@ const updateShopByCategoryValidation = [
     check('category_id')
         .optional()
         .isInt()
-        .withMessage('Category ID must be an integer'),
+        .withMessage('Category ID must be an integer')
+        .custom(ensureUniqueShopByCategory),
     check('status')
         .optional()
         .isBoolean()
