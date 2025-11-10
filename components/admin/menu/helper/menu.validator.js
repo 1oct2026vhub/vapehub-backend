@@ -1,6 +1,7 @@
 const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
+const { Op } = require('sequelize');
 const db = require('../../../../models');
 const { Menu } = db;
 
@@ -15,6 +16,33 @@ const validateMenuParent = async (value) => {
         throw new Error(`Parent menu with ID ${value} does not exist`);
     }
     
+    return true;
+};
+
+const ensureUniqueEntityReference = async (value, { req }) => {
+    const entityType = req.body.entity_type;
+
+    if (!entityType || entityType === 'page') {
+        return true;
+    }
+
+    const where = {
+        entity_type: entityType,
+        entity_id: value
+    };
+
+    const currentId = req.params?.id ? Number(req.params.id) : null;
+
+    if (currentId) {
+        where.id = { [Op.ne]: currentId };
+    }
+
+    const existingMenu = await Menu.findOne({ where });
+
+    if (existingMenu) {
+        throw new Error(`Menu with entity_type '${entityType}' and entity_id '${value}' already exists`);
+    }
+
     return true;
 };
 
@@ -42,7 +70,8 @@ const validateMenuCreate = [
         .withMessage('Entity ID is required when entity type is specified (except for page)')
         .isInt()
         .withMessage('Entity ID must be a number')
-        .toInt(),
+        .toInt()
+        .custom(ensureUniqueEntityReference),
 
     body('original')
         .if(body('entity_type').equals('page'))
@@ -138,7 +167,8 @@ const validateMenuUpdate = [
         .withMessage('Entity ID is required when entity type is specified (except for page)')
         .isInt()
         .withMessage('Entity ID must be a number')
-        .toInt(),
+        .toInt()
+        .custom(ensureUniqueEntityReference),
 
     body('original')
         .if(body('entity_type').equals('page'))
