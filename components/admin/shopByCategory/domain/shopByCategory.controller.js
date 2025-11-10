@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { ShopByCategory, Category, sequelize } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
-const { uploadFiletToS3 } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, deleteFile } = require("../../../../library/s3/s3Helper");
 const path = require("path");
 
 /**
@@ -265,6 +265,39 @@ module.exports.updateShopByCategory = async (req, res, next) => {
         if (error.name === 'SequelizeUniqueConstraintError') {
             return errorResponse(res, { message: "Category ID already exists" }, "Category ID already exists", 400);
         }
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Removes the uploaded image for a Shop By Category entry.
+ */
+module.exports.removeShopByCategoryImage = async (req, res, next) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const shopByCategory = await ShopByCategory.findByPk(id);
+
+        if (!shopByCategory) {
+            await t.rollback();
+            return errorResponse(res, { message: "Shop by category not found" }, "Shop by category not found", 404);
+        }
+
+        if (!shopByCategory.image_url) {
+            await t.rollback();
+            return errorResponse(res, { message: "No image to remove" }, "No image to remove", 400);
+        }
+
+        const imageKey = shopByCategory.image_url.split(".amazonaws.com/")[1];
+
+        await deleteFile(imageKey);
+
+        await shopByCategory.update({ image_url: null }, { transaction: t });
+
+        await t.commit();
+        return successResponse(res, shopByCategory, "Shop by category image removed successfully");
+    } catch (error) {
+        await t.rollback();
         return errorResponse(res, error, error.message);
     }
 };
