@@ -1,4 +1,31 @@
 const { check, param } = require('express-validator');
+const { Op } = require('sequelize');
+const db = require('../../../../models');
+const { PopularCategory } = db;
+
+const ensureUniquePopularCategory = async (value, { req }) => {
+    if (value === undefined || value === null) {
+        return true;
+    }
+
+    const where = { category_id: value };
+    const currentId = req.params?.id ? Number(req.params.id) : null;
+
+    if (currentId) {
+        where.id = { [Op.ne]: currentId };
+    }
+
+    const existing = await PopularCategory.findOne({
+        where,
+        paranoid: false
+    });
+
+    if (existing) {
+        throw new Error('Popular category already exists for this category');
+    }
+
+    return true;
+};
 
 const popularCategoryIdValidation = [
     param('id')
@@ -11,7 +38,8 @@ const createPopularCategoryValidation = [
         .isInt()
         .withMessage('Category ID must be an integer')
         .notEmpty()
-        .withMessage('Category ID is required'),
+        .withMessage('Category ID is required')
+        .custom(ensureUniquePopularCategory),
     check('title')
         .trim()
         .notEmpty()
@@ -39,7 +67,8 @@ const updatePopularCategoryValidation = [
     check('category_id')
         .optional()
         .isInt()
-        .withMessage('Category ID must be an integer'),
+        .withMessage('Category ID must be an integer')
+        .custom(ensureUniquePopularCategory),
     check('title')
         .optional()
         .trim()
