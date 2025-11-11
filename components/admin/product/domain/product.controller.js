@@ -453,7 +453,7 @@ module.exports.getProductById = async (req, res, next) => {
                     as: "variants",
                     attributes: [
                         "id", "product_id", "slug", "price", "regular_price", "discount_price",
-                        "purchase_price", "weight", "length", "width", "height", "description",
+                        "purchase_price", "weight", "length", "width", "height", "description","sku",
                         "barcode", "stock", "low_stock_threshold", "stock_status", "status"
                     ],
                     include: [
