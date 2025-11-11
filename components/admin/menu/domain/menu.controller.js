@@ -152,6 +152,76 @@ const uploadMenuImage = async (file) => {
 };
 
 /**
+ * Ensure an alphabet menu entry exists under a given parent.
+ */
+const ensureLetterMenu = async ({ parentId, letter, updatedBy }, transaction) => {
+    const existing = await Menu.findOne({
+        where: {
+            menu_parent: parentId,
+            entity_type: 'page',
+            original: '#',
+            label: letter
+        },
+        transaction
+    });
+
+    if (existing) {
+        return existing;
+    }
+
+    const order = await getNextOrder(parentId);
+
+    return Menu.create({
+        label: letter,
+        menu_parent: parentId,
+        entity_type: 'page',
+        entity_id: null,
+        original: '#',
+        order,
+        status: true,
+        hide_text: false,
+        hide_mobile_view: false,
+        hide_desktop_view: false,
+        updated_by: updatedBy
+    }, { transaction });
+};
+
+/**
+ * Ensure a product menu entry exists under a letter menu.
+ */
+const ensureProductMenu = async ({ letterMenuId, product, updatedBy }, transaction) => {
+    const existing = await Menu.findOne({
+        where: {
+            menu_parent: letterMenuId,
+            entity_type: 'product',
+            entity_id: product.id
+        },
+        transaction
+    });
+
+    if (existing) {
+        return existing;
+    }
+
+    const productSlug = await getEntitySlug('product', product.id, product.slug);
+    const order = await getNextOrder(letterMenuId);
+
+    return Menu.create({
+        label: product.name,
+        menu_parent: letterMenuId,
+        entity_type: 'product',
+        entity_id: product.id,
+        original: productSlug,
+        order,
+        status: true,
+        hide_text: false,
+        hide_mobile_view: false,
+        hide_desktop_view: false,
+        updated_by: updatedBy
+    }, { transaction });
+};
+
+/**
  * Remove auto-generated alphabet and product menus under a parent menu
  * @param {number} parentId - Parent menu ID
  * @param {Object} transaction - Sequelize transaction
@@ -739,11 +809,171 @@ const getAllMenusOrdered = async (req, res) => {
     }
 };
 
+/**
+ * Manually sync a single published product into all eligible category/brand menus.
+ */
+const syncProductMenu = async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    try {
+        const { productId: productIdFromBody } = req.body;
+        const productId = productIdFromBody ?? req.params.productId;
+
+        if (!productId) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'product_id is required' }, 'product_id is required', 400);
+        }
+
+        const { id: updatedBy } = req.user;
+
+        const product = await Product.findOne({
+            where: {
+                id: productId,
+                deletedAt: null
+            },
+            attributes: ['id', 'name', 'slug', 'status'],
+            include: [
+                {
+                    model: Category,
+                    as: 'Categories',
+                    attributes: ['id', 'name'],
+                    through: { attributes: [] }
+                },
+                {
+                    model: Brand,
+                    as: 'Brands',
+                    attributes: ['id', 'name'],
+                    through: { attributes: [] }
+                }
+            ],
+            transaction
+        });
+
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'Product not found' }, 'Product not found', 404);
+        }
+
+        if (product.status !== 'published') {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                { message: 'Product must be published before syncing to menus' },
+                'Product is not published',
+                400
+            );
+        }
+
+        const trimmedName = (product.name || '').trim();
+        const firstLetter = trimmedName.charAt(0).toUpperCase();
+
+        if (!firstLetter.match(/^[A-Z]$/)) {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                { message: 'Product name must start with an alphabet letter (A-Z) to be listed under menus' },
+                'Invalid product name',
+                400
+            );
+        }
+
+        const categoryIds = (product.Categories || []).map(item => item.id);
+        const brandIds = (product.Brands || []).map(item => item.id);
+
+        const anchors = [];
+
+        if (categoryIds.length) {
+            const categoryMenus = await Menu.findAll({
+                where: {
+                    entity_type: 'category',
+                    entity_id: { [Op.in]: categoryIds },
+                    status: true,
+                    list_on_active_product: true
+                },
+                transaction
+            });
+            anchors.push(...categoryMenus);
+        }
+
+        if (brandIds.length) {
+            const brandMenus = await Menu.findAll({
+                where: {
+                    entity_type: 'brand',
+                    entity_id: { [Op.in]: brandIds },
+                    status: true,
+                    list_on_active_product: true
+                },
+                transaction
+            });
+            anchors.push(...brandMenus);
+        }
+
+        if (!anchors.length) {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                { message: 'No eligible category/brand menus with list_on_active_product enabled were found for this product' },
+                'No menus available',
+                400
+            );
+        }
+
+        // Remove stale product entries before re-creating them.
+        await Menu.destroy({
+            where: {
+                entity_type: 'product',
+                entity_id: product.id
+            },
+            transaction
+        });
+
+        const processed = [];
+
+        for (const anchor of anchors) {
+            const letterMenu = await ensureLetterMenu(
+                { parentId: anchor.id, letter: firstLetter, updatedBy },
+                transaction
+            );
+
+            const productMenu = await ensureProductMenu(
+                { letterMenuId: letterMenu.id, product, updatedBy },
+                transaction
+            );
+
+            processed.push({
+                parent_menu_id: anchor.id,
+                parent_menu_label: anchor.label,
+                letter: firstLetter,
+                letter_menu_id: letterMenu.id,
+                product_menu_id: productMenu.id
+            });
+        }
+
+        await transaction.commit();
+        return successResponse(
+            res,
+            {
+                product: {
+                    id: product.id,
+                    name: product.name,
+                    slug: product.slug
+                },
+                processed
+            },
+            'Product synced to menus successfully'
+        );
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Error syncing product menu:', error);
+        return errorResponse(res, error, 'Failed to sync product menu');
+    }
+};
+
 module.exports = {
     getMenus,
     createMenu,
     updateMenu,
     deleteMenu,
     reorderMenus,
-    getAllMenusOrdered
+    getAllMenusOrdered,
+    syncProductMenu
 }; 

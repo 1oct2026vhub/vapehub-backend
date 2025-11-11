@@ -246,6 +246,15 @@ const validateMenuFilters = [
         .trim()
 ];
 
+const validateMenuProductSync = [
+    body('productId')
+        .notEmpty()
+        .withMessage('productId is required')
+        .isInt()
+        .withMessage('productId must be a number')
+        .toInt()
+];
+
 const storage = multer.memoryStorage();
 
 const upload = multer({
@@ -292,5 +301,6 @@ module.exports = {
     validateMenuUpdate,
     validateMenuReorder,
     validateMenuFilters,
+    validateMenuProductSync,
     uploadFileValidation
 };

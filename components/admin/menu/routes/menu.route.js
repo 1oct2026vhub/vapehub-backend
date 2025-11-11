@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const menuController = require("../domain/menu.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
-const { validateMenuCreate, validateMenuUpdate, validateMenuReorder, validateMenuFilters, uploadFileValidation } = require("../helper/menu.validator");
+const { validateMenuCreate, validateMenuUpdate, validateMenuReorder, validateMenuFilters, validateMenuProductSync, uploadFileValidation } = require("../helper/menu.validator");
 const { param, query } = require("express-validator");
 
 // Middleware for all routes
@@ -351,6 +351,43 @@ router.delete('/:id',
 router.patch('/reorder', 
     [adminAuth, validateRequest(validateMenuReorder)],
     menuController.reorderMenus
+);
+
+/**
+ * @swagger
+ * /api/admin/menus/sync-product:
+ *   post:
+ *     summary: Ensure a published product is listed under eligible category/brand menus
+ *     tags:
+ *       - ADMIN - Menus
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - productId
+ *             properties:
+ *               productId:
+ *                 type: integer
+ *                 description: Product ID to sync
+ *     responses:
+ *       200:
+ *         description: Product synced to menus successfully
+ *       400:
+ *         description: Validation or business rule error
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+    '/sync-product',
+    [adminAuth, validateRequest(validateMenuProductSync)],
+    menuController.syncProductMenu
 );
 
 module.exports = router; 
