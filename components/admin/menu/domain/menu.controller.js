@@ -295,8 +295,8 @@ const createMenu = async (req, res) => {
                 await transaction.rollback();
                 return errorResponse(
                     res,
-                    { message: `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists` },
-                    `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists`,
+                    { message: `Menu with same entityid already exists` },
+                    `Menu with same entity id already exists`,
                     409
                 );
             }
@@ -376,8 +376,8 @@ const updateMenu = async (req, res) => {
                 await transaction.rollback();
                 return errorResponse(
                     res,
-                    { message: `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists` },
-                    `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists`,
+                    { message: `Menu with same entity id already exists` },
+                    `Menu with same entity id already exists`,
                     409
                 );
             }

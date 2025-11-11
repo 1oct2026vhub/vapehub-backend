@@ -39,6 +39,18 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       comment: 'Subtitle of the feature content'
     },
+    link: {
+      type: DataTypes.STRING(1024),
+      allowNull: true,
+      comment: 'Optional external link for the feature content',
+      validate: {
+        isUrl(value) {
+          if (value && !/^https?:\/\//i.test(value)) {
+            throw new Error('Link must be a valid URL starting with http or https');
+          }
+        }
+      }
+    },
     icon_id: {
       type: DataTypes.INTEGER,
       allowNull: true,

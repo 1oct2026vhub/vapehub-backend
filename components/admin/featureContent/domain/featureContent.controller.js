@@ -65,7 +65,6 @@ module.exports.listAllFeatureContent = async (req, res) => {
 
     // Convert deleted string to boolean - properly handle undefined, 'true', 'false', '0', '1', true, false
     const showDeleted = deleted === 'true' || deleted === '1' || deleted === true;
-    console.log("showDeleted>>>", showDeleted);
     
     // Add deleted filter to whereCondition
     if (deleted !== undefined) {
@@ -163,7 +162,7 @@ module.exports.getFeatureContentById = async (req, res) => {
 
 module.exports.createFeatureContent = async (req, res) => {
   try {
-    const { title, subtitle, status = 'active', icon_id } = req.body;
+    const { title, subtitle, status = 'active', icon_id, link } = req.body;
     const userId = req.user.id;
 
     // Validate icon_id if provided
@@ -179,6 +178,7 @@ module.exports.createFeatureContent = async (req, res) => {
       subtitle,
       status,
       icon_id,
+      link,
       updated_by: userId
     });
 
@@ -210,7 +210,7 @@ module.exports.createFeatureContent = async (req, res) => {
 module.exports.updateFeatureContent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, subtitle, status, icon_id } = req.body;
+    const { title, subtitle, status, icon_id, link } = req.body;
     const userId = req.user.id;
 
     const featureContent = await FeatureContent.findByPk(id, {
@@ -241,6 +241,7 @@ module.exports.updateFeatureContent = async (req, res) => {
       subtitle,
       status,
       icon_id,
+      link,
       updated_by: userId
     });
 
