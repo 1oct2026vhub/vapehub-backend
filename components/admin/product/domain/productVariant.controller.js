@@ -1458,7 +1458,8 @@ module.exports.getVariantById = async (req, res) => {
                 'status',
                 'description',
                 'created_at',
-                'updated_at'
+                'updated_at',
+                'sku'
             ],
             include: [
                 {
