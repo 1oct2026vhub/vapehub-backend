@@ -2485,6 +2485,7 @@ module.exports.updateProductStatus = async (req, res, next) => {
         }
 
         if (status !== 'published') {
+            await removeProductMenus(productId, transaction);
             await transaction.commit();
             return successResponse(
                 res,
