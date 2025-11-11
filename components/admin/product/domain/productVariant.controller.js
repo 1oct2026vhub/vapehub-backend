@@ -1198,7 +1198,7 @@ module.exports.getProductVariants = async (req, res) => {
             where: { product_id },
             attributes: [
                 'id', 'product_id', 'slug', 'price', 'regular_price', 'discount_price',
-                'purchase_price', 'stock', 'stock_status', 'status', 'barcode',
+                'purchase_price', 'stock', 'stock_status', 'status', 'barcode','sku',
                 'weight', 'length', 'width', 'height', 'description', 'created_at', 'updated_at', 'low_stock_threshold'
             ],
             include: [
