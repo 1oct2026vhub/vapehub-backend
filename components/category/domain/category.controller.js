@@ -475,18 +475,22 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     statusCode: 400,
                 };
             }
+
+            // Always scope queries to the resolved category
+            req.query.categories = `${category.id}`;
+
             if(homepage){
                 // Use optimized category-specific query instead of fetchProducts
                 const optimizedResult = await fetchCategoryProducts(category.id, req.query);
                 return successResponse(res, optimizedResult, "Success");
             }
-            else{
-                // Use fetchProducts from product helper for non-homepage requests
-                const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
-                return successResponse(res, {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination}, "Success");
-            }
         }
-        // const { products, attributes,filters, price_ranges, brands, pagination } = await fetchProducts(req.query);
+
+        // Ensure brand filter only persists when explicitly set (e.g., via productId flow)
+        if (!req.query.brand) {
+            delete req.query.brand;
+        }
+
         const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
 
         return successResponse(res, { 
