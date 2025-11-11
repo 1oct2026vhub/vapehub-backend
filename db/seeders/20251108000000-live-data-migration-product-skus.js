@@ -64,7 +64,7 @@ module.exports = {
 
         info(`Processing record ${index + 1}/${skuRows.length}: product_id=${productId}, sku=${sku}`);
 
-        const [productUpdateResult] = await queryInterface.sequelize.query(
+        const [, productUpdateMeta] = await queryInterface.sequelize.query(
           `
             UPDATE products
             SET sku = ?, updatedAt = NOW()
@@ -77,11 +77,9 @@ module.exports = {
         );
 
         const productAffectedRows =
-          typeof productUpdateResult?.affectedRows === 'number'
-            ? productUpdateResult.affectedRows
-            : typeof productUpdateResult === 'number'
-              ? productUpdateResult
-              : productUpdateResult?.rowCount || 0;
+          productUpdateMeta?.affectedRows ??
+          productUpdateMeta?.rowCount ??
+          0;
 
         if (productAffectedRows > 0) {
           updatedCount += productAffectedRows;
@@ -92,7 +90,7 @@ module.exports = {
           continue;
         }
 
-        const [variantUpdateResult] = await queryInterface.sequelize.query(
+        const [, variantUpdateMeta] = await queryInterface.sequelize.query(
           `
             UPDATE product_variants
             SET sku = ?, updated_at = NOW()
@@ -105,11 +103,9 @@ module.exports = {
         );
 
         const variantAffectedRows =
-          typeof variantUpdateResult?.affectedRows === 'number'
-            ? variantUpdateResult.affectedRows
-            : typeof variantUpdateResult === 'number'
-              ? variantUpdateResult
-              : variantUpdateResult?.rowCount || 0;
+          variantUpdateMeta?.affectedRows ??
+          variantUpdateMeta?.rowCount ??
+          0;
 
         if (variantAffectedRows > 0) {
           variantsUpdated += variantAffectedRows;
