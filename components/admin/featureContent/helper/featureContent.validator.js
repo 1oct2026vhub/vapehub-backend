@@ -23,6 +23,15 @@ const featureContentValidation = [
         .withMessage('Subtitle is required')
         .isLength({ max: 500 })
         .withMessage('Subtitle must be less than 500 characters'),
+
+    body('link')
+        .optional({ checkFalsy: true })
+        .trim()
+        .isLength({ max: 1024 })
+        .withMessage('Link must be less than 1024 characters')
+        .bail()
+        .isURL({ protocols: ['http', 'https'], require_protocol: true })
+        .withMessage('Link must be a valid URL'),
     
     body('icon_id')
         .optional()
@@ -52,6 +61,15 @@ const featureContentUpdateValidation = [
         .withMessage('Subtitle cannot be empty')
         .isLength({ max: 500 })
         .withMessage('Subtitle must be less than 500 characters'),
+
+    body('link')
+        .optional({ checkFalsy: true })
+        .trim()
+        .isLength({ max: 1024 })
+        .withMessage('Link must be less than 1024 characters')
+        .bail()
+        .isURL({ protocols: ['http', 'https'], require_protocol: true })
+        .withMessage('Link must be a valid URL'),
     
     body('icon_id')
         .optional()
@@ -83,8 +101,8 @@ const filterValidations = [
     
     query('sort')
         .optional()
-        .isIn(['id', 'title', 'subtitle', 'status', 'createdAt', 'updatedAt'])
-        .withMessage('Sort must be one of: id, title, subtitle, status, createdAt, updatedAt'),
+        .isIn(['id', 'title', 'subtitle', 'link', 'status', 'createdAt', 'updatedAt'])
+        .withMessage('Sort must be one of: id, title, subtitle, link, status, createdAt, updatedAt'),
     
     query('order')
         .optional()

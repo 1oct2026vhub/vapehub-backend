@@ -40,7 +40,7 @@ const {
  *         name: sort
  *         schema:
  *           type: string
- *           enum: [id, title, subtitle, status, createdAt, updatedAt]
+ *           enum: [id, title, subtitle, link, status, createdAt, updatedAt]
  *           default: createdAt
  *       - in: query
  *         name: order
@@ -363,6 +363,11 @@ router.delete("/icons/:id",
  *                 type: string
  *                 maxLength: 500
  *                 description: Feature content subtitle
+ *               link:
+ *                 type: string
+ *                 maxLength: 1024
+ *                 format: uri
+ *                 description: Optional URL associated with the feature content (must start with http/https)
  *               icon_id:
  *                 type: integer
  *                 description: ID of the icon from FeatureContentIcon table
@@ -393,6 +398,10 @@ router.delete("/icons/:id",
  *                           type: string
  *                         subtitle:
  *                           type: string
+ *                         link:
+ *                           type: string
+ *                           nullable: true
+ *                           description: Optional URL associated with the feature content
  *                         status:
  *                           type: string
  *                           enum: [active, inactive]
@@ -551,6 +560,10 @@ router.put("/bulk-restore",
  *                           type: string
  *                         subtitle:
  *                           type: string
+ *                         link:
+ *                           type: string
+ *                           nullable: true
+ *                           description: Optional URL associated with the feature content
  *                         status:
  *                           type: string
  *                           enum: [active, inactive]
@@ -639,6 +652,11 @@ router.get("/:id",
  *                 type: string
  *                 enum: [active, inactive]
  *                 description: Feature content status
+ *               link:
+ *                 type: string
+ *                 maxLength: 1024
+ *                 format: uri
+ *                 description: Optional URL associated with the feature content (must start with http/https)
  *     responses:
  *       200:
  *         description: Feature content updated successfully
@@ -654,6 +672,7 @@ router.get("/:id",
  *                   properties:
  *                     featureContent:
  *                       $ref: '#/components/schemas/FeatureContent'
+ *                       description: Returns the feature content with the updated link value when provided
  *       404:
  *         description: Feature content not found or icon not found (if invalid icon_id provided)
  *       400:
