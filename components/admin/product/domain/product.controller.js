@@ -203,6 +203,7 @@ module.exports.listAllProducts = async (req, res, next) => {
                 attributes: [
                     "id",
                     "product_id",
+                    "sku",
                     "slug",
                     "price",
                     "discount_price",
