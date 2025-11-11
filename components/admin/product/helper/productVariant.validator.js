@@ -305,6 +305,12 @@ const createProductVariantsValidator = [
         .trim()
         .isLength({ min: 3, max: 100 })
         .withMessage('Variant slug must be between 3 and 100 characters'),
+    body('variants.*.sku')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Variant SKU must be between 1 and 100 characters'),
     body('variants.*.regular_price')
         .notEmpty()
         .withMessage('Regular price is required')
@@ -389,6 +395,12 @@ const updateProductVariantValidator = [
         .trim()
         .isLength({ min: 3, max: 100 })
         .withMessage('Variant slug must be between 3 and 100 characters'),
+    body('sku')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Variant SKU must be between 1 and 100 characters'),
     body('regular_price')
         .optional()
         .isFloat({ min: 0 })
