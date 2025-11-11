@@ -1,12 +1,18 @@
 // responseUtils.js
 
 // Success response function
-const successResponse = (res, data, message = "Request successful", statusCode = 200) => {
-    res.status(statusCode).json({
+const successResponse = (res, data, message = "Request successful", statusCode = 200, extra) => {
+    const responseBody = {
         success: true,
-        message: message,
-        data: data
-    });
+        message,
+        data
+    };
+
+    if (extra && typeof extra === 'object' && !Array.isArray(extra)) {
+        Object.assign(responseBody, extra);
+    }
+
+    res.status(statusCode).json(responseBody);
 };
 
 // Error response function

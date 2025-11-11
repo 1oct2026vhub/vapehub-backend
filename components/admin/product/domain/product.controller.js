@@ -11,6 +11,70 @@ const SeoService = require('../../seo/domain/seo.service');
 
 const slugManager = new SlugManager(SlugRelation);
 
+const formatMenuDetails = (menuInstance) => {
+    if (!menuInstance) {
+        return null;
+    }
+
+    const menu = typeof menuInstance.get === 'function'
+        ? menuInstance.get({ plain: true })
+        : menuInstance;
+
+    return {
+        id: menu.id,
+        label: menu.label,
+        original: menu.original,
+        status: menu.status,
+        menu_parent: menu.menu_parent,
+        order: menu.order,
+        show_image: menu.show_image,
+        image_url: menu.image_url,
+        icon: menu.icon,
+        icon_position: menu.icon_position,
+        hide_text: menu.hide_text,
+        hide_mobile_view: menu.hide_mobile_view,
+        hide_desktop_view: menu.hide_desktop_view,
+        list_on_active_product: menu.list_on_active_product,
+        created_at: menu.createdAt,
+        updated_at: menu.updatedAt
+    };
+};
+
+const buildMenuAssociationPayload = (records, entityKey, menuRows) => {
+    if (!records?.length) {
+        return [];
+    }
+
+    const menuMap = new Map();
+    menuRows.forEach((row) => {
+        const entityId = row.entity_id;
+        if (!menuMap.has(entityId)) {
+            menuMap.set(entityId, []);
+        }
+        menuMap.get(entityId).push(row);
+    });
+
+    const entityMap = new Map();
+    records.forEach((record) => {
+        const entity = record?.[entityKey];
+        if (!entity || entityMap.has(entity.id)) {
+            return;
+        }
+
+        const relatedMenus = menuMap.get(entity.id) || [];
+        entityMap.set(entity.id, {
+            id: entity.id,
+            name: entity.name,
+            slug: entity.slug,
+            isOnMenu: relatedMenus.length > 0,
+            hasListOnActiveProduct: relatedMenus.some(menu => menu.list_on_active_product),
+            menuItems: relatedMenus.map(formatMenuDetails)
+        });
+    });
+
+    return Array.from(entityMap.values());
+};
+
 const removeProductMenus = async (productId, transaction) => {
     const productMenus = await Menu.findAll({
         where: {
@@ -2420,8 +2484,96 @@ module.exports.updateProductStatus = async (req, res, next) => {
             }
         }
 
+        if (status !== 'published') {
+            await transaction.commit();
+            return successResponse(
+                res,
+                {
+                    product: {
+                        id: product.id,
+                        name: product.name,
+                        status
+                    }
+                },
+                "Product status updated successfully",
+                200,
+                { isOnMenu: false }
+            );
+        }
+
+        const categoryIds = productCategories
+            .map(item => item?.Category?.id)
+            .filter(Boolean);
+
+        const brandIds = productBrands
+            .map(item => item?.Brand?.id)
+            .filter(Boolean);
+
+        const [categoryMenus, brandMenus] = await Promise.all([
+            categoryIds.length
+                ? Menu.findAll({
+                    where: {
+                        entity_type: 'category',
+                        entity_id: { [Op.in]: categoryIds }
+                    },
+                    transaction
+                })
+                : [],
+            brandIds.length
+                ? Menu.findAll({
+                    where: {
+                        entity_type: 'brand',
+                        entity_id: { [Op.in]: brandIds }
+                    },
+                    transaction
+                })
+                : []
+        ]);
+
+        const categoryAssociations = buildMenuAssociationPayload(
+            productCategories,
+            'Category',
+            categoryMenus
+        );
+        const brandAssociations = buildMenuAssociationPayload(
+            productBrands,
+            'Brand',
+            brandMenus
+        );
+
+        const filteredCategoryAssociations = categoryAssociations.filter(
+            item => item.isOnMenu || item.hasListOnActiveProduct
+        );
+        const filteredBrandAssociations = brandAssociations.filter(
+            item => item.isOnMenu || item.hasListOnActiveProduct
+        );
+
+        const hasCategoryAssociation = filteredCategoryAssociations.length > 0;
+        const hasBrandAssociation = filteredBrandAssociations.length > 0;
+
+        const responsePayload = {
+            product: {
+                id: product.id,
+                name: product.name,
+                status
+            },
+            menuAssociations: {
+                hasAssociation: hasCategoryAssociation || hasBrandAssociation,
+                hasCategoryAssociation,
+                hasBrandAssociation,
+                categories: filteredCategoryAssociations,
+                brands: filteredBrandAssociations
+            }
+        };
+
         await transaction.commit();
-        return successResponse(res, { message: "Product status updated successfully" });
+        return successResponse(
+            res,
+            responsePayload,
+            "Product status updated successfully",
+            200,
+            { isOnMenu: responsePayload.menuAssociations.hasAssociation }
+        );
     } catch (error) {
         console.log(error);
         await transaction.rollback();
