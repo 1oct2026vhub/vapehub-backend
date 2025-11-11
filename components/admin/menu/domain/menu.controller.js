@@ -282,6 +282,26 @@ const createMenu = async (req, res) => {
         const menuData = req.body;
         menuData.updated_by = req.user.id;
 
+        if (menuData.entity_type && menuData.entity_type !== 'page' && menuData.entity_id) {
+            const existingMenu = await Menu.findOne({
+                where: {
+                    entity_type: menuData.entity_type,
+                    entity_id: menuData.entity_id
+                },
+                transaction
+            });
+
+            if (existingMenu) {
+                await transaction.rollback();
+                return errorResponse(
+                    res,
+                    { message: `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists` },
+                    `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists`,
+                    409
+                );
+            }
+        }
+
         // Process entity data
         await processEntityData(menuData, transaction);
         
@@ -340,6 +360,27 @@ const updateMenu = async (req, res) => {
         if (!menu) {
             await transaction.rollback();
             return errorResponse(res, null, 'Menu item not found', 404);
+        }
+
+        if (menuData.entity_type && menuData.entity_type !== 'page' && menuData.entity_id) {
+            const existingMenu = await Menu.findOne({
+                where: {
+                    entity_type: menuData.entity_type,
+                    entity_id: menuData.entity_id,
+                    id: { [Op.ne]: id }
+                },
+                transaction
+            });
+
+            if (existingMenu) {
+                await transaction.rollback();
+                return errorResponse(
+                    res,
+                    { message: `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists` },
+                    `Menu with entity_type '${menuData.entity_type}' and entity_id '${menuData.entity_id}' already exists`,
+                    409
+                );
+            }
         }
 
         // Process entity data
