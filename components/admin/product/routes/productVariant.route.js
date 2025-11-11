@@ -289,6 +289,9 @@ router.get('/:variant_id',
  *                     slug:
  *                       type: string
  *                       description: Unique identifier for the variant
+ *                     sku:
+ *                       type: string
+ *                       description: Unique SKU for the variant
  *                     regular_price:
  *                       type: number
  *                       format: decimal
@@ -741,6 +744,9 @@ router.post('/product/:product_id/variants',
  *               slug:
  *                 type: string
  *                 description: Unique identifier for the variant
+ *               sku:
+ *                 type: string
+ *                 description: Unique SKU for the variant
  *               regular_price:
  *                 type: number
  *                 format: decimal
