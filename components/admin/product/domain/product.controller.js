@@ -852,17 +852,9 @@ module.exports.createProduct = async (req, res, next) => {
         // Clean the name and slug
         const cleanName = name.trim();
         const cleanSlug = slug.toLowerCase().trim();
-        const cleanSku = sku.trim();
-
-        if (!cleanSku) {
-            await transaction.rollback();
-            return errorResponse(
-                res,
-                { message: "SKU cannot be empty" },
-                "Invalid SKU",
-                400
-            );
-        }
+        const cleanSku = sku === undefined || sku === null
+            ? null
+            : String(sku).trim() || null;
 
         // Validate categories if provided
         if (category_ids && category_ids.length > 0) {
@@ -941,28 +933,30 @@ module.exports.createProduct = async (req, res, next) => {
             );
         }
 
-        const existingProductSku = await Product.findOne({
-            where: {
-                sku: cleanSku
-            },
-            transaction
-        });
-
-        if (existingProductSku) {
-            await transaction.rollback();
-            return errorResponse(
-                res,
-                {
-                    message: "This SKU already exists in another product",
-                    existing_product: {
-                        id: existingProductSku.id,
-                        name: existingProductSku.name,
-                        sku: existingProductSku.sku
-                    }
+        if (cleanSku) {
+            const existingProductSku = await Product.findOne({
+                where: {
+                    sku: cleanSku
                 },
-                "Duplicate product SKU",
-                400
-            );
+                transaction
+            });
+
+            if (existingProductSku) {
+                await transaction.rollback();
+                return errorResponse(
+                    res,
+                    {
+                        message: "This SKU already exists in another product",
+                        existing_product: {
+                            id: existingProductSku.id,
+                            name: existingProductSku.name,
+                            sku: existingProductSku.sku
+                        }
+                    },
+                    "Duplicate product SKU",
+                    400
+                );
+            }
         }
 
         // Create the product record
@@ -1122,38 +1116,36 @@ module.exports.updateProduct = async (req, res, next) => {
         // Clean the input values if provided
         const cleanName = name?.trim();
         const cleanSlug = slug?.toLowerCase().trim();
-        const cleanSku = sku === undefined ? undefined : String(sku).trim();
+        const cleanSku = sku === undefined
+            ? undefined
+            : sku === null
+                ? null
+                : String(sku).trim() || null;
 
-        if (sku !== undefined) {
-            if (!cleanSku) {
+        if (sku !== undefined && cleanSku && cleanSku !== product.sku) {
+            const existingProductSku = await Product.findOne({
+                where: {
+                    sku: cleanSku,
+                    id: { [Op.ne]: id }
+                },
+                transaction
+            });
+
+            if (existingProductSku) {
                 await transaction.rollback();
-                return errorResponse(res, { message: "SKU cannot be empty" }, "Invalid SKU", 400);
-            }
-            if (cleanSku !== product.sku) {
-                const existingProductSku = await Product.findOne({
-                    where: {
-                        sku: cleanSku,
-                        id: { [Op.ne]: id }
+                return errorResponse(
+                    res,
+                    {
+                        message: "Product with this SKU already exists",
+                        existing_product: {
+                            id: existingProductSku.id,
+                            name: existingProductSku.name,
+                            sku: existingProductSku.sku
+                        }
                     },
-                    transaction
-                });
-
-                if (existingProductSku) {
-                    await transaction.rollback();
-                    return errorResponse(
-                        res,
-                        {
-                            message: "Product with this SKU already exists",
-                            existing_product: {
-                                id: existingProductSku.id,
-                                name: existingProductSku.name,
-                                sku: existingProductSku.sku
-                            }
-                        },
-                        "Duplicate product SKU",
-                        400
-                    );
-                }
+                    "Duplicate product SKU",
+                    400
+                );
             }
         }
 
