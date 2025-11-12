@@ -46,7 +46,17 @@ const createProductValidation = [
 const updateProductValidations = [
     check('name').optional().isString().withMessage('Name must be a string'),
     check('slug').optional().isString().withMessage('Slug must be a string'),
-    check('sku').optional().isString().withMessage('SKU must be a string').notEmpty().withMessage('SKU cannot be empty'),
+    check('sku')
+        .optional({ nullable: true })
+        .custom(value => {
+            if (value === null) {
+                return true;
+            }
+            if (typeof value !== 'string' && typeof value !== 'number') {
+                throw new Error('SKU must be a string');
+            }
+            return true;
+        }),
     check('description').optional().isString().withMessage('Description must be a string'),
     check('category_ids')
         .optional()
