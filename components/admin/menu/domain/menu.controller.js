@@ -885,9 +885,7 @@ const syncProductMenu = async (req, res) => {
             const categoryMenus = await Menu.findAll({
                 where: {
                     entity_type: 'category',
-                    entity_id: { [Op.in]: categoryIds },
-                    status: true,
-                    list_on_active_product: true
+                    entity_id: { [Op.in]: categoryIds }
                 },
                 transaction
             });
@@ -898,9 +896,7 @@ const syncProductMenu = async (req, res) => {
             const brandMenus = await Menu.findAll({
                 where: {
                     entity_type: 'brand',
-                    entity_id: { [Op.in]: brandIds },
-                    status: true,
-                    list_on_active_product: true
+                    entity_id: { [Op.in]: brandIds }
                 },
                 transaction
             });
@@ -911,7 +907,7 @@ const syncProductMenu = async (req, res) => {
             await transaction.rollback();
             return errorResponse(
                 res,
-                { message: 'No eligible category/brand menus with list_on_active_product enabled were found for this product' },
+                { message: 'No eligible category or brand menus found for this product' },
                 'No menus available',
                 400
             );
