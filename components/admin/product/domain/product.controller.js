@@ -849,17 +849,6 @@ module.exports.createProduct = async (req, res, next) => {
 
         const { id: updated_by } = req.user;
 
-        // Validate required fields
-        if (!name || !slug || !sku) {
-            await transaction.rollback();
-            return errorResponse(
-                res, 
-                { message: "Name, slug and sku are required" }, 
-                "Missing required fields",
-                400
-            );
-        }
-
         // Clean the name and slug
         const cleanName = name.trim();
         const cleanSlug = slug.toLowerCase().trim();
