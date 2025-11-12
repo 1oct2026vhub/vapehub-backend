@@ -10,7 +10,6 @@ const productIdValidation = [
 const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
-    check('sku').isString().withMessage('SKU must be a string').notEmpty().withMessage('SKU is required'),
     check('description').optional().isString().withMessage('Description must be a string'),
     check('category_ids')
         .optional()

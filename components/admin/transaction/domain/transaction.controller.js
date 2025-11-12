@@ -102,13 +102,13 @@ exports.getTransactionDetails = async (req, res) => {
                 { 
                   model: Product, 
                   as: 'product', 
-                  attributes: ['id', 'name', 'slug'], 
+                  attributes: ['id', 'name', 'slug', 'sku'], 
                   paranoid: false 
                 },
                 { 
                   model: ProductVariant, 
                   as: 'variant', 
-                  attributes: ['id', 'barcode', 'price', 'slug', 'stock'], 
+                  attributes: ['id', 'barcode', 'price', 'slug', 'stock', 'sku'], 
                   paranoid: false,
                   where: {
                     id: { [Op.col]: 'order->orderItems.variant_id' }
