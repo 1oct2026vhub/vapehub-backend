@@ -208,7 +208,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                         {
                             model: Product,
                             as: 'product',
-                            attributes: ['id', 'name', 'slug'],
+                            attributes: ['id', 'name', 'slug', 'sku'],
                             required: false,
                             paranoid: false,
                             include: [
@@ -224,7 +224,7 @@ module.exports.listAllOrders = async (req, res, next) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'slug'],
+                            attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
                             required: false,
                             paranoid: false,
                             where: {
@@ -302,7 +302,7 @@ module.exports.getOrderById = async (req, res, next) => {
                         {
                             model: Product,
                             as: 'product',
-                            attributes: ['id', 'name', 'slug', 'description'],
+                            attributes: ['id', 'name', 'slug', 'sku', 'description'],
                             paranoid: false,
                             include: [
                                 {
@@ -317,7 +317,7 @@ module.exports.getOrderById = async (req, res, next) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'stock', 'slug'],
+                            attributes: ['id', 'barcode', 'price', 'stock', 'slug', 'sku'],
                             paranoid: false,
                             where: {
                                 id: { [Op.col]: 'orderItems.variant_id' }
