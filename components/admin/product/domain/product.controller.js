@@ -1312,6 +1312,34 @@ module.exports.updateProduct = async (req, res, next) => {
             await product.update(updatedFields, { transaction });
         }
 
+        // Get old categories and brands before updating (for menu cleanup)
+        let oldCategoryIds = [];
+        let oldBrandIds = [];
+        if (category_ids !== undefined || brand_ids !== undefined) {
+            const oldProduct = await Product.findByPk(id, {
+                include: [
+                    {
+                        model: Category,
+                        as: 'Categories',
+                        attributes: ['id'],
+                        through: { attributes: [] }
+                    },
+                    {
+                        model: Brand,
+                        as: 'Brands',
+                        attributes: ['id'],
+                        through: { attributes: [] }
+                    }
+                ],
+                transaction
+            });
+            
+            if (oldProduct) {
+                oldCategoryIds = (oldProduct.Categories || []).map(cat => cat.id);
+                oldBrandIds = (oldProduct.Brands || []).map(brand => brand.id);
+            }
+        }
+
         // Update category associations if provided
         if (category_ids !== undefined) {
             // Remove existing category associations
@@ -1354,15 +1382,92 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Sync product to menus if categories/brands were updated and product is published
-        // Only syncs to menus where category/brand is listed (entity_id and entity_type match)
+        // Handle menu cleanup and sync when categories/brands are updated
         if ((category_ids !== undefined || brand_ids !== undefined)) {
+            // Get new category and brand IDs after update
+            const newCategoryIds = category_ids !== undefined 
+                ? (category_ids && category_ids.length > 0 
+                    ? (Array.isArray(category_ids) ? category_ids : [category_ids])
+                    : [])
+                : oldCategoryIds;
+            
+            const newBrandIds = brand_ids !== undefined
+                ? (brand_ids && brand_ids.length > 0
+                    ? (Array.isArray(brand_ids) ? brand_ids : [brand_ids])
+                    : [])
+                : oldBrandIds;
+
+            // Find removed categories and brands
+            const removedCategoryIds = oldCategoryIds.filter(id => !newCategoryIds.includes(id));
+            const removedBrandIds = oldBrandIds.filter(id => !newBrandIds.includes(id));
+
+            // Remove product menus from removed category/brand menus
+            if (removedCategoryIds.length > 0 || removedBrandIds.length > 0) {
+                try {
+                    // Find category/brand menus for removed entities
+                    const removedEntityMenus = await Menu.findAll({
+                        where: {
+                            [Op.or]: [
+                                {
+                                    entity_type: 'category',
+                                    entity_id: { [Op.in]: removedCategoryIds }
+                                },
+                                {
+                                    entity_type: 'brand',
+                                    entity_id: { [Op.in]: removedBrandIds }
+                                }
+                            ]
+                        },
+                        attributes: ['id'],
+                        transaction
+                    });
+
+                    if (removedEntityMenus.length > 0) {
+                        const removedMenuIds = removedEntityMenus.map(menu => menu.id);
+                        
+                        // Find letter menus under these category/brand menus
+                        const letterMenus = await Menu.findAll({
+                            where: {
+                                menu_parent: { [Op.in]: removedMenuIds },
+                                entity_type: 'page'
+                            },
+                            attributes: ['id'],
+                            transaction
+                        });
+
+                        if (letterMenus.length > 0) {
+                            const letterMenuIds = letterMenus.map(menu => menu.id);
+                            
+                            // Remove product menus under these letter menus
+                            await Menu.destroy({
+                                where: {
+                                    menu_parent: { [Op.in]: letterMenuIds },
+                                    entity_type: 'product',
+                                    entity_id: id
+                                },
+                                transaction
+                            });
+                        }
+                    }
+                } catch (cleanupError) {
+                    // Log error but don't fail the update
+                    logger.warn('Error cleaning up product menus from removed categories/brands:', {
+                        error: cleanupError.message,
+                        productId: id,
+                        removedCategoryIds,
+                        removedBrandIds
+                    });
+                }
+            }
+
             // Fetch the current product status
             const currentProduct = await Product.findByPk(id, { 
                 attributes: ['status'],
                 transaction 
             });
             
+            // Sync product to menus if product is published
+            // This will add product to new category/brand menus
             if (currentProduct && currentProduct.status === 'published') {
                 try {
                     await syncProductToMenus(id, transaction, updated_by);
