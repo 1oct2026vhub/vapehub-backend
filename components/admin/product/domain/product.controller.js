@@ -1303,6 +1303,7 @@ module.exports.updateProduct = async (req, res, next) => {
         updatedFields.updated_by = updated_by;
 
         // Update SEO metadata when slug changes (only if SEO metadata exists)
+        
         if (cleanSlug && product.slug !== cleanSlug) {
             try {
                 const existingSeoMeta = await SeoMeta.findOne({
