@@ -1008,10 +1008,18 @@ const syncProductToMenus = async (productId, transaction, updatedBy) => {
         anchors.push(...validBrandMenus);
     }
 
-    // If no anchors, product is removed from all menus (already deleted above)
     if (!anchors.length) {
-        return { synced: true, processed: [], reason: 'Product removed from all menus - no categories/brands with menu entries' };
+        return { synced: false, reason: 'No eligible category or brand menus found' };
     }
+
+    // Remove stale product entries before re-creating them
+    await Menu.destroy({
+        where: {
+            entity_type: 'product',
+            entity_id: product.id
+        },
+        transaction
+    });
 
     const processed = [];
 
