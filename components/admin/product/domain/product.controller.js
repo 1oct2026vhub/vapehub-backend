@@ -1302,29 +1302,17 @@ module.exports.updateProduct = async (req, res, next) => {
 
         updatedFields.updated_by = updated_by;
 
-        // Update SEO metadata when slug changes (only if SEO metadata exists)
-        
+        // Check if SEO metadata exists for slug update (within transaction)
+        let shouldUpdateSeoSlug = false;
         if (cleanSlug && product.slug !== cleanSlug) {
-            try {
-                const existingSeoMeta = await SeoMeta.findOne({
-                    where: {
-                        entityType: 'product',
-                        entityId: id
-                    },
-                    transaction
-                });
-                
-                if (existingSeoMeta) {
-                    await SeoService.updateSeoSlug('product', id, cleanSlug);
-                }
-            } catch (seoError) {
-                // Log error but don't fail the product update
-                logger.warn('Error updating SEO slug during product update:', {
-                    error: seoError.message,
-                    productId: id,
-                    slug: cleanSlug
-                });
-            }
+            const existingSeoMeta = await SeoMeta.findOne({
+                where: {
+                    entityType: 'product',
+                    entityId: id
+                },
+                transaction
+            });
+            shouldUpdateSeoSlug = !!existingSeoMeta;
         }
 
         // Update only if there are changes
@@ -1512,7 +1500,7 @@ module.exports.updateProduct = async (req, res, next) => {
 
             }, { where: { entity_id: id } }, { transaction });
         }
-        // Fetch the updated product with related models
+        // Fetch the updated product with related models (within transaction)
         const updatedProduct = await Product.findByPk(id, {
             include: [
                 { 
@@ -1537,32 +1525,46 @@ module.exports.updateProduct = async (req, res, next) => {
                     as: "variants",
                     attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
                 }
-            ]
+            ],
+            transaction
         });
 
-        // Update SEO noIndex based on product status (only if SEO metadata exists)
-        try {
-            const existingSeoMeta = await SeoMeta.findOne({
-                where: {
-                    entityType: 'product',
-                    entityId: id
-                },
-                transaction
-            });
+        // Check if SEO metadata exists for noIndex update (within transaction)
+        const existingSeoMeta = await SeoMeta.findOne({
+            where: {
+                entityType: 'product',
+                entityId: id
+            },
+            transaction
+        });
 
-            if (existingSeoMeta) {
-                await SeoService.updateProductNoIndex(id, updatedProduct.status);
-            }
-        } catch (seoError) {
-            // Log error but don't fail the product update
-            logger.warn('Error updating SEO noIndex during product update:', {
-                error: seoError.message,
-                productId: id,
-                status: updatedProduct.status
+        const shouldUpdateSeoNoIndex = !!existingSeoMeta;
+        const productStatus = updatedProduct.status;
+
+        // Commit transaction FIRST to avoid conflicts
+        await transaction.commit();
+
+        // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
+        if (shouldUpdateSeoSlug && cleanSlug) {
+            SeoService.updateSeoSlug('product', id, cleanSlug).catch(seoError => {
+                logger.warn('Error updating SEO slug during product update:', {
+                    error: seoError.message,
+                    productId: id,
+                    slug: cleanSlug
+                });
             });
         }
 
-        await transaction.commit();
+        if (shouldUpdateSeoNoIndex) {
+            SeoService.updateProductNoIndex(id, productStatus).catch(seoError => {
+                logger.warn('Error updating SEO noIndex during product update:', {
+                    error: seoError.message,
+                    productId: id,
+                    status: productStatus
+                });
+            });
+        }
+
         return successResponse(res, updatedProduct, "Product updated successfully");
     } catch (error) {
         await transaction.rollback();
@@ -2604,40 +2606,23 @@ module.exports.updateProductStatus = async (req, res, next) => {
             updated_by
         }, { transaction });
 
-        // Update SEO noIndex based on product status (only if SEO metadata exists)
-        try {
-            const existingSeoMeta = await SeoMeta.findOne({
-                where: {
-                    entityType: 'product',
-                    entityId: productId
-                },
-                transaction
-            });
+        // Check if SEO metadata exists (within transaction)
+        const existingSeoMeta = await SeoMeta.findOne({
+            where: {
+                entityType: 'product',
+                entityId: productId
+            },
+            transaction
+        });
 
-            if (existingSeoMeta) {
-                await SeoService.updateProductNoIndex(productId, status);
-            }
-        } catch (seoError) {
-            // Log error but don't fail the product status update
-            logger.warn('Error updating SEO noIndex during product status update:', {
-                error: seoError.message,
-                productId: productId,
-                status: status
-            });
-        }
+        const shouldUpdateSeoNoIndex = !!existingSeoMeta;
 
-        // Update category and brand SEO based on product status
+        // Get category and brand IDs for SEO updates (within transaction)
         const productCategories = await ProductCategory.findAll({
             where: { product_id: productId },
             include: [{ model: Category, as: 'Category' }],
             transaction
         });
-
-        for (const productCategory of productCategories) {
-            if (productCategory.Category) {
-                await SeoService.updateCategoryNoIndex(productCategory.Category.id);
-            }
-        }
 
         const productBrands = await ProductBrand.findAll({
             where: { product_id: productId },
@@ -2645,15 +2630,49 @@ module.exports.updateProductStatus = async (req, res, next) => {
             transaction
         });
 
-        for (const productBrand of productBrands) {
-            if (productBrand.Brand) {
-                await SeoService.updateBrandNoIndex(productBrand.Brand.id);
-            }
-        }
+        // Store category and brand IDs for SEO updates after transaction
+        const categoryIdsForSeo = productCategories
+            .filter(pc => pc.Category)
+            .map(pc => pc.Category.id);
+        
+        const brandIdsForSeo = productBrands
+            .filter(pb => pb.Brand)
+            .map(pb => pb.Brand.id);
 
         if (status !== 'published') {
             await removeProductMenus(productId, transaction);
             await transaction.commit();
+
+            // Update SEO AFTER transaction commit (non-blocking)
+            if (shouldUpdateSeoNoIndex) {
+                SeoService.updateProductNoIndex(productId, status).catch(seoError => {
+                    logger.warn('Error updating SEO noIndex during product status update:', {
+                        error: seoError.message,
+                        productId: productId,
+                        status: status
+                    });
+                });
+            }
+
+            // Update category and brand SEO (non-blocking)
+            categoryIdsForSeo.forEach(categoryId => {
+                SeoService.updateCategoryNoIndex(categoryId).catch(seoError => {
+                    logger.warn('Error updating category SEO noIndex:', {
+                        error: seoError.message,
+                        categoryId: categoryId
+                    });
+                });
+            });
+
+            brandIdsForSeo.forEach(brandId => {
+                SeoService.updateBrandNoIndex(brandId).catch(seoError => {
+                    logger.warn('Error updating brand SEO noIndex:', {
+                        error: seoError.message,
+                        brandId: brandId
+                    });
+                });
+            });
+
             return successResponse(
                 res,
                 {
@@ -2735,6 +2754,37 @@ module.exports.updateProductStatus = async (req, res, next) => {
         };
 
         await transaction.commit();
+
+        // Update SEO AFTER transaction commit (non-blocking)
+        if (shouldUpdateSeoNoIndex) {
+            SeoService.updateProductNoIndex(productId, status).catch(seoError => {
+                logger.warn('Error updating SEO noIndex during product status update:', {
+                    error: seoError.message,
+                    productId: productId,
+                    status: status
+                });
+            });
+        }
+
+        // Update category and brand SEO (non-blocking)
+        categoryIdsForSeo.forEach(categoryId => {
+            SeoService.updateCategoryNoIndex(categoryId).catch(seoError => {
+                logger.warn('Error updating category SEO noIndex:', {
+                    error: seoError.message,
+                    categoryId: categoryId
+                });
+            });
+        });
+
+        brandIdsForSeo.forEach(brandId => {
+            SeoService.updateBrandNoIndex(brandId).catch(seoError => {
+                logger.warn('Error updating brand SEO noIndex:', {
+                    error: seoError.message,
+                    brandId: brandId
+                });
+            });
+        });
+
         return successResponse(
             res,
             responsePayload,
