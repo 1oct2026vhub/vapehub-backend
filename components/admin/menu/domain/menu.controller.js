@@ -961,6 +961,16 @@ const syncProductToMenus = async (productId, transaction, updatedBy) => {
     const categoryIds = (product.Categories || []).map(item => item.id).filter(Boolean);
     const brandIds = (product.Brands || []).map(item => item.id).filter(Boolean);
 
+    // IMPORTANT: Delete ALL existing product menu entries FIRST
+    // This ensures removal from menus when categories/brands are removed
+    await Menu.destroy({
+        where: {
+            entity_type: 'product',
+            entity_id: product.id
+        },
+        transaction
+    });
+
     const anchors = [];
 
     // Find category menus - verify entity_type is 'category' AND entity_id matches the category ID
@@ -999,18 +1009,10 @@ const syncProductToMenus = async (productId, transaction, updatedBy) => {
         anchors.push(...validBrandMenus);
     }
 
+    // If no anchors, product is removed from all menus (already deleted above)
     if (!anchors.length) {
-        return { synced: false, reason: 'No eligible category or brand menus found' };
+        return { synced: true, processed: [], reason: 'Product removed from all menus - no categories/brands with menu entries' };
     }
-
-    // Remove stale product entries before re-creating them
-    await Menu.destroy({
-        where: {
-            entity_type: 'product',
-            entity_id: product.id
-        },
-        transaction
-    });
 
     const processed = [];
 
