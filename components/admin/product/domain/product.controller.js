@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, SeoMeta } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -1302,9 +1302,19 @@ module.exports.updateProduct = async (req, res, next) => {
 
         updatedFields.updated_by = updated_by;
 
-        // Update SEO metadata when slug changes
+        // Update SEO metadata when slug changes (only if SEO metadata exists)
         if (cleanSlug && product.slug !== cleanSlug) {
-            await SeoService.updateSeoSlug('product', id, cleanSlug);
+            const existingSeoMeta = await SeoMeta.findOne({
+                where: {
+                    entityType: 'product',
+                    entityId: id
+                },
+                transaction
+            });
+            
+            if (existingSeoMeta) {
+                await SeoService.updateSeoSlug('product', id, cleanSlug);
+            }
         }
 
         // Update only if there are changes
@@ -1520,8 +1530,18 @@ module.exports.updateProduct = async (req, res, next) => {
             ]
         });
 
-        // Update SEO noIndex based on product status
-        await SeoService.updateProductNoIndex(id, updatedProduct.status);
+        // Update SEO noIndex based on product status (only if SEO metadata exists)
+        const existingSeoMeta = await SeoMeta.findOne({
+            where: {
+                entityType: 'product',
+                entityId: id
+            },
+            transaction
+        });
+
+        if (existingSeoMeta) {
+            await SeoService.updateProductNoIndex(id, updatedProduct.status);
+        }
 
         await transaction.commit();
         return successResponse(res, updatedProduct, "Product updated successfully");
@@ -2565,8 +2585,18 @@ module.exports.updateProductStatus = async (req, res, next) => {
             updated_by
         }, { transaction });
 
-        // Update SEO noIndex based on product status
-        await SeoService.updateProductNoIndex(productId, status);
+        // Update SEO noIndex based on product status (only if SEO metadata exists)
+        const existingSeoMeta = await SeoMeta.findOne({
+            where: {
+                entityType: 'product',
+                entityId: productId
+            },
+            transaction
+        });
+
+        if (existingSeoMeta) {
+            await SeoService.updateProductNoIndex(productId, status);
+        }
 
         // Update category and brand SEO based on product status
         const productCategories = await ProductCategory.findAll({
