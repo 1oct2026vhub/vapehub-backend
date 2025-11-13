@@ -8,6 +8,7 @@ const { processProductImageInMultipleSizes } = require("../../../../library/imag
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
+const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -1350,6 +1351,28 @@ module.exports.updateProduct = async (req, res, next) => {
                 }));
                 
                 await ProductBrand.bulkCreate(brandData, { transaction });
+            }
+        }
+
+        // Sync product to menus if categories/brands were updated and product is published
+        // Only syncs to menus where category/brand is listed (entity_id and entity_type match)
+        if ((category_ids !== undefined || brand_ids !== undefined)) {
+            // Fetch the current product status
+            const currentProduct = await Product.findByPk(id, { 
+                attributes: ['status'],
+                transaction 
+            });
+            
+            if (currentProduct && currentProduct.status === 'published') {
+                try {
+                    await syncProductToMenus(id, transaction, updated_by);
+                } catch (syncError) {
+                    // Log error but don't fail the update
+                    logger.warn('Error syncing product to menus after category/brand update:', {
+                        error: syncError.message,
+                        productId: id
+                    });
+                }
             }
         }
 

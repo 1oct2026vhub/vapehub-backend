@@ -912,6 +912,143 @@ const getAllMenusOrdered = async (req, res) => {
 };
 
 /**
+ * Sync a published product to category/brand menus (helper function)
+ * Validates that category/brand IDs match menu entity_id with corresponding entity_type
+ * @param {number} productId - Product ID
+ * @param {Object} transaction - Sequelize transaction
+ * @param {number} updatedBy - User ID who is making the update
+ * @returns {Promise<Object>} - Result with processed menu information
+ */
+const syncProductToMenus = async (productId, transaction, updatedBy) => {
+    const product = await Product.findOne({
+        where: {
+            id: productId,
+            deletedAt: null
+        },
+        attributes: ['id', 'name', 'slug', 'status'],
+        include: [
+            {
+                model: Category,
+                as: 'Categories',
+                attributes: ['id', 'name'],
+                through: { attributes: [] }
+            },
+            {
+                model: Brand,
+                as: 'Brands',
+                attributes: ['id', 'name'],
+                through: { attributes: [] }
+            }
+        ],
+        transaction
+    });
+
+    if (!product) {
+        throw new Error('Product not found');
+    }
+
+    if (product.status !== 'published') {
+        return { synced: false, reason: 'Product is not published' };
+    }
+
+    const trimmedName = (product.name || '').trim();
+    const firstLetter = trimmedName.charAt(0).toUpperCase();
+
+    if (!firstLetter.match(/^[A-Z]$/)) {
+        return { synced: false, reason: 'Product name must start with an alphabet letter (A-Z)' };
+    }
+
+    const categoryIds = (product.Categories || []).map(item => item.id).filter(Boolean);
+    const brandIds = (product.Brands || []).map(item => item.id).filter(Boolean);
+
+    const anchors = [];
+
+    // Find category menus - verify entity_type is 'category' AND entity_id matches the category ID
+    if (categoryIds.length) {
+        const categoryMenus = await Menu.findAll({
+            where: {
+                entity_type: 'category',
+                entity_id: { [Op.in]: categoryIds }
+            },
+            transaction
+        });
+
+        // Validate each menu's entity_id matches an actual category ID
+        const validCategoryMenus = categoryMenus.filter(menu => {
+            return categoryIds.includes(menu.entity_id) && menu.entity_type === 'category';
+        });
+
+        anchors.push(...validCategoryMenus);
+    }
+
+    // Find brand menus - verify entity_type is 'brand' AND entity_id matches the brand ID
+    if (brandIds.length) {
+        const brandMenus = await Menu.findAll({
+            where: {
+                entity_type: 'brand',
+                entity_id: { [Op.in]: brandIds }
+            },
+            transaction
+        });
+
+        // Validate each menu's entity_id matches an actual brand ID
+        const validBrandMenus = brandMenus.filter(menu => {
+            return brandIds.includes(menu.entity_id) && menu.entity_type === 'brand';
+        });
+
+        anchors.push(...validBrandMenus);
+    }
+
+    if (!anchors.length) {
+        return { synced: false, reason: 'No eligible category or brand menus found' };
+    }
+
+    // Remove stale product entries before re-creating them
+    await Menu.destroy({
+        where: {
+            entity_type: 'product',
+            entity_id: product.id
+        },
+        transaction
+    });
+
+    const processed = [];
+
+    for (const anchor of anchors) {
+        // Final validation: Ensure anchor has correct entity_type and entity_id
+        const isValidAnchor = 
+            (anchor.entity_type === 'category' && categoryIds.includes(anchor.entity_id)) ||
+            (anchor.entity_type === 'brand' && brandIds.includes(anchor.entity_id));
+
+        if (!isValidAnchor) {
+            continue; // Skip invalid anchors
+        }
+
+        const letterMenu = await ensureLetterMenu(
+            { parentId: anchor.id, letter: firstLetter, updatedBy },
+            transaction
+        );
+
+        const productMenu = await ensureProductMenu(
+            { letterMenuId: letterMenu.id, product, updatedBy },
+            transaction
+        );
+
+        processed.push({
+            parent_menu_id: anchor.id,
+            parent_menu_label: anchor.label,
+            entity_type: anchor.entity_type,
+            entity_id: anchor.entity_id,
+            letter: firstLetter,
+            letter_menu_id: letterMenu.id,
+            product_menu_id: productMenu.id
+        });
+    }
+
+    return { synced: true, processed };
+};
+
+/**
  * Manually sync a single published product into all eligible category/brand menus.
  */
 const syncProductMenu = async (req, res) => {
@@ -1073,5 +1210,6 @@ module.exports = {
     deleteMenu,
     reorderMenus,
     getAllMenusOrdered,
-    syncProductMenu
+    syncProductMenu,
+    syncProductToMenus
 }; 
