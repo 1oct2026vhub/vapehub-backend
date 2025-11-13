@@ -93,6 +93,101 @@ const getNextOrder = async (parentId) => {
 };
 
 /**
+ * Get the correct order position for an alphabet menu and reorder if needed
+ * @param {number|null} parentId - Parent menu ID
+ * @param {string} letter - The letter to insert (A-Z)
+ * @param {Object} transaction - Sequelize transaction
+ * @returns {Promise<number>} - Correct order value for alphabetical insertion
+ */
+const getAlphabetMenuOrder = async (parentId, letter, transaction) => {
+    // Get all existing alphabet menus
+    const existingLetterMenus = await Menu.findAll({
+        where: {
+            menu_parent: parentId,
+            entity_type: 'page',
+            original: '#'
+        },
+        order: [['order', 'ASC']],
+        transaction
+    });
+
+    // Filter to only valid A-Z letters
+    const validLetterMenus = existingLetterMenus.filter(menu => {
+        const label = (menu.label || '').trim();
+        return label.length === 1 && label >= 'A' && label <= 'Z';
+    });
+
+    // Add the new letter to the list
+    const allLetters = validLetterMenus.map(m => m.label.trim().toUpperCase());
+    allLetters.push(letter.toUpperCase());
+    
+    // Sort alphabetically
+    allLetters.sort();
+    
+    // Find the index of the new letter
+    const insertIndex = allLetters.indexOf(letter.toUpperCase());
+    
+    // If no existing menus, return 0
+    if (validLetterMenus.length === 0) {
+        return 0;
+    }
+    
+    // If inserting at the end, use getNextOrder
+    if (insertIndex === allLetters.length - 1) {
+        return await getNextOrder(parentId);
+    }
+    
+    // If inserting at the beginning
+    if (insertIndex === 0) {
+        return 0;
+    }
+    
+    // Inserting in the middle - use the order of the menu that should come after
+    // We'll reorder after insertion to maintain proper spacing
+    const nextLetter = allLetters[insertIndex + 1];
+    const nextMenu = validLetterMenus.find(m => 
+        m.label.trim().toUpperCase() === nextLetter
+    );
+    
+    return nextMenu ? nextMenu.order : await getNextOrder(parentId);
+};
+
+/**
+ * Reorder all alphabet menus to maintain proper alphabetical order with integer spacing
+ * @param {number|null} parentId - Parent menu ID
+ * @param {Object} transaction - Sequelize transaction
+ */
+const reorderAlphabetMenus = async (parentId, transaction) => {
+    const letterMenus = await Menu.findAll({
+        where: {
+            menu_parent: parentId,
+            entity_type: 'page',
+            original: '#'
+        },
+        order: [['order', 'ASC']],
+        transaction
+    });
+
+    // Filter to only valid A-Z letters
+    const validLetterMenus = letterMenus.filter(menu => {
+        const label = (menu.label || '').trim();
+        return label.length === 1 && label >= 'A' && label <= 'Z';
+    });
+
+    // Sort by label alphabetically
+    validLetterMenus.sort((a, b) => {
+        const labelA = (a.label || '').trim().toUpperCase();
+        const labelB = (b.label || '').trim().toUpperCase();
+        return labelA.localeCompare(labelB);
+    });
+
+    // Reassign orders sequentially (0, 1, 2, 3, ...)
+    for (let i = 0; i < validLetterMenus.length; i++) {
+        await validLetterMenus[i].update({ order: i }, { transaction });
+    }
+};
+
+/**
  * Normalize incoming image URL values from request payloads
  * @param {string|null|undefined} value
  * @returns {string|null|undefined}
@@ -169,9 +264,11 @@ const ensureLetterMenu = async ({ parentId, letter, updatedBy }, transaction) =>
         return existing;
     }
 
-    const order = await getNextOrder(parentId);
+    // Get the correct alphabetical order position
+    const order = await getAlphabetMenuOrder(parentId, letter, transaction);
 
-    return Menu.create({
+    // Create the new letter menu
+    const newMenu = await Menu.create({
         label: letter,
         menu_parent: parentId,
         entity_type: 'page',
@@ -184,6 +281,11 @@ const ensureLetterMenu = async ({ parentId, letter, updatedBy }, transaction) =>
         hide_desktop_view: false,
         updated_by: updatedBy
     }, { transaction });
+
+    // Reorder all alphabet menus to maintain proper integer spacing
+    await reorderAlphabetMenus(parentId, transaction);
+
+    return newMenu;
 };
 
 /**
