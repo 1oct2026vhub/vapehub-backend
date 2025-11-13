@@ -961,8 +961,7 @@ const syncProductToMenus = async (productId, transaction, updatedBy) => {
     const categoryIds = (product.Categories || []).map(item => item.id).filter(Boolean);
     const brandIds = (product.Brands || []).map(item => item.id).filter(Boolean);
 
-    // IMPORTANT: Delete ALL existing product menu entries FIRST
-    // This ensures removal from menus when categories/brands are removed
+    // IMPORTANT: Delete ALL existing product menu entries FIRST, This ensures removal from menus when categories/brands are removed
     await Menu.destroy({
         where: {
             entity_type: 'product',
