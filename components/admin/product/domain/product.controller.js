@@ -1304,16 +1304,25 @@ module.exports.updateProduct = async (req, res, next) => {
 
         // Update SEO metadata when slug changes (only if SEO metadata exists)
         if (cleanSlug && product.slug !== cleanSlug) {
-            const existingSeoMeta = await SeoMeta.findOne({
-                where: {
-                    entityType: 'product',
-                    entityId: id
-                },
-                transaction
-            });
-            
-            if (existingSeoMeta) {
-                await SeoService.updateSeoSlug('product', id, cleanSlug);
+            try {
+                const existingSeoMeta = await SeoMeta.findOne({
+                    where: {
+                        entityType: 'product',
+                        entityId: id
+                    },
+                    transaction
+                });
+                
+                if (existingSeoMeta) {
+                    await SeoService.updateSeoSlug('product', id, cleanSlug);
+                }
+            } catch (seoError) {
+                // Log error but don't fail the product update
+                logger.warn('Error updating SEO slug during product update:', {
+                    error: seoError.message,
+                    productId: id,
+                    slug: cleanSlug
+                });
             }
         }
 
@@ -1531,16 +1540,25 @@ module.exports.updateProduct = async (req, res, next) => {
         });
 
         // Update SEO noIndex based on product status (only if SEO metadata exists)
-        const existingSeoMeta = await SeoMeta.findOne({
-            where: {
-                entityType: 'product',
-                entityId: id
-            },
-            transaction
-        });
+        try {
+            const existingSeoMeta = await SeoMeta.findOne({
+                where: {
+                    entityType: 'product',
+                    entityId: id
+                },
+                transaction
+            });
 
-        if (existingSeoMeta) {
-            await SeoService.updateProductNoIndex(id, updatedProduct.status);
+            if (existingSeoMeta) {
+                await SeoService.updateProductNoIndex(id, updatedProduct.status);
+            }
+        } catch (seoError) {
+            // Log error but don't fail the product update
+            logger.warn('Error updating SEO noIndex during product update:', {
+                error: seoError.message,
+                productId: id,
+                status: updatedProduct.status
+            });
         }
 
         await transaction.commit();
@@ -2586,16 +2604,25 @@ module.exports.updateProductStatus = async (req, res, next) => {
         }, { transaction });
 
         // Update SEO noIndex based on product status (only if SEO metadata exists)
-        const existingSeoMeta = await SeoMeta.findOne({
-            where: {
-                entityType: 'product',
-                entityId: productId
-            },
-            transaction
-        });
+        try {
+            const existingSeoMeta = await SeoMeta.findOne({
+                where: {
+                    entityType: 'product',
+                    entityId: productId
+                },
+                transaction
+            });
 
-        if (existingSeoMeta) {
-            await SeoService.updateProductNoIndex(productId, status);
+            if (existingSeoMeta) {
+                await SeoService.updateProductNoIndex(productId, status);
+            }
+        } catch (seoError) {
+            // Log error but don't fail the product status update
+            logger.warn('Error updating SEO noIndex during product status update:', {
+                error: seoError.message,
+                productId: productId,
+                status: status
+            });
         }
 
         // Update category and brand SEO based on product status
