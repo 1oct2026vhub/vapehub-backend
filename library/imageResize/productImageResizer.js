@@ -79,12 +79,15 @@ const resizeImageToConfig = async (imageBuffer, config) => {
       resizeOptions = {
         width: config.width,
         height: config.height,
-        fit: config.fit || 'inside',
+        fit: 'inside',
         withoutEnlargement: true
       };
     } else if (config.maxWidth || config.maxHeight) {
       // Use max dimensions as constraints
-      if (metadata.width > config.maxWidth || metadata.height > config.maxHeight) {
+      if (
+        (config.maxWidth && metadata.width > config.maxWidth) ||
+        (config.maxHeight && metadata.height > config.maxHeight)
+      ) {
         resizeOptions = {
           width: config.maxWidth,
           height: config.maxHeight,
@@ -100,38 +103,32 @@ const resizeImageToConfig = async (imageBuffer, config) => {
       console.log(`🔄 Resizing product image with options:`, resizeOptions);
     }
     
-    // Apply format-specific optimizations
-    switch (config.format.toLowerCase()) {
+    const targetQuality = Math.min(config.quality ?? 98, 100);
+    const format = (config.format || metadata.format || 'jpeg').toLowerCase();
+
+    // Apply format-specific settings that preserve clarity
+    switch (format) {
       case 'jpeg':
       case 'jpg':
-        sharpInstance = sharpInstance
-          .jpeg({ 
-            quality: config.quality, 
-            progressive: true,
-            optimiseScans: true,
-            mozjpeg: true
-          });
+        sharpInstance = sharpInstance.jpeg({
+          quality: targetQuality,
+          progressive: true
+        });
         break;
       case 'png':
-        sharpInstance = sharpInstance
-          .png({ 
-            quality: config.quality,
-            progressive: true,
-            compressionLevel: 9,
-            adaptiveFiltering: true
-          });
+        sharpInstance = sharpInstance.png({
+          compressionLevel: 6
+        });
         break;
       case 'webp':
-        sharpInstance = sharpInstance
-          .webp({ 
-            quality: config.quality,
-            effort: 6,
-            smartSubsample: true
-          });
+        sharpInstance = sharpInstance.webp({
+          quality: targetQuality,
+          lossless: true
+        });
         break;
       default:
         // Default to JPEG for unknown formats
-        sharpInstance = sharpInstance.jpeg({ quality: config.quality, progressive: true });
+        sharpInstance = sharpInstance.jpeg({ quality: targetQuality, progressive: true });
     }
     
     const processedBuffer = await sharpInstance.toBuffer();
