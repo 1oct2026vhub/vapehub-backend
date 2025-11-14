@@ -1659,15 +1659,19 @@ module.exports.getFlashNews = async (req, res, next) => {
 module.exports.getTrustpilotReviews = async (req, res, next) => {
     try {
         const { page = 1, per_page = 10, stars } = req.query;
-        
+        const pageNumber = parseInt(page, 10) || 1;
+        const perPage = parseInt(per_page, 10) || 10;
+
         // Get access token and business unit ID
         const accessToken = await getAccessToken();
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Build query parameters
         const queryParams = {
-            page,
-            perPage: per_page,
+            page: pageNumber,
+            perPage,
+            orderBy: 'createdAt',
+            orderDir: 'desc',
             stars: stars || undefined
         };
 
@@ -1696,17 +1700,33 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
         const businessUnit = businessUnitResponse.data;
         const reviews = response.data.reviews || [];
 
-        // Sort reviews so that higher star ratings appear first
-        const sortedReviews = reviews.slice().sort((a, b) => (b?.stars || 0) - (a?.stars || 0));
+        const normalizedReviews = reviews.map(review => {
+            const resolvedStars = typeof review.stars === 'number' ? review.stars : 5;
+            return {
+                ...review,
+                resolvedStars
+            };
+        });
+
+        // Keep only 5-star or 4-star reviews, sorted with highest rating first
+        const filteredReviews = normalizedReviews
+            .filter(review => review.resolvedStars >= 4)
+            .sort((a, b) => {
+                if (b.resolvedStars !== a.resolvedStars) {
+                    return b.resolvedStars - a.resolvedStars;
+                }
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            })
+            .slice(0, 10);
 
         // Get score stars from business unit
         const scoreStars = businessUnit.score.stars;
         const trustScore = businessUnit.score.trustScore;
 
         // Process reviews with rating categorization
-        const processedReviews = sortedReviews.map(review => {
+        const processedReviews = filteredReviews.map(review => {
             let ratingCategory;
-            const stars = review.stars;
+            const stars = review.resolvedStars;
 
             if (stars < 2) {
                 ratingCategory = 'poor';
@@ -1720,7 +1740,7 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
 
             return {
                 id: review.id,
-                stars: review.stars,
+                stars,
                 title: review.title,
                 text: review.text,
                 createdAt: review.createdAt,
@@ -1761,8 +1781,8 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
             reviews: processedReviews,
             pagination: {
                 total: response.data.total,
-                page: parseInt(page),
-                per_page: parseInt(per_page)
+                page: pageNumber,
+                per_page: perPage
             },
             overallStats: {
                 averageRating: scoreStars,
