@@ -12,6 +12,41 @@ const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 
 const slugManager = new SlugManager(SlugRelation);
 
+const buildCanonicalUrl = (slug) => {
+    const baseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
+    if (!baseUrl || !slug) {
+        return null;
+    }
+
+    const normalizedSlug = slug.replace(/^\/+/, '');
+    return `${baseUrl}/${normalizedSlug}`;
+};
+
+const ensureProductSeoMeta = async ({
+    productId,
+    productName,
+    productDescription,
+    productStatus,
+    slug,
+    transaction
+}) => {
+    const normalizedSlug = slugManager.normalizeSlug(slug || '');
+
+    if (!normalizedSlug) {
+        throw new Error('A valid slug is required to create SEO metadata for this product');
+    }
+
+    return SeoMeta.create({
+        entityType: 'product',
+        entityId: productId,
+        title: productName || normalizedSlug,
+        description: productDescription || null,
+        slug: normalizedSlug,
+        canonicalUrl: buildCanonicalUrl(normalizedSlug),
+        noIndex: productStatus !== 'published'
+    }, { transaction });
+};
+
 const formatMenuDetails = (menuInstance) => {
     if (!menuInstance) {
         return null;
@@ -1305,15 +1340,33 @@ module.exports.updateProduct = async (req, res, next) => {
         // Check if SEO metadata exists for slug update (within transaction)
         let shouldUpdateSeoSlug = false;
         if (cleanSlug && product.slug !== cleanSlug) {
-            const existingSeoMeta = await SeoMeta.findOne({
-                where: {
-                    entityType: 'product',
-                    entityId: id
-                },
+            shouldUpdateSeoSlug = true;
+        }
+
+        let seoMetaExists = !!(await SeoMeta.findOne({
+            where: {
+                entityType: 'product',
+                entityId: id
+            },
+            transaction
+        }));
+
+        if (!seoMetaExists) {
+            const seoSlugSource = cleanSlug || product.slug;
+            await ensureProductSeoMeta({
+                productId: id,
+                productName: cleanName || product.name,
+                productDescription: description !== undefined
+                    ? (typeof description === 'string' ? description.trim() : description)
+                    : product.description,
+                productStatus: product.status,
+                slug: seoSlugSource,
                 transaction
             });
-            shouldUpdateSeoSlug = !!existingSeoMeta;
+            seoMetaExists = true;
         }
+
+        const shouldUpdateSeoNoIndex = seoMetaExists;
 
         // Update only if there are changes
         if (Object.keys(updatedFields).length > 0) {
@@ -1529,16 +1582,6 @@ module.exports.updateProduct = async (req, res, next) => {
             transaction
         });
 
-        // Check if SEO metadata exists for noIndex update (within transaction)
-        const existingSeoMeta = await SeoMeta.findOne({
-            where: {
-                entityType: 'product',
-                entityId: id
-            },
-            transaction
-        });
-
-        const shouldUpdateSeoNoIndex = !!existingSeoMeta;
         const productStatus = updatedProduct.status;
 
         // Commit transaction FIRST to avoid conflicts
