@@ -12,7 +12,7 @@ const slugManager = new SlugManager(SlugRelation);
  */
 module.exports.listAllBlogCategories = async (req, res, next) => {
     try {
-        let { page = 1, limit = 10, search, deleted = "false" } = req.query;
+        let { page = 1, limit = 10, search, deleted = "false", show_home_page } = req.query;
         page = parseInt(page);
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
@@ -29,18 +29,24 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
         // Add deleted condition for soft delete filtering
         whereCondition.deleted_at = deleted === "true" ? { [Op.ne]: null } : null;
 
+        if (show_home_page === "true") {
+            whereCondition.show_home_page = true;
+        } else if (show_home_page === "false") {
+            whereCondition.show_home_page = false;
+        }
+
         const { count, rows: categories } = await BlogCategory.findAndCountAll({
             where: whereCondition,
             include: [
                 {
                     model: BlogCategory,
                     as: 'parent',
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug', 'show_home_page']
                 },
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug', 'show_home_page']
                 }
             ],
             limit,
@@ -70,12 +76,12 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'parent',
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug', 'show_home_page']
                 },
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug']
+                    attributes: ['id', 'name', 'slug', 'show_home_page']
                 }
             ]
         });
@@ -94,7 +100,7 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
 module.exports.createBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -140,6 +146,7 @@ module.exports.createBlogCategory = async (req, res, next) => {
             description,
             image_url,
             status,
+            show_home_page: typeof show_home_page === "boolean" ? show_home_page : false,
             updated_by: req.user.id
         };
 
@@ -169,7 +176,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -238,6 +245,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             description,
             image_url,
             status,
+            show_home_page: typeof show_home_page === "boolean" ? show_home_page : category.show_home_page,
             updated_by: req.user.id
         };
 

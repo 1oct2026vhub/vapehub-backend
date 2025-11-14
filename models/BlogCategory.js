@@ -63,6 +63,11 @@ module.exports = (sequelize) => {
             type: DataTypes.ENUM('active', 'inactive'),
             defaultValue: 'active'
         },
+        show_home_page: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
         updated_by: {
             type: DataTypes.INTEGER,
             allowNull: false,
