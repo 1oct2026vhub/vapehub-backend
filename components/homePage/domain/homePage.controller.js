@@ -1661,6 +1661,7 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
         const { page = 1, per_page = 10, stars } = req.query;
         const pageNumber = parseInt(page, 10) || 1;
         const perPage = parseInt(per_page, 10) || 10;
+        const starsFilter = stars ? String(stars) : '4,5';
 
         // Get access token and business unit ID
         const accessToken = await getAccessToken();
@@ -1670,9 +1671,7 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
         const queryParams = {
             page: pageNumber,
             perPage,
-            orderBy: 'createdAt',
-            orderDir: 'desc',
-            stars: stars || undefined
+            stars: starsFilter
         };
 
         // Get reviews from Trustpilot API
