@@ -36,6 +36,11 @@ const {
  *           type: string
  *         description: Search categories by name, slug, or description
  *       - in: query
+ *         name: show_home_page
+ *         schema:
+ *           type: boolean
+ *         description: Filter categories based on the home page flag (true = show only categories meant for home page, false = show only others)
+ *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean
@@ -142,6 +147,10 @@ router.get('/:id', [authMiddleware(true), validateRequest(blogCategoryIdValidati
  *                 enum: [active, inactive]
  *                 default: active
  *                 description: Category status
+ *               show_home_page:
+ *                 type: boolean
+ *                 description: Flag indicating if the category should appear on the home page
+ *                 example: true
  *               image:
  *                 type: string
  *                 format: binary
@@ -279,6 +288,10 @@ router.put('/bulk-restore',
  *                 type: string
  *                 enum: [active, inactive]
  *                 description: Category status
+ *               show_home_page:
+ *                 type: boolean
+ *                 description: Flag indicating if the category should appear on the home page
+ *                 example: true
  *               image:
  *                 type: string
  *                 format: binary
