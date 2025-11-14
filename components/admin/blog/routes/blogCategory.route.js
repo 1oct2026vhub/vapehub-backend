@@ -142,6 +142,10 @@ router.get('/:id', [authMiddleware(true), validateRequest(blogCategoryIdValidati
  *                 enum: [active, inactive]
  *                 default: active
  *                 description: Category status
+ *               show_home_page:
+ *                 type: boolean
+ *                 description: Flag indicating if the category should appear on the home page
+ *                 example: true
  *               image:
  *                 type: string
  *                 format: binary
@@ -279,6 +283,10 @@ router.put('/bulk-restore',
  *                 type: string
  *                 enum: [active, inactive]
  *                 description: Category status
+ *               show_home_page:
+ *                 type: boolean
+ *                 description: Flag indicating if the category should appear on the home page
+ *                 example: true
  *               image:
  *                 type: string
  *                 format: binary

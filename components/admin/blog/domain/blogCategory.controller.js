@@ -94,7 +94,7 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
 module.exports.createBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -140,6 +140,7 @@ module.exports.createBlogCategory = async (req, res, next) => {
             description,
             image_url,
             status,
+            show_home_page: typeof show_home_page === "boolean" ? show_home_page : false,
             updated_by: req.user.id
         };
 
@@ -169,7 +170,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, description, status, parent_id: initialParentId, slug } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -238,6 +239,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             description,
             image_url,
             status,
+            show_home_page: typeof show_home_page === "boolean" ? show_home_page : category.show_home_page,
             updated_by: req.user.id
         };
 

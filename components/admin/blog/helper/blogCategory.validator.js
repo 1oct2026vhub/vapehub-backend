@@ -32,6 +32,11 @@ const blogCategoryValidation = [
         .optional()
         .isIn(['active', 'inactive'])
         .withMessage("Status must be either 'active' or 'inactive'"),
+    check("show_home_page")
+        .optional()
+        .isBoolean()
+        .withMessage("show_home_page must be a boolean")
+        .toBoolean(),
     check("parent_id")
         .optional({ nullable: true })
         .customSanitizer(value => {
@@ -76,6 +81,11 @@ const blogCategoryUpdatesValidation = [
         .optional()
         .isIn(['active', 'inactive'])
         .withMessage("Status must be either 'active' or 'inactive'"),
+    check("show_home_page")
+        .optional()
+        .isBoolean()
+        .withMessage("show_home_page must be a boolean")
+        .toBoolean(),
     check("parent_id")
         .optional({ nullable: true })
         .customSanitizer(value => {
