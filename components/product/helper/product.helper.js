@@ -330,7 +330,16 @@ const fetchProducts = async (query, status = 'published') => {
     // Build base where clause for Product
     const productWhereClause = {
       ...(keyword && { name: { [Op.like]: `%${keyword}%` } }),
-      status: status
+      status: status,
+      [Op.and]: [
+        Sequelize.literal(`EXISTS (
+          SELECT 1 
+          FROM product_variants pv_active
+          WHERE pv_active.product_id = Product.id
+            AND pv_active.status = 'active'
+            AND pv_active.deleted_at IS NULL
+        )`)
+      ]
     };
 
     // Add category and brand filtering using many-to-many relationships
