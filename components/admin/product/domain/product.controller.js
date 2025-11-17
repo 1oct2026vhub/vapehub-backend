@@ -1606,45 +1606,76 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
-        // Update slug if provided and changed
+        // Update slug if provided and changed (wrap in try-catch to prevent transaction hangs)
         if (cleanSlug) {
-            await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
+            try {
+                await slugManager.createOrUpdateSlug(cleanSlug, 'product', id, transaction);
+            } catch (slugError) {
+                logger.warn('Error updating slug relation during product update:', {
+                    error: slugError.message,
+                    productId: id,
+                    slug: cleanSlug
+                });
+                // Continue - slug relation can be updated later
+            }
         }
-        const menu = await Menu.findOne({ where: { entity_id: id} });
-        if (menu) {
-            await Menu.update({
-                original: `/${slug?.trim()}`,
 
-            }, { where: { entity_id: id } }, { transaction });
+        // Menu update (wrap in try-catch to prevent transaction hangs)
+        try {
+            const menu = await Menu.findOne({ where: { entity_id: id }, transaction });
+            if (menu && cleanSlug) {
+                await Menu.update({
+                    original: `/${cleanSlug.trim()}`
+                }, { where: { entity_id: id }, transaction });
+            }
+        } catch (menuError) {
+            logger.warn('Error updating menu during product update:', {
+                error: menuError.message,
+                productId: id
+            });
+            // Continue - menu can be updated later
         }
-        // Fetch the updated product with related models (within transaction)
-        const updatedProduct = await Product.findByPk(id, {
-            include: [
-                { 
-                    model: Category, 
-                    as: "Categories",
-                    attributes: ['id', 'name', 'slug'],
-                    through: { attributes: ['is_primary'] }
-                },
-                { 
-                    model: Brand, 
-                    as: "Brands",
-                    attributes: ['id', 'name', 'slug'],
-                    through: { attributes: ['is_primary'] }
-                },
-                { 
-                    model: ProductImage, 
-                    as: "ProductImages",
-                    attributes: ['id', 'image_url', 'is_primary']
-                },
-                {
-                    model: ProductVariant,
-                    as: "variants",
-                    attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
-                }
-            ],
-            transaction
-        });
+        // Fetch the updated product with related models (wrap in try-catch with fallback)
+        let updatedProduct;
+        try {
+            updatedProduct = await Product.findByPk(id, {
+                include: [
+                    { 
+                        model: Category, 
+                        as: "Categories",
+                        attributes: ['id', 'name', 'slug'],
+                        through: { attributes: ['is_primary'] }
+                    },
+                    { 
+                        model: Brand, 
+                        as: "Brands",
+                        attributes: ['id', 'name', 'slug'],
+                        through: { attributes: ['is_primary'] }
+                    },
+                    { 
+                        model: ProductImage, 
+                        as: "ProductImages",
+                        attributes: ['id', 'image_url', 'is_primary']
+                    },
+                    {
+                        model: ProductVariant,
+                        as: "variants",
+                        attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
+                    }
+                ],
+                transaction
+            });
+        } catch (fetchError) {
+            logger.warn('Error fetching updated product with relations, using fallback:', {
+                error: fetchError.message,
+                productId: id
+            });
+            // Fallback: fetch product without relations to ensure we can return something
+            updatedProduct = await Product.findByPk(id, { transaction });
+            if (!updatedProduct) {
+                throw new Error('Failed to fetch updated product');
+            }
+        }
 
         const productStatus = updatedProduct.status;
 
