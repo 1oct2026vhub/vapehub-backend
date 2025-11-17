@@ -1343,13 +1343,25 @@ module.exports.updateProduct = async (req, res, next) => {
             shouldUpdateSeoSlug = true;
         }
 
-        let seoMetaExists = !!(await SeoMeta.findOne({
-            where: {
-                entityType: 'product',
-                entityId: id
-            },
-            transaction
-        }));
+        // Wrap SEO check in try-catch to prevent transaction hangs if SEO query fails
+        let seoMetaExists = false;
+        try {
+            const existingSeoMeta = await SeoMeta.findOne({
+                where: {
+                    entityType: 'product',
+                    entityId: id
+                },
+                transaction
+            });
+            seoMetaExists = !!existingSeoMeta;
+        } catch (seoCheckError) {
+            // If SEO check fails, log but continue - don't block the update
+            logger.warn('Error checking SEO metadata during product update:', {
+                error: seoCheckError.message,
+                productId: id
+            });
+            seoMetaExists = false; // Assume no SEO exists to be safe
+        }
 
         if (!seoMetaExists) {
             const seoSlugSource = cleanSlug || product.slug;
