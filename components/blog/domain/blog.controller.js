@@ -237,13 +237,22 @@ module.exports.deleteBlog = async (req, res, next) => {
 
 module.exports.listAllCategories = async (req, res, next) => {
     try {
-        const { order = 'DESC' } = req.query;
+        const { order = 'DESC', show_home_page } = req.query;
         const sortOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+        
+        // Build where clause
+        const whereClause = {
+            status: 'active',
+            parent_id: null // Only get top-level categories
+        };
+        
+        // Add show_home_page filter if provided
+        if (show_home_page !== undefined) {
+            whereClause.show_home_page = show_home_page === 'true' || show_home_page === true;
+        }
+        
         const categories = await BlogCategory.findAll({
-            where: {
-                status: 'active',
-                parent_id: null // Only get top-level categories
-            },
+            where: whereClause,
             attributes: ['id', 'name', 'slug', 'description', 'image_url','show_home_page'],
             include: [
                 {
@@ -258,7 +267,10 @@ module.exports.listAllCategories = async (req, res, next) => {
                     as: 'children',
                     attributes: ['id', 'name', 'slug', 'description', 'image_url', 'parent_id','show_home_page'],
                     where: {
-                        status: 'active'
+                        status: 'active',
+                        ...(show_home_page !== undefined && {
+                            show_home_page: show_home_page === 'true' || show_home_page === true
+                        })
                     },
                     include: [
                         {
