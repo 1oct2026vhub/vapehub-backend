@@ -1357,17 +1357,50 @@ module.exports.updateProduct = async (req, res, next) => {
             // Only create SEO metadata if we have a valid slug
             if (seoSlugSource && seoSlugSource.trim()) {
                 try {
-                    await ensureProductSeoMeta({
-                        productId: id,
-                        productName: cleanName || product.name,
-                        productDescription: description !== undefined
-                            ? (typeof description === 'string' ? description.trim() : description)
-                            : product.description,
-                        productStatus: product.status,
-                        slug: seoSlugSource,
-                        transaction
-                    });
-                    seoMetaExists = true;
+                    const normalizedSlug = slugManager.normalizeSlug(seoSlugSource);
+                    
+                    if (!normalizedSlug) {
+                        logger.warn('Skipping SEO metadata creation - invalid slug after normalization:', {
+                            productId: id,
+                            slug: seoSlugSource
+                        });
+                    } else {
+                        // Check if slug is already taken BEFORE attempting to create (prevents unique constraint violation)
+                        const existingSlugSeo = await SeoMeta.findOne({
+                            where: {
+                                slug: normalizedSlug,
+                                [Op.or]: [
+                                    { entityType: { [Op.ne]: 'product' } },
+                                    { entityId: { [Op.ne]: id } }
+                                ]
+                            },
+                            transaction
+                        });
+
+                        if (existingSlugSeo) {
+                            logger.warn('Skipping SEO metadata creation - slug already exists for another entity:', {
+                                productId: id,
+                                slug: normalizedSlug,
+                                existingEntity: {
+                                    type: existingSlugSeo.entityType,
+                                    id: existingSlugSeo.entityId
+                                }
+                            });
+                        } else {
+                            // Slug is available - safe to create
+                            await ensureProductSeoMeta({
+                                productId: id,
+                                productName: cleanName || product.name,
+                                productDescription: description !== undefined
+                                    ? (typeof description === 'string' ? description.trim() : description)
+                                    : product.description,
+                                productStatus: product.status,
+                                slug: seoSlugSource,
+                                transaction
+                            });
+                            seoMetaExists = true;
+                        }
+                    }
                 } catch (seoError) {
                     // Log error but don't fail the product update
                     logger.warn('Error creating SEO metadata during product update:', {
@@ -2677,7 +2710,75 @@ module.exports.updateProductStatus = async (req, res, next) => {
             transaction
         });
 
-        const shouldUpdateSeoNoIndex = !!existingSeoMeta;
+        let seoMetaExists = !!existingSeoMeta;
+
+        // Create SEO metadata if it doesn't exist (similar to updateProduct)
+        if (!seoMetaExists) {
+            const seoSlugSource = product.slug;
+            
+            // Only create SEO metadata if we have a valid slug
+            if (seoSlugSource && seoSlugSource.trim()) {
+                try {
+                    const normalizedSlug = slugManager.normalizeSlug(seoSlugSource);
+                    
+                    if (!normalizedSlug) {
+                        logger.warn('Skipping SEO metadata creation - invalid slug after normalization:', {
+                            productId: productId,
+                            slug: seoSlugSource
+                        });
+                    } else {
+                        // Check if slug is already taken BEFORE attempting to create (prevents unique constraint violation)
+                        const existingSlugSeo = await SeoMeta.findOne({
+                            where: {
+                                slug: normalizedSlug,
+                                [Op.or]: [
+                                    { entityType: { [Op.ne]: 'product' } },
+                                    { entityId: { [Op.ne]: productId } }
+                                ]
+                            },
+                            transaction
+                        });
+
+                        if (existingSlugSeo) {
+                            logger.warn('Skipping SEO metadata creation - slug already exists for another entity:', {
+                                productId: productId,
+                                slug: normalizedSlug,
+                                existingEntity: {
+                                    type: existingSlugSeo.entityType,
+                                    id: existingSlugSeo.entityId
+                                }
+                            });
+                        } else {
+                            // Slug is available - safe to create
+                            await ensureProductSeoMeta({
+                                productId: productId,
+                                productName: product.name,
+                                productDescription: product.description,
+                                productStatus: status,
+                                slug: seoSlugSource,
+                                transaction
+                            });
+                            seoMetaExists = true;
+                        }
+                    }
+                } catch (seoError) {
+                    // Log error but don't fail the product status update
+                    logger.warn('Error creating SEO metadata during product status update:', {
+                        error: seoError.message,
+                        productId: productId,
+                        slug: seoSlugSource
+                    });
+                    // Continue without SEO metadata - it can be created later when slug is available
+                }
+            } else {
+                // Log warning but don't fail - SEO can be created later when slug is set
+                logger.warn('Skipping SEO metadata creation - product has no slug:', {
+                    productId: productId
+                });
+            }
+        }
+
+        const shouldUpdateSeoNoIndex = seoMetaExists;
 
         // Get category and brand IDs for SEO updates (within transaction)
         const productCategories = await ProductCategory.findAll({
