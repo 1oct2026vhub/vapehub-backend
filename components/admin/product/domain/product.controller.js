@@ -1353,17 +1353,36 @@ module.exports.updateProduct = async (req, res, next) => {
 
         if (!seoMetaExists) {
             const seoSlugSource = cleanSlug || product.slug;
-            await ensureProductSeoMeta({
-                productId: id,
-                productName: cleanName || product.name,
-                productDescription: description !== undefined
-                    ? (typeof description === 'string' ? description.trim() : description)
-                    : product.description,
-                productStatus: product.status,
-                slug: seoSlugSource,
-                transaction
-            });
-            seoMetaExists = true;
+            
+            // Only create SEO metadata if we have a valid slug
+            if (seoSlugSource && seoSlugSource.trim()) {
+                try {
+                    await ensureProductSeoMeta({
+                        productId: id,
+                        productName: cleanName || product.name,
+                        productDescription: description !== undefined
+                            ? (typeof description === 'string' ? description.trim() : description)
+                            : product.description,
+                        productStatus: product.status,
+                        slug: seoSlugSource,
+                        transaction
+                    });
+                    seoMetaExists = true;
+                } catch (seoError) {
+                    // Log error but don't fail the product update
+                    logger.warn('Error creating SEO metadata during product update:', {
+                        error: seoError.message,
+                        productId: id,
+                        slug: seoSlugSource
+                    });
+                    // Continue without SEO metadata - it can be created later when slug is available
+                }
+            } else {
+                // Log warning but don't fail - SEO can be created later when slug is set
+                logger.warn('Skipping SEO metadata creation - product has no slug:', {
+                    productId: id
+                });
+            }
         }
 
         const shouldUpdateSeoNoIndex = seoMetaExists;
