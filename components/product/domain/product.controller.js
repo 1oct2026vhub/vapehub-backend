@@ -1814,7 +1814,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const variantsResult = await Product.sequelize.query(`
             SELECT 
                 id, product_id, slug, price, regular_price, discount_price,
-                stock, stock_status, status, low_stock_threshold,
+                stock, stock_status, status, low_stock_threshold, description,
                 created_at, updated_at
             FROM product_variants
             WHERE product_id = :product_id 
@@ -1938,6 +1938,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             stock_status: variant.stock_status,
             status: variant.status,
             low_stock_threshold: variant.low_stock_threshold,
+            description: variant.description,
             created_at: variant.created_at,
             updated_at: variant.updated_at,
             variantAttributes: variantAttributesMap.get(variant.id) || [],
@@ -2225,6 +2226,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 stock: variant.stock,
                 stock_status: variant.stock_status,
                 status: variant.status,
+                description: variant.description,
                 is_in_stock: variant.stock > 0,
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
@@ -2883,6 +2885,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 stock: variant.stock,
                 stock_status: variant.stock_status,
                 status: variant.status,
+                description: variant.description,
                 is_in_stock: variant.stock > 0,
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
