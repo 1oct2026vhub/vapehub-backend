@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1182,6 +1182,46 @@ module.exports.getSlugRelations = async (req, res, next) => {
             return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
         }
 
+        // OPTIMIZED: Fetch all categories, brands, and blog categories upfront in one query each (if any exist)
+        const categoryIds = slugRelations
+            .filter(rel => rel.entity_type === 'category')
+            .map(rel => rel.entity_id);
+        
+        let categoryMap = new Map();
+        if (categoryIds.length > 0) {
+            const categories = await Category.findAll({
+                where: { id: { [Op.in]: categoryIds } },
+                attributes: ['id', 'name', 'description', 'slug']
+            });
+            categoryMap = new Map(categories.map(cat => [cat.id, cat]));
+        }
+
+        const brandIds = slugRelations
+            .filter(rel => rel.entity_type === 'brand')
+            .map(rel => rel.entity_id);
+        
+        let brandMap = new Map();
+        if (brandIds.length > 0) {
+            const brands = await Brand.findAll({
+                where: { id: { [Op.in]: brandIds } },
+                attributes: ['id', 'name', 'description', 'slug']
+            });
+            brandMap = new Map(brands.map(brand => [brand.id, brand]));
+        }
+
+        const blogCategoryIds = slugRelations
+            .filter(rel => rel.entity_type === 'blog_category')
+            .map(rel => rel.entity_id);
+        
+        let blogCategoryMap = new Map();
+        if (blogCategoryIds.length > 0) {
+            const blogCategories = await BlogCategory.findAll({
+                where: { id: { [Op.in]: blogCategoryIds } },
+                attributes: ['id', 'name', 'description', 'slug']
+            });
+            blogCategoryMap = new Map(blogCategories.map(bc => [bc.id, bc]));
+        }
+
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
@@ -1195,6 +1235,33 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 entity_id: slugRelations[0].entity_id,
                 seo: seoData
             };
+
+            // Add category description and name if entity is category (using pre-fetched category)
+            if (slugRelations[0].entity_type === 'category') {
+                const category = categoryMap.get(slugRelations[0].entity_id);
+                if (category) {
+                    response.description = category.description;
+                    response.name = category.name;
+                }
+            }
+
+            // Add brand description and name if entity is brand (using pre-fetched brand)
+            if (slugRelations[0].entity_type === 'brand') {
+                const brand = brandMap.get(slugRelations[0].entity_id);
+                if (brand) {
+                    response.description = brand.description;
+                    response.name = brand.name;
+                }
+            }
+
+            // Add blog category description and name if entity is blog_category (using pre-fetched blog category)
+            if (slugRelations[0].entity_type === 'blog_category') {
+                const blogCategory = blogCategoryMap.get(slugRelations[0].entity_id);
+                if (blogCategory) {
+                    response.description = blogCategory.description;
+                    response.name = blogCategory.name;
+                }
+            }
 
             // Include deals if entity is category or brand
             if (['category', 'brand'].includes(slugRelations[0].entity_type)) {
@@ -1223,11 +1290,42 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (!allSlugsMatched) {
             const response = {
                 message: 'Partial matches found, refine your query if needed',
-                data: slugRelations.map(relation => ({
-                    slug: relation.slug,
-                    entity_type: relation.entity_type,
-                    entity_id: relation.entity_id
-                }))
+                data: slugRelations.map(relation => {
+                    const item = {
+                        slug: relation.slug,
+                        entity_type: relation.entity_type,
+                        entity_id: relation.entity_id
+                    };
+                    
+                    // Add category description and name if entity is category
+                    if (relation.entity_type === 'category') {
+                        const category = categoryMap.get(relation.entity_id);
+                        if (category) {
+                            item.description = category.description;
+                            item.name = category.name;
+                        }
+                    }
+                    
+                    // Add brand description and name if entity is brand
+                    if (relation.entity_type === 'brand') {
+                        const brand = brandMap.get(relation.entity_id);
+                        if (brand) {
+                            item.description = brand.description;
+                            item.name = brand.name;
+                        }
+                    }
+                    
+                    // Add blog category description and name if entity is blog_category
+                    if (relation.entity_type === 'blog_category') {
+                        const blogCategory = blogCategoryMap.get(relation.entity_id);
+                        if (blogCategory) {
+                            item.description = blogCategory.description;
+                            item.name = blogCategory.name;
+                        }
+                    }
+                    
+                    return item;
+                })
             };
 
             // OPTIMIZED: Batch fetch deals for all matched slugs
@@ -1321,11 +1419,42 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 }, "Invalid hierarchy", 400);
             }
 
-            const response = sortedRelations.map(relation => ({
-                slug: relation.slug,
-                entity_type: relation.entity_type,
-                entity_id: relation.entity_id
-            }));
+            const response = sortedRelations.map(relation => {
+                const item = {
+                    slug: relation.slug,
+                    entity_type: relation.entity_type,
+                    entity_id: relation.entity_id
+                };
+                
+                // Add category description and name if entity is category
+                if (relation.entity_type === 'category') {
+                    const category = categoryMap.get(relation.entity_id);
+                    if (category) {
+                        item.description = category.description;
+                        item.name = category.name;
+                    }
+                }
+                
+                // Add brand description and name if entity is brand
+                if (relation.entity_type === 'brand') {
+                    const brand = brandMap.get(relation.entity_id);
+                    if (brand) {
+                        item.description = brand.description;
+                        item.name = brand.name;
+                    }
+                }
+                
+                // Add blog category description and name if entity is blog_category
+                if (relation.entity_type === 'blog_category') {
+                    const blogCategory = blogCategoryMap.get(relation.entity_id);
+                    if (blogCategory) {
+                        item.description = blogCategory.description;
+                        item.name = blogCategory.name;
+                    }
+                }
+                
+                return item;
+            });
 
             // OPTIMIZED: Batch fetch deals for category/brand slugs
             const entitiesForDeals = sortedRelations
