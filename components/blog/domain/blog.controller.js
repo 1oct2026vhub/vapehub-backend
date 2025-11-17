@@ -244,7 +244,7 @@ module.exports.listAllCategories = async (req, res, next) => {
                 status: 'active',
                 parent_id: null // Only get top-level categories
             },
-            attributes: ['id', 'name', 'slug', 'description', 'image_url'],
+            attributes: ['id', 'name', 'slug', 'description', 'image_url','show_home_page'],
             include: [
                 {
                     model: Blog,
