@@ -256,7 +256,7 @@ module.exports.listAllCategories = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'parent_id'],
+                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'parent_id','show_home_page'],
                     where: {
                         status: 'active'
                     },
@@ -264,7 +264,7 @@ module.exports.listAllCategories = async (req, res, next) => {
                         {
                             model: BlogCategory,
                             as: 'parent',
-                            attributes: ['id', 'name', 'slug', 'description', 'image_url'],
+                            attributes: ['id', 'name', 'slug', 'description', 'image_url','show_home_page'],
                             required: false
                         },
                         {
