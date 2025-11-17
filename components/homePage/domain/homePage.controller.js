@@ -1222,6 +1222,19 @@ module.exports.getSlugRelations = async (req, res, next) => {
             blogCategoryMap = new Map(blogCategories.map(bc => [bc.id, bc]));
         }
 
+        const dealIds = slugRelations
+            .filter(rel => rel.entity_type === 'deal')
+            .map(rel => rel.entity_id);
+        
+        let dealMap = new Map();
+        if (dealIds.length > 0) {
+            const deals = await Deal.findAll({
+                where: { id: { [Op.in]: dealIds } },
+                attributes: ['id', 'name', 'description', 'slug']
+            });
+            dealMap = new Map(deals.map(deal => [deal.id, deal]));
+        }
+
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
@@ -1260,6 +1273,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (blogCategory) {
                     response.description = blogCategory.description;
                     response.name = blogCategory.name;
+                }
+            }
+
+            // Add deal description and name if entity is deal (using pre-fetched deal)
+            if (slugRelations[0].entity_type === 'deal') {
+                const deal = dealMap.get(slugRelations[0].entity_id);
+                if (deal) {
+                    response.description = deal.description;
+                    response.name = deal.name;
                 }
             }
 
@@ -1321,6 +1343,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (blogCategory) {
                             item.description = blogCategory.description;
                             item.name = blogCategory.name;
+                        }
+                    }
+                    
+                    // Add deal description and name if entity is deal
+                    if (relation.entity_type === 'deal') {
+                        const deal = dealMap.get(relation.entity_id);
+                        if (deal) {
+                            item.description = deal.description;
+                            item.name = deal.name;
                         }
                     }
                     
@@ -1450,6 +1481,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (blogCategory) {
                         item.description = blogCategory.description;
                         item.name = blogCategory.name;
+                    }
+                }
+                
+                // Add deal description and name if entity is deal
+                if (relation.entity_type === 'deal') {
+                    const deal = dealMap.get(relation.entity_id);
+                    if (deal) {
+                        item.description = deal.description;
+                        item.name = deal.name;
                     }
                 }
                 
