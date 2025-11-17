@@ -338,6 +338,7 @@ const fetchProducts = async (query, status = 'published') => {
           WHERE pv_active.product_id = Product.id
             AND pv_active.status = 'active'
             AND pv_active.deleted_at IS NULL
+            AND pv_active.price > 0
         )`)
       ]
     };

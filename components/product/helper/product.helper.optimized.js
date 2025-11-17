@@ -183,7 +183,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
     const allConditions = [
       "p.deletedAt IS NULL",
       "p.status = 'published'",
-      "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL)",
+      "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL AND pv_active.price > 0)",
       ...baseFilterConditions
     ];
     const completeWhereClause = "WHERE " + allConditions.join(" AND ");
