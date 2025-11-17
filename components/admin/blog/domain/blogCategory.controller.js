@@ -249,8 +249,8 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             updated_by: req.user.id
         };
 
-        // Only add parent_id if it's not null
-        if (parent_id !== null) {
+        // Always update parent_id if it's provided (even if null, to remove parent)
+        if (parent_id !== undefined) {
             updateData.parent_id = parent_id;
         }
  
