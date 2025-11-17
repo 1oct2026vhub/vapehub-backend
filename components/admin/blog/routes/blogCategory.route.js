@@ -36,11 +36,6 @@ const {
  *           type: string
  *         description: Search categories by name, slug, or description
  *       - in: query
- *         name: show_home_page
- *         schema:
- *           type: boolean
- *         description: Filter categories based on the home page flag (true = show only categories meant for home page, false = show only others)
- *       - in: query
  *         name: deleted
  *         schema:
  *           type: boolean

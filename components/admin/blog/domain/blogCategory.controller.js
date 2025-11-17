@@ -12,7 +12,7 @@ const slugManager = new SlugManager(SlugRelation);
  */
 module.exports.listAllBlogCategories = async (req, res, next) => {
     try {
-        let { page = 1, limit = 10, search, deleted = "false", show_home_page } = req.query;
+        let { page = 1, limit = 10, search, deleted = "false" } = req.query;
         page = parseInt(page);
         limit = parseInt(limit);
         const offset = (page - 1) * limit;
@@ -29,24 +29,18 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
         // Add deleted condition for soft delete filtering
         whereCondition.deleted_at = deleted === "true" ? { [Op.ne]: null } : null;
 
-        if (show_home_page === "true") {
-            whereCondition.show_home_page = true;
-        } else if (show_home_page === "false") {
-            whereCondition.show_home_page = false;
-        }
-
         const { count, rows: categories } = await BlogCategory.findAndCountAll({
             where: whereCondition,
             include: [
                 {
                     model: BlogCategory,
                     as: 'parent',
-                    attributes: ['id', 'name', 'slug', 'show_home_page']
+                    attributes: ['id', 'name', 'slug']
                 },
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug', 'show_home_page']
+                    attributes: ['id', 'name', 'slug']
                 }
             ],
             limit,
@@ -76,12 +70,12 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'parent',
-                    attributes: ['id', 'name', 'slug', 'show_home_page']
+                    attributes: ['id', 'name', 'slug']
                 },
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug', 'show_home_page']
+                    attributes: ['id', 'name', 'slug']
                 }
             ]
         });
