@@ -27,6 +27,7 @@ const getEntityType = (type) => {
  * Get deals for a specific entity (category or brand)
  * @param {string} entityType - The type of entity (category or brand)
  * @param {number} entityId - The ID of the entity
+ * @param {Object} preFetchedCategory - Optional pre-fetched category object to avoid duplicate query
  * @returns {Object} Object containing deals array and deals text
  */
 const getDealsForEntity = async (entityType, entityId) => {
@@ -42,8 +43,8 @@ const getDealsForEntity = async (entityType, entityId) => {
     let categoryName = 'products';
 
     if (entityType === 'category') {
-        // Step 1: Get category details
-        const category = await Category.findByPk(entityId);
+        // Step 1: Get category details (use pre-fetched if provided, otherwise fetch)
+        const category = preFetchedCategory || await Category.findByPk(entityId);
         if (!category) {
             return { deals: [], deals_text: '' };
         }
@@ -1182,6 +1183,20 @@ module.exports.getSlugRelations = async (req, res, next) => {
             return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
         }
 
+        // OPTIMIZED: Fetch all categories upfront in one query (if any categories exist)
+        const categoryIds = slugRelations
+            .filter(rel => rel.entity_type === 'category')
+            .map(rel => rel.entity_id);
+        
+        let categoryMap = new Map();
+        if (categoryIds.length > 0) {
+            const categories = await Category.findAll({
+                where: { id: { [Op.in]: categoryIds } },
+                attributes: ['id', 'name', 'description', 'slug']
+            });
+            categoryMap = new Map(categories.map(cat => [cat.id, cat]));
+        }
+
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
@@ -1196,11 +1211,25 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 seo: seoData
             };
 
+            // Add category description if entity is category (using pre-fetched category)
+            if (slugRelations[0].entity_type === 'category') {
+                const category = categoryMap.get(slugRelations[0].entity_id);
+                if (category) {
+                    response.description = category.description;
+                    response.name = category.name;
+                }
+            }
+
             // Include deals if entity is category or brand
             if (['category', 'brand'].includes(slugRelations[0].entity_type)) {
+                // Pass pre-fetched category to avoid duplicate query
+                const preFetchedCategory = slugRelations[0].entity_type === 'category' 
+                    ? categoryMap.get(slugRelations[0].entity_id) 
+                    : null;
                 const dealsData = await getDealsForEntity(
                     slugRelations[0].entity_type,
-                    slugRelations[0].entity_id
+                    slugRelations[0].entity_id,
+                    preFetchedCategory
                 );
                 response.deals = dealsData.deals;
                 response.deals_text = dealsData.deals_text;
@@ -1221,13 +1250,26 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const allSlugsMatched = slugArray.every(slug => matchedSlugs.has(slug));
 
         if (!allSlugsMatched) {
+            // Use pre-fetched categoryMap (already fetched upfront)
             const response = {
                 message: 'Partial matches found, refine your query if needed',
-                data: slugRelations.map(relation => ({
-                    slug: relation.slug,
-                    entity_type: relation.entity_type,
-                    entity_id: relation.entity_id
-                }))
+                data: slugRelations.map(relation => {
+                    const item = {
+                        slug: relation.slug,
+                        entity_type: relation.entity_type,
+                        entity_id: relation.entity_id
+                    };
+                    
+                    if (relation.entity_type === 'category') {
+                        const category = categoryMap.get(relation.entity_id);
+                        if (category) {
+                            item.description = category.description;
+                            item.name = category.name;
+                        }
+                    }
+                    
+                    return item;
+                })
             };
 
             // OPTIMIZED: Batch fetch deals for all matched slugs
@@ -1321,11 +1363,24 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 }, "Invalid hierarchy", 400);
             }
 
-            const response = sortedRelations.map(relation => ({
-                slug: relation.slug,
-                entity_type: relation.entity_type,
-                entity_id: relation.entity_id
-            }));
+            // Use pre-fetched categoryMap (already fetched upfront)
+            const response = sortedRelations.map(relation => {
+                const item = {
+                    slug: relation.slug,
+                    entity_type: relation.entity_type,
+                    entity_id: relation.entity_id
+                };
+                
+                if (relation.entity_type === 'category') {
+                    const category = categoryMap.get(relation.entity_id);
+                    if (category) {
+                        item.description = category.description;
+                        item.name = category.name;
+                    }
+                }
+                
+                return item;
+            });
 
             // OPTIMIZED: Batch fetch deals for category/brand slugs
             const entitiesForDeals = sortedRelations
