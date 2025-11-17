@@ -183,6 +183,11 @@ router.get('/list', blogController.listAllBlogs);
  *           enum: [ASC, DESC]
  *           default: DESC
  *         description: Sort order for blogs within categories (ascending or descending by publication date)
+ *       - in: query
+ *         name: show_home_page
+ *         schema:
+ *           type: boolean
+ *         description: Filter categories by show_home_page flag (true/false)
  *     responses:
  *       200:
  *         description: List of blog categories
