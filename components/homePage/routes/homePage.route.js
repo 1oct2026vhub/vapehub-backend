@@ -252,6 +252,12 @@ router.post("/banner-images",
  *                         type: string
  *                       entity_id:
  *                         type: integer
+ *                       description:
+ *                         type: string
+ *                         description: Description of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
+ *                       name:
+ *                         type: string
+ *                         description: Name of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
  *       400:
  *         description: Bad request (validation errors)
  *       404:
