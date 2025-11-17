@@ -127,7 +127,8 @@ module.exports.listNewProducts = async (req, res, next) => {
         // Build base where conditions for new products (all products, descending order)
         let productFilterConditions = [
             "p.deletedAt IS NULL",
-            "p.status = 'published'"
+            "p.status = 'published'",
+            "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL)"
         ];
         let productFilterParams = {};
 
@@ -4165,6 +4166,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             AND p.status = 'published' 
             AND p.deletedAt IS NULL
             AND pc.category_id IN (${sourceCategoryIds.join(',')})
+            AND EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL)
         `;
 
         const totalCountResult = await Product.sequelize.query(totalCountQuery, {
@@ -4222,6 +4224,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             AND p.status = 'published' 
             AND p.deletedAt IS NULL
             AND pc.category_id IN (${sourceCategoryIds.join(',')})
+            AND EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL)
             ORDER BY p.createdAt DESC
             LIMIT :limit OFFSET :offset
         `;
