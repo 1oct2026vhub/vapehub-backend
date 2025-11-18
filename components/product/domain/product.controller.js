@@ -2033,7 +2033,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             variant.variantAttributes.forEach(va => {
                 const attributeId = va.attribute.id;
                 // Only consider attributes not in the filter (if using attribute_terms)
-                if (!attribute_terms || !attribute_terms.some(f => f.attribute_id === attributeId)) {
+                if (!attribute_terms || !Array.isArray(attribute_terms) || !attribute_terms.some(f => f.attribute_id === attributeId)) {
                     if (!availableTermsMap.has(attributeId)) {
                         availableTermsMap.set(attributeId, {
                             attribute: {
@@ -2151,12 +2151,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         let puffCount = null;
         
         // Check if the filtered attribute terms include a number-of-puffs attribute (OPTIMIZED)
-        const filteredPuffAttribute = attribute_terms.find(filter => {
+        const filteredPuffAttribute = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.find(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
             return attribute && attribute.attr_name === 'number-of-puffs';
-        });
+        }) : null;
         
         if (filteredPuffAttribute) {
             // Use the specific filtered puff attribute term
@@ -2293,7 +2293,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const primaryProductImage = productImagesResult.find(img => img.is_primary) || productImagesResult[0];
 
         // Prepare filtered attribute terms with full data (OPTIMIZED)
-        const filteredAttributeTerms = attribute_terms.map(filter => {
+        const filteredAttributeTerms = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.map(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
@@ -2345,7 +2345,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 };
             }
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean) : [];
 
         const response = {
             product: {
@@ -2399,6 +2399,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         return successResponse(res, response, 'Variants filtered successfully');
     } catch (error) {
+        console.log("error ---", error);
         logger.error(error);
         return errorResponse(res, error, error.message);
     }
@@ -2810,12 +2811,12 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         let puffCount = null;
         
         // Check if the filtered attribute terms include a number-of-puffs attribute (OPTIMIZED)
-        const filteredPuffAttribute = attribute_terms.find(filter => {
+        const filteredPuffAttribute = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.find(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
             return attribute && attribute.attr_name === 'number-of-puffs';
-        });
+        }) : null;
         
         if (filteredPuffAttribute) {
             // Use the specific filtered puff attribute term
@@ -2952,7 +2953,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         const primaryProductImage = productImagesResult.find(img => img.is_primary) || productImagesResult[0];
 
         // Prepare filtered attribute terms with full data (OPTIMIZED)
-        const filteredAttributeTerms = attribute_terms.map(filter => {
+        const filteredAttributeTerms = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.map(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
@@ -3004,7 +3005,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 };
             }
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean) : [];
 
         const response = {
             product: {
@@ -3314,12 +3315,12 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
         let puffCount = null;
         
         // Check if the filtered attribute terms include a number-of-puffs attribute
-        const filteredPuffAttribute = attribute_terms.find(filter => {
+        const filteredPuffAttribute = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.find(filter => {
             const attribute = product.productAttributeTerms.find(pat => 
                 pat.attribute.id === filter.attribute_id
             )?.attribute;
             return attribute && attribute.name === 'number-of-puffs';
-        });
+        }) : null;
         
         if (filteredPuffAttribute) {
             // Use the specific filtered puff attribute term
@@ -3434,7 +3435,7 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
         const primaryProductImage = product.ProductImages.find(img => img.is_primary) || product.ProductImages[0];
 
         // Prepare filtered attribute terms with full data
-        const filteredAttributeTerms = attribute_terms.map(filter => {
+        const filteredAttributeTerms = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.map(filter => {
             const attribute = product.productAttributeTerms.find(pat => 
                 pat.attribute.id === filter.attribute_id
             )?.attribute;
@@ -3486,7 +3487,7 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
                 };
             }
             return null;
-        }).filter(Boolean);
+        }).filter(Boolean) : [];
 
         const response = {
             product: {

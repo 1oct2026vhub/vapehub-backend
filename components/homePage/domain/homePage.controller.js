@@ -35,7 +35,8 @@ const getDealsForEntity = async (entityType, entityId) => {
         is_active: true,
         is_deleted: false,
         valid_from: { [Op.lte]: new Date() },
-        valid_to: { [Op.gte]: new Date() }
+        valid_to: { [Op.gte]: new Date() },
+        show_home_page: true
     };
 
     let deals = [];
@@ -798,7 +799,8 @@ const getLatestDeals = async () => {
         is_active: true,
         is_deleted: false,
         valid_from: { [Op.lte]: new Date() },
-        valid_to: { [Op.gte]: new Date() }
+        valid_to: { [Op.gte]: new Date() },
+        show_home_page: true
     };
 
     const deals = await Deal.findAll({
@@ -909,7 +911,8 @@ const getLatestDealsOriginal = async () => {
         is_active: true,
         is_deleted: false,
         valid_from: { [Op.lte]: new Date() },
-        valid_to: { [Op.gte]: new Date() }
+        valid_to: { [Op.gte]: new Date() },
+        show_home_page: true
     };
 
     const deals = await Deal.findAll({

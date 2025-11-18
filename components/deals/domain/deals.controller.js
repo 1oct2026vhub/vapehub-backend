@@ -82,7 +82,8 @@ module.exports.listAllDeals = async (req, res, next) => {
                 is_active: true,
                 is_deleted: false,
                 valid_from: { [Op.lte]: new Date() },
-                valid_to: { [Op.gte]: new Date() }
+                valid_to: { [Op.gte]: new Date() },
+                show_home_page: true
             },
             attributes: [
                 'id', 
