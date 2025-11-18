@@ -1168,7 +1168,8 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
  *   post:
  *     tags:
  *       - Product
- *     summary: Filter product variants by attribute terms
+ *     summary: Filter product variants by attribute terms or slug
+ *     description: Filter variants by either attribute_terms (array) or slugs (string). At least one must be provided.
  *     requestBody:
  *       required: true
  *       content:
@@ -1177,14 +1178,13 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
  *             type: object
  *             required:
  *               - product_id
- *               - attribute_terms
  *             properties:
  *               product_id:
  *                 type: integer
  *                 description: ID of the product to filter variants for
  *               attribute_terms:
  *                 type: array
- *                 description: Array of attribute-term combinations to filter by
+ *                 description: Array of attribute-term combinations to filter by (optional if slugs is provided)
  *                 items:
  *                   type: object
  *                   required:
@@ -1197,6 +1197,10 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
  *                     term_id:
  *                       type: integer
  *                       description: ID of the term
+ *               slugs:
+ *                 type: string
+ *                 description: Variant slug to filter by (optional if attribute_terms is provided). Either attribute_terms or slugs must be provided.
+ *                 example: "variant-slug-123"
  *     responses:
  *       200:
  *         description: Successfully filtered variants
@@ -1308,9 +1312,44 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
 router.post('/filter-variants',
     validateRequest([
         check('product_id').isInt().withMessage('Product ID must be an integer').notEmpty().withMessage('Product ID is required'),
-        check('attribute_terms').isArray().withMessage('Attribute terms must be an array').notEmpty().withMessage('Attribute terms are required'),
-        check('attribute_terms.*.attribute_id').isInt().withMessage('Attribute ID must be an integer').notEmpty().withMessage('Attribute ID is required'),
-        check('attribute_terms.*.term_id').isInt().withMessage('Term ID must be an integer').notEmpty().withMessage('Term ID is required')
+        
+        // Make attribute_terms optional but validate structure if provided
+        check('attribute_terms')
+            .optional()
+            .isArray()
+            .withMessage('Attribute terms must be an array')
+            .notEmpty()
+            .withMessage('Attribute terms cannot be empty if provided'),
+        check('attribute_terms.*.attribute_id')
+            .if(check('attribute_terms').exists())
+            .isInt()
+            .withMessage('Attribute ID must be an integer')
+            .notEmpty()
+            .withMessage('Attribute ID is required'),
+        check('attribute_terms.*.term_id')
+            .if(check('attribute_terms').exists())
+            .isInt()
+            .withMessage('Term ID must be an integer')
+            .notEmpty()
+            .withMessage('Term ID is required'),
+        
+        // Make slugs optional but validate if provided
+        check('slugs')
+            .optional()
+            .isString()
+            .withMessage('Slugs must be a string')
+            .notEmpty()
+            .withMessage('Slugs cannot be empty if provided')
+            .trim(),
+        
+        // Custom validation: either attribute_terms or slugs must be provided
+        check('attribute_terms')
+            .custom((value, { req }) => {
+                if (!value && !req.body.slugs) {
+                    throw new Error('Either attribute_terms or slugs must be provided');
+                }
+                return true;
+            })
     ]),
     productController.filterVariantsByAttributes
 );
