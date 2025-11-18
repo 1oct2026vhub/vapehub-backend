@@ -12,6 +12,12 @@ module.exports.createDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
         const dealData = req.body;
+        // Handle show_home_page field
+        if (dealData.show_home_page !== undefined) {
+            dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : false;
+        } else {
+            dealData.show_home_page = false;
+        }
         // Handle image upload if file is provided
         if (req.file) {
             try {
@@ -135,6 +141,10 @@ module.exports.updateDeal = async (req, res, next) => {
             const slugData = await slugManager.createOrUpdateSlug(dealData.name, 'deal', id, transaction);
             slug = slugData.slug;
             dealData.slug = slug;
+        }
+        // Handle show_home_page field
+        if (dealData.show_home_page !== undefined) {
+            dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : deal.show_home_page;
         }
         // dealData.slug = slug.slug;
         // Update the deal

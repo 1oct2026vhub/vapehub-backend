@@ -100,7 +100,13 @@ const createDealValidation = [
                 throw new Error('Valid to date must be after valid from date');
             }
             return true;
-        })
+        }),
+
+    body('show_home_page')
+        .optional()
+        .isBoolean()
+        .withMessage('show_home_page must be a boolean')
+        .toBoolean()
 ];
 
 const updateDealValidation = [
@@ -195,7 +201,13 @@ const updateDealValidation = [
                 throw new Error('Valid to date must be after valid from date');
             }
             return true;
-        })
+        }),
+
+    body('show_home_page')
+        .optional()
+        .isBoolean()
+        .withMessage('show_home_page must be a boolean')
+        .toBoolean()
 ];
 
 const listDealsValidation = [
