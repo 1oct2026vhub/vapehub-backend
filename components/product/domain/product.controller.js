@@ -2096,23 +2096,42 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                                 type: va.attribute.type,
                                 image_url: va.attribute.image_url
                             },
-                            terms: new Set()
+                            terms: new Map() // Use Map to track variant slugs per term
                         });
                     }
-                    availableTermsMap.get(attributeId).terms.add(JSON.stringify({
-                        id: va.term.id,
-                        name: va.term.name,
-                        slug: va.term.slug,
-                        stock_status: variant.stock_status,
-                        is_in_stock: variant.stock > 0
-                    }));
+                    
+                    const termId = va.term.id;
+                    const termsMap = availableTermsMap.get(attributeId).terms;
+                    
+                    if (!termsMap.has(termId)) {
+                        termsMap.set(termId, {
+                            id: va.term.id,
+                            name: va.term.name,
+                            slug: va.term.slug,
+                            stock_status: variant.stock_status,
+                            is_in_stock: variant.stock > 0,
+                            variant_slugs: []
+                        });
+                    }
+                    
+                    // Add variant slug if not already present
+                    const termData = termsMap.get(termId);
+                    if (!termData.variant_slugs.includes(variant.slug)) {
+                        termData.variant_slugs.push(variant.slug);
+                    }
+                    
+                    // Update stock_status and is_in_stock if this variant has better stock
+                    if (variant.stock > 0 && !termData.is_in_stock) {
+                        termData.is_in_stock = true;
+                        termData.stock_status = variant.stock_status;
+                    }
                 }
             });
         });
 
-        // Convert Sets to arrays and parse JSON strings
+        // Convert Maps to arrays
         availableTermsMap.forEach(value => {
-            value.terms = Array.from(value.terms).map(term => JSON.parse(term));
+            value.terms = Array.from(value.terms.values());
         });
 
         // Calculate stock summary
@@ -2352,38 +2371,50 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 pat.attr_id === filter.attribute_id
             );
             
-            // Find all terms for this attribute from product variants
-            const allTermsForAttribute = new Set();
+            // Find all terms for this attribute from product variants with variant slugs
+            const allTermsForAttribute = new Map(); // Use Map to track variant slugs per term
             
             // Add terms from product attribute terms
             productAttributeTermsResult
                 .filter(pat => pat.attr_id === filter.attribute_id)
                 .forEach(pat => {
-                    allTermsForAttribute.add(JSON.stringify({
-                        id: pat.term_id,
-                        name: pat.term_name,
-                        slug: pat.term_slug,
-                        description: '', // Not available in raw SQL result
-                        is_selected: pat.term_id === filter.term_id
-                    }));
+                    if (!allTermsForAttribute.has(pat.term_id)) {
+                        allTermsForAttribute.set(pat.term_id, {
+                            id: pat.term_id,
+                            name: pat.term_name,
+                            slug: pat.term_slug,
+                            description: '', // Not available in raw SQL result
+                            is_selected: pat.term_id === filter.term_id,
+                            variant_slugs: []
+                        });
+                    }
                 });
             
-            // Add terms from variant attributes
+            // Add terms from variant attributes and collect variant slugs
             structuredVariants.forEach(variant => {
                 variant.variantAttributes
                     .filter(va => va.attribute.id === filter.attribute_id)
                     .forEach(va => {
-                        allTermsForAttribute.add(JSON.stringify({
-                            id: va.term.id,
-                            name: va.term.name,
-                            slug: va.term.slug,
-                            description: '', // Not available in raw SQL result
-                            is_selected: va.term.id === filter.term_id
-                        }));
+                        if (!allTermsForAttribute.has(va.term.id)) {
+                            allTermsForAttribute.set(va.term.id, {
+                                id: va.term.id,
+                                name: va.term.name,
+                                slug: va.term.slug,
+                                description: '', // Not available in raw SQL result
+                                is_selected: va.term.id === filter.term_id,
+                                variant_slugs: []
+                            });
+                        }
+                        
+                        // Add variant slug if not already present
+                        const termData = allTermsForAttribute.get(va.term.id);
+                        if (!termData.variant_slugs.includes(variant.slug)) {
+                            termData.variant_slugs.push(variant.slug);
+                        }
                     });
             });
-            // Convert Set to array and parse JSON strings
-            const terms = Array.from(allTermsForAttribute).map(term => JSON.parse(term));
+            // Convert Map to array
+            const terms = Array.from(allTermsForAttribute.values());
             
             if (attribute) {
                 return {
@@ -3012,38 +3043,50 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 pat.attr_id === filter.attribute_id
             );
             
-            // Find all terms for this attribute from product variants
-            const allTermsForAttribute = new Set();
+            // Find all terms for this attribute from product variants with variant slugs
+            const allTermsForAttribute = new Map(); // Use Map to track variant slugs per term
             
             // Add terms from product attribute terms
             productAttributeTermsResult
                 .filter(pat => pat.attr_id === filter.attribute_id)
                 .forEach(pat => {
-                    allTermsForAttribute.add(JSON.stringify({
-                        id: pat.term_id,
-                        name: pat.term_name,
-                        slug: pat.term_slug,
-                        description: '', // Not available in raw SQL result
-                        is_selected: pat.term_id === filter.term_id
-                    }));
+                    if (!allTermsForAttribute.has(pat.term_id)) {
+                        allTermsForAttribute.set(pat.term_id, {
+                            id: pat.term_id,
+                            name: pat.term_name,
+                            slug: pat.term_slug,
+                            description: '', // Not available in raw SQL result
+                            is_selected: pat.term_id === filter.term_id,
+                            variant_slugs: []
+                        });
+                    }
                 });
             
-            // Add terms from variant attributes
+            // Add terms from variant attributes and collect variant slugs
             structuredVariants.forEach(variant => {
                 variant.variantAttributes
                     .filter(va => va.attribute.id === filter.attribute_id)
                     .forEach(va => {
-                        allTermsForAttribute.add(JSON.stringify({
-                            id: va.term.id,
-                            name: va.term.name,
-                            slug: va.term.slug,
-                            description: '', // Not available in raw SQL result
-                            is_selected: va.term.id === filter.term_id
-                        }));
+                        if (!allTermsForAttribute.has(va.term.id)) {
+                            allTermsForAttribute.set(va.term.id, {
+                                id: va.term.id,
+                                name: va.term.name,
+                                slug: va.term.slug,
+                                description: '', // Not available in raw SQL result
+                                is_selected: va.term.id === filter.term_id,
+                                variant_slugs: []
+                            });
+                        }
+                        
+                        // Add variant slug if not already present
+                        const termData = allTermsForAttribute.get(va.term.id);
+                        if (!termData.variant_slugs.includes(variant.slug)) {
+                            termData.variant_slugs.push(variant.slug);
+                        }
                     });
             });
-            // Convert Set to array and parse JSON strings
-            const terms = Array.from(allTermsForAttribute).map(term => JSON.parse(term));
+            // Convert Map to array
+            const terms = Array.from(allTermsForAttribute.values());
             
             if (attribute) {
                 return {
