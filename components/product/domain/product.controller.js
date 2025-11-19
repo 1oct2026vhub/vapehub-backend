@@ -1732,6 +1732,58 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
 
         const product = productResult[0];
 
+        // NEW: Handle slugs parameter - convert to attribute_terms format
+        let processedAttributeTerms = attribute_terms;
+        
+        if (slugs && !attribute_terms) {
+            // Find variant(s) by slug first
+            const variantBySlugResult = await Product.sequelize.query(`
+                SELECT id, slug
+                FROM product_variants
+                WHERE product_id = :product_id 
+                AND slug = :slug
+                AND status = 'active'
+                AND deleted_at IS NULL
+            `, {
+                replacements: { product_id, slug: slugs.trim() },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (variantBySlugResult.length === 0) {
+                return errorResponse(res, { message: 'Variant not found for the provided slug' }, 'Variant not found', 404);
+            }
+
+            if (variantBySlugResult.length > 1) {
+                // Multiple variants found with same slug (shouldn't happen, but handle it)
+                return errorResponse(res, { message: 'Multiple variants found with the same slug' }, 'Multiple variants found', 400);
+            }
+
+            // Get attributes and terms for the found variant
+            const variantAttributesForSlug = await Product.sequelize.query(`
+                SELECT 
+                    pva.attribute_id, pva.term_id,
+                    a.id as attr_id, a.name as attr_name,
+                    t.id as term_id, t.name as term_name
+                FROM product_variant_attributes pva
+                JOIN attributes a ON pva.attribute_id = a.id
+                JOIN attribute_terms t ON pva.term_id = t.id
+                WHERE pva.variant_id = :variant_id
+            `, {
+                replacements: { variant_id: variantBySlugResult[0].id },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!variantAttributesForSlug || variantAttributesForSlug.length === 0) {
+                return errorResponse(res, { message: 'No attributes or terms found for this variant' }, 'No attributes found', 400);
+            }
+
+            // Convert to attribute_terms format
+            processedAttributeTerms = variantAttributesForSlug.map(va => ({
+                attribute_id: va.attribute_id,
+                term_id: va.term_id
+            }));
+        }
+
         // 2. PARALLEL BATCH 1: Independent queries that don't depend on variants
         const [
             categoriesResult,
@@ -1811,8 +1863,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         ]);
 
         // 3. Get variants with raw SQL (only active ones) - MUST run before variant-dependent queries
-        // If slugs are provided, filter by slug; otherwise get all variants
-        let variantsQuery = `
+        // Always get all variants (we'll filter by attribute_terms later)
+        const variantsQuery = `
             SELECT 
                 id, product_id, slug, price, regular_price, discount_price,
                 stock, stock_status, status, low_stock_threshold, description,
@@ -1824,11 +1876,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         `;
         
         const variantsReplacements = { product_id };
-        
-        if (slugs) {
-            variantsQuery += ` AND slug = :slug`;
-            variantsReplacements.slug = slugs.trim();
-        }
         
         const variantsResult = await Product.sequelize.query(variantsQuery, {
             replacements: variantsReplacements,
@@ -1852,7 +1899,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 WHERE pva.variant_id IN (
                     SELECT id FROM product_variants 
                     WHERE product_id = :product_id AND status = 'active'
-                    ${slugs ? 'AND slug = :slug' : ''}
                 )
             `, {
                 replacements: variantsReplacements,
@@ -1867,7 +1913,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 WHERE variant_id IN (
                     SELECT id FROM product_variants 
                     WHERE product_id = :product_id AND status = 'active'
-                    ${slugs ? 'AND slug = :slug' : ''}
                 )
             `, {
                 replacements: variantsReplacements,
@@ -2006,16 +2051,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             }
         });
 
-        // Filter variants based on provided attribute terms OR slugs (OPTIMIZED)
+        // Filter variants based on provided attribute terms (OPTIMIZED)
         let filteredVariants;
         
-        if (slugs) {
-            // If slugs are provided, variants are already filtered by slug in the SQL query
-            filteredVariants = structuredVariants;
-        } else if (attribute_terms && attribute_terms.length > 0) {
+        if (processedAttributeTerms && processedAttributeTerms.length > 0) {
             // Filter variants based on provided attribute terms
             filteredVariants = structuredVariants.filter(variant => {
-                return attribute_terms.every(filter => {
+                return processedAttributeTerms.every(filter => {
                     return variant.variantAttributes.some(va => 
                         va.attribute.id === filter.attribute_id && 
                         va.term.id === filter.term_id
@@ -2027,13 +2069,25 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             filteredVariants = structuredVariants;
         }
         
+        // NEW: If slugs was provided, check if exactly one variant matches
+        if (slugs && !attribute_terms) {
+            if (filteredVariants.length > 1) {
+                // More than one variant matches - return null
+                return successResponse(res, null, 'Multiple variants match the criteria');
+            }
+            if (filteredVariants.length === 0) {
+                // No variants match (shouldn't happen, but handle it)
+                return errorResponse(res, { message: 'No variants match the extracted attributes' }, 'No variants found', 404);
+            }
+        }
+        
         // Get available terms for other attributes
         const availableTermsMap = new Map();
         filteredVariants.forEach(variant => {
             variant.variantAttributes.forEach(va => {
                 const attributeId = va.attribute.id;
-                // Only consider attributes not in the filter (if using attribute_terms)
-                if (!attribute_terms || !Array.isArray(attribute_terms) || !attribute_terms.some(f => f.attribute_id === attributeId)) {
+                // Only consider attributes not in the filter (if using processedAttributeTerms)
+                if (!processedAttributeTerms || !Array.isArray(processedAttributeTerms) || !processedAttributeTerms.some(f => f.attribute_id === attributeId)) {
                     if (!availableTermsMap.has(attributeId)) {
                         availableTermsMap.set(attributeId, {
                             attribute: {
@@ -2151,7 +2205,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         let puffCount = null;
         
         // Check if the filtered attribute terms include a number-of-puffs attribute (OPTIMIZED)
-        const filteredPuffAttribute = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.find(filter => {
+        const filteredPuffAttribute = (processedAttributeTerms && Array.isArray(processedAttributeTerms) && processedAttributeTerms.length > 0) ? processedAttributeTerms.find(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
@@ -2293,7 +2347,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const primaryProductImage = productImagesResult.find(img => img.is_primary) || productImagesResult[0];
 
         // Prepare filtered attribute terms with full data (OPTIMIZED)
-        const filteredAttributeTerms = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.map(filter => {
+        const filteredAttributeTerms = (processedAttributeTerms && Array.isArray(processedAttributeTerms) && processedAttributeTerms.length > 0) ? processedAttributeTerms.map(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
@@ -2953,7 +3007,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         const primaryProductImage = productImagesResult.find(img => img.is_primary) || productImagesResult[0];
 
         // Prepare filtered attribute terms with full data (OPTIMIZED)
-        const filteredAttributeTerms = (attribute_terms && Array.isArray(attribute_terms) && attribute_terms.length > 0) ? attribute_terms.map(filter => {
+        const filteredAttributeTerms = (processedAttributeTerms && Array.isArray(processedAttributeTerms) && processedAttributeTerms.length > 0) ? processedAttributeTerms.map(filter => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
