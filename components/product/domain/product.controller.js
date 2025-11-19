@@ -2020,6 +2020,17 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 });
             }
             
+            // Collect variant slugs for this term
+            const variantSlugs = [];
+            structuredVariants.forEach(variant => {
+                const hasTerm = variant.variantAttributes.some(va => 
+                    va.attribute.id === pat.attr_id && va.term.id === pat.term_id
+                );
+                if (hasTerm && !variantSlugs.includes(variant.slug)) {
+                    variantSlugs.push(variant.slug);
+                }
+            });
+            
             // Check if the term is used in variation
             if (pat.used_in_variation) {
                 // Check if this term has any corresponding variants
@@ -2036,7 +2047,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         name: pat.term_name,
                         slug: pat.term_slug,
                         used_in_variation: Boolean(pat.used_in_variation),
-                        is_visible_page: Boolean(pat.is_visible_page)
+                        is_visible_page: Boolean(pat.is_visible_page),
+                        variant_slugs: variantSlugs
                     });
                 }
             } else {
@@ -2046,7 +2058,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     name: pat.term_name,
                     slug: pat.term_slug,
                     used_in_variation: Boolean(pat.used_in_variation),
-                    is_visible_page: Boolean(pat.is_visible_page)
+                    is_visible_page: Boolean(pat.is_visible_page),
+                    variant_slugs: variantSlugs
                 });
             }
         });
@@ -2733,6 +2746,17 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 });
             }
             
+            // Collect variant slugs for this term
+            const variantSlugs = [];
+            structuredVariants.forEach(variant => {
+                const hasTerm = variant.variantAttributes.some(va => 
+                    va.attribute.id === pat.attr_id && va.term.id === pat.term_id
+                );
+                if (hasTerm && !variantSlugs.includes(variant.slug)) {
+                    variantSlugs.push(variant.slug);
+                }
+            });
+            
             // Check if the term is used in variation
             if (pat.used_in_variation) {
                 // Check if this term has any corresponding variants
@@ -2749,7 +2773,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                         name: pat.term_name,
                         slug: pat.term_slug,
                         used_in_variation: Boolean(pat.used_in_variation),
-                        is_visible_page: Boolean(pat.is_visible_page)
+                        is_visible_page: Boolean(pat.is_visible_page),
+                        variant_slugs: variantSlugs
                     });
                 }
             } else {
@@ -2759,7 +2784,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                     name: pat.term_name,
                     slug: pat.term_slug,
                     used_in_variation: Boolean(pat.used_in_variation),
-                    is_visible_page: Boolean(pat.is_visible_page)
+                    is_visible_page: Boolean(pat.is_visible_page),
+                    variant_slugs: variantSlugs
                 });
             }
         });
