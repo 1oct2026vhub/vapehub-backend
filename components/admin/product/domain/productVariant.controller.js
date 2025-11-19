@@ -956,11 +956,11 @@ module.exports.uploadVariantImages = async (req, res) => {
         });
 
         // Add file type validation
-        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
         if (!allowedMimeTypes.includes(files[0].mimetype)) {
             return errorResponse(
                 res, 
-                { message: "Invalid file type. Only JPEG, PNG and WEBP are allowed" }, 
+                { message: "Invalid file type. Only JPEG, PNG, WEBP and SVG are allowed" }, 
                 "Invalid file type", 
                 400
             );
