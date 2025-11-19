@@ -26,7 +26,8 @@ const generateResizedS3Key = (originalS3Key, size) => {
   const suffix = sizeMap[size];
   if (!suffix) return originalS3Key;
   
-  return originalS3Key.replace(/\.(jpg|jpeg|png|webp)$/i, `${suffix}.$1`);
+  // Support SVG and other formats
+  return originalS3Key.replace(/\.(jpg|jpeg|png|webp|svg)$/i, `${suffix}.$1`);
 };
 
 // Product image resize configurations
@@ -70,6 +71,11 @@ const resizeImageToConfig = async (imageBuffer, config) => {
     // Get original image metadata
     const metadata = await sharpInstance.metadata();
     console.log(`📊 Original product image: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
+    
+    // Check if it's SVG - Sharp cannot process SVG
+    if (metadata.format === 'svg' || !metadata.width) {
+      throw new Error('SVG files cannot be resized with Sharp');
+    }
     
     // Determine resize options
     let resizeOptions = {};
@@ -139,6 +145,11 @@ const resizeImageToConfig = async (imageBuffer, config) => {
     
     return processedBuffer;
   } catch (error) {
+    // Handle SVG gracefully - return original buffer
+    if (error.message.includes('SVG') || error.message.includes('Input file is missing')) {
+      console.log(`ℹ️ SVG file detected, skipping resize`);
+      return imageBuffer; // Return original for SVG
+    }
     console.error('❌ Error resizing product image:', error);
     throw error;
   }
@@ -183,6 +194,16 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
     
     console.log(`🖼️ Processing product image for product ${productId} in ${availableSizes.length} sizes`);
     
+    // Check if it's SVG - skip resizing for SVG files
+    if (mimetype === 'image/svg+xml') {
+      console.log(`ℹ️ SVG file detected (${originalName}), skipping resize - SVG will be uploaded as-is`);
+      return {
+        low: null,
+        mid: null,
+        high: null
+      };
+    }
+    
     // Process each size
     for (const size of availableSizes) {
       try {
@@ -193,6 +214,12 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
         
         // Resize the image
         const resizedBuffer = await resizeImageToConfig(originalBuffer, config);
+        
+        // If resize returned original buffer (e.g., SVG), skip this size
+        if (resizedBuffer === originalBuffer && mimetype === 'image/svg+xml') {
+          results[size] = null;
+          continue;
+        }
         
         // Generate S3 key for resized image
         const resizedS3Key = generateResizedS3Key(originalS3Key, size);

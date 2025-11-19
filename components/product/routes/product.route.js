@@ -4,6 +4,7 @@ const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 const multer = require("multer");
+const path = require("path");
 
 /**
  * @swagger
@@ -1045,7 +1046,15 @@ const upload = multer({
     storage: storage,
     limits: {
         fileSize: 5 * 1024 * 1024, // 5MB limit
-    }
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error("Only .png, .jpg, .jpeg, .webp, .svg files are allowed!"), false);
+        }
+        cb(null, true);
+    },
 });
 // Helper function to generate unique filename
 router.post("/upload/image", upload.array("images"), productController.uploadImage)
