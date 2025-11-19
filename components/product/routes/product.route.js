@@ -1839,6 +1839,12 @@ router.get('/categories-with-deals',
  *         required: false
  *         description: Search deals by name or slug
  *       - in: query
+ *         name: show_home_page
+ *         schema:
+ *           type: boolean
+ *         required: false
+ *         description: Filter deals by show_home_page flag (true/false). If not provided, returns all active deals.
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -1995,6 +2001,7 @@ router.get('/deals',
     validateRequest([
         query('deal_type').optional().isString().withMessage('Deal type must be a string'),
         query('search').optional().isString().withMessage('Search term must be a string'),
+        query('show_home_page').optional().isBoolean().withMessage('show_home_page must be a boolean').toBoolean(),
         query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
         query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer')
     ]),

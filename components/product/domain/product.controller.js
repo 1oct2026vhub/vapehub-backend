@@ -4067,7 +4067,7 @@ module.exports.getCategoriesWithDeals = async (req, res, next) => {
 
 module.exports.getAllDeals = async (req, res, next) => {
     try {
-        const { limit = 10, offset = 0, deal_type, search } = req.query;
+        const { limit = 10, offset = 0, deal_type, search, show_home_page } = req.query;
 
         // Build deal filter
         const dealFilter = {
@@ -4080,6 +4080,11 @@ module.exports.getAllDeals = async (req, res, next) => {
         // Add deal_type filter if provided
         if (deal_type) {
             dealFilter.deal_type = deal_type;
+        }
+
+        // Add show_home_page filter if provided
+        if (show_home_page !== undefined) {
+            dealFilter.show_home_page = show_home_page === 'true' || show_home_page === true;
         }
 
         // Add search filter if provided
