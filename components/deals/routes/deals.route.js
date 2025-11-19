@@ -10,11 +10,27 @@ const { check, query, param } = require("express-validator");
  *     summary: Retrieve a list of all active deals
  *     tags:
  *      - Deals
+ *     parameters:
+ *       - in: query
+ *         name: show_home_page
+ *         schema:
+ *           type: boolean
+ *         required: false
+ *         description: Filter deals by show_home_page flag (true/false). If not provided, returns all active deals.
  *     responses:
  *       200:
  *         description: A list of active deals
  */
-router.get('/', dealsController.listAllDeals);
+router.get('/', 
+    validateRequest([
+        query('show_home_page')
+            .optional()
+            .isBoolean()
+            .withMessage('show_home_page must be a boolean')
+            .toBoolean()
+    ]),
+    dealsController.listAllDeals
+);
 
 /**
  * @swagger
