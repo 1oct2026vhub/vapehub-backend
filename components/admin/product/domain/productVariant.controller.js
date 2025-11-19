@@ -973,23 +973,35 @@ module.exports.uploadVariantImages = async (req, res) => {
                 const fileName = generateUniqueFileName(originalname);
                 const s3Key = `products/${variant.product_id}/variants/${variant_id}/${fileName}`;
                 
-                // Upload original image
+                // Resize original image to max 1920x1080 if larger
+                let processedBuffer = buffer;
+                try {
+                    const { resizeToMaxSize } = require("../../../../library/s3/s3Helper");
+                    processedBuffer = await resizeToMaxSize(buffer, mimetype);
+                    if (processedBuffer !== buffer) {
+                        console.log(`📐 Variant image resized to max 1920x1080: ${originalname}`);
+                    }
+                } catch (resizeError) {
+                    console.error(`⚠️ Error resizing variant image, using original: ${resizeError.message}`);
+                }
+                
+                // Upload original image (now max 1920x1080)
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: s3Key,
-                    Body: buffer,
+                    Body: processedBuffer,
                     ContentType: mimetype
                 };
 
                 const originalUpload = await uploadFiletToS3(params);
                 
-                // Generate resized versions
+                // Generate resized versions using the processed buffer
                 console.log(`🖼️ Generating resized versions for variant image: ${originalname}`);
                 
                 let resizedResults = {};
                 try {
                     resizedResults = await processProductVariantImageInMultipleSizes(
-                        buffer, 
+                        processedBuffer,  // Use processed buffer instead of original
                         originalname, 
                         variant_id, 
                         mimetype, 

@@ -36,25 +36,27 @@ const PRODUCT_RESIZE_CONFIGS = {
   low: {
     width: 256,
     height: 256,
-    quality: 80,
-    format: 'jpeg',
+    quality: 85, // Increased from 80 for better quality
+    format: null, // null = preserve original format
     fit: 'inside' // Maintain aspect ratio, fit within bounds
   },
   // Mid resolution: 600 x 600 px (for product cards, medium displays)
   mid: {
     width: 600,
     height: 600,
-    quality: 85,
-    format: 'jpeg',
+    quality: 90, // Increased from 85 for better quality
+    format: null, // null = preserve original format
     fit: 'inside'
   },
   // High resolution: 1200 x 1200 px (for product detail pages)
   high: {
     width: 1200,
     height: 1200,
-    quality: 90,
-    format: 'jpeg',
-    fit: 'inside'
+    quality: 95, // Increased from 90 for better quality
+    format: null, // null = preserve original format
+    fit: 'inside',
+    maxWidth: 1920, // Ensure never exceeds max size
+    maxHeight: 1080
   }
 };
 
@@ -86,7 +88,8 @@ const resizeImageToConfig = async (imageBuffer, config) => {
         width: config.width,
         height: config.height,
         fit: 'inside',
-        withoutEnlargement: true
+        withoutEnlargement: true,
+        kernel: 'lanczos3' // High-quality resampling algorithm
       };
     } else if (config.maxWidth || config.maxHeight) {
       // Use max dimensions as constraints
@@ -109,6 +112,7 @@ const resizeImageToConfig = async (imageBuffer, config) => {
       console.log(`🔄 Resizing product image with options:`, resizeOptions);
     }
     
+    // Preserve original format if config.format is null, otherwise use config format
     const targetQuality = Math.min(config.quality ?? 98, 100);
     const format = (config.format || metadata.format || 'jpeg').toLowerCase();
 
@@ -118,18 +122,28 @@ const resizeImageToConfig = async (imageBuffer, config) => {
       case 'jpg':
         sharpInstance = sharpInstance.jpeg({
           quality: targetQuality,
-          progressive: true
+          progressive: true,
+          mozjpeg: true,              // Better compression algorithm
+          trellisQuantisation: true, // Better quality at same file size
+          overshootDeringing: true,   // Reduce artifacts
+          optimizeScans: true        // Optimize for progressive loading
         });
         break;
       case 'png':
         sharpInstance = sharpInstance.png({
-          compressionLevel: 6
+          compressionLevel: 9,        // Maximum compression (0-9)
+          adaptiveFiltering: true,    // Better compression
+          palette: false,             // Keep full color depth
+          effort: 10                  // Maximum compression effort
         });
         break;
       case 'webp':
         sharpInstance = sharpInstance.webp({
           quality: targetQuality,
-          lossless: true
+          effort: 6,                  // Maximum effort (0-6)
+          smartSubsample: true,       // Better quality
+          lossless: false,            // Use lossy for better file size
+          alphaQuality: 100          // Preserve transparency quality
         });
         break;
       default:
@@ -204,8 +218,8 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
       };
     }
     
-    // Process each size
-    for (const size of availableSizes) {
+    // Process all sizes in parallel for better performance
+    const resizePromises = availableSizes.map(async (size) => {
       try {
         console.log(`🔄 Processing ${size} size...`);
         
@@ -217,16 +231,16 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
         
         // If resize returned original buffer (e.g., SVG), skip this size
         if (resizedBuffer === originalBuffer && mimetype === 'image/svg+xml') {
-          results[size] = null;
-          continue;
+          return { size, result: null };
         }
         
         // Generate S3 key for resized image
         const resizedS3Key = generateResizedS3Key(originalS3Key, size);
         
-        // Determine content type
+        // Determine content type - preserve original format if config.format is null
         let contentType = mimetype;
         if (config.format) {
+          // Only override if format is explicitly set
           switch (config.format.toLowerCase()) {
             case 'jpeg':
             case 'jpg':
@@ -240,26 +254,38 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
               break;
           }
         }
+        // If config.format is null, contentType remains as original mimetype
         
         // Upload to S3
         const uploadResult = await uploadResizedImageToS3(resizedBuffer, resizedS3Key, contentType);
         
-        // Store result
-        results[size] = {
-          url: uploadResult.Location,
-          key: uploadResult.Key,
-          size: size,
-          config: config
+        return {
+          size,
+          result: {
+            url: uploadResult.Location,
+            key: uploadResult.Key,
+            size: size,
+            config: config
+          }
         };
-        
-        console.log(`✅ ${size} size uploaded successfully: ${uploadResult.Location}`);
         
       } catch (error) {
         console.error(`❌ Error processing ${size} size:`, error);
         // Continue with other sizes even if one fails
-        results[size] = null;
+        return { size, result: null };
       }
-    }
+    });
+    
+    // Wait for all resizes to complete in parallel
+    const resizeResults = await Promise.all(resizePromises);
+    
+    // Organize results
+    resizeResults.forEach(({ size, result }) => {
+      results[size] = result;
+      if (result) {
+        console.log(`✅ ${size} size uploaded successfully: ${result.url}`);
+      }
+    });
     
     return results;
   } catch (error) {

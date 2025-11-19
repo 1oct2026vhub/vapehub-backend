@@ -244,6 +244,89 @@ const resizeImageBuffer = async (imageBuffer, options = {}) => {
 };
 
 /**
+ * Resize image to maximum 1920x1080 if larger, preserving aspect ratio and quality
+ * @param {Buffer} imageBuffer - Original image buffer
+ * @param {string} mimetype - Image MIME type
+ * @returns {Promise<Buffer>} - Resized image buffer (or original if smaller)
+ */
+const resizeToMaxSize = async (imageBuffer, mimetype) => {
+  try {
+    // Skip SVG files
+    if (mimetype === 'image/svg+xml') {
+      return imageBuffer;
+    }
+
+    const sharpInstance = sharp(imageBuffer);
+    const metadata = await sharpInstance.metadata();
+    
+    const MAX_WIDTH = 1920;
+    const MAX_HEIGHT = 1080;
+    
+    // Check if image needs resizing
+    if (metadata.width <= MAX_WIDTH && metadata.height <= MAX_HEIGHT) {
+      console.log(`ℹ️ Image already within max size (${metadata.width}x${metadata.height}), no resize needed`);
+      return imageBuffer;
+    }
+    
+    console.log(`🔄 Resizing image from ${metadata.width}x${metadata.height} to max ${MAX_WIDTH}x${MAX_HEIGHT}`);
+    
+    const format = metadata.format || 'jpeg';
+    const targetQuality = 95; // High quality for original
+    
+    // Resize with high-quality settings
+    let resizedInstance = sharpInstance
+      .resize(MAX_WIDTH, MAX_HEIGHT, {
+        fit: 'inside',
+        withoutEnlargement: true,
+        kernel: 'lanczos3' // High-quality resampling
+      });
+    
+    // Apply format-specific high-quality settings
+    switch (format.toLowerCase()) {
+      case 'jpeg':
+      case 'jpg':
+        resizedInstance = resizedInstance.jpeg({
+          quality: targetQuality,
+          progressive: true,
+          mozjpeg: true,
+          trellisQuantisation: true,
+          overshootDeringing: true,
+          optimizeScans: true
+        });
+        break;
+      case 'png':
+        resizedInstance = resizedInstance.png({
+          compressionLevel: 9,
+          adaptiveFiltering: true,
+          palette: false,
+          effort: 10
+        });
+        break;
+      case 'webp':
+        resizedInstance = resizedInstance.webp({
+          quality: targetQuality,
+          effort: 6,
+          smartSubsample: true,
+          lossless: false,
+          alphaQuality: 100
+        });
+        break;
+    }
+    
+    const resizedBuffer = await resizedInstance.toBuffer();
+    
+    const finalMetadata = await sharp(resizedBuffer).metadata();
+    console.log(`✅ Resized to ${finalMetadata.width}x${finalMetadata.height}, size: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    
+    return resizedBuffer;
+  } catch (error) {
+    console.error('❌ Error resizing to max size:', error);
+    // Return original buffer if resize fails
+    return imageBuffer;
+  }
+};
+
+/**
  * Enhanced upload function with automatic image resizing
  * @param {Object} params - Upload parameters
  * @param {Object} resizeOptions - Image resize options (optional)
@@ -298,5 +381,6 @@ module.exports = {
   checkImageExists,
   getImageMetadata,
   resizeImageBuffer,
-  uploadImageToS3WithResize
+  uploadImageToS3WithResize,
+  resizeToMaxSize
 };
