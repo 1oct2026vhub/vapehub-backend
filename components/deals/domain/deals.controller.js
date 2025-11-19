@@ -77,14 +77,23 @@ module.exports.getDealBySlug = async (req, res, next) => {
 
 module.exports.listAllDeals = async (req, res, next) => {
     try {
+        const { show_home_page } = req.query;
+        
+        // Build where clause
+        const whereClause = {
+            is_active: true,
+            is_deleted: false,
+            valid_from: { [Op.lte]: new Date() },
+            valid_to: { [Op.gte]: new Date() }
+        };
+        
+        // Add show_home_page filter if provided
+        if (show_home_page !== undefined) {
+            whereClause.show_home_page = show_home_page === 'true' || show_home_page === true;
+        }
+        
         const deals = await Deal.findAll({
-            where: {
-                is_active: true,
-                is_deleted: false,
-                valid_from: { [Op.lte]: new Date() },
-                valid_to: { [Op.gte]: new Date() },
-                show_home_page: true
-            },
+            where: whereClause,
             attributes: [
                 'id', 
                 'name', 
