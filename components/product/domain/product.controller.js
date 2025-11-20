@@ -1288,13 +1288,26 @@ module.exports.uploadImage = async (req, res) => {
             throw new Error('No file uploaded.');
         }
 
-        const uploadPromise = files.map(image => {
+        const uploadPromise = files.map(async (image) => {
             const { originalname, mimetype, buffer } = image;
+            
+            // Resize to max 1920x1080 if larger
+            let processedBuffer = buffer;
+            try {
+                const { resizeToMaxSize } = require("../../../library/s3/s3Helper");
+                processedBuffer = await resizeToMaxSize(buffer, mimetype);
+                if (processedBuffer !== buffer) {
+                    console.log(`📐 Image resized to max 1920x1080: ${originalname}`);
+                }
+            } catch (resizeError) {
+                console.error(`⚠️ Error resizing image, using original: ${resizeError.message}`);
+            }
+            
             const fileName = generateUniqueFileName(originalname)
             const params = {
                 Bucket: process.env.AWS_S3_BUCKET,
                 Key: `products/${fileName}`,
-                Body: buffer,
+                Body: processedBuffer,
                 ContentType: mimetype
             }
             return uploadFiletToS3(params)

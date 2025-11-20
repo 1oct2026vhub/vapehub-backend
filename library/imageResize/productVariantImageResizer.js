@@ -36,25 +36,27 @@ const PRODUCT_VARIANT_RESIZE_CONFIGS = {
   low: {
     width: 256,
     height: 256,
-    quality: 80,
-    format: 'jpeg',
+    quality: 85, // Increased from 80 for better quality
+    format: null, // null = preserve original format
     fit: 'inside' // Maintain aspect ratio, fit within bounds
   },
   // Mid resolution: 600 x 600 px (for product cards, medium displays)
   mid: {
     width: 600,
     height: 600,
-    quality: 85,
-    format: 'jpeg',
+    quality: 90, // Increased from 85 for better quality
+    format: null, // null = preserve original format
     fit: 'inside'
   },
   // High resolution: 1200 x 1200 px (for product detail pages)
   high: {
     width: 1200,
     height: 1200,
-    quality: 90,
-    format: 'jpeg',
-    fit: 'inside'
+    quality: 95, // Increased from 90 for better quality
+    format: null, // null = preserve original format
+    fit: 'inside',
+    maxWidth: 1920, // Ensure never exceeds max size
+    maxHeight: 1080
   }
 };
 
@@ -80,29 +82,58 @@ const resizeImageToConfig = async (imageBuffer, config) => {
     if (config.width && config.height) {
       sharpInstance = sharpInstance.resize(config.width, config.height, {
         fit: config.fit || 'inside',
-        withoutEnlargement: true
+        withoutEnlargement: true,
+        kernel: 'lanczos3' // High-quality resampling algorithm
       });
     } else if (config.maxWidth || config.maxHeight) {
       sharpInstance = sharpInstance.resize(config.maxWidth, config.maxHeight, {
         fit: 'inside',
-        withoutEnlargement: true
+        withoutEnlargement: true,
+        kernel: 'lanczos3' // High-quality resampling algorithm
       });
     }
     
-    // Apply format and quality
-    if (config.format) {
-      switch (config.format.toLowerCase()) {
-        case 'jpeg':
-        case 'jpg':
-          sharpInstance = sharpInstance.jpeg({ quality: config.quality || 80 });
-          break;
-        case 'png':
-          sharpInstance = sharpInstance.png({ quality: config.quality || 80 });
-          break;
-        case 'webp':
-          sharpInstance = sharpInstance.webp({ quality: config.quality || 80 });
-          break;
-      }
+    // Preserve original format if config.format is null, otherwise use config format
+    const targetQuality = Math.min(config.quality ?? 98, 100);
+    const format = (config.format || metadata.format || 'jpeg').toLowerCase();
+    
+    // Apply format-specific settings that preserve clarity
+    switch (format) {
+      case 'jpeg':
+      case 'jpg':
+        sharpInstance = sharpInstance.jpeg({
+          quality: targetQuality,
+          progressive: true,
+          mozjpeg: true,              // Better compression algorithm
+          trellisQuantisation: true, // Better quality at same file size
+          overshootDeringing: true,   // Reduce artifacts
+          optimizeScans: true        // Optimize for progressive loading
+        });
+        break;
+      case 'png':
+        sharpInstance = sharpInstance.png({
+          compressionLevel: 9,        // Maximum compression (0-9)
+          adaptiveFiltering: true,    // Better compression
+          palette: false,             // Keep full color depth
+          effort: 10                  // Maximum compression effort
+        });
+        break;
+      case 'webp':
+        sharpInstance = sharpInstance.webp({
+          quality: targetQuality,
+          effort: 6,                  // Maximum effort (0-6)
+          smartSubsample: true,       // Better quality
+          lossless: false,            // Use lossy for better file size
+          alphaQuality: 100          // Preserve transparency quality
+        });
+        break;
+      default:
+        // Default to JPEG for unknown formats
+        sharpInstance = sharpInstance.jpeg({ 
+          quality: targetQuality, 
+          progressive: true,
+          mozjpeg: true
+        });
     }
     
     return await sharpInstance.toBuffer();
@@ -166,9 +197,11 @@ const processProductVariantImageInMultipleSizes = async (originalBuffer, origina
     const results = {};
     const availableSizes = Object.keys(PRODUCT_VARIANT_RESIZE_CONFIGS);
     
-    // Process each size
-    for (const size of availableSizes) {
+    // Process all sizes in parallel for better performance
+    const resizePromises = availableSizes.map(async (size) => {
       try {
+        console.log(`🔄 Processing ${size} size...`);
+        
         const config = PRODUCT_VARIANT_RESIZE_CONFIGS[size];
         
         // Resize the image
@@ -176,16 +209,16 @@ const processProductVariantImageInMultipleSizes = async (originalBuffer, origina
         
         // If resize returned original buffer (e.g., SVG), skip this size
         if (resizedBuffer === originalBuffer && mimetype === 'image/svg+xml') {
-          results[size] = null;
-          continue;
+          return { size, result: null };
         }
         
         // Generate S3 key for resized image
         const resizedS3Key = generateResizedS3Key(originalS3Key, size);
         
-        // Determine content type
+        // Determine content type - preserve original format if config.format is null
         let contentType = mimetype;
         if (config.format) {
+          // Only override if format is explicitly set
           switch (config.format.toLowerCase()) {
             case 'jpeg':
             case 'jpg':
@@ -199,26 +232,38 @@ const processProductVariantImageInMultipleSizes = async (originalBuffer, origina
               break;
           }
         }
+        // If config.format is null, contentType remains as original mimetype
         
         // Upload to S3
         const uploadResult = await uploadResizedImageToS3(resizedBuffer, resizedS3Key, contentType);
         
-        // Store result
-        results[size] = {
-          url: uploadResult.Location,
-          key: uploadResult.Key,
-          size: size,
-          config: config
+        return {
+          size,
+          result: {
+            url: uploadResult.Location,
+            key: uploadResult.Key,
+            size: size,
+            config: config
+          }
         };
-        
-        console.log(`✅ ${size} size uploaded successfully: ${uploadResult.Location}`);
         
       } catch (error) {
         console.error(`❌ Error processing ${size} size:`, error);
         // Continue with other sizes even if one fails
-        results[size] = null;
+        return { size, result: null };
       }
-    }
+    });
+    
+    // Wait for all resizes to complete in parallel
+    const resizeResults = await Promise.all(resizePromises);
+    
+    // Organize results
+    resizeResults.forEach(({ size, result }) => {
+      results[size] = result;
+      if (result) {
+        console.log(`✅ ${size} size uploaded successfully: ${result.url}`);
+      }
+    });
     
     return results;
   } catch (error) {

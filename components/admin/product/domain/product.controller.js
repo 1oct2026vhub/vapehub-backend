@@ -3,7 +3,7 @@ const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attr
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
-const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, resizeToMaxSize } = require("../../../../library/s3/s3Helper");
 const { processProductImageInMultipleSizes } = require("../../../../library/imageResize/productImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
@@ -2003,24 +2003,36 @@ module.exports.uploadImage = async (req, res) => {
                 const fileName = generateUniqueFileName(originalname);
                 const s3Key = `products/${product_id}/${fileName}`;
                 
-                // Upload original image
+                // Resize original image to max 1920x1080 if larger
+                let processedBuffer = buffer;
+                try {
+                    processedBuffer = await resizeToMaxSize(buffer, mimetype);
+                    if (processedBuffer !== buffer) {
+                        console.log(`📐 Original image resized to max 1920x1080: ${originalname}`);
+                    }
+                } catch (resizeError) {
+                    console.error(`⚠️ Error resizing original image, using original: ${resizeError.message}`);
+                    // Continue with original buffer if resize fails
+                }
+                
+                // Upload original image (now max 1920x1080)
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: s3Key,
-                    Body: buffer,
+                    Body: processedBuffer,
                     ContentType: mimetype
                 };
 
                 const originalUpload = await uploadFiletToS3(params);
                 
-                // Generate resized versions using URL pattern
+                // Generate resized versions using the processed buffer
                 console.log(`🖼️ Generating resized versions for: ${originalname}`);
                 console.log(`📊 Environment check - AWS_S3_BUCKET: ${process.env.AWS_S3_BUCKET}`);
                 
                 let resizedResults = {};
                 try {
                     resizedResults = await processProductImageInMultipleSizes(
-                        buffer, 
+                        processedBuffer,  // Use processed buffer instead of original
                         originalname, 
                         product_id, 
                         mimetype, 
