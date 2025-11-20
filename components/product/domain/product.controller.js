@@ -2381,6 +2381,27 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 product_description
             };
         });
+        
+        // Sort variants alphabetically by attribute term names
+        finalVariants.sort((a, b) => {
+            // Create sort key from attribute term names (sorted alphabetically)
+            const getSortKey = (variant) => {
+                if (!variant.attributes || variant.attributes.length === 0) {
+                    return '';
+                }
+                return variant.attributes
+                    .map(attr => (attr.term_name || '').trim())
+                    .filter(name => name.length > 0)
+                    .sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()))
+                    .join(', ')
+                    .toLowerCase();
+            };
+            
+            const keyA = getSortKey(a);
+            const keyB = getSortKey(b);
+            return keyA.localeCompare(keyB);
+        });
+
         // Prepare product images (OPTIMIZED)
         const productImages = productImagesResult.map(img => ({
             id: img.id,
@@ -3066,6 +3087,27 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 product_description
             };
         });
+        
+        // Sort variants alphabetically by attribute term names
+        finalVariants.sort((a, b) => {
+            // Create sort key from attribute term names (sorted alphabetically)
+            const getSortKey = (variant) => {
+                if (!variant.attributes || variant.attributes.length === 0) {
+                    return '';
+                }
+                return variant.attributes
+                    .map(attr => (attr.term_name || '').trim())
+                    .filter(name => name.length > 0)
+                    .sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()))
+                    .join(', ')
+                    .toLowerCase();
+            };
+            
+            const keyA = getSortKey(a);
+            const keyB = getSortKey(b);
+            return keyA.localeCompare(keyB);
+        });
+
         // Prepare product images (OPTIMIZED)
         const productImages = productImagesResult.map(img => ({
             id: img.id,
