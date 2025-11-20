@@ -1888,7 +1888,7 @@ module.exports.getTrustpilotReviews = async (req, res, next) => {
                 }
                 return new Date(b.createdAt) - new Date(a.createdAt);
             })
-            .slice(0, 10);
+            .slice(0, perPage);
 
         // Get score stars from business unit
         const scoreStars = businessUnit.score.stars;
