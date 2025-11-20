@@ -5,7 +5,8 @@ const {
     getLegalContentByKey,
     getAvailableContentTypes,
     getLegalContentSummary,
-    getDispatchNotice
+    getDispatchNotice,
+    getLoyaltyPoints
 } = require('../domain/settings.controller');
 
 /**
@@ -199,6 +200,91 @@ router.get('/dispatch-notice', getDispatchNotice);
 
 /**
  * @swagger
+ * /api/settings/loyalty-points:
+ *   get:
+ *     tags:
+ *       - Settings
+ *     summary: Get loyalty points content
+ *     description: |
+ *       Retrieves the active loyalty points content for end users.
+ *     operationId: getLoyaltyPoints
+ *     responses:
+ *       200:
+ *         description: Loyalty points retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Loyalty points retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     loyalty_points:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           description: Unique identifier for the loyalty points content
+ *                           example: 5
+ *                         content:
+ *                           type: string
+ *                           description: HTML content of the loyalty points
+ *                           example: "<h1>Loyalty Points</h1><p>Earn points for every purchase...</p>"
+ *                         is_active:
+ *                           type: boolean
+ *                           description: Whether the loyalty points is active
+ *                           example: true
+ *                         last_updated:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Last update timestamp
+ *                           example: "2024-05-12T09:30:00Z"
+ *                         created_at:
+ *                           type: string
+ *                           format: date-time
+ *                           description: Creation timestamp
+ *                           example: "2024-05-01T08:00:00Z"
+ *       404:
+ *         description: Loyalty points not configured or inactive
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               not_found:
+ *                 summary: Loyalty points not found
+ *                 value:
+ *                   success: false
+ *                   message: "Loyalty points content not found or is inactive"
+ *                   error:
+ *                     code: "CONTENT_NOT_FOUND"
+ *                     details: "Loyalty points has not been configured"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               server_error:
+ *                 summary: Server error response
+ *                 value:
+ *                   success: false
+ *                   message: "Internal server error"
+ *                   error:
+ *                     code: "DATABASE_ERROR"
+ *                     details: "Database connection failed"
+ */
+router.get('/loyalty-points', getLoyaltyPoints);
+
+/**
+ * @swagger
  * /api/settings/legal-content:
  *   get:
  *     tags:
@@ -236,6 +322,10 @@ router.get('/dispatch-notice', getDispatchNotice);
  *                         returns_policy:
  *                           $ref: '#/components/schemas/LegalContentItem'
  *                         terms_conditions:
+ *                           $ref: '#/components/schemas/LegalContentItem'
+ *                         dispatch_notice:
+ *                           $ref: '#/components/schemas/LegalContentItem'
+ *                         loyalty_points:
  *                           $ref: '#/components/schemas/LegalContentItem'
  *                     metadata:
  *                       $ref: '#/components/schemas/ContentMetadata'
@@ -318,6 +408,8 @@ router.get('/legal-content', getLegalContent);
  *             - privacy_policy
  *             - returns_policy
  *             - terms_conditions
+ *             - dispatch_notice
+ *             - loyalty_points
  *         example: privacy_policy
  *     responses:
  *       200:

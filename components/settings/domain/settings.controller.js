@@ -246,10 +246,57 @@ const getDispatchNotice = async (req, res, next) => {
     }
 };
 
+/**
+ * Get loyalty points content
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+const getLoyaltyPoints = async (req, res, next) => {
+    try {
+        const loyaltyPointsKey = constants.LEGAL_CONTENT_KEYS['LOYALTY POINTS'];
+
+        const setting = await Settings.findOne({
+            where: {
+                content_key: loyaltyPointsKey,
+                is_active: true
+            },
+            attributes: ['id', 'content_key', 'content', 'is_active', 'created_at', 'updated_at']
+        });
+
+        if (!setting) {
+            return errorResponse(
+                res,
+                { message: 'Loyalty points content not found or is inactive' },
+                'Loyalty points not found',
+                404
+            );
+        }
+
+        return successResponse(
+            res,
+            {
+                loyalty_points: {
+                    id: setting.id,
+                    content: setting.content,
+                    is_active: setting.is_active,
+                    last_updated: setting.updated_at,
+                    created_at: setting.created_at
+                }
+            },
+            'Loyalty points retrieved successfully'
+        );
+    } catch (error) {
+        logger.error('Get Loyalty Points Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports = {
     getLegalContent,
     getLegalContentByKey,
     getAvailableContentTypes,
     getLegalContentSummary,
-    getDispatchNotice
+    getDispatchNotice,
+    getLoyaltyPoints
 };
