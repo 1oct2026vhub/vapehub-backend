@@ -2077,6 +2077,15 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             }
         });
 
+        // Sort terms alphabetically within each attribute
+        attributeTermsMap.forEach((value) => {
+            value.terms.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+        });
+
         // Filter variants based on provided attribute terms (OPTIMIZED)
         let filteredVariants;
         
@@ -2158,6 +2167,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Convert Maps to arrays
         availableTermsMap.forEach(value => {
             value.terms = Array.from(value.terms.values());
+            // Sort terms alphabetically
+            value.terms.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
         });
 
         // Calculate stock summary
@@ -2381,27 +2396,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 product_description
             };
         });
-        
-        // Sort variants alphabetically by attribute term names
-        finalVariants.sort((a, b) => {
-            // Create sort key from attribute term names (sorted alphabetically)
-            const getSortKey = (variant) => {
-                if (!variant.attributes || variant.attributes.length === 0) {
-                    return '';
-                }
-                return variant.attributes
-                    .map(attr => (attr.term_name || '').trim())
-                    .filter(name => name.length > 0)
-                    .sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()))
-                    .join(', ')
-                    .toLowerCase();
-            };
-            
-            const keyA = getSortKey(a);
-            const keyB = getSortKey(b);
-            return keyA.localeCompare(keyB);
-        });
-
         // Prepare product images (OPTIMIZED)
         const productImages = productImagesResult.map(img => ({
             id: img.id,
@@ -2462,6 +2456,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             });
             // Convert Map to array
             const terms = Array.from(allTermsForAttribute.values());
+            
+            // Sort terms alphabetically by name
+            terms.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
             
             if (attribute) {
                 return {
@@ -3087,27 +3088,6 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 product_description
             };
         });
-        
-        // Sort variants alphabetically by attribute term names
-        finalVariants.sort((a, b) => {
-            // Create sort key from attribute term names (sorted alphabetically)
-            const getSortKey = (variant) => {
-                if (!variant.attributes || variant.attributes.length === 0) {
-                    return '';
-                }
-                return variant.attributes
-                    .map(attr => (attr.term_name || '').trim())
-                    .filter(name => name.length > 0)
-                    .sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()))
-                    .join(', ')
-                    .toLowerCase();
-            };
-            
-            const keyA = getSortKey(a);
-            const keyB = getSortKey(b);
-            return keyA.localeCompare(keyB);
-        });
-
         // Prepare product images (OPTIMIZED)
         const productImages = productImagesResult.map(img => ({
             id: img.id,
@@ -3168,6 +3148,13 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             });
             // Convert Map to array
             const terms = Array.from(allTermsForAttribute.values());
+            
+            // Sort terms alphabetically by name
+            terms.sort((a, b) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
             
             if (attribute) {
                 return {
