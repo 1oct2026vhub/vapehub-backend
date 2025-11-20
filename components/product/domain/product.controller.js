@@ -4196,6 +4196,7 @@ module.exports.getAllDeals = async (req, res, next) => {
                 'valid_to',
                 'image_url',
                 'createdAt',
+                'show_home_page',
                 'updatedAt'
             ],
             limit: parseInt(limit),
@@ -4224,6 +4225,7 @@ module.exports.getAllDeals = async (req, res, next) => {
             valid_from: deal.valid_from,
             valid_to: deal.valid_to,
             image_url: deal.image_url,
+            show_home_page: deal.show_home_page,
             created_at: deal.createdAt,
             updated_at: deal.updatedAt
         }));
