@@ -10,6 +10,7 @@ const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.help
 const referral_method = require('../../../models/referral_method');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const logger = require('../../../utils/logger');
+const { convertTemporaryToPermanent } = require('../helper/temporaryUser.helper');
 
 
 module.exports.login = async (req, res, next) => {
@@ -696,5 +697,61 @@ module.exports.refreshToken = async (req, res, next) => {
         return successResponse(res, { accessToken, refreshToken: newRefreshToken }, "Token refreshed successfully", 200);
     } catch (error) {
         return errorResponse(res, error);
+    }
+}
+
+/**
+ * Convert temporary guest account to permanent account
+ */
+module.exports.convertGuestAccount = async (req, res, next) => {
+    try {
+        const { password } = req.body;
+        const userId = req.user.id;
+
+        if (!req.user.is_temporary) {
+            return errorResponse(
+                res,
+                { message: 'Account is already permanent' },
+                'Account is already permanent',
+                400
+            );
+        }
+
+        const user = await convertTemporaryToPermanent(userId, password);
+
+        // Send email verification
+        const token = uuid();
+        const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        
+        await user.update({ token, token_expiry });
+
+        const username = user?.first_name ?? user.email.split('@')[0];
+        const data = {
+            emailTypes: constants.emailTypes.REGISTER,
+            to: user.email,
+            context: {
+                userName: username,
+                verificationLink: `${process.env.FRONTEND_URL || process.env.ADMIN_FRONTEND_URL}/email-verify?token=${token}`,
+                expiryTime: moment(token_expiry).format('LLLL'),
+            },
+            attachments: ""
+        };
+        await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
+        return successResponse(
+            res,
+            { 
+                message: 'Account converted successfully. Please verify your email.',
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    is_temporary: false
+                }
+            },
+            'Account converted successfully',
+            200
+        );
+    } catch (error) {
+        return errorResponse(res, error, error.message);
     }
 }

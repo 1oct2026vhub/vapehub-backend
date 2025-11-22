@@ -164,6 +164,12 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: false,
         },
+        is_temporary: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+            comment: 'Flag to identify temporary guest users'
+        },
     }, {
         sequelize,
         modelName: 'User',

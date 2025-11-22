@@ -267,6 +267,123 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                   type: string
  *                   example: "Internal server error"
  */
-router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  // validateRequest(applyCouponValidate),
+router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  // validateRequest(applyCouponValidate), 
+
+/**
+ * @swagger
+ * /api/checkout/guest:
+ *   post:
+ *     summary: Guest Checkout - Create temporary user and proceed to checkout
+ *     description: Creates a temporary user account for guest checkout without requiring registration. Returns checkout data with JWT tokens.
+ *     tags:
+ *       - Checkout
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - first_name
+ *               - last_name
+ *               - cartItems
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "guest@example.com"
+ *               first_name:
+ *                 type: string
+ *                 example: "John"
+ *               last_name:
+ *                 type: string
+ *                 example: "Doe"
+ *               phone:
+ *                 type: string
+ *                 example: "+1234567890"
+ *               cartItems:
+ *                 type: array
+ *                 description: Cart items from localStorage
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - product_id
+ *                     - quantity
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       example: 101
+ *                     variant_id:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1001
+ *                     quantity:
+ *                       type: integer
+ *                       example: 2
+ *               couponCode:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "DISCOUNT10"
+ *     responses:
+ *       200:
+ *         description: Guest checkout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:
+ *                       type: string
+ *                       description: JWT access token for the temporary user
+ *                     refreshToken:
+ *                       type: string
+ *                       description: JWT refresh token for the temporary user
+ *                     is_temporary:
+ *                       type: boolean
+ *                       example: true
+ *                     cart:
+ *                       type: array
+ *                       description: Cart items
+ *                     shippingMethod:
+ *                       type: array
+ *                       description: Available shipping methods
+ *                     paymentMethod:
+ *                       type: array
+ *                       description: Available payment methods
+ *                     totalItems:
+ *                       type: integer
+ *                     subTotal:
+ *                       type: number
+ *                     total:
+ *                       type: number
+ *       400:
+ *         description: Bad Request - Invalid input or email already exists
+ *       500:
+ *         description: Internal Server Error
+ */
+router.post("/guest", 
+    validateRequest([
+        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+        check('first_name').notEmpty().withMessage('First name is required').trim(),
+        check('last_name').notEmpty().withMessage('Last name is required').trim(),
+        check('phone').optional().isString().trim(),
+        check('cartItems').isArray({ min: 1 }).withMessage('Cart items are required'),
+        check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
+        check('cartItems.*.variant_id').optional().isInt({ min: 1 }).withMessage('variant_id must be a valid integer if provided'),
+        check('cartItems.*.quantity').isInt({ min: 1 }).withMessage('Each item must have quantity >= 1'),
+        check('couponCode').optional().isString().trim()
+    ]),
+    checkoutController.guestCheckout
+)
 
 module.exports = router

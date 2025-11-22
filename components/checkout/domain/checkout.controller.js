@@ -1,9 +1,10 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings, Brand, Category } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings, Brand, Category, sequelize } = require("../../../models");
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
+const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -903,6 +904,341 @@ module.exports.applyCoupon = async (req, res, next) => {
         successResponse(res, resObj, responseMessage);
     } catch (error) {
         return errorResponse(res, error, error.message);
+    }
+}
+
+/**
+ * Guest Checkout - Create temporary user and proceed to checkout
+ * This endpoint allows guest users to checkout without registration
+ */
+module.exports.guestCheckout = async (req, res, next) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { email, first_name, last_name, phone, cartItems, couponCode } = req.body;
+
+        // Validate required fields
+        if (!email || !first_name || !last_name) {
+            throw {
+                statusCode: 400,
+                message: 'Email, first name, and last name are required'
+            };
+        }
+
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+            throw {
+                statusCode: 400,
+                message: 'Cart items are required'
+            };
+        }
+
+        // Step 1: Create temporary user
+        const { user: tempUser, accessToken, refreshToken } = await createTemporaryUser({
+            email,
+            first_name,
+            last_name,
+            phone
+        });
+
+        // Step 2: Migrate cart items from localStorage to database
+        for (const item of cartItems) {
+            const { product_id, variant_id, quantity } = item;
+            
+            if (!product_id || !quantity) {
+                continue; // Skip invalid items
+            }
+
+            // Check if item already exists in cart
+            const existingCartItem = await Cart.findOne({
+                where: {
+                    user_id: tempUser.id,
+                    product_id,
+                    variant_id: variant_id || null
+                },
+                transaction
+            });
+
+            if (existingCartItem) {
+                // Update quantity
+                await existingCartItem.update({ quantity }, { transaction });
+            } else {
+                // Create new cart item
+                await Cart.create({
+                    user_id: tempUser.id,
+                    product_id,
+                    variant_id: variant_id || null,
+                    quantity
+                }, { transaction });
+            }
+        }
+
+        await transaction.commit();
+
+        // Step 3: Now use the regular checkout logic with the temporary user
+        // Set the user in request object for reuse of existing checkout logic
+        const originalUser = req.user;
+        req.user = tempUser;
+        const originalCouponCode = req.body.couponCode;
+        req.body.couponCode = couponCode;
+        
+        // Call the existing checkout method and capture response
+        try {
+            // We need to intercept the response, so we'll call checkout logic directly
+            // but we'll need to handle it differently
+            const userId = tempUser.id;
+            const { referralCouponCode } = req.body;
+            let total = 0;
+            let subTotal = 0;
+            let totalItems = 0;
+            let shippingCost = 0;
+            let validityMessage = '';
+            let referralDiscount = 0;
+            let referralMessage = '';
+            let referralPercentage = 0;
+            let dealsDiscount = 0;
+            let applicableDeals = [];
+
+            const cart = await Cart.findAll({
+                where: { user_id: userId },
+                include: [
+                    {
+                        model: User,
+                        attributes: ["id", "first_name", "last_name", "email", "phone"],
+                        as: "user"
+                    },
+                    {
+                        model: Product,
+                        attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                        as: "product",
+                        paranoid: false
+                    },
+                    {
+                        model: ProductVariant,
+                        attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
+                        as: "variant",
+                        paranoid: false
+                    }
+                ]
+            });
+
+            if (cart.length === 0) {
+                throw {
+                    statusCode: 404,
+                    message: 'Cart is empty'
+                }
+            }
+
+            // Fetch ShippingMethod separately
+            const shippingMethod = await ShippingMethod.findAll({
+                attributes: ["id", "shipping_method", "shipping_cost"]
+            });
+
+            if(!shippingMethod || shippingMethod.length === 0){
+                validityMessage = 'No shipping methods available'
+            }
+
+            const paymentMethod = await PaymentMethod.findAll({
+                where: { status: "active" }
+            });
+
+            // Calculate subtotal amount
+            for (const item of cart) {
+                if (!item.variant || item.variant.deleted_at) {
+                    const productName = item.product?.name || 'Unknown product';
+                    const variantName = item.variant?.slug || `Variant ID: ${item.variant_id}` || 'Unknown variant';
+                    throw {
+                        statusCode: 404,
+                        message: `The selected variant ${variantName} for product ${productName} is no longer available. Please update your cart before proceeding to checkout.`
+                    };
+                }
+                // Validate quantity
+                if (item.quantity !== undefined && item.quantity < 1) {
+                    throw { message: `Quantity for ${item.product.name} must be at least 1`, statusCode: 400 };
+                }
+                // Check if cart quantity exceeds variant stock
+                if (item.quantity > item.variant.stock) {
+                    throw {
+                        statusCode: 400,
+                        message: `Quantity exceeds available stock for ${item.product.name}. Available stock: ${item.variant.stock}`
+                    }
+                }
+                subTotal += item.quantity * item.variant.price;
+                totalItems += item.quantity;
+            }
+
+            // Calculate deals
+            const deals = await dealService.getApplicableDeals(cart);
+            const dealResult = dealService.calculateDealDiscounts(cart, deals);
+            dealsDiscount = dealResult.totalDiscount;
+            applicableDeals = dealResult.appliedDeals;
+
+            // Apply deal discounts to total
+            total = subTotal - dealsDiscount;
+
+            // Process regular coupon if provided
+            if (couponCode) {
+                const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+                const coupon = await Coupon.findOne({
+                    where: {
+                        code: couponCode,
+                        status: "active",
+                        start_date: { [Op.lte]: currentUkTime },
+                        end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] },
+                    }
+                });
+
+                if (coupon && couponCode === coupon.code) {
+                    if (!coupon.minimum_purchase || (total >= coupon.minimum_purchase)) {
+                        if (!coupon.usage_limit || (coupon.usage_count < coupon.usage_limit)) {
+                            const userUsedCoupon = await CouponUsage.findOne({
+                                where: { user_id: userId, coupon_id: coupon.id }
+                            });
+                            if (!userUsedCoupon) {
+                                let discount = 0;
+                                
+                                if (coupon.discount_type === "percentage") {
+                                    discount = (coupon.discount_value / 100) * total;
+                                } else if (coupon.discount_type === "fixed_amount") {
+                                    discount = coupon.discount_value;
+                                }
+                                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                                    discount = coupon.maximum_discount;
+                                }
+                                if (parseFloat(discount) > parseFloat(total)) {
+                                    discount = total;
+                                }
+                                total = Math.max(0, total - discount);
+                            } else {
+                                validityMessage = 'You have already used this coupon.';
+                            }
+                        } else {
+                            validityMessage = 'This coupon is no longer available — usage limit exceeded.';
+                        }
+                    } else {
+                        validityMessage = `Coupon requires a minimum purchase of $${coupon.minimum_purchase}.`;
+                    }
+                } else {
+                    validityMessage = 'Invalid or expired coupon code';
+                }
+            }
+
+            if(!couponCode){
+                validityMessage = ''
+            }
+
+            // Get mail subscription data and loyalty points redemption info
+            let mailSubscriptionData = null;
+            let loyaltyRedemptionInfo = null;
+            const user = await User.findOne({
+                where: { id: userId },
+                attributes: ['id', 'email', 'loyalty_points']
+            });
+            
+            if (user && user.email) {
+                // Get user's mail subscription
+                const mailSubscription = await MailSubscription.findOne({
+                    where: { 
+                        email: user.email
+                    }
+                });
+                if (mailSubscription) {
+                    // Get active mail subscription settings
+                    const mailSettings = await MailSubscriptionSettings.findOne({
+                        where: { 
+                            status: true
+                        }
+                    });
+                    if (mailSettings) {
+                        mailSubscriptionData = {
+                            isDiscountUsed: mailSubscription.isDiscountUsed,
+                            discount_amount: parseFloat(mailSettings.discount_amount),
+                            discount_type: mailSettings.discount_type
+                        };
+                    }
+                }
+            }
+
+            // Get loyalty points redemption information
+            const loyaltySettings = await LoyaltyPointsSettings.findOne({
+                where: { status: true }
+            });
+
+            if (loyaltySettings && user) {
+                const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
+                const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
+                let redemptionAmount = 0;
+                let redemptionType = 'none';
+
+                if (canRedeem) {
+                    if (loyaltySettings.loyalty_amount_type === 'percentage') {
+                        redemptionAmount = loyaltySettings.loyalty_amount;
+                        redemptionType = 'percentage';
+                    } else {
+                        redemptionAmount = loyaltySettings.loyalty_amount;
+                        redemptionType = 'fixed';
+                    }
+                }
+
+                loyaltyRedemptionInfo = {
+                    user_points: user.loyalty_points || 0,
+                    minimum_points_required: loyaltySettings.minimum_points_redemption,
+                    can_redeem: canRedeem,
+                    points_needed: pointsNeeded,
+                    redemption_amount: redemptionAmount,
+                    redemption_type: redemptionType,
+                    points_value: loyaltySettings.points_value,
+                    min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                    amount_divisor: loyaltySettings.amount_divisor
+                };
+            }
+
+            total = parseFloat(Math.max(0, total).toFixed(2));
+            subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+            dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
+
+            const address = await UserAddress.findOne({ 
+                where: { user_id: userId },
+                order: [['createdAt', 'DESC']]
+            });
+
+            const resObj = {
+                cart,
+                shippingMethod,
+                paymentMethod,
+                address,
+                totalItems,
+                shippingCost,
+                subTotal,
+                total,
+                validityMessage,
+                referralDiscount,
+                referralMessage,
+                mail_subscription_data: mailSubscriptionData,
+                loyalty_redemption_info: loyaltyRedemptionInfo,
+                deals: {
+                    total_deals_discount: dealsDiscount,
+                    applicable_deals: applicableDeals
+                },
+                // Add tokens for guest checkout
+                accessToken,
+                refreshToken,
+                is_temporary: true
+            }
+            
+            // Restore original request state
+            req.user = originalUser;
+            req.body.couponCode = originalCouponCode;
+            
+            return successResponse(res, resObj, 'Success');
+        } catch (checkoutError) {
+            // Restore original request state
+            req.user = originalUser;
+            req.body.couponCode = originalCouponCode;
+            throw checkoutError;
+        }
+
+    } catch (error) {
+        await transaction.rollback();
+        return errorResponse(res, error, error.message || 'Guest checkout failed');
     }
 }
 
