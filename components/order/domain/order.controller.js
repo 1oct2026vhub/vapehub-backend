@@ -11,6 +11,7 @@ const sendEmail = require('../../../library/sendEmail');
 const constants = require('../../../config/constants');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const dealService = require('../../Cart/helper/deal.service');
+const { findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 
 module.exports.getOrders = async (req, res) => {
     try {
@@ -1735,5 +1736,93 @@ module.exports.orderCode = async (req, res) => {
     } catch (error) {
         console.error('Error processing Viva Wallet webhook:', error);
         return errorResponse(res, error, 'Failed to process webhook');
+    }
+};
+
+/**
+ * Guest Order Placement - Create temporary user and place order
+ * This endpoint allows guest users to place orders without registration
+ */
+module.exports.placeGuestOrder = async (req, res, next) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { email, first_name, last_name, phone, cartItems, ...orderData } = req.body;
+
+        // Validate required fields
+        if (!email || !first_name || !last_name) {
+            throw {
+                statusCode: 400,
+                message: 'Email, first name, and last name are required'
+            };
+        }
+
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+            throw {
+                statusCode: 400,
+                message: 'Cart items are required'
+            };
+        }
+
+        // Step 1: Find or create temporary user
+        const tempUser = await findOrCreateTemporaryUser(email, {
+            first_name,
+            last_name,
+            phone
+        });
+
+        // Step 2: Migrate cart items from localStorage to database
+        for (const item of cartItems) {
+            const { product_id, variant_id, quantity } = item;
+            
+            if (!product_id || !quantity) {
+                continue; // Skip invalid items
+            }
+
+            // Check if item already exists in cart
+            const existingCartItem = await Cart.findOne({
+                where: {
+                    user_id: tempUser.id,
+                    product_id,
+                    variant_id: variant_id || null
+                },
+                transaction
+            });
+
+            if (existingCartItem) {
+                // Update quantity
+                await existingCartItem.update({ quantity }, { transaction });
+            } else {
+                // Create new cart item
+                await Cart.create({
+                    user_id: tempUser.id,
+                    product_id,
+                    variant_id: variant_id || null,
+                    quantity
+                }, { transaction });
+            }
+        }
+
+        await transaction.commit();
+
+        // Step 3: Use existing placeOrder logic
+        // Set the user in request object
+        const originalUser = req.user;
+        req.user = tempUser;
+        
+        // Merge order data with guest info
+        req.body = { 
+            ...orderData, 
+            email, 
+            phone, 
+            first_name, 
+            last_name 
+        };
+        
+        // Call the existing placeOrder method
+        return await module.exports.placeOrder(req, res, next);
+
+    } catch (error) {
+        await transaction.rollback();
+        return errorResponse(res, error, error.message || 'Guest order placement failed');
     }
 };

@@ -3,7 +3,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const orderController = require("../domain/order.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
-const {validatePlaceOrder, validateOrderId} = require("../helper/order.validator")
+const {validatePlaceOrder, validateOrderId, validateGuestPlaceOrder} = require("../helper/order.validator")
 
 /**
  * @swagger
@@ -635,6 +635,108 @@ router.get('/:id', authenticateJWT, orderController.getOrderById);
 
 
 router.post("/", authenticateJWT, validateRequest(validatePlaceOrder), orderController.placeOrder)
+
+/**
+ * @swagger
+ * /api/order/guest:
+ *   post:
+ *     summary: Place an order as a guest user
+ *     description: Creates a temporary user account and places an order without requiring registration. Cart items are migrated from localStorage to database.
+ *     tags:
+ *       - Orders
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - first_name
+ *               - last_name
+ *               - phone
+ *               - cartItems
+ *               - shipping_method_id
+ *               - shipping_address
+ *               - billing_address
+ *               - useShippingAsBilling
+ *               - payment_method
+ *               - total
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "guest@example.com"
+ *               first_name:
+ *                 type: string
+ *                 example: "John"
+ *               last_name:
+ *                 type: string
+ *                 example: "Doe"
+ *               phone:
+ *                 type: string
+ *                 example: "+1234567890"
+ *               cartItems:
+ *                 type: array
+ *                 description: Cart items from localStorage
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - product_id
+ *                     - quantity
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       example: 101
+ *                     variant_id:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1001
+ *                     quantity:
+ *                       type: integer
+ *                       example: 2
+ *               shipping_method_id:
+ *                 type: integer
+ *                 example: 1
+ *               shipping_address:
+ *                 type: object
+ *                 properties:
+ *                   first_name:
+ *                     type: string
+ *                   last_name:
+ *                     type: string
+ *                   address_line_1:
+ *                     type: string
+ *                   city:
+ *                     type: string
+ *                   region:
+ *                     type: string
+ *                   post_code:
+ *                     type: string
+ *               billing_address:
+ *                 type: object
+ *               useShippingAsBilling:
+ *                 type: boolean
+ *               payment_method:
+ *                 type: object
+ *                 properties:
+ *                   method:
+ *                     type: string
+ *                     enum: ["VivaWallet", "WorldPay"]
+ *               total:
+ *                 type: number
+ *               couponCode:
+ *                 type: string
+ *                 nullable: true
+ *     responses:
+ *       200:
+ *         description: Order placed successfully
+ *       400:
+ *         description: Bad Request
+ *       500:
+ *         description: Internal Server Error
+ */
+router.post("/guest", validateRequest(validateGuestPlaceOrder), orderController.placeGuestOrder)
 
 /**
  * @swagger

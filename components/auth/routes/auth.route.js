@@ -302,4 +302,78 @@ router.post("/refresh-token",
   ]),
   authController.refreshToken);
 
+/**
+ * @swagger
+ * /api/auth/convert-guest-account:
+ *   post:
+ *     summary: Convert temporary guest account to permanent account
+ *     description: Allows guest users to set a password and convert their temporary account to permanent. An email verification link will be sent.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Password for the permanent account (must be at least 8 characters with uppercase, lowercase, digit, and special character)
+ *                 example: "Password@123"
+ *     responses:
+ *       200:
+ *         description: Account converted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Account converted successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Account converted successfully. Please verify your email."
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         email:
+ *                           type: string
+ *                         is_temporary:
+ *                           type: boolean
+ *                           example: false
+ *       400:
+ *         description: Bad Request - Account already permanent or invalid password
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       500:
+ *         description: Internal Server Error
+ */
+const authenticateJWT = require('../middleware/authMiddleware');
+router.post('/convert-guest-account',
+    authenticateJWT,
+    validateRequest([
+        check('password')
+            .isLength({ min: 8 })
+            .withMessage('Password must be at least 8 characters')
+            .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
+            .withMessage('Password must contain uppercase, lowercase, digit, and special character')
+    ]),
+    authController.convertGuestAccount
+);
+
 module.exports = router;
