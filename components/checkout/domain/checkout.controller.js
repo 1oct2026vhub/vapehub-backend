@@ -5,6 +5,8 @@ const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
+const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
+const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -1241,6 +1243,275 @@ module.exports.guestCheckout = async (req, res, next) => {
         return errorResponse(res, error, error.message || 'Guest checkout failed');
     }
 }
+
+/**
+ * Combined guest checkout and order placement
+ * Creates temporary user, calculates checkout, and places order in one API call
+ */
+module.exports.guestCheckoutAndOrder = async (req, res, next) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const { 
+            email, 
+            first_name, 
+            last_name, 
+            phone, 
+            cartItems, 
+            couponCode,
+            // Order-specific fields
+            shipping_method_id,
+            shipping_address,
+            billing_address,
+            useShippingAsBilling,
+            payment_method,
+            loyalty,
+            total,
+            receive_promotions
+        } = req.body;
+
+        // Validate required fields
+        if (!email || !first_name || !last_name) {
+            throw {
+                statusCode: 400,
+                message: 'Email, first name, and last name are required'
+            };
+        }
+
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+            throw {
+                statusCode: 400,
+                message: 'Cart items are required'
+            };
+        }
+
+        if (!shipping_method_id || !shipping_address || !payment_method || !total) {
+            throw {
+                statusCode: 400,
+                message: 'Shipping method, shipping address, payment method, and total are required'
+            };
+        }
+
+        // Step 1: Create temporary user
+        const { user: tempUser, accessToken, refreshToken } = await createGuestUser({
+            email,
+            first_name,
+            last_name,
+            phone
+        });
+
+        // Step 2: Migrate cart items
+        await migrateGuestCartToDatabase(tempUser.id, cartItems, transaction);
+        
+        await transaction.commit();
+
+        // Step 3: Calculate checkout summary (reuse guestCheckout logic)
+        const userId = tempUser.id;
+        let checkoutTotal = 0;
+        let subTotal = 0;
+        let totalItems = 0;
+        let dealsDiscount = 0;
+        let applicableDeals = [];
+
+        const cart = await Cart.findAll({
+            where: { user_id: userId },
+            include: [
+                {
+                    model: User,
+                    attributes: ["id", "first_name", "last_name", "email", "phone"],
+                    as: "user"
+                },
+                {
+                    model: Product,
+                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                    as: "product",
+                    paranoid: false
+                },
+                {
+                    model: ProductVariant,
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
+                    as: "variant",
+                    paranoid: false
+                }
+            ]
+        });
+
+        if (cart.length === 0) {
+            throw {
+                statusCode: 404,
+                message: 'Cart is empty'
+            };
+        }
+
+        // Calculate subtotal
+        for (const item of cart) {
+            if (!item.variant || item.variant.deleted_at) {
+                throw {
+                    statusCode: 404,
+                    message: `The selected variant for product ${item.product?.name} is no longer available.`
+                };
+            }
+            subTotal += item.quantity * item.variant.price;
+            totalItems += item.quantity;
+        }
+
+        // Calculate deals
+        const deals = await dealService.getApplicableDeals(cart);
+        const dealResult = dealService.calculateDealDiscounts(cart, deals);
+        dealsDiscount = dealResult.totalDiscount;
+        applicableDeals = dealResult.appliedDeals;
+
+        checkoutTotal = subTotal - dealsDiscount;
+
+        // Apply coupon if provided (simplified - reuse full logic from guestCheckout)
+        if (couponCode) {
+            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+            const coupon = await Coupon.findOne({
+                where: {
+                    code: couponCode,
+                    status: "active",
+                    start_date: { [Op.lte]: currentUkTime },
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] },
+                }
+            });
+
+            if (coupon && checkoutTotal >= (coupon.minimum_purchase || 0)) {
+                const userUsedCoupon = await CouponUsage.findOne({
+                    where: { user_id: userId, coupon_id: coupon.id }
+                });
+                if (!userUsedCoupon) {
+                    let discount = 0;
+                    if (coupon.discount_type === "percentage") {
+                        discount = (coupon.discount_value / 100) * checkoutTotal;
+                    } else if (coupon.discount_type === "fixed_amount") {
+                        discount = coupon.discount_value;
+                    }
+                    if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                        discount = coupon.maximum_discount;
+                    }
+                    if (parseFloat(discount) > parseFloat(checkoutTotal)) {
+                        discount = checkoutTotal;
+                    }
+                    checkoutTotal = Math.max(0, checkoutTotal - discount);
+                }
+            }
+        }
+
+        checkoutTotal = parseFloat(Math.max(0, checkoutTotal).toFixed(2));
+        subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+
+        // Get mail subscription and loyalty info
+        let mailSubscriptionData = null;
+        let loyaltyRedemptionInfo = null;
+        const user = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'email', 'loyalty_points']
+        });
+
+        if (user && user.email) {
+            const mailSubscription = await MailSubscription.findOne({
+                where: { email: user.email }
+            });
+            if (mailSubscription) {
+                const mailSettings = await MailSubscriptionSettings.findOne({
+                    where: { status: true }
+                });
+                if (mailSettings) {
+                    mailSubscriptionData = {
+                        isDiscountUsed: mailSubscription.isDiscountUsed,
+                        discount_amount: parseFloat(mailSettings.discount_amount),
+                        discount_type: mailSettings.discount_type
+                    };
+                }
+            }
+        }
+
+        const loyaltySettings = await LoyaltyPointsSettings.findOne({
+            where: { status: true }
+        });
+
+        if (loyaltySettings && user) {
+            const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
+            const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
+            let redemptionAmount = 0;
+            let redemptionType = 'none';
+
+            if (canRedeem) {
+                if (loyaltySettings.loyalty_amount_type === 'percentage') {
+                    redemptionAmount = loyaltySettings.loyalty_amount;
+                    redemptionType = 'percentage';
+                } else {
+                    redemptionAmount = loyaltySettings.loyalty_amount;
+                    redemptionType = 'fixed';
+                }
+            }
+
+            loyaltyRedemptionInfo = {
+                user_points: user.loyalty_points || 0,
+                minimum_points_required: loyaltySettings.minimum_points_redemption,
+                can_redeem: canRedeem,
+                points_needed: pointsNeeded,
+                redemption_amount: redemptionAmount,
+                redemption_type: redemptionType,
+                points_value: loyaltySettings.points_value,
+                min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                amount_divisor: loyaltySettings.amount_divisor
+            };
+        }
+
+        const checkoutSummary = {
+            totalItems,
+            shippingCost: 0, // Will be calculated in order
+            subTotal,
+            total: checkoutTotal,
+            deals: {
+                total_deals_discount: dealsDiscount,
+                applicable_deals: applicableDeals
+            },
+            mail_subscription_data: mailSubscriptionData,
+            loyalty_redemption_info: loyaltyRedemptionInfo
+        };
+
+        // Step 4: Place order using helper
+        const orderTransaction = await sequelize.transaction();
+        try {
+            const orderResult = await placeOrderLogic(tempUser.id, {
+                email,
+                phone,
+                couponCode,
+                receive_promotions,
+                shipping_address_id: shipping_address.shipping_address_id,
+                shipping_address,
+                billing_address: billing_address || shipping_address,
+                useShippingAsBilling: useShippingAsBilling !== undefined ? useShippingAsBilling : true,
+                payment_method,
+                loyalty,
+                total,
+                shipping_method_id
+            }, orderTransaction);
+
+            await orderTransaction.commit();
+
+            // Return combined response
+            return successResponse(res, {
+                checkout: checkoutSummary,
+                order: orderResult,
+                tokens: {
+                    accessToken,
+                    refreshToken
+                },
+                is_temporary: true
+            }, 'Order placed successfully');
+
+        } catch (orderError) {
+            await orderTransaction.rollback();
+            throw orderError;
+        }
+
+    } catch (error) {
+        await transaction.rollback();
+        return errorResponse(res, error, error.message || 'Guest checkout and order failed');
+    }
+};
 
 
 
