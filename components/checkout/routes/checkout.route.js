@@ -386,4 +386,88 @@ router.post("/guest",
     checkoutController.guestCheckout
 )
 
+/**
+ * @swagger
+ * /api/checkout/guest/checkout-and-order:
+ *   post:
+ *     summary: Guest Checkout and Place Order (Combined)
+ *     description: Creates temporary user, calculates checkout, and places order in one API call
+ *     tags:
+ *       - Checkout
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - first_name
+ *               - last_name
+ *               - cartItems
+ *               - shipping_method_id
+ *               - shipping_address
+ *               - payment_method
+ *               - total
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               first_name:
+ *                 type: string
+ *               last_name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               cartItems:
+ *                 type: array
+ *               couponCode:
+ *                 type: string
+ *               shipping_method_id:
+ *                 type: integer
+ *               shipping_address:
+ *                 type: object
+ *               billing_address:
+ *                 type: object
+ *               payment_method:
+ *                 type: object
+ *               total:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Order placed successfully
+ *       400:
+ *         description: Bad Request
+ */
+router.post("/guest/checkout-and-order", 
+    validateRequest([
+        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+        check('first_name').notEmpty().withMessage('First name is required').trim(),
+        check('last_name').notEmpty().withMessage('Last name is required').trim(),
+        check('phone').optional().isString().trim(),
+        check('cartItems').isArray({ min: 1 }).withMessage('Cart items are required'),
+        check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
+        check('cartItems.*.variant_id').optional().isInt({ min: 1 }),
+        check('cartItems.*.quantity').isInt({ min: 1 }).withMessage('Each item must have quantity >= 1'),
+        check('couponCode').optional().isString().trim(),
+        // Order validation
+        check('shipping_method_id').isInt({ min: 1 }).withMessage('Shipping method ID is required'),
+        check('shipping_address').isObject().withMessage('Shipping address is required'),
+        check('shipping_address.first_name').notEmpty().withMessage('Shipping first name is required'),
+        check('shipping_address.last_name').notEmpty().withMessage('Shipping last name is required'),
+        check('shipping_address.address_line_1').notEmpty().withMessage('Shipping address is required'),
+        check('shipping_address.city').notEmpty().withMessage('Shipping city is required'),
+        check('shipping_address.region').notEmpty().withMessage('Shipping state is required'),
+        check('shipping_address.post_code').notEmpty().withMessage('Shipping zip code is required'),
+        check('billing_address').optional().isObject(),
+        check('useShippingAsBilling').optional().isBoolean(),
+        check('payment_method').isObject().withMessage('Payment method is required'),
+        check('payment_method.method').isIn(['Worldpay', 'VivaWallet']).withMessage('Payment method must be Worldpay or VivaWallet'),
+        check('total').isFloat({ min: 0 }).withMessage('Total amount is required'),
+        check('loyalty').optional(),
+        check('receive_promotions').optional().isBoolean()
+    ]),
+    checkoutController.guestCheckoutAndOrder
+)
+
 module.exports = router
