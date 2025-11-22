@@ -63,15 +63,26 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         state: shipping_address.region, 
         town: shipping_address.city 
     };
-    const billingData = { 
-        ...billing_address, 
-        name: billing_address.first_name, 
-        street: (billing_address.address_line_1 || '') + " " + (billing_address.address_line_2 || ''), 
-        state: billing_address.region, 
-        town: billing_address.city 
-    };
     const shippingAddrs = await saveShippingAddress(user_id, shippingData, transaction);
-    const billingAddrs = useShippingAsBilling ? shippingAddrs : await saveShippingAddress(user_id, billingData, transaction);
+    
+    // Handle billing address - use shipping address if useShippingAsBilling is true
+    let billingAddrs;
+    if (useShippingAsBilling) {
+        billingAddrs = shippingAddrs;
+    } else {
+        // Ensure billing_address exists when useShippingAsBilling is false
+        if (!billing_address) {
+            throw new Error('Billing address is required when useShippingAsBilling is false');
+        }
+        const billingData = { 
+            ...billing_address, 
+            name: billing_address.first_name, 
+            street: (billing_address.address_line_1 || '') + " " + (billing_address.address_line_2 || ''), 
+            state: billing_address.region, 
+            town: billing_address.city 
+        };
+        billingAddrs = await saveShippingAddress(user_id, billingData, transaction);
+    }
     const payMethod = payment_method.method;
 
     // Get payment method ID from PaymentMethod model
@@ -579,7 +590,10 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
         const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
 
-        let countryCode = (billing_address.country || 'GB').toUpperCase();
+        // Use billing address from billingAddrs (which may be same as shipping if useShippingAsBilling is true)
+        const billingAddrForPayment = useShippingAsBilling ? shipping_address : (billing_address || shipping_address);
+        
+        let countryCode = (billingAddrForPayment.country || shipping_address.country || 'GB').toUpperCase();
         if (countryCode.length !== 2) {
             countryCode = 'GB';
         }
@@ -602,14 +616,14 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                         amount: Math.round(calculatedTotal * 100)
                     },
                     description: 'VapeHub Order',
-                    billingAddressName: billing_address.first_name,
+                    billingAddressName: billingAddrForPayment.first_name,
                     billingAddress: {
-                        address1: billing_address.address_line_1,
-                        address2: billing_address.address_line_2,
-                        address3: billing_address.region,
-                        postalCode: billing_address.post_code,
-                        city: billing_address.city,
-                        state: billing_address.region,
+                        address1: billingAddrForPayment.address_line_1,
+                        address2: billingAddrForPayment.address_line_2 || '',
+                        address3: billingAddrForPayment.region,
+                        postalCode: billingAddrForPayment.post_code,
+                        city: billingAddrForPayment.city,
+                        state: billingAddrForPayment.region,
                         countryCode: countryCode
                     },
                     resultURLs: {
