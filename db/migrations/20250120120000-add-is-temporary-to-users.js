@@ -30,13 +30,23 @@ module.exports = {
       const indexExists = indexes.some(idx => idx.name === 'idx_users_temporary_created');
       
       if (!indexExists) {
-        // Add index for efficient cleanup queries
-        await queryInterface.addIndex('users', ['is_temporary', 'created_at'], {
-          name: 'idx_users_temporary_created',
-          transaction
-        });
+        // Check which timestamp column exists (Sequelize uses createdAt by default)
+        // Re-fetch table description in case column was just added
+        const currentTableDescription = await queryInterface.describeTable('users');
+        const timestampColumn = currentTableDescription.createdAt ? 'createdAt' : 
+                               (currentTableDescription.created_at ? 'created_at' : null);
+        
+        if (timestampColumn) {
+          // Add index for efficient cleanup queries
+          await queryInterface.addIndex('users', ['is_temporary', timestampColumn], {
+            name: 'idx_users_temporary_created',
+            transaction
+          });
 
-        console.log('✅ Added index on (is_temporary, created_at)');
+          console.log(`✅ Added index on (is_temporary, ${timestampColumn})`);
+        } else {
+          console.log('⚠️  Warning: No timestamp column found, skipping index creation');
+        }
       } else {
         console.log('ℹ️  Index idx_users_temporary_created already exists, skipping...');
       }
