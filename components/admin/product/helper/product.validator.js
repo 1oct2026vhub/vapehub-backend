@@ -7,6 +7,13 @@ const productIdValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
 ];
 
+const getLinkedProductsValidation = [
+    param("id").isInt().withMessage("Product ID must be an integer"),
+    check('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    check('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    check('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
+];
+
 const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
@@ -39,6 +46,18 @@ const createProductValidation = [
             }
             if (value && !value.every(id => Number.isInteger(id) && id > 0)) {
                 throw new Error('All brand IDs must be positive integers');
+            }
+            return true;
+        }),
+    check('linked_product_ids')
+        .optional()
+        .isArray().withMessage('Linked product IDs must be an array')
+        .custom((value) => {
+            if (value && !Array.isArray(value)) {
+                throw new Error('Linked product IDs must be an array');
+            }
+            if (value && value.length > 0 && !value.every(id => Number.isInteger(id) && id > 0)) {
+                throw new Error('All linked product IDs must be positive integers');
             }
             return true;
         }),
@@ -88,6 +107,20 @@ const updateProductValidations = [
                 }
                 if (!value.every(id => Number.isInteger(id) && id > 0)) {
                     throw new Error('All brand IDs must be positive integers');
+                }
+            }
+            return true;
+        }),
+    check('linked_product_ids')
+        .optional()
+        .custom((value) => {
+            if (value !== undefined && value !== null) {
+                if (!Array.isArray(value)) {
+                    throw new Error('Linked product IDs must be an array');
+                }
+                // Allow empty array to remove all links
+                if (value.length > 0 && !value.every(id => Number.isInteger(id) && id > 0)) {
+                    throw new Error('All linked product IDs must be positive integers');
                 }
             }
             return true;
@@ -217,5 +250,6 @@ module.exports = {
     listAllProductsValidation,
     bulkUpdateProductsValidation,
     uploadXlxFileMiddleware,
-    updateProductStatusValidation
+    updateProductStatusValidation,
+    getLinkedProductsValidation
 };

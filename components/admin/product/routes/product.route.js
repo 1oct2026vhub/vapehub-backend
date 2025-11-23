@@ -3,7 +3,7 @@ const { authMiddleware } = require('../../../../library/middleware');
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation } = require("../helper/product.validator");
+const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation, getLinkedProductsValidation } = require("../helper/product.validator");
 
 /**
  * @swagger
@@ -356,6 +356,12 @@ router.get('/fetch/:id',
  *                   type: integer
  *                 description: Array of brand IDs (first one will be primary)
  *                 example: [1, 2]
+ *               linked_product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of linked product IDs
+ *                 example: [5, 10, 15]
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -499,6 +505,12 @@ router.put('/bulk-restore', [
  *                   type: integer
  *                 description: Array of brand IDs (first one will be primary)
  *                 example: [1, 2]
+ *               linked_product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of linked product IDs (empty array to remove all links)
+ *                 example: [5, 10, 15]
  *     responses:
  *       200:
  *         description: Product updated successfully
@@ -554,6 +566,125 @@ router.put('/:id',
     [authMiddleware(true), 
     validateRequest(updateProductValidations)],
     productController.updateProduct
+);
+
+/**
+ * @swagger
+ * /api/admin/products/{id}/linked-products:
+ *   get:
+ *     tags:
+ *       - ADMIN - Products
+ *     summary: Get linked published products for a product
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number (used with limit, mutually exclusive with offset)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of items to skip (mutually exclusive with page)
+ *     responses:
+ *       200:
+ *         description: Linked products fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                     linked_products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           price:
+ *                             type: number
+ *                           discount_price:
+ *                             type: number
+ *                           status:
+ *                             type: string
+ *                           image:
+ *                             type: object
+ *                             nullable: true
+ *                           categories:
+ *                             type: array
+ *                           brands:
+ *                             type: array
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                     count:
+ *                       type: integer
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total_count:
+ *                           type: integer
+ *                           description: Total number of linked products
+ *                         total_pages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         current_page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
+ *                         offset:
+ *                           type: integer
+ *                           description: Number of items skipped
+ *       400:
+ *         description: Bad request (invalid pagination parameters)
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id/linked-products',
+    [authMiddleware(true), validateRequest(getLinkedProductsValidation)],
+    productController.getLinkedProducts
 );
 
 /**

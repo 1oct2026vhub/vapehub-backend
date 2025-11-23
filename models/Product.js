@@ -36,6 +36,12 @@ module.exports = (sequelize, DataTypes) => {
       });
       this.hasMany(models.ProductCategory, { foreignKey: 'product_id', as: 'ProductCategories' });
       this.hasMany(models.ProductBrand, { foreignKey: 'product_id', as: 'ProductBrands' });
+      this.belongsToMany(models.Product, {
+        through: models.ProductLinkedProduct,
+        foreignKey: 'product_id',
+        otherKey: 'linked_product_id',
+        as: 'LinkedProducts'
+      });
     }
   }
 
