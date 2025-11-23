@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, LoyaltyPointsSettings, Review, User, Order } = require("../../../models");
+const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
@@ -5314,6 +5314,148 @@ module.exports.getDealProducts = async (req, res, next) => {
     } catch (error) {
         console.log(error);
         logger.error('Error getting deal products:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Get linked published products for a specific product
+ * @route GET /api/product/:id/linked-products
+ */
+module.exports.getLinkedProducts = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { page, limit, offset } = req.query;
+
+        // Parse pagination parameters
+        const parsedLimit = limit ? parseInt(limit, 10) : 10;
+        let parsedOffset = 0;
+        
+        if (offset !== undefined) {
+            parsedOffset = parseInt(offset, 10);
+        } else if (page !== undefined) {
+            const parsedPage = parseInt(page, 10);
+            parsedOffset = (parsedPage - 1) * parsedLimit;
+        }
+
+        // Validate pagination parameters
+        if (isNaN(parsedLimit) || parsedLimit < 1) {
+            return errorResponse(res, { message: "Limit must be a positive integer" }, "Invalid limit parameter", 400);
+        }
+        if (isNaN(parsedOffset) || parsedOffset < 0) {
+            return errorResponse(res, { message: "Offset/Page must be a non-negative integer" }, "Invalid offset/page parameter", 400);
+        }
+
+        // Validate product exists
+        const product = await Product.findByPk(id);
+        if (!product) {
+            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Get linked product IDs from the junction table
+        const linkedProductLinks = await ProductLinkedProduct.findAll({
+            where: { product_id: id },
+            attributes: ['linked_product_id']
+        });
+
+        if (linkedProductLinks.length === 0) {
+            return successResponse(res, {
+                product_id: parseInt(id),
+                linked_products: [],
+                count: 0,
+                pagination: {
+                    total_count: 0,
+                    total_pages: 0,
+                    current_page: page ? parseInt(page, 10) : 1,
+                    limit: parsedLimit,
+                    offset: parsedOffset
+                }
+            }, 'Linked products fetched successfully');
+        }
+
+        const linkedProductIds = linkedProductLinks.map(link => link.linked_product_id);
+
+        // Get total count for pagination
+        const totalCount = await Product.count({
+            where: {
+                id: { [Op.in]: linkedProductIds },
+                status: productStatus.PUBLISHED,
+                deletedAt: null
+            }
+        });
+
+        // Fetch linked products that are published with pagination
+        const linkedProducts = await Product.findAll({
+            where: {
+                id: { [Op.in]: linkedProductIds },
+                status: productStatus.PUBLISHED,
+                deletedAt: null
+            },
+            include: [
+                {
+                    model: ProductImage,
+                    as: 'ProductImages',
+                    attributes: ['id', 'image_url', 'image_url_low', 'image_url_mid', 'image_url_high', 'is_primary'],
+                    limit: 1,
+                    order: [['is_primary', 'DESC'], ['id', 'ASC']],
+                    required: false
+                },
+                {
+                    model: Category,
+                    as: 'Categories',
+                    through: { attributes: ['is_primary'] },
+                    attributes: ['id', 'name', 'slug'],
+                    required: false
+                },
+                {
+                    model: Brand,
+                    as: 'Brands',
+                    through: { attributes: ['is_primary'] },
+                    attributes: ['id', 'name', 'slug'],
+                    required: false
+                }
+            ],
+            order: [['name', 'ASC']],
+            limit: parsedLimit,
+            offset: parsedOffset
+        });
+
+        // Format response
+        const formattedProducts = linkedProducts.map(product => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            description: product.description,
+            price: product.price,
+            discount_price: product.discount_price,
+            status: product.status,
+            image: product.ProductImages && product.ProductImages.length > 0 
+                ? product.ProductImages[0] 
+                : null,
+            categories: product.Categories || [],
+            brands: product.Brands || [],
+            created_at: product.createdAt,
+            updated_at: product.updatedAt
+        }));
+
+        // Calculate pagination details
+        const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
+        const currentPage = page ? parseInt(page, 10) : (Math.floor(parsedOffset / parsedLimit) + 1);
+
+        return successResponse(res, {
+            product_id: parseInt(id),
+            linked_products: formattedProducts,
+            count: formattedProducts.length,
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: currentPage,
+                limit: parsedLimit,
+                offset: parsedOffset
+            }
+        }, 'Linked products fetched successfully');
+    } catch (error) {
+        logger.error('Error fetching linked products:', error);
         return errorResponse(res, error, error.message);
     }
 };
