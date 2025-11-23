@@ -356,6 +356,12 @@ router.get('/fetch/:id',
  *                   type: integer
  *                 description: Array of brand IDs (first one will be primary)
  *                 example: [1, 2]
+ *               linked_product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of linked product IDs
+ *                 example: [5, 10, 15]
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -499,6 +505,12 @@ router.put('/bulk-restore', [
  *                   type: integer
  *                 description: Array of brand IDs (first one will be primary)
  *                 example: [1, 2]
+ *               linked_product_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of linked product IDs (empty array to remove all links)
+ *                 example: [5, 10, 15]
  *     responses:
  *       200:
  *         description: Product updated successfully

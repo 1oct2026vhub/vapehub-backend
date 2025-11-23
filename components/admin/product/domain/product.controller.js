@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, SeoMeta } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, ProductLinkedProduct, SeoMeta } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -881,7 +881,8 @@ module.exports.createProduct = async (req, res, next) => {
             vaping_style,
             bottle_size,
             category_ids,
-            brand_ids
+            brand_ids,
+            linked_product_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -916,6 +917,21 @@ module.exports.createProduct = async (req, res, next) => {
             if (brands.length !== brandIds.length) {
                 await transaction.rollback();
                 return errorResponse(res, { message: "One or more invalid brand IDs" }, "Invalid brand IDs", 400);
+            }
+        }
+
+        // Validate linked products if provided
+        if (linked_product_ids && linked_product_ids.length > 0) {
+            const linkedProductIds = Array.isArray(linked_product_ids) ? linked_product_ids : [linked_product_ids];
+            
+            // Validate that all linked product IDs exist
+            const linkedProducts = await Product.findAll({
+                where: { id: { [Op.in]: linkedProductIds } }
+            });
+            
+            if (linkedProducts.length !== linkedProductIds.length) {
+                await transaction.rollback();
+                return errorResponse(res, { message: "One or more invalid linked product IDs" }, "Invalid linked product IDs", 400);
             }
         }
 
@@ -1050,6 +1066,23 @@ module.exports.createProduct = async (req, res, next) => {
             await ProductBrand.bulkCreate(brandData, { transaction });
         }
 
+        // Create linked product associations
+        if (linked_product_ids && linked_product_ids.length > 0) {
+            const linkedProductIds = Array.isArray(linked_product_ids) ? linked_product_ids : [linked_product_ids];
+            
+            // Prevent self-linking
+            const validLinkedProductIds = linkedProductIds.filter(linkedId => linkedId !== product.id);
+            
+            if (validLinkedProductIds.length > 0) {
+                const linkedProductData = validLinkedProductIds.map(linkedProductId => ({
+                    product_id: product.id,
+                    linked_product_id: linkedProductId
+                }));
+                
+                await ProductLinkedProduct.bulkCreate(linkedProductData, { transaction });
+            }
+        }
+
         // Create slug relation
         await slugManager.createOrUpdateSlug(cleanSlug, 'product', product.id, transaction);
 
@@ -1140,7 +1173,8 @@ module.exports.updateProduct = async (req, res, next) => {
             vaping_style,
             bottle_size,
             category_ids,
-            brand_ids
+            brand_ids,
+            linked_product_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -1270,6 +1304,32 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
+        // Validate linked products if provided
+        if (linked_product_ids !== undefined) {
+            if (linked_product_ids && linked_product_ids.length > 0) {
+                const linkedProductIds = Array.isArray(linked_product_ids) ? linked_product_ids : [linked_product_ids];
+                
+                // Prevent self-linking
+                const validLinkedProductIds = linkedProductIds.filter(linkedId => linkedId !== parseInt(id));
+                
+                if (validLinkedProductIds.length === 0 && linkedProductIds.length > 0) {
+                    await transaction.rollback();
+                    return errorResponse(res, { message: "Cannot link product to itself" }, "Invalid linked product IDs", 400);
+                }
+                
+                // Validate that all linked product IDs exist
+                if (validLinkedProductIds.length > 0) {
+                    const linkedProducts = await Product.findAll({
+                        where: { id: { [Op.in]: validLinkedProductIds } }
+                    });
+                    
+                    if (linkedProducts.length !== validLinkedProductIds.length) {
+                        await transaction.rollback();
+                        return errorResponse(res, { message: "One or more invalid linked product IDs" }, "Invalid linked product IDs", 400);
+                    }
+                }
+            }
+        }
 
         // Prepare update fields
         const updatedFields = {};
@@ -1510,6 +1570,32 @@ module.exports.updateProduct = async (req, res, next) => {
                 }));
                 
                 await ProductBrand.bulkCreate(brandData, { transaction });
+            }
+        }
+
+        // Update linked product associations if provided
+        if (linked_product_ids !== undefined) {
+            // Remove existing linked product associations
+            await ProductLinkedProduct.destroy({
+                where: { product_id: id },
+                transaction
+            });
+
+            // Create new linked product associations
+            if (linked_product_ids && linked_product_ids.length > 0) {
+                const linkedProductIds = Array.isArray(linked_product_ids) ? linked_product_ids : [linked_product_ids];
+                
+                // Prevent self-linking
+                const validLinkedProductIds = linkedProductIds.filter(linkedId => linkedId !== parseInt(id));
+                
+                if (validLinkedProductIds.length > 0) {
+                    const linkedProductData = validLinkedProductIds.map(linkedProductId => ({
+                        product_id: id,
+                        linked_product_id: linkedProductId
+                    }));
+                    
+                    await ProductLinkedProduct.bulkCreate(linkedProductData, { transaction });
+                }
             }
         }
 
@@ -3023,8 +3109,5 @@ module.exports.updateProductStatus = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
-
-
-
 
 
