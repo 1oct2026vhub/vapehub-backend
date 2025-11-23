@@ -9,11 +9,9 @@ const { shippingMethodValidation } = require("../helper/shippingMethod.validator
  * /api/shipping-method:
  *   get:
  *     summary: Get all shipping methods
- *     description: Retrieve a list of all available shipping methods
+ *     description: Retrieve a list of all available shipping methods (no authentication required)
  *     tags:
  *       - Shipping Method
- *     security:
- *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: List of shipping methods retrieved successfully
@@ -51,7 +49,7 @@ const { shippingMethodValidation } = require("../helper/shippingMethod.validator
  *       500:
  *         description: Internal Server Error
  */
-router.get("/", authenticateJWT, shippingMethodController.getAllShippingMethods);
+router.get("/", shippingMethodController.getAllShippingMethods);
 
 /**
  * @swagger
