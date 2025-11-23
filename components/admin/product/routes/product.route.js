@@ -341,6 +341,9 @@ router.get('/fetch/:id',
  *               description:
  *                 type: string
  *                 description: Description of the product
+ *               key_highlights:
+ *                 type: string
+ *                 description: Key highlights or important notices about the product
  *               category_ids:
  *                 type: array
  *                 items:
@@ -481,6 +484,9 @@ router.put('/bulk-restore', [
  *               description:
  *                 type: string
  *                 description: Description of the product
+ *               key_highlights:
+ *                 type: string
+ *                 description: Key highlights or important notices about the product
  *               category_ids:
  *                 type: array
  *                 items:
@@ -508,6 +514,8 @@ router.put('/bulk-restore', [
  *                 slug:
  *                   type: string
  *                 description:
+ *                   type: string
+ *                 key_highlights:
  *                   type: string
  *                 Categories:
  *                   type: array

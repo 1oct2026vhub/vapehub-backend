@@ -71,6 +71,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true
     },
+    key_highlights: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
     price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true
