@@ -467,7 +467,7 @@ module.exports.getProductById = async (req, res, next) => {
         const { id } = req.params; 
 
         // Use Promise.all for parallel execution of optimized queries
-        const [product, categories, brands, images, attributeTerms, variants] = await Promise.all([
+        const [product, categories, brands, images, attributeTerms, variants, linkedProducts] = await Promise.all([
             // Main product query - minimal data first
             Product.findByPk(id, {
                 paranoid: false,
@@ -585,7 +585,51 @@ module.exports.getProductById = async (req, res, next) => {
                     ]
                 }],
                 attributes: []
-            }).then(result => result?.variants || [])
+            }).then(result => result?.variants || []),
+            
+            // Linked Products query
+            Product.findByPk(id, {
+                paranoid: false,
+                include: [{
+                    model: Product,
+                    as: "LinkedProducts",
+                    paranoid: false,
+                    attributes: [
+                        'id', 'name', 'slug', 'description', 'key_highlights', 'price', 'discount_price', 
+                        'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
+                        'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
+                        'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
+                        'vg_ratio', 'vaping_style', 'bottle_size', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                    ],
+                    include: [
+                        {
+                            model: ProductImage,
+                            as: "ProductImages",
+                            attributes: ['id', 'product_id', 'image_url', 'is_primary'],
+                            limit: 1,
+                            order: [['is_primary', 'DESC'], ['id', 'ASC']],
+                            required: false
+                        },
+                        {
+                            model: Category,
+                            as: "Categories",
+                            paranoid: false,
+                            through: { attributes: ['is_primary'] },
+                            attributes: ['id', 'name', 'slug'],
+                            required: false
+                        },
+                        {
+                            model: Brand,
+                            as: "Brands",
+                            paranoid: false,
+                            through: { attributes: ['is_primary'] },
+                            attributes: ['id', 'name', 'slug'],
+                            required: false
+                        }
+                    ]
+                }],
+                attributes: []
+            }).then(result => result?.LinkedProducts || [])
         ]);
 
         // If the product does not exist, return a 404 error response
@@ -600,6 +644,26 @@ module.exports.getProductById = async (req, res, next) => {
         productData.ProductImages = images;
         productData.productAttributeTerms = attributeTerms;
         productData.variants = variants;
+        
+        // Format linked products to include only essential details
+        productData.LinkedProducts = linkedProducts.map(linkedProduct => {
+            const productJson = linkedProduct.toJSON ? linkedProduct.toJSON() : linkedProduct;
+            const primaryImage = productJson.ProductImages && productJson.ProductImages.length > 0 
+                ? productJson.ProductImages[0] 
+                : null;
+            
+            return {
+                id: productJson.id,
+                name: productJson.name,
+                image: primaryImage ? {
+                    id: primaryImage.id,
+                    url: primaryImage.image_url,
+                    is_primary: primaryImage.is_primary
+                } : null,
+                price: productJson.price,
+                discount_price: productJson.discount_price
+            };
+        });
 
         // Process variants to update stock_status based on low stock threshold
         // Optimize the loop with early exit conditions

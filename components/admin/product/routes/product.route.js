@@ -302,6 +302,45 @@ router.get('/', [authMiddleware(true), validateRequest(listAllProductsValidation
  *     responses:
  *       200:
  *         description: Product retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   allOf:
+ *                     - $ref: '#/components/schemas/Product'
+ *                     - type: object
+ *                       properties:
+ *                         LinkedProducts:
+ *                           type: array
+ *                           description: Array of linked products with essential details only
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 description: Product ID
+ *                               name:
+ *                                 type: string
+ *                                 description: Product name
+ *                               image:
+ *                                 type: object
+ *                                 nullable: true
+ *                                 description: Primary product image
+ *                                 properties:
+ *                                   id:
+ *                                     type: integer
+ *                                   url:
+ *                                     type: string
+ *                                   is_primary:
+ *                                     type: boolean
+ *                               price:
+ *                                 type: string
+ *                                 description: Product price
+ *                               discount_price:
+ *                                 type: string
+ *                                 description: Discounted price
  *       404:
  *         description: Product not found
  *       500:
