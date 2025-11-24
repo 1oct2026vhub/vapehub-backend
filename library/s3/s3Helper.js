@@ -256,7 +256,12 @@ const resizeToMaxSize = async (imageBuffer, mimetype) => {
       return imageBuffer;
     }
 
-    const sharpInstance = sharp(imageBuffer);
+    // Initialize Sharp with metadata preservation
+    const sharpInstance = sharp(imageBuffer, {
+      failOn: 'none',
+      keepMetadata: true,
+      sequentialRead: false
+    });
     const metadata = await sharpInstance.metadata();
     
     const MAX_WIDTH = 1920;
@@ -265,58 +270,46 @@ const resizeToMaxSize = async (imageBuffer, mimetype) => {
     // Check if image needs resizing
     if (metadata.width <= MAX_WIDTH && metadata.height <= MAX_HEIGHT) {
       console.log(`ℹ️ Image already within max size (${metadata.width}x${metadata.height}), no resize needed`);
-      return imageBuffer;
+      // Still convert to WebP with maximum quality even if no resize needed
+      const webpBuffer = await sharpInstance
+        .webp({
+          quality: 95,  // Maximum quality - WebP 95 ≈ JPEG 99 visually
+          effort: 6,
+          smartSubsample: true,
+          lossless: false,
+          nearLossless: true,  // Near-lossless for maximum quality
+          method: 6
+        })
+        .toBuffer();
+      return webpBuffer;
     }
     
     console.log(`🔄 Resizing image from ${metadata.width}x${metadata.height} to max ${MAX_WIDTH}x${MAX_HEIGHT}`);
     
-    const format = metadata.format || 'jpeg';
-    const targetQuality = 95; // High quality for original
+    // Convert to WebP with maximum quality
+    const targetQuality = 95; // Maximum quality - WebP 95 ≈ JPEG 99 visually
     
-    // Resize with high-quality settings
     let resizedInstance = sharpInstance
       .resize(MAX_WIDTH, MAX_HEIGHT, {
         fit: 'inside',
         withoutEnlargement: true,
-        kernel: 'lanczos3' // High-quality resampling
+        kernel: 'lanczos3',
+        fastShrinkOnLoad: false
+      })
+      .webp({
+        quality: targetQuality,
+        effort: 6,
+        smartSubsample: true,
+        lossless: false,
+        nearLossless: true,  // Near-lossless for maximum quality
+        method: 6
       });
-    
-    // Apply format-specific high-quality settings
-    switch (format.toLowerCase()) {
-      case 'jpeg':
-      case 'jpg':
-        resizedInstance = resizedInstance.jpeg({
-          quality: targetQuality,
-          progressive: true,
-          mozjpeg: true,
-          trellisQuantisation: true,
-          overshootDeringing: true,
-          optimizeScans: true
-        });
-        break;
-      case 'png':
-        resizedInstance = resizedInstance.png({
-          compressionLevel: 9,
-          adaptiveFiltering: true,
-          palette: false,
-          effort: 10
-        });
-        break;
-      case 'webp':
-        resizedInstance = resizedInstance.webp({
-          quality: targetQuality,
-          effort: 6,
-          smartSubsample: true,
-          lossless: false,
-          alphaQuality: 100
-        });
-        break;
-    }
     
     const resizedBuffer = await resizedInstance.toBuffer();
     
     const finalMetadata = await sharp(resizedBuffer).metadata();
-    console.log(`✅ Resized to ${finalMetadata.width}x${finalMetadata.height}, size: ${(resizedBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    const sizeKB = (resizedBuffer.length / 1024).toFixed(2);
+    console.log(`✅ Resized to ${finalMetadata.width}x${finalMetadata.height}, ${sizeKB}KB (WebP)`);
     
     return resizedBuffer;
   } catch (error) {

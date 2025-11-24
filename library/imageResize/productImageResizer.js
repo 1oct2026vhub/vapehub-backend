@@ -30,30 +30,30 @@ const generateResizedS3Key = (originalS3Key, size) => {
   return originalS3Key.replace(/\.(jpg|jpeg|png|webp|svg)$/i, `${suffix}.$1`);
 };
 
-// Product image resize configurations
+// Product image resize configurations - MAXIMUM QUALITY
 const PRODUCT_RESIZE_CONFIGS = {
   // Low resolution: 256 x 256 px (for mobile, quick loading)
   low: {
     width: 256,
     height: 256,
-    quality: 85, // Increased from 80 for better quality
-    format: null, // null = preserve original format
+    quality: 92, // Maximum quality for thumbnails - WebP 92 ≈ JPEG 98 visually
+    format: 'webp', // Convert to WebP for better compression
     fit: 'inside' // Maintain aspect ratio, fit within bounds
   },
   // Mid resolution: 600 x 600 px (for product cards, medium displays)
   mid: {
     width: 600,
     height: 600,
-    quality: 90, // Increased from 85 for better quality
-    format: null, // null = preserve original format
+    quality: 95, // Near-lossless quality - WebP 95 ≈ JPEG 99 visually
+    format: 'webp',
     fit: 'inside'
   },
   // High resolution: 1200 x 1200 px (for product detail pages)
   high: {
     width: 1200,
     height: 1200,
-    quality: 95, // Increased from 90 for better quality
-    format: null, // null = preserve original format
+    quality: 98, // Near-lossless quality - visually identical to original
+    format: 'webp',
     fit: 'inside',
     maxWidth: 1920, // Ensure never exceeds max size
     maxHeight: 1080
@@ -68,7 +68,12 @@ const PRODUCT_RESIZE_CONFIGS = {
  */
 const resizeImageToConfig = async (imageBuffer, config) => {
   try {
-    let sharpInstance = sharp(imageBuffer);
+    // Initialize Sharp with metadata preservation
+    let sharpInstance = sharp(imageBuffer, {
+      failOn: 'none',
+      keepMetadata: true,
+      sequentialRead: false
+    });
     
     // Get original image metadata
     const metadata = await sharpInstance.metadata();
@@ -89,7 +94,8 @@ const resizeImageToConfig = async (imageBuffer, config) => {
         height: config.height,
         fit: 'inside',
         withoutEnlargement: true,
-        kernel: 'lanczos3' // High-quality resampling algorithm
+        kernel: 'lanczos3', // High-quality resampling algorithm
+        fastShrinkOnLoad: false // Don't use fast shrink, better quality
       };
     } else if (config.maxWidth || config.maxHeight) {
       // Use max dimensions as constraints
@@ -101,7 +107,9 @@ const resizeImageToConfig = async (imageBuffer, config) => {
           width: config.maxWidth,
           height: config.maxHeight,
           fit: 'inside',
-          withoutEnlargement: true
+          withoutEnlargement: true,
+          kernel: 'lanczos3',
+          fastShrinkOnLoad: false
         };
       }
     }
@@ -112,50 +120,65 @@ const resizeImageToConfig = async (imageBuffer, config) => {
       console.log(`🔄 Resizing product image with options:`, resizeOptions);
     }
     
-    // Preserve original format if config.format is null, otherwise use config format
-    const targetQuality = Math.min(config.quality ?? 98, 100);
-    const format = (config.format || metadata.format || 'jpeg').toLowerCase();
+    const targetQuality = Math.min(config.quality ?? 85, 100);
+    
+    // Use WebP format for better compression (as configured)
+    const targetFormat = config.format || 'webp';
+    const format = targetFormat.toLowerCase();
 
-    // Apply format-specific settings that preserve clarity
+    // Apply format-specific settings optimized for maximum quality
     switch (format) {
+      case 'webp':
+        // WebP: Maximum quality with lossless for highest quality tier
+        const useLossless = targetQuality >= 98; // Use lossless for 98+ quality
+        sharpInstance = sharpInstance.webp({
+          quality: useLossless ? undefined : targetQuality,  // Quality not used in lossless mode
+          effort: 6,                  // Maximum effort (0-6) for best compression
+          smartSubsample: true,       // Better quality
+          lossless: useLossless,      // Lossless for maximum quality (98+)
+          alphaQuality: useLossless ? 100 : targetQuality, // Maximum alpha quality
+          nearLossless: !useLossless && targetQuality >= 95,  // Near-lossless for 95-97
+          method: 6                   // Compression method (0-6, higher = better compression)
+        });
+        break;
       case 'jpeg':
       case 'jpg':
         sharpInstance = sharpInstance.jpeg({
           quality: targetQuality,
           progressive: true,
-          mozjpeg: true,              // Better compression algorithm
-          trellisQuantisation: true, // Better quality at same file size
-          overshootDeringing: true,   // Reduce artifacts
-          optimizeScans: true        // Optimize for progressive loading
+          mozjpeg: true,
+          trellisQuantisation: true,
+          overshootDeringing: true,
+          optimizeScans: true,
+          quantisationTable: 0
         });
         break;
       case 'png':
-        sharpInstance = sharpInstance.png({
-          compressionLevel: 9,        // Maximum compression (0-9)
-          adaptiveFiltering: true,    // Better compression
-          palette: false,             // Keep full color depth
-          effort: 10                  // Maximum compression effort
-        });
-        break;
-      case 'webp':
+        // Convert PNG to WebP for better compression
         sharpInstance = sharpInstance.webp({
           quality: targetQuality,
-          effort: 6,                  // Maximum effort (0-6)
-          smartSubsample: true,       // Better quality
-          lossless: false,            // Use lossy for better file size
-          alphaQuality: 100          // Preserve transparency quality
+          effort: 6,
+          smartSubsample: true,
+          lossless: false,
+          alphaQuality: 100  // Preserve transparency quality
         });
         break;
       default:
-        // Default to JPEG for unknown formats
-        sharpInstance = sharpInstance.jpeg({ quality: targetQuality, progressive: true });
+        // Default: Use WebP for best compression
+        sharpInstance = sharpInstance.webp({
+          quality: targetQuality,
+          effort: 6,
+          smartSubsample: true,
+          lossless: false
+        });
     }
     
     const processedBuffer = await sharpInstance.toBuffer();
     
     // Get final image info
     const finalMetadata = await sharp(processedBuffer).metadata();
-    console.log(`✅ Processed product image: ${finalMetadata.width}x${finalMetadata.height}, size: ${(processedBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    const sizeKB = (processedBuffer.length / 1024).toFixed(2);
+    console.log(`✅ Processed product image: ${finalMetadata.width}x${finalMetadata.height}, ${sizeKB}KB, format: ${finalMetadata.format}`);
     
     return processedBuffer;
   } catch (error) {
@@ -234,27 +257,11 @@ const processProductImageInMultipleSizes = async (originalBuffer, originalName, 
           return { size, result: null };
         }
         
-        // Generate S3 key for resized image
-        const resizedS3Key = generateResizedS3Key(originalS3Key, size);
+        // Generate S3 key for resized image (change extension to .webp)
+        const resizedS3Key = generateResizedS3Key(originalS3Key, size).replace(/\.(jpg|jpeg|png)$/i, '.webp');
         
-        // Determine content type - preserve original format if config.format is null
-        let contentType = mimetype;
-        if (config.format) {
-          // Only override if format is explicitly set
-          switch (config.format.toLowerCase()) {
-            case 'jpeg':
-            case 'jpg':
-              contentType = 'image/jpeg';
-              break;
-            case 'png':
-              contentType = 'image/png';
-              break;
-            case 'webp':
-              contentType = 'image/webp';
-              break;
-          }
-        }
-        // If config.format is null, contentType remains as original mimetype
+        // Set content type to WebP since we're converting
+        const contentType = 'image/webp';
         
         // Upload to S3
         const uploadResult = await uploadResizedImageToS3(resizedBuffer, resizedS3Key, contentType);
