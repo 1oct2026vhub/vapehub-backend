@@ -8,7 +8,7 @@ const { ShippingMethod } = require("../../../models");
  */
 const calculateShippingCost = (shippingMethod, orderTotal) => {
     // Check if shipping method is active
-    if (!shippingMethod.is_active) {
+    if (!shippingMethod.is_enabled || shippingMethod.deletedAt !== null) {
         return null;
     }
 
@@ -46,7 +46,7 @@ const calculateShippingCost = (shippingMethod, orderTotal) => {
 const getAvailableShippingMethods = async (orderTotal) => {
     try {
         const shippingMethods = await ShippingMethod.findAll({
-            where: { is_active: true }
+            where: { is_enabled: true }
         });
 
         return shippingMethods
