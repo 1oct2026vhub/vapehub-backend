@@ -22,6 +22,7 @@ const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./
 const dealService = require('../../Cart/helper/deal.service');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
 /**
  * Core order placement logic - returns order data without sending HTTP response
@@ -547,14 +548,32 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         calculatedTotal = calculatedTotal - totalDiscount;
     }
 
-    // Apply Shipping Cost
+    // Apply Shipping Cost - Calculate based on order total after all discounts
     const shippingMethod = await ShippingMethod.findOne({ 
         where: { id: shipping_method_id }, 
-        attributes: ["id", "shipping_cost"],
+        attributes: [
+            "id", 
+            "shipping_cost", 
+            "is_active", 
+            "min_order_total", 
+            "max_order_total", 
+            "free_shipping_threshold", 
+            "shipping_rules"
+        ],
         transaction 
     });
+    
+    let finalShippingCost = 0;
     if (shippingMethod) {
-        calculatedTotal += parseFloat(shippingMethod.shipping_cost);
+        // Calculate shipping cost based on order total after all discounts
+        const calculatedShippingCost = calculateShippingCost(shippingMethod, calculatedTotal);
+        if (calculatedShippingCost !== null) {
+            finalShippingCost = parseFloat(calculatedShippingCost);
+            calculatedTotal += finalShippingCost;
+        } else {
+            // Shipping method not applicable - set to null or handle error
+            shipping_method_id = null;
+        }
     } else {
         shipping_method_id = null;
     }
@@ -659,7 +678,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         shipping_method_id: shipping_method_id ? shipping_method_id : null,
         order_unique_id: orderUniqueId,
         order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
-        shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
+        shipping_cost: finalShippingCost,
         email: email,
         phone: phone,
         sub_total: subTotal,
@@ -707,7 +726,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             order_items: orderDetails,
             pricing: {
                 subtotal: subTotal,
-                shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
+                shipping_cost: finalShippingCost,
                 deals_discount: dealsDiscount,
                 coupon_discount: coupon ? discount : 0,
                 referral_discount: referralDiscount,
