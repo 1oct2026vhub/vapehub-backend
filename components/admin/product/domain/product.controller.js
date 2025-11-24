@@ -474,7 +474,7 @@ module.exports.getProductById = async (req, res, next) => {
                 benchmark: false,
                 logging: false,
                 attributes: [
-                    'id', 'updated_by', 'name', 'slug', 'description', 'key_highlights', 'price', 'discount_price', 
+                    'id', 'updated_by', 'name', 'slug', 'description', 'price', 'discount_price', 
                     'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
@@ -595,7 +595,7 @@ module.exports.getProductById = async (req, res, next) => {
                     as: "LinkedProducts",
                     paranoid: false,
                     attributes: [
-                        'id', 'name', 'slug', 'description', 'key_highlights', 'price', 'discount_price', 
+                        'id', 'name', 'slug', 'description', 'price', 'discount_price', 
                         'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
                         'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                         'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
@@ -926,7 +926,6 @@ module.exports.createProduct = async (req, res, next) => {
             slug,
             sku,
             description,
-            key_highlights,
             price,
             discount_price,
             stock_quantity,
@@ -1083,7 +1082,6 @@ module.exports.createProduct = async (req, res, next) => {
                 slug: cleanSlug,
                 sku: cleanSku,
                 description,
-                key_highlights,
                 price,
                 discount_price,
                 stock_quantity,
@@ -1218,7 +1216,6 @@ module.exports.updateProduct = async (req, res, next) => {
             slug,
             sku,
             description,
-            key_highlights,
             price,
             discount_price,
             stock_quantity,
@@ -1409,9 +1406,6 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (description !== undefined) {
             updatedFields.description = typeof description === 'string' ? description.trim() : description;
-        }
-        if (key_highlights !== undefined) {
-            updatedFields.key_highlights = typeof key_highlights === 'string' ? key_highlights.trim() : key_highlights;
         }
         if (price !== undefined) {
             updatedFields.price = price;
