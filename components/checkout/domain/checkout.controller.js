@@ -7,7 +7,6 @@ const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
-const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -62,7 +61,7 @@ const getEntityName = async (entityType, entityId) => {
 module.exports.checkout = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode, referralCouponCode, shippingMethodId } = req.body;
+        const { couponCode, referralCouponCode } = req.body;
         let total = 0;
         let subTotal = 0;
         let totalItems = 0;
@@ -104,18 +103,9 @@ module.exports.checkout = async (req, res, next) => {
             }
         }
 
-        // Fetch ShippingMethod separately - Include all attributes needed for free shipping calculation
+        // Fetch ShippingMethod separately
         const shippingMethod = await ShippingMethod.findAll({
-            attributes: [
-                "id", 
-                "shipping_method", 
-                "shipping_cost", 
-                // "is_active", 
-                "min_order_total", 
-                "max_order_total", 
-                "free_shipping_threshold", 
-                "shipping_rules"
-            ]
+            attributes: ["id", "shipping_method", "shipping_cost"]
         });
 
         if(!shippingMethod || shippingMethod.length === 0){
@@ -156,19 +146,6 @@ module.exports.checkout = async (req, res, next) => {
 
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
-
-        // Calculate shipping cost AFTER deals are applied (using order total after deals)
-        if (shippingMethodId && shippingMethod && shippingMethod.length > 0) {
-            const selectedShippingMethod = shippingMethod.find(method => method.id === parseInt(shippingMethodId));
-            if (selectedShippingMethod) {
-                shippingCost = calculateShippingCost(selectedShippingMethod, total) || 0;
-                // If shipping method is not applicable, set to 0 or handle error
-                if (shippingCost === null) {
-                    shippingCost = 0;
-                    validityMessage = validityMessage ? validityMessage + ' Selected shipping method is not available for this order total.' : 'Selected shipping method is not available for this order total.';
-                }
-            }
-        }
 
         // Process referral discount if referral coupon code is provided
         // if (referralCouponCode) {
@@ -388,20 +365,14 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
 
-        // Fetch shipping method with all required attributes for free shipping calculation
         const shippingMethod = await ShippingMethod.findOne({
             where: { id: shippingMethodId },
-            attributes: [
-                "id", 
-                "shipping_method", 
-                "shipping_cost", 
-                "is_enabled", 
-                "min_order_total", 
-                "max_order_total", 
-                "free_shipping_threshold", 
-                "shipping_rules"
-            ],
+            attributes: ["id", "shipping_method", "shipping_cost"],
         });
+
+        if (shippingMethod) {
+            shippingCost = shippingMethod.shipping_cost;
+        }
 
         // Calculate subtotal amount
         for (const item of cart) {
@@ -419,17 +390,6 @@ module.exports.applyCoupon = async (req, res, next) => {
         applicableDeals = dealResult.appliedDeals;
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
-
-        // Calculate shipping cost AFTER deals are applied (using order total after deals)
-        // Note: We'll recalculate after all discounts are applied
-        if (shippingMethod) {
-            shippingCost = calculateShippingCost(shippingMethod, total);
-            if (shippingCost === null) {
-                return errorResponse(res, {}, "Selected shipping method is not available for this order total", 400);
-            }
-        } else if (shippingMethodId) {
-            return errorResponse(res, {}, "Selected shipping method not found", 404);
-        }
         let coupon = null;
         let referral_value = null;
         let referral_value_type = null;
@@ -867,19 +827,10 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
         
-        // Apply totalDiscount to total before recalculating shipping
+        // Apply totalDiscount to total before adding shippingCost
         if (totalDiscount > 0) {
             total = Math.max(0, total - totalDiscount);
         }
-
-        // Recalculate shipping cost after all discounts (coupon, loyalty, mail subscription) are applied
-        if (shippingMethod) {
-            shippingCost = calculateShippingCost(shippingMethod, total);
-            if (shippingCost === null) {
-                shippingCost = 0; // Shipping method not applicable
-            }
-        }
-
         total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
