@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order } = require("../../../models");
+const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order, Settings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
@@ -1771,7 +1771,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // 1. Get product basic info with raw SQL (MUST run first for validation)
         const productResult = await Product.sequelize.query(`
             SELECT 
-                p.id, p.name, p.slug, p.description, p.price, p.discount_price, p.key_highlights,
+                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
                 p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
@@ -1976,12 +1976,19 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             })
         ]);
 
-        // 5. PARALLEL BATCH 3: Loyalty settings and reviews (can run in parallel with each other)
-        const [loyaltySettings, reviewsResult] = await Promise.all([
+        // 5. PARALLEL BATCH 3: Loyalty settings, key highlights, and reviews (can run in parallel with each other)
+        const [loyaltySettings, keyHighlightsSetting, reviewsResult] = await Promise.all([
             // Get loyalty settings (keep this as ORM since it's a simple query)
             LoyaltyPointsSettings.findOne({
                 where: { status: true },
                 order: [['createdAt', 'DESC']]
+            }),
+            // Get key highlights from settings
+            Settings.findOne({
+                where: { 
+                    content_key: 'key_highlights',
+                    is_active: true 
+                }
             }),
 
             // Get reviews for the product with raw SQL
@@ -2563,6 +2570,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             return null;
         }).filter(Boolean) : [];
 
+        // Get key highlights content from settings
+        const keyHighlights = keyHighlightsSetting ? keyHighlightsSetting.content : null;
+
         const response = {
             product: {
                 id: product.id,
@@ -2571,7 +2581,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 description: product.description, // Use direct description from SQL result
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
-                key_highlights: product.key_highlights,
+                key_highlights: keyHighlights,
                 category: product_category,
                 brand: product_brand,
                 product_categories: all_product_categories,

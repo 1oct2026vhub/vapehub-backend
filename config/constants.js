@@ -200,7 +200,8 @@ module.exports = {
         'RETURNS POLICY': 'returns_policy',
         'TERMS CONDITIONS': 'terms_conditions',
         'DISPATCH NOTICE': 'dispatch_notice',
-        'LOYALTY POINTS': 'loyalty_points'
+        'LOYALTY POINTS': 'loyalty_points',
+        'KEY HIGHLIGHTS': 'key_highlights'
     },
     LEGAL_CONTENT_KEY_ENUMS: [
         'delivery_information',
@@ -208,6 +209,7 @@ module.exports = {
         'returns_policy',
         'terms_conditions',
         'dispatch_notice',
-        'loyalty_points'
+        'loyalty_points',
+        'key_highlights'
     ]
 }
