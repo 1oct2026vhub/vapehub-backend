@@ -1771,7 +1771,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // 1. Get product basic info with raw SQL (MUST run first for validation)
         const productResult = await Product.sequelize.query(`
             SELECT 
-                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
+                p.id, p.name, p.slug, p.description, p.price, p.discount_price, p.key_highlights,
                 p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
@@ -2531,6 +2531,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 description: product.description, // Use direct description from SQL result
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
+                key_highlights: product.key_highlights,
                 category: product_category,
                 brand: product_brand,
                 product_categories: all_product_categories,
