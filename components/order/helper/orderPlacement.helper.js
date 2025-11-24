@@ -554,7 +554,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         attributes: [
             "id", 
             "shipping_cost", 
-            "is_active", 
+            "is_enabled", 
             "min_order_total", 
             "max_order_total", 
             "free_shipping_threshold", 
