@@ -1557,7 +1557,10 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         }
 
     } catch (error) {
-        await transaction.rollback();
+        // Only rollback if transaction hasn't been finished (committed or rolled back)
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message || 'Guest checkout and order failed');
     }
 };
