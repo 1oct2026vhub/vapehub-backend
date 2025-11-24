@@ -2395,6 +2395,46 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         product.variants = transformedVariants;
         // Get min price variant (OPTIMIZED)
         const minPriceVariant = getMinPriceVariant(product);
+        const productPrice = minPriceVariant ? minPriceVariant.price : product.price;
+        
+        // Calculate loyalty points for this product (always calculate for display, regardless of minimum threshold)
+        let loyaltyPointsInfo = null;
+        if (loyaltySettings && productPrice) {
+            const minAmountForPoints = parseFloat(loyaltySettings.min_amount_for_loyalty_points) || 0;
+            const meetsMinimum = parseFloat(productPrice) >= minAmountForPoints;
+            
+            // Always calculate points for display purposes (no minimum threshold check)
+            let calculatedPoints = null;
+            let calculationMethod = null;
+            
+            // Use same calculation logic as payment webhooks
+            if (loyaltySettings.amount_divisor && parseFloat(loyaltySettings.amount_divisor) > 0) {
+                calculatedPoints = Math.floor(parseFloat(productPrice) / parseFloat(loyaltySettings.amount_divisor));
+                calculationMethod = 'amount_divisor';
+            } else {
+                calculatedPoints = parseFloat(loyaltySettings.points_value);
+                calculationMethod = 'points_value';
+            }
+            
+            loyaltyPointsInfo = {
+                calculated: calculatedPoints,
+                canEarn: calculatedPoints !== null && calculatedPoints > 0,
+                meetsMinimum: meetsMinimum,  // Keep for informational purposes
+                calculationMethod: calculationMethod,
+                settings: {
+                    program_name: loyaltySettings.program_name,
+                    points_value: parseFloat(loyaltySettings.points_value),
+                    loyalty_amount: loyaltySettings.loyalty_amount,
+                    loyalty_amount_type: loyaltySettings.loyalty_amount_type,
+                    minimum_points_redemption: loyaltySettings.minimum_points_redemption,
+                    minimum_purchase_amount: loyaltySettings.minimum_purchase_amount,
+                    min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
+                    amount_divisor: loyaltySettings.amount_divisor,
+                    status: loyaltySettings.status
+                }
+            };
+        }
+        
         const finalVariants = filteredVariants.map(variant => {
             // Get primary image or first image
             const primaryImage = variant.variantImages.find(img => img.is_primary) || variant.variantImages[0];
@@ -2562,7 +2602,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 min_price_variant: minPriceVariant,
                 reviews: processedReviews,
-                review_stats: reviewStats
+                review_stats: reviewStats,
+                loyaltyPoints: loyaltyPointsInfo
             },
             variants: finalVariants.map(variant => ({
                 ...variant,
