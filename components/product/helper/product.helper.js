@@ -530,6 +530,20 @@ const fetchProducts = async (query, status = 'published') => {
         ]
       }
     ];
+    // Handle popularity sorting (order_count) - similar to fetchCategoryProducts
+    const orderCountJoin = sort_by === 'order_count' ? `
+      LEFT JOIN (
+        SELECT 
+          oi.product_id,
+          COUNT(DISTINCT o.id) AS order_count
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
+        AND o.status NOT IN ('cancelled', 'refunded')
+        AND o.deletedAt IS NULL
+        GROUP BY oi.product_id
+      ) order_stats ON p.id = order_stats.product_id` : '';
+
     // OPTIMIZATION: Convert to raw SQL and execute in parallel to reduce round trips
     const [totalCount, products] = await Promise.all([
       // 1. Get total count with raw SQL (includes variant filtering like original)
@@ -599,7 +613,9 @@ const fetchProducts = async (query, status = 'published') => {
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt,
           p.updatedAt, p.deletedAt
+          ${sort_by === 'order_count' ? ', COALESCE(order_stats.order_count, 0) as order_count' : ''}
         FROM products p
+        ${orderCountJoin}
         WHERE p.deletedAt IS NULL
         AND p.status = :status
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
@@ -643,7 +659,7 @@ const fetchProducts = async (query, status = 'published') => {
           AND pv_active.price IS NOT NULL
           AND pv_active.price > 0
         )
-        ORDER BY ${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${order}
+        ORDER BY ${is_new ? 'p.createdAt DESC, ' : ''}${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {
@@ -1143,6 +1159,7 @@ const fetchProducts = async (query, status = 'published') => {
         flavor_count,
         out_of_stock: !hasInStockVariant,
         min_price_variant: product.min_price_variant || null,
+        order_count: product.order_count ? parseInt(product.order_count) : 0,
         reviews: processedReviews,
         review_stats: reviewStats,
          is_new: is_new ? (() => {
