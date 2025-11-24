@@ -125,8 +125,9 @@ const fetchCategoryProducts = async (categoryId, query) => {
                     COUNT(DISTINCT o.id) AS order_count
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
-                WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
-                AND o.status NOT IN ('cancelled', 'refunded')
+                WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+                AND o.status IN ('completed', 'delivered')
+                AND o.deletedAt IS NULL
                 GROUP BY oi.product_id
             ) order_stats ON p.id = order_stats.product_id` : '';
         const productsQuery = `
