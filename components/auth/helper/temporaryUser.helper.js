@@ -21,27 +21,28 @@ module.exports.createTemporaryUser = async (guestData) => {
         paranoid: false // Include soft-deleted users
     });
 
-    // If user exists and is not temporary, throw error
-    if (existingUser && !existingUser.is_temporary) {
-        throw {
-            statusCode: 400,
-            message: 'An account with this email already exists. Please login instead.',
-            errors: { email: 'Email already registered' }
-        };
-    }
-
-    // If temporary user exists, reuse it (or create new one)
+    // Reuse existing user if found, otherwise create new temporary user
     let user;
-    if (existingUser && existingUser.is_temporary) {
-        // Update existing temporary user
-        await existingUser.update({
-            first_name,
-            last_name,
-            phone: phone || existingUser.phone,
-            email_verified_at: null, // Reset verification
-            blocked: false,
-            deletedAt: null // Restore if soft-deleted
-        });
+    if (existingUser) {
+        if (existingUser.is_temporary) {
+            // Update existing temporary user
+            await existingUser.update({
+                first_name,
+                last_name,
+                phone: phone || existingUser.phone,
+                email_verified_at: null, // Reset verification
+                blocked: false,
+                deletedAt: null // Restore if soft-deleted
+            });
+        } else {
+            // Reuse existing non-temporary user (update info if provided)
+            await existingUser.update({
+                first_name: first_name || existingUser.first_name,
+                last_name: last_name || existingUser.last_name,
+                phone: phone || existingUser.phone,
+                deletedAt: null // Restore if soft-deleted
+            });
+        }
         user = existingUser;
     } else {
         // Generate a random password for temporary users
