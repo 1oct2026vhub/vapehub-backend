@@ -389,6 +389,113 @@ const getLegalContent = async (req, res, next) => {
     }
 };
 
+/**
+ * Get free shipping threshold setting
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+const getFreeShippingThreshold = async (req, res, next) => {
+    try {
+        const setting = await Settings.findOne({
+            where: {
+                content_key: 'free_shipping_threshold',
+                is_active: true
+            }
+        });
+
+        if (!setting) {
+            return errorResponse(res, { message: 'Free shipping threshold setting not found' }, 'Setting not found', 404);
+        }
+
+        const thresholdValue = parseFloat(setting.content) || 0;
+
+        return successResponse(res, {
+            id: setting.id,
+            threshold: thresholdValue,
+            threshold_string: setting.content,
+            is_active: setting.is_active,
+            created_at: setting.created_at,
+            updated_at: setting.updated_at
+        }, 'Free shipping threshold retrieved successfully');
+    } catch (error) {
+        logger.error('Get Free Shipping Threshold Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Update free shipping threshold setting
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+const updateFreeShippingThreshold = async (req, res, next) => {
+    const transaction = await Settings.sequelize.transaction();
+    try {
+        const { threshold, is_active } = req.body;
+
+        // Validate threshold is provided
+        if (threshold === undefined || threshold === null) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'Threshold value is required' }, 'Missing threshold value', 400);
+        }
+
+        // Validate threshold is a valid number
+        const thresholdValue = parseFloat(threshold);
+        if (isNaN(thresholdValue) || thresholdValue < 0) {
+            await transaction.rollback();
+            return errorResponse(res, { message: 'Threshold must be a valid positive number' }, 'Invalid threshold value', 400);
+        }
+
+        // Format threshold to 2 decimal places
+        const formattedThreshold = thresholdValue.toFixed(2);
+
+        // Find or create the setting
+        let setting = await Settings.findOne({
+            where: {
+                content_key: 'free_shipping_threshold'
+            },
+            transaction
+        });
+
+        const updateData = {
+            content: formattedThreshold
+        };
+
+        if (is_active !== undefined) {
+            updateData.is_active = is_active;
+        }
+
+        if (setting) {
+            // Update existing setting
+            await setting.update(updateData, { transaction });
+        } else {
+            // Create new setting if it doesn't exist
+            setting = await Settings.create({
+                content_key: 'free_shipping_threshold',
+                content: formattedThreshold,
+                is_active: is_active !== undefined ? is_active : true
+            }, { transaction });
+        }
+
+        await transaction.commit();
+
+        return successResponse(res, {
+            id: setting.id,
+            threshold: parseFloat(setting.content),
+            threshold_string: setting.content,
+            is_active: setting.is_active,
+            created_at: setting.created_at,
+            updated_at: setting.updated_at
+        }, 'Free shipping threshold updated successfully');
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Update Free Shipping Threshold Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports = {
     getAllSettings,
     getSettingByKey,
@@ -398,5 +505,7 @@ module.exports = {
     deleteSetting,
     toggleSettingStatus,
     getLegalContentKeys,
-    getLegalContent
+    getLegalContent,
+    getFreeShippingThreshold,
+    updateFreeShippingThreshold
 };

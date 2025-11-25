@@ -3,6 +3,8 @@ const router = express.Router();
 const settingsController = require('../domain/settings.controller');
 const { authMiddleware } = require('../../../../library/middleware');
 const constants = require('../../../../config/constants');
+const { validateRequest } = require('../../../../utils/validationMiddleware');
+const { check } = require('express-validator');
 
 const adminAuth = [authMiddleware(true)];
 
@@ -552,5 +554,144 @@ router.delete('/:id', adminAuth, settingsController.deleteSetting);
  *         description: Internal server error
  */
 router.patch('/:id/toggle-status', adminAuth, settingsController.toggleSettingStatus);
+
+/**
+ * @swagger
+ * /api/admin/settings/free-shipping-threshold:
+ *   get:
+ *     summary: Get free shipping threshold setting
+ *     tags: [ADMIN - Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Free shipping threshold retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Setting ID
+ *                     threshold:
+ *                       type: number
+ *                       format: float
+ *                       description: Free shipping threshold value as number
+ *                       example: 50.00
+ *                     threshold_string:
+ *                       type: string
+ *                       description: Free shipping threshold value as string
+ *                       example: "50.00"
+ *                     is_active:
+ *                       type: boolean
+ *                       description: Whether the setting is active
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Free shipping threshold setting not found
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/free-shipping-threshold', adminAuth, settingsController.getFreeShippingThreshold);
+
+/**
+ * @swagger
+ * /api/admin/settings/free-shipping-threshold:
+ *   put:
+ *     summary: Update free shipping threshold setting
+ *     tags: [ADMIN - Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - threshold
+ *             properties:
+ *               threshold:
+ *                 type: number
+ *                 format: float
+ *                 minimum: 0
+ *                 description: Minimum order amount (after deals) to qualify for free shipping
+ *                 example: 75.00
+ *               is_active:
+ *                 type: boolean
+ *                 description: Whether the free shipping threshold is active
+ *                 default: true
+ *     responses:
+ *       200:
+ *         description: Free shipping threshold updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: Setting ID
+ *                     threshold:
+ *                       type: number
+ *                       format: float
+ *                       description: Free shipping threshold value as number
+ *                       example: 75.00
+ *                     threshold_string:
+ *                       type: string
+ *                       description: Free shipping threshold value as string
+ *                       example: "75.00"
+ *                     is_active:
+ *                       type: boolean
+ *                       description: Whether the setting is active
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Bad request - Invalid threshold value
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/free-shipping-threshold', 
+    adminAuth, 
+    validateRequest([
+        check('threshold')
+            .notEmpty()
+            .withMessage('Threshold value is required')
+            .isFloat({ min: 0 })
+            .withMessage('Threshold must be a valid positive number'),
+        check('is_active')
+            .optional()
+            .isBoolean()
+            .withMessage('is_active must be a boolean value')
+    ]),
+    settingsController.updateFreeShippingThreshold
+);
 
 module.exports = router;
