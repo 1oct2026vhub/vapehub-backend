@@ -539,7 +539,7 @@ const fetchProducts = async (query, status = 'published') => {
           COUNT(DISTINCT o.id) AS order_count
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id
-        WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+        WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
         AND o.status IN ('completed', 'delivered')
         AND o.deletedAt IS NULL
         GROUP BY oi.product_id
@@ -660,7 +660,7 @@ const fetchProducts = async (query, status = 'published') => {
           AND pv_active.price IS NOT NULL
           AND pv_active.price > 0
         )
-        ORDER BY ${is_new ? 'p.createdAt DESC, ' : ''}${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}
+        ORDER BY order_count DESC, ${is_new ? 'p.createdAt DESC, ' : ''}${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {
