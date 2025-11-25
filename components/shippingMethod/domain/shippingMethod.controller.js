@@ -88,7 +88,7 @@ module.exports.shippingMethod = async (req, res, next) => {
 
         const shippingMethod = await ShippingMethod.findOne({
             where: { id: shippingMethodId },
-            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "min_order_total", "max_order_total", "free_shipping_threshold", "shipping_rules"],
+            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "min_order_total", "max_order_total", "is_free_shipping", "free_shipping_threshold", "shipping_rules"],
         });
 
         if (shippingMethod) {

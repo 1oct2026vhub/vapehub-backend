@@ -4,6 +4,11 @@ const { Op } = require("sequelize");
 
 // Helper function to calculate shipping cost based on rules
 const calculateShippingCost = (shippingMethod, orderTotal) => {
+    // Check if shipping method is marked as free shipping
+    if (shippingMethod.is_free_shipping) {
+        return 0;
+    }
+    
     // Check if order total meets free shipping threshold
     if (shippingMethod.free_shipping_threshold && orderTotal >= shippingMethod.free_shipping_threshold) {
         return 0;
@@ -43,7 +48,9 @@ module.exports.createShippingMethod = async (req, res) => {
             service_code,
             carrier_code,
             api_key, 
-            api_secret 
+            api_secret,
+            is_free_shipping,
+            free_shipping_threshold
         } = req.body;
         
         const { id: updated_by } = req.user;
@@ -69,7 +76,9 @@ module.exports.createShippingMethod = async (req, res) => {
             service_code,
             carrier_code,
             api_key, 
-            api_secret, 
+            api_secret,
+            is_free_shipping: is_free_shipping !== undefined ? is_free_shipping : false,
+            free_shipping_threshold: free_shipping_threshold !== undefined ? free_shipping_threshold : null,
             updated_by 
         });
         
@@ -237,7 +246,9 @@ module.exports.updateShippingMethod = async (req, res) => {
             service_code,
             carrier_code,
             api_key, 
-            api_secret 
+            api_secret,
+            is_free_shipping,
+            free_shipping_threshold
         } = req.body;
         
         const { id: updated_by } = req.user;
@@ -253,6 +264,8 @@ module.exports.updateShippingMethod = async (req, res) => {
             ...(carrier_code !== undefined && { carrier_code }),
             ...(api_key !== undefined && { api_key }),
             ...(api_secret !== undefined && { api_secret }),
+            ...(is_free_shipping !== undefined && { is_free_shipping }),
+            ...(free_shipping_threshold !== undefined && { free_shipping_threshold }),
             updated_by
         };
         

@@ -12,6 +12,11 @@ const calculateShippingCost = (shippingMethod, orderTotal) => {
         return null;
     }
 
+    // Check if shipping method is marked as free shipping
+    if (shippingMethod.is_free_shipping) {
+        return 0;
+    }
+
     // Check if order total meets free shipping threshold
     if (shippingMethod.free_shipping_threshold && orderTotal >= shippingMethod.free_shipping_threshold) {
         return 0;

@@ -20,6 +20,7 @@ const {
 } = require("../../../models");
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
+const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
@@ -550,11 +551,19 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     // Apply Shipping Cost
     const shippingMethod = await ShippingMethod.findOne({ 
         where: { id: shipping_method_id }, 
-        attributes: ["id", "shipping_cost"],
+        attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         transaction 
     });
     if (shippingMethod) {
-        calculatedTotal += parseFloat(shippingMethod.shipping_cost);
+        // Use helper function to calculate shipping cost based on order total before shipping
+        const orderTotalBeforeShipping = calculatedTotal;
+        const calculatedShippingCost = calculateShippingCost(shippingMethod, orderTotalBeforeShipping);
+        if (calculatedShippingCost !== null) {
+            calculatedTotal += parseFloat(calculatedShippingCost);
+        } else {
+            // Shipping method not applicable, set to null
+            shipping_method_id = null;
+        }
     } else {
         shipping_method_id = null;
     }
