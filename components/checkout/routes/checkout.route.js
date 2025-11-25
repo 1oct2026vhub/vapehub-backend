@@ -120,35 +120,6 @@ const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.vali
  *                     total:
  *                       type: number
  *                       example: 90.0
- *                     deals:
- *                       type: object
- *                       description: Applied deals information
- *                       properties:
- *                         total_deals_discount:
- *                           type: number
- *                           example: 10.00
- *                           description: Total discount from all deals
- *                         applicable_deals:
- *                           type: array
- *                           description: List of applied deals
- *                           items:
- *                             type: object
- *                     free_shipping:
- *                       type: object
- *                       description: Free shipping eligibility information
- *                       properties:
- *                         is_eligible:
- *                           type: boolean
- *                           example: false
- *                           description: Whether the order qualifies for free shipping (checked after deals deduction, before shipping cost)
- *                         threshold:
- *                           type: number
- *                           example: 50.00
- *                           description: Minimum order amount (after deals) required for free shipping
- *                         amount_remaining:
- *                           type: number
- *                           example: 15.00
- *                           description: Amount remaining to qualify for free shipping (0 if already eligible)
  *                     
  *       "400":
  *         description: Bad Request - Invalid input data
@@ -255,35 +226,6 @@ router.post("/", authenticateJWT, validateRequest(checkoutValidator), checkoutCo
  *                     total:
  *                       type: number
  *                       example: 90.0
- *                     deals:
- *                       type: object
- *                       description: Applied deals information
- *                       properties:
- *                         total_deals_discount:
- *                           type: number
- *                           example: 10.00
- *                           description: Total discount from all deals
- *                         applicable_deals:
- *                           type: array
- *                           description: List of applied deals
- *                           items:
- *                             type: object
- *                     free_shipping:
- *                       type: object
- *                       description: Free shipping eligibility information
- *                       properties:
- *                         is_eligible:
- *                           type: boolean
- *                           example: false
- *                           description: Whether the order qualifies for free shipping (checked after all discounts, before shipping cost)
- *                         threshold:
- *                           type: number
- *                           example: 50.00
- *                           description: Minimum order amount (after deals) required for free shipping
- *                         amount_remaining:
- *                           type: number
- *                           example: 15.00
- *                           description: Amount remaining to qualify for free shipping (0 if already eligible)
  *                     
  *       "400":
  *         description: Invalid request or coupon conditions not met.
@@ -424,35 +366,6 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
  *                       type: number
  *                     total:
  *                       type: number
- *                     deals:
- *                       type: object
- *                       description: Applied deals information
- *                       properties:
- *                         total_deals_discount:
- *                           type: number
- *                           example: 10.00
- *                           description: Total discount from all deals
- *                         applicable_deals:
- *                           type: array
- *                           description: List of applied deals
- *                           items:
- *                             type: object
- *                     free_shipping:
- *                       type: object
- *                       description: Free shipping eligibility information
- *                       properties:
- *                         is_eligible:
- *                           type: boolean
- *                           example: false
- *                           description: Whether the order qualifies for free shipping (checked after deals deduction, before shipping cost)
- *                         threshold:
- *                           type: number
- *                           example: 50.00
- *                           description: Minimum order amount (after deals) required for free shipping
- *                         amount_remaining:
- *                           type: number
- *                           example: 15.00
- *                           description: Amount remaining to qualify for free shipping (0 if already eligible)
  *       400:
  *         description: Bad Request - Invalid input or email already exists
  *       500:
@@ -798,22 +711,6 @@ router.post("/guest",
  *                               type: number
  *                               example: 1
  *                               description: Divisor for calculating loyalty points
- *                         free_shipping:
- *                           type: object
- *                           description: Free shipping eligibility information
- *                           properties:
- *                             is_eligible:
- *                               type: boolean
- *                               example: false
- *                               description: Whether the order qualifies for free shipping (checked after deals deduction, before shipping cost)
- *                             threshold:
- *                               type: number
- *                               example: 50.00
- *                               description: Minimum order amount (after deals) required for free shipping
- *                             amount_remaining:
- *                               type: number
- *                               example: 15.00
- *                               description: Amount remaining to qualify for free shipping (0 if already eligible)
  *                     order:
  *                       type: object
  *                       description: Order details

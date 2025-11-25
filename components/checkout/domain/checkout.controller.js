@@ -1,12 +1,13 @@
 const { Sequelize, Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings, Brand, Category, Settings, sequelize } = require("../../../models");
+const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, ProductImage, Cart, ShippingMethod, PaymentMethod, Order, Referral, ReferralMethod, LoyaltyPointsSettings, MailSubscription, MailSubscriptionSettings, Brand, Category, sequelize } = require("../../../models");
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
+const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -103,20 +104,7 @@ module.exports.checkout = async (req, res, next) => {
             }
         }
 
-        // Fetch ShippingMethod separately
-        const shippingMethod = await ShippingMethod.findAll({
-            attributes: ["id", "shipping_method", "shipping_cost"]
-        });
-
-        if(!shippingMethod || shippingMethod.length === 0){
-            validityMessage = 'No shipping methods available'
-        }
-
-        const paymentMethod = await PaymentMethod.findAll({
-            where: { status: "active" }
-        });
-
-        // Calculate subtotal amount
+        // Calculate subtotal amount first (needed for shipping cost calculation)
         for (const item of cart) {
             if (!item.variant || item.variant.deleted_at) {
                 const productName = item.product?.name || 'Unknown product';
@@ -137,6 +125,20 @@ module.exports.checkout = async (req, res, next) => {
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity;
         }
+
+        // Fetch ShippingMethod separately
+        const shippingMethod = await ShippingMethod.findAll({
+            where: { is_enabled: true },
+            attributes: ["id", "shipping_method", "shipping_cost", "is_free_shipping", "free_shipping_threshold", "display_text", "is_enabled", "min_order_total", "max_order_total", "shipping_rules"]
+        });
+
+        if(!shippingMethod || shippingMethod.length === 0){
+            validityMessage = 'No shipping methods available'
+        }
+
+        const paymentMethod = await PaymentMethod.findAll({
+            where: { status: "active" }
+        });
 
         // Calculate deals
         const deals = await dealService.getApplicableDeals(cart);
@@ -281,25 +283,6 @@ module.exports.checkout = async (req, res, next) => {
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
 
-        // Fetch free shipping threshold from settings
-        const freeShippingSetting = await Settings.findOne({
-            where: {
-                content_key: 'free_shipping_threshold',
-                is_active: true
-            }
-        });
-
-        const freeShippingThreshold = freeShippingSetting 
-            ? parseFloat(freeShippingSetting.content) || 0 
-            : 0;
-
-        // Check if order qualifies for free shipping (after deals, before shipping cost)
-        // total here is the amount after deals deduction
-        const isFreeShipping = freeShippingThreshold > 0 && total >= freeShippingThreshold;
-        const amountRemaining = isFreeShipping 
-            ? 0 
-            : Math.max(0, freeShippingThreshold - total);
-
         const address = await UserAddress.findOne({ 
             where: { user_id: userId },
             order: [['createdAt', 'DESC']]
@@ -322,11 +305,6 @@ module.exports.checkout = async (req, res, next) => {
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
-            },
-            free_shipping: {
-                is_eligible: isFreeShipping,
-                threshold: freeShippingThreshold,
-                amount_remaining: amountRemaining
             }
         }
         successResponse(res, resObj, 'Success');
@@ -389,22 +367,25 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
 
-        const shippingMethod = await ShippingMethod.findOne({
-            where: { id: shippingMethodId },
-            attributes: ["id", "shipping_method", "shipping_cost"],
-        });
-
-        if (shippingMethod) {
-            shippingCost = shippingMethod.shipping_cost;
-        }
-
-        // Calculate subtotal amount
+        // Calculate subtotal amount first
         for (const item of cart) {
             if (!item.variant) {
                 return errorResponse(res, {}, `Variant for product ${item.product?.name || 'Unknown'} is not found`, 404);
             }
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity;
+        }
+
+        const shippingMethod = await ShippingMethod.findOne({
+            where: { id: shippingMethodId },
+            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+        });
+
+        if (shippingMethod) {
+            shippingCost = calculateShippingCost(shippingMethod, subTotal);
+            if (shippingCost === null) {
+                shippingCost = 0; // Default to 0 if method is not applicable
+            }
         }
         
         // Calculate deals
@@ -855,31 +836,11 @@ module.exports.applyCoupon = async (req, res, next) => {
         if (totalDiscount > 0) {
             total = Math.max(0, total - totalDiscount);
         }
-        // Calculate total before shipping for free shipping check
-        const totalBeforeShipping = parseFloat(Math.max(0, total).toFixed(2));
-        total = totalBeforeShipping + shippingCost;
+        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
         discount_amount = Math.floor(discount_amount * 100) / 100;
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
-
-        // Fetch free shipping threshold from settings
-        const freeShippingSetting = await Settings.findOne({
-            where: {
-                content_key: 'free_shipping_threshold',
-                is_active: true
-            }
-        });
-
-        const freeShippingThreshold = freeShippingSetting 
-            ? parseFloat(freeShippingSetting.content) || 0 
-            : 0;
-
-        // Check if order qualifies for free shipping (after all discounts, before shipping cost)
-        const isFreeShipping = freeShippingThreshold > 0 && totalBeforeShipping >= freeShippingThreshold;
-        const amountRemaining = isFreeShipping 
-            ? 0 
-            : Math.max(0, freeShippingThreshold - totalBeforeShipping);
 
         // Get entity details if coupon has entity restrictions
         let couponEntityDetails = null;
@@ -945,11 +906,6 @@ module.exports.applyCoupon = async (req, res, next) => {
             deals: {
                 total_deals_discount: dealsDiscount,
                 applicable_deals: applicableDeals
-            },
-            free_shipping: {
-                is_eligible: isFreeShipping,
-                threshold: freeShippingThreshold,
-                amount_remaining: amountRemaining
             }
         }
         successResponse(res, resObj, responseMessage);
@@ -1080,7 +1036,8 @@ module.exports.guestCheckout = async (req, res, next) => {
 
             // Fetch ShippingMethod separately
             const shippingMethod = await ShippingMethod.findAll({
-                attributes: ["id", "shipping_method", "shipping_cost"]
+                where: { is_enabled: true },
+                attributes: ["id", "shipping_method", "shipping_cost", "is_free_shipping", "free_shipping_threshold", "display_text"]
             });
 
             if(!shippingMethod || shippingMethod.length === 0){
@@ -1246,24 +1203,6 @@ module.exports.guestCheckout = async (req, res, next) => {
             subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
             dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
 
-            // Fetch free shipping threshold from settings
-            const freeShippingSetting = await Settings.findOne({
-                where: {
-                    content_key: 'free_shipping_threshold',
-                    is_active: true
-                }
-            });
-
-            const freeShippingThreshold = freeShippingSetting 
-                ? parseFloat(freeShippingSetting.content) || 0 
-                : 0;
-
-            // Check if order qualifies for free shipping (after deals, before shipping cost)
-            const isFreeShipping = freeShippingThreshold > 0 && total >= freeShippingThreshold;
-            const amountRemaining = isFreeShipping 
-                ? 0 
-                : Math.max(0, freeShippingThreshold - total);
-
             const address = await UserAddress.findOne({ 
                 where: { user_id: userId },
                 order: [['createdAt', 'DESC']]
@@ -1286,11 +1225,6 @@ module.exports.guestCheckout = async (req, res, next) => {
                 deals: {
                     total_deals_discount: dealsDiscount,
                     applicable_deals: applicableDeals
-                },
-                free_shipping: {
-                    is_eligible: isFreeShipping,
-                    threshold: freeShippingThreshold,
-                    amount_remaining: amountRemaining
                 },
                 // Add tokens for guest checkout
                 accessToken,
@@ -1471,24 +1405,6 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         checkoutTotal = parseFloat(Math.max(0, checkoutTotal).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
 
-        // Fetch free shipping threshold from settings
-        const freeShippingSetting = await Settings.findOne({
-            where: {
-                content_key: 'free_shipping_threshold',
-                is_active: true
-            }
-        });
-
-        const freeShippingThreshold = freeShippingSetting 
-            ? parseFloat(freeShippingSetting.content) || 0 
-            : 0;
-
-        // Check if order qualifies for free shipping (after deals, before shipping cost)
-        const isFreeShipping = freeShippingThreshold > 0 && checkoutTotal >= freeShippingThreshold;
-        const amountRemaining = isFreeShipping 
-            ? 0 
-            : Math.max(0, freeShippingThreshold - checkoutTotal);
-
         // Get mail subscription and loyalty info
         let mailSubscriptionData = null;
         let loyaltyRedemptionInfo = null;
@@ -1558,12 +1474,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                 applicable_deals: applicableDeals
             },
             mail_subscription_data: mailSubscriptionData,
-            loyalty_redemption_info: loyaltyRedemptionInfo,
-            free_shipping: {
-                is_eligible: isFreeShipping,
-                threshold: freeShippingThreshold,
-                amount_remaining: amountRemaining
-            }
+            loyalty_redemption_info: loyaltyRedemptionInfo
         };
 
         // Step 4: Place order using helper

@@ -75,6 +75,17 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
                 comment: 'Shipping service name for ShipStation integration (e.g., "Standard Delivery", "Royal Mail Tracked 24")'
             },
+            is_free_shipping: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: false,
+                comment: 'Whether this shipping method offers free shipping'
+            },
+            free_shipping_threshold: {
+                type: DataTypes.DECIMAL(10, 2),
+                allowNull: true,
+                comment: 'Minimum order total required for free shipping (null if not applicable)'
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,

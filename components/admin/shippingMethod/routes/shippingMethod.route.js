@@ -60,6 +60,13 @@ const router = express.Router();
  *               api_secret:
  *                 type: string
  *                 description: API secret for shipping provider
+ *               is_free_shipping:
+ *                 type: boolean
+ *                 description: Whether this shipping method offers free shipping
+ *                 default: false
+ *               free_shipping_threshold:
+ *                 type: number
+ *                 description: Minimum order total required for free shipping (null if not applicable)
  *     responses:
  *       201:
  *         description: Created successfully
@@ -233,6 +240,12 @@ router.get(
  *               api_secret:
  *                 type: string
  *                 description: API secret for shipping provider
+ *               is_free_shipping:
+ *                 type: boolean
+ *                 description: Whether this shipping method offers free shipping
+ *               free_shipping_threshold:
+ *                 type: number
+ *                 description: Minimum order total required for free shipping (null if not applicable)
  *     responses:
  *       200:
  *         description: Updated successfully
