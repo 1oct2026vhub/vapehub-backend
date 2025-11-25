@@ -117,25 +117,25 @@ const fetchCategoryProducts = async (categoryId, query) => {
         // Use raw SQL for maximum performance - single query approach
         // Note: is_new filtering is now handled in application logic for hybrid approach
         
-        // Handle popularity sorting (order_count) - match getTrendingProducts logic
-        const popularityJoin = sort_by === 'order_count' ? `
+        // Always include order_count join for sorting by most sold products first
+        const popularityJoin = `
             LEFT JOIN (
                 SELECT 
                     oi.product_id,
                     COUNT(DISTINCT o.id) AS order_count
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
-                WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+                WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                 AND o.status IN ('completed', 'delivered')
                 AND o.deletedAt IS NULL
                 GROUP BY oi.product_id
-            ) order_stats ON p.id = order_stats.product_id` : '';
+            ) order_stats ON p.id = order_stats.product_id`;
         const productsQuery = `
             SELECT 
                 p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
                 p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt,
                 p.updatedAt, p.deletedAt,
-                ${sort_by === 'order_count' ? 'COALESCE(order_stats.order_count, 0) as order_count,' : ''}
+                COALESCE(order_stats.order_count, 0) as order_count,
                 -- Get min variant price and image
                 (SELECT MIN(pv.price) FROM product_variants pv 
                  WHERE pv.product_id = p.id AND pv.status = 'active' AND pv.price > 0) as min_price,
@@ -191,7 +191,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             )
             AND p.status = 'published'
             AND p.deletedAt IS NULL
-            ORDER BY p.createdAt DESC, ${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}
+            ORDER BY order_count DESC, ${sort_by === 'order_count' ? 'order_count' : sort_by === 'createdAt' ? 'p.createdAt' : 'p.' + sort_by} ${order}, p.id ASC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `;
 
