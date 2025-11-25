@@ -106,6 +106,293 @@ module.exports.register = async (req, res, next) => {
         if (userExists && userExists.deletedAt) {
             return errorResponse(res, {}, "This user email already deleted", 400);
         }
+        
+        // Handle temporary user conversion
+        if (userExists && userExists.is_temporary) {
+            // Convert temporary user to permanent account
+            const hashedPassword = await bcrypt.hash(password, 10);
+            
+            // Update user to permanent with new password
+            await userExists.update({
+                is_temporary: false,
+                password: hashedPassword,
+                email_verified_at: null, // Reset verification status
+                blocked: false,
+                deletedAt: null // Restore if soft-deleted
+            });
+
+            // Get role for user if not already set
+            const role = await Role.findOne({
+                attributes: ['id'],
+                where: { permission: 'user' },
+            });
+            if (role && !userExists.roleId) {
+                await userExists.update({ roleId: role.id });
+            }
+
+            // Handle referral code if provided
+            let referrer = null;
+            if (referral_code) {
+                referrer = await User.findOne({
+                    where: { referral_code },
+                    attributes: ['id', 'referral_code', 'referral_points', 'email']
+                });
+                
+                if (referrer && !userExists.referred_by) {
+                    await userExists.update({ referred_by: referrer.id });
+                }
+            }
+
+            // Generate verification token
+            const token = uuid();
+            const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+            await userExists.update({ token, token_expiry });
+
+            const username = userExists?.first_name ?? userExists.email.split('@')[0];
+
+            // Handle mail subscription
+            if (mail_subscription === 'true' || mail_subscription === true) {
+                try {
+                    const existingSubscription = await MailSubscription.findOne({
+                        where: { email: email }
+                    });
+
+                    if (existingSubscription) {
+                        await MailSubscription.update({
+                            user_id: userExists.id,
+                        }, {
+                            where: { id: existingSubscription.id }
+                        });
+                    } else {
+                        await MailSubscription.create({
+                            user_id: userExists.id,
+                            email: email,
+                            subscribed: true
+                        });
+                    }
+                } catch (subscriptionError) {
+                    console.error('Error handling mail subscription:', subscriptionError);
+                }
+            } else {
+                try {
+                    const existingSubscription = await MailSubscription.findOne({
+                        where: { email: email }
+                    });
+                    if (existingSubscription) {
+                        await MailSubscription.update({
+                            user_id: userExists.id,
+                        }, {
+                            where: { id: existingSubscription.id }
+                        });
+                    }
+                } catch (subscriptionError) {
+                    console.error('Error handling mail subscription:', subscriptionError);
+                }
+            }
+
+            // Create notification for admin
+            await createNotification({
+                user_id: null,
+                type: 'system',
+                action: 'alert',
+                data: {
+                    message: `Temporary user converted to permanent account: ${email}`
+                },
+                title: 'User Account Conversion',
+                url: '/admin/users',
+                is_admin: true
+            });
+
+            // Handle referral logic if referral_code is provided
+            if (referral_code && referrer) {
+                const referral_method = await Referral.findOne({
+                    where: {
+                        email: email,
+                        referral_code: referral_code,
+                    },
+                    attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'minimum_purchase', 'maximum_purchase', 'referral_value_type', 'referral_value']
+                });
+
+                const activeReferralMethod = await ReferralMethod.findOne({
+                    where: { 
+                        status: 'active',
+                        refer_type: 'referral'
+                    },
+                    attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+                });
+                
+                const activeReferrerMethod = await ReferralMethod.findOne({
+                    where: { 
+                        status: 'active',
+                        refer_type: 'referrer'
+                    },
+                    attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+                });
+
+                if(referral_method) {
+                    await Referral.update({
+                        referred_user_id: userExists.id,
+                    }, {
+                        where: {
+                            email: email,
+                            referral_code: referral_code
+                        }
+                    });
+
+                    const welcomeData = {
+                        emailTypes: constants.emailTypes.WELCOME,
+                        to: userExists.email,
+                        context: {
+                            userName: username,
+                            couponCode: null,
+                        },
+                        attachments: ""
+                    };
+                    await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
+                } else {
+                    const timestamp = Date.now().toString(36).toUpperCase();
+                    const emailHash = Buffer.from(email).toString('base64')
+                        .replace(/[^A-Za-z]/g, '')
+                        .slice(0, 4)
+                        .toUpperCase();
+                    
+                    const referral_coupon = `${emailHash}${timestamp.slice(-4)}`;              
+                    await Referral.create({
+                        email: email,
+                        referrer_id: referrer.id,
+                        referral_code: referral_code,
+                        referral_coupon_code: referral_coupon,
+                        status: 'pending',
+                        referred_user_id: userExists.id,
+                        points_awarded: 10,
+                        referral_value_type: activeReferralMethod ? activeReferralMethod.referral_value_type : 'percentage',
+                        referral_value: activeReferralMethod ? activeReferralMethod.referral_value : '0',
+                        minimum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.minimum_purchase : 0,
+                        maximum_purchase: activeReferralMethod?.refer_type === 'referral' ? activeReferralMethod.maximum_purchase : null,
+                        referrer_data: activeReferrerMethod ? {
+                            id: activeReferrerMethod.id,
+                            referral_value_type: activeReferrerMethod.referral_value_type,
+                            referral_value: activeReferrerMethod.referral_value,
+                            minimum_purchase: activeReferrerMethod.minimum_purchase,
+                            maximum_purchase: activeReferrerMethod.maximum_purchase,
+                            refer_type: activeReferrerMethod.refer_type
+                        } : null
+                    });
+                    
+                    const welcomeData = {
+                        emailTypes: constants.emailTypes.WELCOME,
+                        to: userExists.email,
+                        context: {
+                            userName: username,
+                            couponCode: referral_coupon,
+                            discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
+                            minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
+                        },
+                        attachments: ""
+                    };
+                    await sendEmail(welcomeData.to, welcomeData.emailTypes, welcomeData.context, welcomeData.attachments);
+                }
+                
+                await Referral.destroy({
+                    where: {
+                        email: email,
+                        referred_user_id: null
+                    }
+                });
+                
+                await createNotification({
+                    user_id: null,
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Temporary user ${email} converted to permanent using referral code ${referral_code} from user ${referrer.email}`
+                    },
+                    title: 'Referral Account Conversion',
+                    url: '/admin/users',
+                    is_admin: true
+                });
+            } else {
+                // Create welcome coupon for converted user (if no referral)
+                const generateCouponCode = () => {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
+                    let result = '';
+                    for (let i = 0; i < 8; i++) {
+                        result += chars.charAt(Math.floor(Math.random() * chars.length));
+                    }
+                    return result;
+                };
+
+                let couponCode;
+                let isUnique = false;
+                while (!isUnique) {
+                    couponCode = generateCouponCode();
+                    const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
+                    if (!existingCoupon) {
+                        isUnique = true;
+                    }
+                }
+                
+                const activeReferrersMethod = await ReferralMethod.findOne({
+                    where: { 
+                        status: 'active',
+                        refer_type: 'referrer'
+                    },
+                    attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
+                });
+                
+                await Coupon.create({
+                    code: couponCode,
+                    description: `Welcome coupon for ${username}`,
+                    discount_type: 'percentage',
+                    discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
+                    minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
+                    usage_limit: 1,
+                    usage_count: 0,
+                    is_single_use: true,
+                    start_date: new Date(),
+                    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                    status: 'active',
+                    coupon_user: userExists.id,
+                    created_by: null
+                });
+
+                const welcomeEmailData = {
+                    emailTypes: constants.emailTypes.WELCOME,
+                    to: userExists.email,
+                    context: {
+                        userName: username,
+                        couponCode: couponCode,
+                        discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
+                        minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
+                    },
+                    attachments: ""
+                };
+                await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
+            }
+
+            // Send verification email
+            const data = {
+                emailTypes: constants.emailTypes.REGISTER,
+                to: userExists.email,
+                context: {
+                    userName: username,
+                    verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                    expiryTime: moment(token_expiry).format('LLLL'),
+                },
+                attachments: ""
+            };
+            
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
+            return successResponse(
+                res, 
+                { message: "Your temporary account has been converted to a permanent account. Verification email has been sent to your email address." }, 
+                "Account converted successfully! Please verify your email to log in.", 
+                201
+            );
+        }
+        
+        // If user exists and is permanent, throw error
         if (userExists) {
             throw {
                 message: "User email already exists",
