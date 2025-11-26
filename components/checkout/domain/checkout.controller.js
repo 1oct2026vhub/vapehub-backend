@@ -1275,6 +1275,18 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             receive_promotions
         } = req.body;
 
+        // Debug: log incoming couponCode to inspect value and type
+        console.log('guestCheckoutAndOrder couponCode:', couponCode, 'type:', typeof couponCode);
+
+        // Normalise bad coupon values to "no coupon"
+        const normalizedCouponCode =
+            couponCode &&
+            couponCode !== '$undefined' &&
+            couponCode !== 'undefined' &&
+            couponCode !== 'null'
+                ? couponCode
+                : undefined;
+
         // Validate required fields
         if (!email || !first_name || !last_name) {
             throw {
@@ -1368,12 +1380,12 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
 
         checkoutTotal = subTotal - dealsDiscount;
 
-        // Apply coupon if provided (simplified - reuse full logic from guestCheckout)
-        if (couponCode) {
+        // Apply coupon only if a real code is present
+        if (normalizedCouponCode) {
             const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
             const coupon = await Coupon.findOne({
                 where: {
-                    code: couponCode,
+                    code: normalizedCouponCode,
                     status: "active",
                     start_date: { [Op.lte]: currentUkTime },
                     end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] },
@@ -1483,7 +1495,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             const orderResult = await placeOrderLogic(tempUser.id, {
                 email,
                 phone,
-                couponCode,
+                couponCode: normalizedCouponCode,
                 receive_promotions,
                 shipping_address_id: shipping_address.shipping_address_id,
                 shipping_address,
