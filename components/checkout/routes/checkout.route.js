@@ -1001,7 +1001,6 @@ router.post("/guest/checkout-and-order",
         check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
         check('cartItems.*.variant_id').optional().isInt({ min: 1 }),
         check('cartItems.*.quantity').isInt({ min: 1 }).withMessage('Each item must have quantity >= 1'),
-        check('couponCode').optional().isString().trim(),
         // Order validation
         check('shipping_method_id').isInt({ min: 1 }).withMessage('Shipping method ID is required'),
         check('shipping_address').isObject().withMessage('Shipping address is required'),
