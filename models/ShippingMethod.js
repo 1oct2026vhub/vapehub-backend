@@ -86,6 +86,21 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
                 comment: 'Minimum order total required for free shipping (null if not applicable)'
             },
+            min_order_total: {
+                type: DataTypes.DECIMAL(10, 2),
+                allowNull: true,
+                comment: 'Minimum order total required for this shipping method (null if not applicable)'
+            },
+            max_order_total: {
+                type: DataTypes.DECIMAL(10, 2),
+                allowNull: true,
+                comment: 'Maximum order total allowed for this shipping method (null if not applicable)'
+            },
+            shipping_rules: {
+                type: DataTypes.JSON,
+                allowNull: true,
+                comment: 'Array of shipping rules with min_total, max_total, and shipping_cost'
+            },
             updated_by: {
                 type: DataTypes.INTEGER,
                 allowNull: true,
