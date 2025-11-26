@@ -1530,6 +1530,13 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         if (transaction && !transaction.finished) {
             await transaction.rollback();
         }
+
+        // Log full error details to diagnose 500s like "Assignment to constant variable."
+        console.error('guestCheckoutAndOrder error:', error);
+        if (error && error.stack) {
+            console.error('guestCheckoutAndOrder error stack:', error.stack);
+        }
+
         return errorResponse(res, error, error.message || 'Guest checkout and order failed');
     }
 };
