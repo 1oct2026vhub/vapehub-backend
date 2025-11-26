@@ -68,7 +68,7 @@ app.use((req, res, next) => {
 });
 
 // Parse JSON and URL-encoded bodies
-app.use(express.json({limit: '1gb'}));
+app.use(express.json({limit: '10gb'}));
 app.use(express.urlencoded({ extended: false }));
 
 // 4. Authentication middleware (uncomment if needed)
