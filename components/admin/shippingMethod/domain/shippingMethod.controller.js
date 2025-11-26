@@ -56,7 +56,7 @@ module.exports.createShippingMethod = async (req, res) => {
         const { id: updated_by } = req.user;
         
         // Validate required fields
-        if (!shipping_method || !shipping_cost) {
+        if (!shipping_method || typeof shipping_cost !== 'number' || shipping_cost < 0) {
             const error = new Error("Shipping method name and cost are required");
             error.statusCode = 400;
             throw error;
