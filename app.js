@@ -69,8 +69,7 @@ app.use((req, res, next) => {
 
 // Parse JSON and URL-encoded bodies
 app.use(express.json({limit: '10gb'}));
-app.use(express.urlencoded({ extended: false }));
-
+app.use(express.urlencoded({ extended: true, limit: '10gb' }));
 // 4. Authentication middleware (uncomment if needed)
 app.use(passport.initialize());
 passportConfig(passport);
