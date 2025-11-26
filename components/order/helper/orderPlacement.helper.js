@@ -44,8 +44,11 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         payment_method, 
         loyalty, 
         total, 
-        shipping_method_id 
+        shipping_method_id: initialShippingMethodId 
     } = orderData;
+
+    // Use a mutable copy of shipping method id so we don't reassign a destructured const
+    let shippingMethodId = initialShippingMethodId;
 
     // Update user's receive_promotions preference if provided
     if (typeof receive_promotions === 'boolean') {
@@ -550,7 +553,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     // Apply Shipping Cost
     const shippingMethod = await ShippingMethod.findOne({ 
-        where: { id: shipping_method_id }, 
+        where: { id: shippingMethodId }, 
         attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         transaction 
     });
@@ -562,10 +565,10 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             calculatedTotal += parseFloat(calculatedShippingCost);
         } else {
             // Shipping method not applicable, set to null
-            shipping_method_id = null;
+            shippingMethodId = null;
         }
     } else {
-        shipping_method_id = null;
+        shippingMethodId = null;
     }
 
     // Ensure Price Integrity
@@ -665,7 +668,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         status: "pending",
         order_shipping_address_id: shippingAddrs.id,
         order_billing_address_id: billingAddrs.id,
-        shipping_method_id: shipping_method_id ? shipping_method_id : null,
+        shipping_method_id: shippingMethodId ? shippingMethodId : null,
         order_unique_id: orderUniqueId,
         order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
         shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
