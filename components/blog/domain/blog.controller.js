@@ -95,6 +95,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
                         }
                     ],
                     through: { attributes: [] },
+                    required: false,
                     where: {
                         status: 'active'
                     }
@@ -147,6 +148,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
                         }
                     ],
                     through: { attributes: [] },
+                    required: false,
                     where: {
                         status: 'active'
                     }
