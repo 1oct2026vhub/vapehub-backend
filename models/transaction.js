@@ -113,7 +113,7 @@ module.exports = (sequelize, DataTypes) => {
       unique: true
     },
     notes: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true
     },
     metadata: {

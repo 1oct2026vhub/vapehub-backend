@@ -3,7 +3,7 @@
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.changeColumn('seo_meta', 'description', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true
     });
   },

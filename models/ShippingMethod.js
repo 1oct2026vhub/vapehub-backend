@@ -49,7 +49,7 @@ module.exports = (sequelize, DataTypes) => {
             api_key: DataTypes.STRING,
             api_secret: DataTypes.STRING,
             description: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Description of the shipping method'
             },

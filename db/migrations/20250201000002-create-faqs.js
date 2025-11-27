@@ -32,12 +32,12 @@ module.exports = {
         comment: 'ID of the related entity'
       },
       question: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'FAQ question'
       },
       answer: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'FAQ answer'
       },

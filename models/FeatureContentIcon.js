@@ -30,7 +30,7 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Original filename of the uploaded icon'
     },
     icon_url: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: false,
       comment: 'URL of the icon image stored in S3'
     },

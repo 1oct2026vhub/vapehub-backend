@@ -16,7 +16,7 @@ module.exports = {
 
     if (!tableInfo.shipping_address) {
       await queryInterface.addColumn("orders", "shipping_address", {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
       });
     }

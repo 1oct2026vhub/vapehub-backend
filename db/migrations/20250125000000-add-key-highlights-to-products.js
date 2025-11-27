@@ -14,7 +14,7 @@ module.exports = {
       if (!tableDescription.key_highlights) {
         // Add key_highlights column only if it doesn't exist
         await queryInterface.addColumn('products', 'key_highlights', {
-          type: Sequelize.TEXT,
+          type: Sequelize.TEXT('long'),
           allowNull: true,
           comment: 'Key highlights or important notices about the product'
         }, { transaction });

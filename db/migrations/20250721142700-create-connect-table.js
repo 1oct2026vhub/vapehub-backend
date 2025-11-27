@@ -10,15 +10,15 @@ module.exports = {
         allowNull: false
       },
       send_us_a_message: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       call_us: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       social_media: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       created_at: {

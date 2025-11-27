@@ -25,8 +25,8 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
             comment: 'ID of the related entity'
         },
-        question: DataTypes.TEXT,
-        answer: DataTypes.TEXT
+        question: DataTypes.TEXT('long'),
+        answer: DataTypes.TEXT('long')
     }, {
         sequelize,
         modelName: 'FAQ',

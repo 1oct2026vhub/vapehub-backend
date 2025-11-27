@@ -30,12 +30,12 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Title of the welcome content'
     },
     content: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: false,
       comment: 'Content/description of the welcome section'
     },
     image_url: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true,
       comment: 'URL of the welcome image stored in S3'
     },

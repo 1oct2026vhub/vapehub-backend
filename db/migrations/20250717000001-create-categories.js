@@ -37,7 +37,7 @@ module.exports = {
         allowNull: false
       },
       description: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       slug: {
@@ -56,7 +56,7 @@ module.exports = {
         onDelete: 'SET NULL'
       },
       logo_url: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       created_at: {

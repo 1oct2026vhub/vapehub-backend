@@ -59,7 +59,7 @@ module.exports = {
         unique: true
       },
       notes: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true
       },
       metadata: {

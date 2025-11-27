@@ -86,7 +86,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     comment: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true
     },
     is_visible: {
