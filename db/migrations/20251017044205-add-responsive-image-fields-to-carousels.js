@@ -3,37 +3,37 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.addColumn('Carousels', 'image_url_desktop_wide', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Desktop Wide (3240x540) - Ultra-wide displays'
     });
     
     await queryInterface.addColumn('Carousels', 'image_url_desktop', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Desktop (2020x340) - Standard desktop screens'
     });
     
     await queryInterface.addColumn('Carousels', 'image_url_laptop', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Laptop (1620x270) - Laptop screens'
     });
     
     await queryInterface.addColumn('Carousels', 'image_url_tablet_landscape', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Tablet Landscape (1010x170) - Tablets landscape'
     });
     
     await queryInterface.addColumn('Carousels', 'image_url_tablet_portrait', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Tablet Portrait (960x160) - Tablets portrait'
     });
     
     await queryInterface.addColumn('Carousels', 'image_url_mobile', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Mobile (480x80) - Mobile devices'
     });

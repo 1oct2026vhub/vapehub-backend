@@ -44,7 +44,7 @@ module.exports = {
         defaultValue: 'draft'
       },
       shipping_address: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false
       },
       shipping_method_id: {

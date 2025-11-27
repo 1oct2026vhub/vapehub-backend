@@ -3,7 +3,7 @@
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     await queryInterface.addColumn('deals', 'description', {
-      type: Sequelize.TEXT,
+      type: Sequelize.TEXT('long'),
       allowNull: true,
       comment: 'Description of the deal'
     });

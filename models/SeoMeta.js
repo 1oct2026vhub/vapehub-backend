@@ -27,11 +27,11 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     description: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true
     },
     description_text: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true,
       comment: 'Additional description text for SEO purposes'
     },

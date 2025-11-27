@@ -49,7 +49,7 @@ module.exports = {
         comment: 'Rating from 1 to 5'
       },
       content: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'Testimonial content'
       },

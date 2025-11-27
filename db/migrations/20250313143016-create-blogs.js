@@ -20,7 +20,7 @@ module.exports = {
         unique: true
       },
       content: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false
       },
       image_url: {

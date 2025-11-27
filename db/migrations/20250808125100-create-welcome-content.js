@@ -27,12 +27,12 @@ module.exports = {
         comment: 'Title of the welcome content'
       },
       content: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'Content/description of the welcome section'
       },
       image_url: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         comment: 'URL of the welcome image stored in S3'
       },

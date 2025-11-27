@@ -58,7 +58,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     message: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: false,
       validate: {
         notEmpty: true
