@@ -58,47 +58,47 @@ module.exports = (sequelize, DataTypes) => {
                 }
             },
             image_url: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: false, // Required field
                 validate: {
                     isUrl: { msg: "Invalid URL format" }
                 }
             },
             image_url_mid: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true
             },
             image_url_low: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true
             },
             image_url_desktop_wide: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Desktop Wide (3240x540) - Ultra-wide displays'
             },
             image_url_desktop: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Desktop (2020x340) - Standard desktop screens'
             },
             image_url_laptop: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Laptop (1620x270) - Laptop screens'
             },
             image_url_tablet_landscape: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Tablet Landscape (1010x170) - Tablets landscape'
             },
             image_url_tablet_portrait: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Tablet Portrait (960x160) - Tablets portrait'
             },
             image_url_mobile: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true,
                 comment: 'Mobile (480x80) - Mobile devices'
             },
@@ -112,7 +112,7 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true
             },
             description: {
-                type: DataTypes.TEXT,
+                type: DataTypes.TEXT('long'),
                 allowNull: true
             },
             redirect_url: {

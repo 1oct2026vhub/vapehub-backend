@@ -15,7 +15,7 @@ module.exports = (sequelize, DataTypes) => {
             unique: true
         },
         name: DataTypes.STRING,
-        description: DataTypes.TEXT,
+        description: DataTypes.TEXT('long'),
     }, {
         sequelize,
         modelName: 'Flavor',

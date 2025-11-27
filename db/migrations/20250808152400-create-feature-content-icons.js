@@ -27,7 +27,7 @@ module.exports = {
         comment: 'Original filename of the uploaded icon'
       },
       icon_url: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'URL of the icon image stored in S3'
       },

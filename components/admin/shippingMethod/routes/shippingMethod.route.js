@@ -128,6 +128,11 @@ router.post(
  *         schema:
  *           type: string
  *         description: Search in name, display_name, carrier, or service
+ *       - in: query
+ *         name: is_free_shipping
+ *         schema:
+ *           type: boolean
+ *         description: Filter by free shipping methods (if true, returns only active free shipping methods)
  *     responses:
  *       200:
  *         description: List of shipping methods with pagination

@@ -45,7 +45,7 @@ module.exports = {
       }, { transaction });
 
       await queryInterface.addColumn('product_variants', 'description', {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         after: 'height'
       }, { transaction });

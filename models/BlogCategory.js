@@ -44,7 +44,7 @@ module.exports = (sequelize) => {
             unique: true
         },
         description: {
-            type: DataTypes.TEXT,
+            type: DataTypes.TEXT('long'),
             allowNull: true
         },
         image_url: {

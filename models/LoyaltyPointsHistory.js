@@ -53,7 +53,7 @@ module.exports = (sequelize, DataTypes) => {
             comment: 'Reference to order if points are from purchase'
         },
         description: {
-            type: DataTypes.TEXT,
+            type: DataTypes.TEXT('long'),
             allowNull: true,
             comment: 'Description of the transaction'
         },

@@ -27,17 +27,17 @@ module.exports = {
         comment: 'Order of display for the carousel item'
       },
       image_url: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: false,
         comment: 'URL of the carousel image'
       },
       image_url_mid: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         comment: 'Medium resolution image URL'
       },
       image_url_low: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         comment: 'Low resolution image URL'
       },
@@ -47,7 +47,7 @@ module.exports = {
         comment: 'Title of the carousel'
       },
       description: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         comment: 'Description of the carousel'
       },

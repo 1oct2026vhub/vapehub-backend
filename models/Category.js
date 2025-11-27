@@ -40,7 +40,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false
         },
         description: {
-            type: DataTypes.TEXT,
+            type: DataTypes.TEXT('long'),
             allowNull: true
         },
         slug: {
@@ -62,7 +62,7 @@ module.exports = (sequelize, DataTypes) => {
             }
         },
         logo_url: {
-            type: DataTypes.TEXT,
+            type: DataTypes.TEXT('long'),
             allowNull: true
         }
     }, {

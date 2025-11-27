@@ -40,7 +40,7 @@ module.exports = {
         comment: 'Reference to order if points are from purchase'
       },
       description: {
-        type: Sequelize.TEXT,
+        type: Sequelize.TEXT('long'),
         allowNull: true,
         comment: 'Description of the transaction'
       },
