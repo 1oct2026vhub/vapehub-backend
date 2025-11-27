@@ -914,6 +914,356 @@ module.exports.applyCoupon = async (req, res, next) => {
     }
 }
 
+module.exports.applyCouponForGuest = async (req, res, next) => {
+    try {
+        const { couponCode, shippingMethodId = 0, loyalty = false, cartItems } = req.body;
+        let subTotal = 0;
+        let total = 0;
+        let totalItems = 0;
+        let shippingCost = 0;
+        let dealsDiscount = 0;
+        let applicableDeals = [];
+
+        // Validate cart items
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
+            throw {
+                statusCode: 404,
+                message: 'Cart is empty'
+            };
+        }
+
+        // Fetch product and variant details for cart items
+        const enrichedCartItems = [];
+        for (const item of cartItems) {
+            const { product_id, variant_id, quantity } = item;
+            
+            if (!product_id || !quantity) {
+                continue;
+            }
+
+            const product = await Product.findOne({
+                where: { id: product_id },
+                attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                include: [
+                    {
+                        model: Brand,
+                        as: "Brands",
+                        attributes: ["id", "name", "slug"],
+                        through: { attributes: [] }
+                    },
+                    {
+                        model: Category,
+                        as: "Categories",
+                        attributes: ["id", "name", "slug"],
+                        through: { attributes: [] }
+                    }
+                ],
+                paranoid: false
+            });
+
+            if (!product) {
+                throw {
+                    statusCode: 404,
+                    message: `Product with ID ${product_id} not found`
+                };
+            }
+
+            let variant = null;
+            if (variant_id) {
+                variant = await ProductVariant.findOne({
+                    where: { id: variant_id },
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"],
+                    paranoid: false
+                });
+
+                if (!variant) {
+                    throw {
+                        statusCode: 404,
+                        message: `Variant for product ${product.name} is not found`
+                    };
+                }
+            } else {
+                // Use product price if no variant
+                variant = { price: product.price };
+            }
+
+            enrichedCartItems.push({
+                product,
+                variant,
+                quantity
+            });
+
+            subTotal += quantity * variant.price;
+            totalItems += quantity;
+        }
+
+        // Calculate shipping cost
+        if (shippingMethodId) {
+            const shippingMethod = await ShippingMethod.findOne({
+                where: { id: shippingMethodId },
+                attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+            });
+
+            if (shippingMethod) {
+                shippingCost = calculateShippingCost(shippingMethod, subTotal);
+                if (shippingCost === null) {
+                    shippingCost = 0;
+                }
+            }
+        }
+
+        // Calculate deals
+        const mockCart = enrichedCartItems.map(item => ({
+            product: item.product,
+            variant: item.variant,
+            quantity: item.quantity
+        }));
+        const deals = await dealService.getApplicableDeals(mockCart);
+        const dealResult = dealService.calculateDealDiscounts(mockCart, deals);
+        dealsDiscount = dealResult.totalDiscount;
+        applicableDeals = dealResult.appliedDeals;
+
+        // Apply deal discounts to total
+        total = subTotal - dealsDiscount;
+
+        // Process coupon if provided
+        let coupon = null;
+        let discount_amount = 0;
+        let responseMessage = '';
+        let coupon_type = null;
+
+        if (couponCode) {
+            // Normalize coupon code
+            const normalizedCouponCode = 
+                couponCode &&
+                couponCode !== '$undefined' &&
+                couponCode !== 'undefined' &&
+                couponCode !== 'null'
+                    ? couponCode
+                    : undefined;
+
+            if (normalizedCouponCode) {
+                // Check if it's a referral coupon first
+                const referral = await Referral.findOne({
+                    where: {
+                        referral_coupon_code: normalizedCouponCode,
+                        status: {
+                            [Op.in]: ['pending', 'completed']
+                        }
+                    },
+                    attributes: ['id', 'referrer_id', 'referral_code', 'referral_coupon_code', 'email', 'status', 'referral_value', 'referral_value_type', 'minimum_purchase', 'maximum_purchase']
+                });
+
+                if (referral) {
+                    // For guests, we can't track usage, so we validate basic requirements
+                    if (parseFloat(referral.minimum_purchase) && parseFloat(total) < parseFloat(referral.minimum_purchase)) {
+                        throw {
+                            statusCode: 400,
+                            message: `Minimum purchase amount of £${referral.minimum_purchase} required to apply this referral discount.`
+                        };
+                    }
+
+                    if (referral.maximum_purchase !== null && referral.maximum_purchase !== undefined && parseFloat(referral.maximum_purchase) > 0 && parseFloat(total) > parseFloat(referral.maximum_purchase)) {
+                        throw {
+                            statusCode: 400,
+                            message: `Order total exceeds the maximum purchase limit of £${referral.maximum_purchase} for this referral discount.`
+                        };
+                    }
+
+                    let referralValue = parseFloat(referral.referral_value);
+                    let referralValueType = referral.referral_value_type;
+
+                    if (referralValue && !isNaN(referralValue)) {
+                        let referralDiscount = referralValueType === 'percentage' ? (referralValue / 100) * total : referralValue;
+                        discount_amount = Math.min(parseFloat(referralDiscount), total);
+                        responseMessage = 'Referral code applied successfully';
+                    }
+
+                    coupon = {
+                        code: referral.referral_coupon_code,
+                        discount_type: referralValueType,
+                        discount_value: referralValue
+                    };
+                    coupon_type = 'referral';
+                } else {
+                    // Regular coupon validation
+                    const currentTime = new Date();
+                    const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
+                    const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
+                        String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
+                        String(currentUKTime.getHours()).padStart(2, '0') + ':' +
+                        String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
+                        String(currentUKTime.getSeconds()).padStart(2, '0');
+
+                    coupon = await Coupon.findOne({
+                        where: {
+                            code: normalizedCouponCode,
+                            status: "active"
+                        }
+                    });
+
+                    if (!coupon) {
+                        throw {
+                            statusCode: 404,
+                            message: 'Invalid or expired coupon code'
+                        };
+                    }
+
+                    // Check date validity
+                    const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+                    const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
+
+                    if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
+                        throw {
+                            statusCode: 404,
+                            message: 'Coupon has not started yet'
+                        };
+                    }
+
+                    if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                        throw {
+                            statusCode: 404,
+                            message: 'Coupon has expired'
+                        };
+                    }
+
+                    // Check usage limit (but not user-specific usage for guests)
+                    if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {
+                        throw {
+                            statusCode: 400,
+                            message: 'This coupon is no longer available — usage limit exceeded.'
+                        };
+                    }
+
+                    // Check minimum purchase
+                    if (parseFloat(coupon.minimum_purchase) && parseFloat(subTotal) < parseFloat(coupon.minimum_purchase)) {
+                        throw {
+                            statusCode: 400,
+                            message: `Coupon requires a minimum purchase of £${coupon.minimum_purchase}.`
+                        };
+                    }
+
+                    // Check entity type validation
+                    if (coupon.entity_type && coupon.entity_id) {
+                        let hasMatchingEntity = false;
+                        
+                        for (const item of enrichedCartItems) {
+                            if (!item.product) continue;
+                            
+                            switch (coupon.entity_type) {
+                                case 'product':
+                                    if (item.product.id === parseInt(coupon.entity_id)) {
+                                        hasMatchingEntity = true;
+                                        break;
+                                    }
+                                    break;
+                                case 'brand':
+                                    if (item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id))) {
+                                        hasMatchingEntity = true;
+                                        break;
+                                    }
+                                    break;
+                                case 'category':
+                                    if (item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id))) {
+                                        hasMatchingEntity = true;
+                                        break;
+                                    }
+                                    break;
+                            }
+                            
+                            if (hasMatchingEntity) break;
+                        }
+                        
+                        if (!hasMatchingEntity) {
+                            const entityDetails = await getEntityName(coupon.entity_type, coupon.entity_id);
+                            const entityName = entityDetails ? entityDetails.name : coupon.entity_type;
+                            throw {
+                                statusCode: 400,
+                                message: `This discount applies to ${coupon.entity_type} ${entityName} only. Your cart doesn't match the required items.`
+                            };
+                        }
+                    }
+
+                    // Calculate discount
+                    let discount = 0;
+                    let applicableSubtotal = total;
+
+                    if (coupon.entity_type && coupon.entity_id) {
+                        // Calculate subtotal for applicable items only
+                        applicableSubtotal = enrichedCartItems
+                            .filter(item => {
+                                if (!item.product) return false;
+                                switch (coupon.entity_type) {
+                                    case 'product':
+                                        return item.product.id === parseInt(coupon.entity_id);
+                                    case 'brand':
+                                        return item.product.Brands && item.product.Brands.some(brand => brand.id === parseInt(coupon.entity_id));
+                                    case 'category':
+                                        return item.product.Categories && item.product.Categories.some(category => category.id === parseInt(coupon.entity_id));
+                                    default:
+                                        return false;
+                                }
+                            })
+                            .reduce((sum, item) => sum + (item.quantity * item.variant.price), 0);
+                    }
+
+                    if (coupon.discount_type === "percentage") {
+                        discount = (parseFloat(coupon.discount_value) / 100) * applicableSubtotal;
+                    } else if (coupon.discount_type === "fixed_amount") {
+                        discount = parseFloat(coupon.discount_value);
+                    }
+
+                    // Apply maximum discount limit
+                    if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                        discount = parseFloat(coupon.maximum_discount);
+                    }
+
+                    // Ensure discount doesn't exceed applicable subtotal
+                    if (parseFloat(discount) > parseFloat(applicableSubtotal)) {
+                        discount = applicableSubtotal;
+                    }
+
+                    discount_amount = parseFloat(discount);
+                    coupon_type = 'coupon';
+                    responseMessage = coupon.entity_type ? `Coupon applied successfully to ${coupon.entity_type} items` : 'Coupon applied successfully';
+                }
+            }
+        }
+
+        // Note: For guests, we skip loyalty and mail subscription discounts
+        // as they require user accounts. These can be applied during actual checkout.
+
+        // Apply discount to total
+        if (discount_amount > 0) {
+            total = Math.max(0, total - discount_amount);
+        }
+
+        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
+        subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
+        discount_amount = Math.floor(discount_amount * 100) / 100;
+        dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
+
+        const resObj = {
+            totalItems,
+            shippingCost,
+            subTotal,
+            total,
+            coupon,
+            coupon_type,
+            discount_amount,
+            deals: {
+                total_deals_discount: dealsDiscount,
+                applicable_deals: applicableDeals
+            }
+        };
+
+        successResponse(res, resObj, responseMessage || 'Success');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+}
+
 /**
  * Guest Checkout - Create temporary user and proceed to checkout
  * This endpoint allows guest users to checkout without registration
