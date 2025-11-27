@@ -97,7 +97,8 @@ module.exports.getAllShippingMethods = async (req, res) => {
             limit = 100, 
             offset = 0, 
             show_deleted = false,
-            search = ''
+            search = '',
+            is_free_shipping = false
         } = req.query;
         
         // Build where clause
@@ -106,11 +107,17 @@ module.exports.getAllShippingMethods = async (req, res) => {
         // Handle show_deleted parameter
         if (show_deleted === 'true' || show_deleted === true) {
             whereClause.deletedAt = { [Op.ne]: null }; // Show only deleted methods
-            console.log("where>>>", whereClause);
         } else if (show_deleted === 'false' || show_deleted === false) {
             whereClause.deletedAt = null; // Show only active methods
         }
         // If show_deleted is not provided, show only active methods by default
+        
+        // Handle is_free_shipping filter
+        if (is_free_shipping === 'true' || is_free_shipping === true) {
+            whereClause.is_free_shipping = true;
+            whereClause.is_enabled = true; // Only active shipping methods
+        }
+        
         // Handle search parameter
         if (search) {
             const searchConditions = [
