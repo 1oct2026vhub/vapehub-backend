@@ -62,6 +62,27 @@ module.exports.createShippingMethod = async (req, res) => {
             throw error;
         }
         
+        // Determine the actual values that will be used
+        const willBeEnabled = is_enabled !== undefined ? is_enabled : true;
+        const willBeFreeShipping = is_free_shipping !== undefined ? is_free_shipping : false;
+        
+        // Check if trying to create an active free shipping method when one already exists
+        if (willBeFreeShipping && willBeEnabled) {
+            const existingActiveFreeShipping = await ShippingMethod.findOne({
+                where: {
+                    is_free_shipping: true,
+                    is_enabled: true,
+                    deletedAt: null
+                }
+            });
+            
+            if (existingActiveFreeShipping) {
+                const error = new Error("An active free shipping method already exists. Only one active free shipping method is allowed.");
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+        
         // Simple approach for small dataset
         const orderValue = method_order !== undefined ? method_order : 
             await ShippingMethod.max('method_order') + 1 || 1;
@@ -72,12 +93,12 @@ module.exports.createShippingMethod = async (req, res) => {
             display_text,
             shipping_cost, 
             method_order: orderValue,
-            is_enabled: is_enabled !== undefined ? is_enabled : true,
+            is_enabled: willBeEnabled,
             service_code,
             carrier_code,
             api_key, 
             api_secret,
-            is_free_shipping: is_free_shipping !== undefined ? is_free_shipping : false,
+            is_free_shipping: willBeFreeShipping,
             free_shipping_threshold: free_shipping_threshold !== undefined ? free_shipping_threshold : null,
             updated_by 
         });
@@ -259,6 +280,28 @@ module.exports.updateShippingMethod = async (req, res) => {
         } = req.body;
         
         const { id: updated_by } = req.user;
+        
+        // Determine the final values that will be used (use provided values or keep current values)
+        const willBeEnabled = is_enabled !== undefined ? is_enabled : shippingMethod.is_enabled;
+        const willBeFreeShipping = is_free_shipping !== undefined ? is_free_shipping : shippingMethod.is_free_shipping;
+        
+        // Check if trying to update to an active free shipping method when another one already exists
+        if (willBeFreeShipping && willBeEnabled) {
+            const existingActiveFreeShipping = await ShippingMethod.findOne({
+                where: {
+                    id: { [Op.ne]: req.params.id }, // Exclude the current shipping method being updated
+                    is_free_shipping: true,
+                    is_enabled: true,
+                    deletedAt: null
+                }
+            });
+            
+            if (existingActiveFreeShipping) {
+                const error = new Error("An active free shipping method already exists. Only one active free shipping method is allowed.");
+                error.statusCode = 400;
+                throw error;
+            }
+        }
         
         const updatedFields = {
             ...(shipping_method && { shipping_method }),
