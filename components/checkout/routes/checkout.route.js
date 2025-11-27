@@ -271,6 +271,153 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
 
 /**
  * @swagger
+ * /api/checkout/guest/apply-coupon:
+ *   post:
+ *     summary: Apply a Coupon (Guest)
+ *     description: Validates a coupon code for guest users with cart items from localStorage and calculates the new total after applying the discount.
+ *     tags:
+ *       - Coupon
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - cartItems
+ *             properties:
+ *               couponCode:
+ *                 type: string
+ *                 description: The coupon code to be applied.
+ *                 example: "SAVE10"
+ *               cartItems:
+ *                 type: array
+ *                 minItems: 1
+ *                 description: Cart items from localStorage
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - product_id
+ *                     - quantity
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       minimum: 1
+ *                       example: 101
+ *                     variant_id:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1001
+ *                     quantity:
+ *                       type: integer
+ *                       minimum: 1
+ *                       example: 2
+ *               shippingMethodId:
+ *                 type: integer
+ *                 description: ID of the selected shipping method. Defaults to 0 if not provided.
+ *                 example: 2
+ *               loyalty:
+ *                 type: boolean
+ *                 description: Flag indicating if loyalty points should be used. Defaults to false if not provided.
+ *                 example: false
+ *     responses:
+ *       "200":
+ *         description: Coupon successfully applied.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalItems:
+ *                       type: integer
+ *                       example: 3
+ *                     shippingCost:
+ *                       type: number
+ *                       example: 5.0
+ *                     subTotal:
+ *                       type: number
+ *                       example: 100.0
+ *                     total:
+ *                       type: number
+ *                       example: 90.0
+ *                     coupon:
+ *                       type: object
+ *                       nullable: true
+ *                     discount_amount:
+ *                       type: number
+ *                       example: 10.0
+ *                     deals:
+ *                       type: object
+ *                       properties:
+ *                         total_deals_discount:
+ *                           type: number
+ *                           example: 5.0
+ *                         applicable_deals:
+ *                           type: array
+ *       "400":
+ *         description: Invalid request or coupon conditions not met.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Coupon requires a minimum purchase of £50."
+ *       "404":
+ *         description: Cart is empty or coupon is invalid/expired.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Cart is empty"
+ *       "500":
+ *         description: Internal Server Error.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Internal server error"
+ */
+router.post("/guest/apply-coupon", 
+    validateRequest([
+        check('cartItems').isArray({ min: 1 }).withMessage('Cart items are required'),
+        check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
+        check('cartItems.*.variant_id').optional().isInt({ min: 1 }),
+        check('cartItems.*.quantity').isInt({ min: 1 }).withMessage('Each item must have quantity >= 1'),
+        check('couponCode').optional().isString().trim(),
+        check('shippingMethodId').optional().isInt().default(0),
+        check('loyalty').optional().isBoolean()
+    ]),
+    checkoutController.applyCouponForGuest
+)
+
+/**
+ * @swagger
  * /api/checkout/guest:
  *   post:
  *     summary: Guest Checkout - Create temporary user and proceed to checkout
