@@ -35,6 +35,16 @@ module.exports.login = async (req, res, next) => {
             return errorResponse(res, { message: "Your account has been blocked. Please reach out to support for assistance." }, 400);
         }
 
+        // Security check: user has no password and is not temporary
+        if ((user.password === null || user.password === undefined) && user.is_temporary !== true) {
+            return errorResponse(
+                res,
+                { message: "For security reasons, you need to reset your password" },
+                "For security reasons, you need to reset your password",
+                400
+            );
+        }
+
         // Verify password
         const isPasswordValid = await user.verifyPassword(password);
         if (!isPasswordValid) {
