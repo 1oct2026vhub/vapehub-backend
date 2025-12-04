@@ -318,6 +318,13 @@ router.get('/slug/:slug',
  *         schema:
  *           type: string
  *         description: Search term to filter brands by name or description
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: ASC
+ *         description: Sort order for brands by name (ASC for A-Z, DESC for Z-A)
  *     responses:
  *       200:
  *         description: A paginated list of brands with pagination metadata
@@ -374,7 +381,8 @@ router.get('/list/paginated',
     validateRequest([
         query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
         query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
-        query('search').optional().isString().withMessage('Search must be a string')
+        query('search').optional().isString().withMessage('Search must be a string'),
+        query('sort').optional().isIn(['ASC', 'DESC', 'asc', 'desc']).withMessage('Sort must be either ASC or DESC')
     ]),
     brandController.listBrandsWithPagination
 );
