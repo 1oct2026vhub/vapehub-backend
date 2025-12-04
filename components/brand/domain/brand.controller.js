@@ -125,7 +125,13 @@ module.exports.listBrandsWithPagination = async (req, res, next) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const search = req.query.search || '';
+        const { sort } = req.query;
         const offset = (page - 1) * limit;
+
+        // Normalize and validate sort order, default to ASC for A-Z ordering
+        const sortOrder = sort && ['ASC', 'DESC'].includes(sort.toUpperCase()) 
+            ? sort.toUpperCase() 
+            : 'ASC';
 
         // Build where clause for search
         const whereClause = search ? {
@@ -139,7 +145,7 @@ module.exports.listBrandsWithPagination = async (req, res, next) => {
             where: whereClause,
             limit,
             offset,
-            order: [['id', 'DESC']],
+            order: [['name', sortOrder]],  // Default: name ASC (A-Z)
             attributes: ['id', 'name', 'logo_url', 'slug']
         });
 
