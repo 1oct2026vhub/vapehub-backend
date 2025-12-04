@@ -87,25 +87,30 @@ module.exports.shippingMethod = async (req, res, next) => {
         }
 
         const shippingMethod = await ShippingMethod.findOne({
-            where: { id: shippingMethodId },
+            where: { 
+                id: shippingMethodId,
+                is_enabled: true  // Only allow enabled shipping methods
+            },
             attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "min_order_total", "max_order_total", "is_free_shipping", "free_shipping_threshold", "shipping_rules"],
         });
 
-        if (shippingMethod) {
-            // Calculate subtotal first
-            for (const item of cart) {
-                if (!item.variant) {
-                    return errorResponse(res, {}, "Variant is missing", 404);
-                }
-                subTotal += item.quantity * item.variant.price;
-                totalItems += item.quantity;
-            }
+        if (!shippingMethod) {
+            return errorResponse(res, {}, "Shipping method not found or disabled", 404);
+        }
 
-            // Calculate shipping cost using the helper function
-            shippingCost = calculateShippingCost(shippingMethod, subTotal);
-            if (shippingCost === null) {
-                return errorResponse(res, {}, "Selected shipping method is not available for this order total", 400);
+        // Calculate subtotal first
+        for (const item of cart) {
+            if (!item.variant) {
+                return errorResponse(res, {}, "Variant is missing", 404);
             }
+            subTotal += item.quantity * item.variant.price;
+            totalItems += item.quantity;
+        }
+
+        // Calculate shipping cost using the helper function
+        shippingCost = calculateShippingCost(shippingMethod, subTotal);
+        if (shippingCost === null) {
+            return errorResponse(res, {}, "Selected shipping method is not available for this order total", 400);
         }
 
         total = subTotal;

@@ -553,7 +553,10 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     // Apply Shipping Cost
     const shippingMethod = await ShippingMethod.findOne({ 
-        where: { id: shippingMethodId }, 
+        where: { 
+            id: shippingMethodId,
+            is_enabled: true  // Only allow enabled shipping methods
+        }, 
         attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         transaction 
     });

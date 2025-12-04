@@ -4,6 +4,11 @@ const { Op } = require("sequelize");
 
 // Helper function to calculate shipping cost based on rules
 const calculateShippingCost = (shippingMethod, orderTotal) => {
+    // Check if shipping method is active
+    if (!shippingMethod.is_enabled || shippingMethod.deletedAt !== null) {
+        return null;
+    }
+    
     // Check if shipping method is marked as free shipping
     if (shippingMethod.is_free_shipping) {
         return 0;

@@ -377,15 +377,27 @@ module.exports.applyCoupon = async (req, res, next) => {
         }
 
         const shippingMethod = await ShippingMethod.findOne({
-            where: { id: shippingMethodId },
+            where: { 
+                id: shippingMethodId,
+                is_enabled: true  // Only allow enabled shipping methods
+            },
             attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         });
 
         if (shippingMethod) {
             shippingCost = calculateShippingCost(shippingMethod, subTotal);
             if (shippingCost === null) {
-                shippingCost = 0; // Default to 0 if method is not applicable
+                // Don't default to 0 - shipping method is not applicable
+                throw {
+                    statusCode: 400,
+                    message: "Selected shipping method is not available for this order"
+                };
             }
+        } else {
+            throw {
+                statusCode: 404,
+                message: "Shipping method not found or disabled"
+            };
         }
         
         // Calculate deals
@@ -1000,15 +1012,27 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
         // Calculate shipping cost
         if (shippingMethodId) {
             const shippingMethod = await ShippingMethod.findOne({
-                where: { id: shippingMethodId },
+                where: { 
+                    id: shippingMethodId,
+                    is_enabled: true  // Only allow enabled shipping methods
+                },
                 attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
             });
 
             if (shippingMethod) {
                 shippingCost = calculateShippingCost(shippingMethod, subTotal);
                 if (shippingCost === null) {
-                    shippingCost = 0;
+                    // Don't default to 0 - shipping method is not applicable
+                    throw {
+                        statusCode: 400,
+                        message: "Selected shipping method is not available for this order"
+                    };
                 }
+            } else {
+                throw {
+                    statusCode: 404,
+                    message: "Shipping method not found or disabled"
+                };
             }
         }
 
