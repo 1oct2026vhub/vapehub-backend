@@ -214,10 +214,12 @@ module.exports.resetPassword = async (req, res, next) => {
             );
         }
 
-        // compare to current user password
-        const passwordMatch = await bcrypt.compareSync(password, user.password);
-        if (passwordMatch) {
-            throw new Error("New password cannot be same as current password");
+        // Only compare to current user password if password exists
+        if (user.password !== null && user.password !== undefined) {
+            const passwordMatch = await bcrypt.compareSync(password, user.password);
+            if (passwordMatch) {
+                throw new Error("New password cannot be same as current password");
+            }
         }
         const hashedPassword = await bcrypt.hashSync(password, 10);
         user.password = hashedPassword;
