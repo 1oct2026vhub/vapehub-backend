@@ -17,13 +17,18 @@ const { check, query, param } = require("express-validator");
  *         schema:
  *           type: string
  *           enum: [ASC, DESC]
- *           default: DESC
- *         description: Sort order for brands (ASC or DESC)
+ *           default: ASC
+ *         description: Sort order for brands by name (ASC for A-Z, DESC for Z-A)
  *     responses:
  *       200:
  *         description: A list of brands
  */
-router.get('/', brandController.listAllbrands);
+router.get('/',
+    validateRequest([
+        query('sort').optional().isIn(['ASC', 'DESC', 'asc', 'desc']).withMessage('Sort must be either ASC or DESC')
+    ]),
+    brandController.listAllbrands
+);
 
 /**
  * @swagger

@@ -5,10 +5,15 @@ const { Op } = require("sequelize");
 
 module.exports.listAllbrands = async (req, res, next) => {
     try {
-        const { sort } = req.query
+        const { sort } = req.query;
+        // Normalize and validate sort order, default to ASC for A-Z ordering
+        const sortOrder = sort && ['ASC', 'DESC'].includes(sort.toUpperCase()) 
+            ? sort.toUpperCase() 
+            : 'ASC';
+        
         const brands = await Brand.findAll({
             order: [
-                ['createdAt', sort === 'ASC' ? 'ASC' : 'DESC'],
+                ['name', sortOrder],
             ],
         });
         successResponse(res, brands, 'Success');
