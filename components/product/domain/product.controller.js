@@ -1818,8 +1818,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             const variantAttributesForSlug = await Product.sequelize.query(`
                 SELECT 
                     pva.attribute_id, pva.term_id,
-                    a.id as attr_id, a.name as attr_name,
-                    t.id as term_id, t.name as term_name
+                    a.id as attr_id, a.name as attr_name, a.description as attr_description,
+                    t.id as term_id, t.name as term_name, t.description as term_description
                 FROM product_variant_attributes pva
                 JOIN attributes a ON pva.attribute_id = a.id
                 JOIN attribute_terms t ON pva.term_id = t.id
@@ -1887,8 +1887,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             Product.sequelize.query(`
                 SELECT 
                     pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page,
-                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url,
-                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url, a.description as attr_description,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug, t.description as term_description
                 FROM product_attribute_terms pat
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
@@ -1947,8 +1947,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             Product.sequelize.query(`
                 SELECT 
                     pva.variant_id, pva.attribute_id, pva.term_id,
-                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url,
-                    t.id as term_id, t.name as term_name, t.slug as term_slug
+                    a.id as attr_id, a.name as attr_name, a.type as attr_type, a.image_url as attr_image_url, a.description as attr_description,
+                    t.id as term_id, t.name as term_name, t.slug as term_slug, t.description as term_description
                 FROM product_variant_attributes pva
                 JOIN attributes a ON pva.attribute_id = a.id
                 JOIN attribute_terms t ON pva.term_id = t.id
@@ -2021,12 +2021,14 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     id: va.attr_id,
                     name: va.attr_name,
                     type: va.attr_type,
-                    image_url: va.attr_image_url
+                    image_url: va.attr_image_url,
+                    description: va.attr_description || null
                 },
                 term: {
                     id: va.term_id,
                     name: va.term_name,
-                    slug: va.term_slug
+                    slug: va.term_slug,
+                    description: va.term_description || null
                 }
             });
         });
@@ -2076,6 +2078,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         name: pat.attr_name,
                         type: pat.attr_type,
                         image_url: pat.attr_image_url,
+                        description: pat.attr_description || null,
                         is_visible_page: Boolean(pat.is_visible_page),
                         used_in_variation: Boolean(pat.used_in_variation)
                     },
@@ -2109,6 +2112,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         id: pat.term_id,
                         name: pat.term_name,
                         slug: pat.term_slug,
+                        description: pat.term_description || null,
                         used_in_variation: Boolean(pat.used_in_variation),
                         is_visible_page: Boolean(pat.is_visible_page),
                         variant_slugs: variantSlugs
@@ -2120,6 +2124,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     id: pat.term_id,
                     name: pat.term_name,
                     slug: pat.term_slug,
+                    description: pat.term_description || null,
                     used_in_variation: Boolean(pat.used_in_variation),
                     is_visible_page: Boolean(pat.is_visible_page),
                     variant_slugs: variantSlugs
@@ -2179,7 +2184,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                                 id: va.attribute.id,
                                 name: va.attribute.name,
                                 type: va.attribute.type,
-                                image_url: va.attribute.image_url
+                                image_url: va.attribute.image_url,
+                                description: va.attribute.description || null
                             },
                             terms: new Map() // Use Map to track variant slugs per term
                         });
@@ -2193,6 +2199,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                             id: va.term.id,
                             name: va.term.name,
                             slug: va.term.slug,
+                            description: va.term.description || null,
                             stock_status: variant.stock_status,
                             is_in_stock: variant.stock > 0,
                             variant_slugs: []
@@ -2475,9 +2482,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     attribute_id: va.attribute.id,
                     attribute_name: va.attribute.name,
                     attribute_image_url: va.attribute.image_url,
+                    attribute_description: va.attribute.description || null,
                     term_id: va.term.id,
                     term_name: va.term.name,
-                    term_slug: va.term.slug
+                    term_slug: va.term.slug,
+                    term_description: va.term.description || null
                 })),
                 created_at: variant.created_at,
                 updated_at: variant.updated_at,
@@ -2514,7 +2523,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                             id: pat.term_id,
                             name: pat.term_name,
                             slug: pat.term_slug,
-                            description: '', // Not available in raw SQL result
+                            description: pat.term_description || null,
                             is_selected: pat.term_id === filter.term_id,
                             variant_slugs: []
                         });
@@ -2531,7 +2540,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                                 id: va.term.id,
                                 name: va.term.name,
                                 slug: va.term.slug,
-                                description: '', // Not available in raw SQL result
+                                description: va.term.description || null,
                                 is_selected: va.term.id === filter.term_id,
                                 variant_slugs: []
                             });
@@ -2561,8 +2570,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         name: attribute.attr_name,
                         type: attribute.attr_type,
                         image_url: attribute.attr_image_url,
+                        description: attribute.attr_description || null
                         // slug: '', // Not available in raw SQL result
-                        // description: '' // Not available in raw SQL result
                     },
                     terms: terms
                 };

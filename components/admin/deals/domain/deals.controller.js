@@ -557,8 +557,12 @@ module.exports.addProductsToDeal = async (req, res, next) => {
             throw error;
         }
 
-        // Check if any products are already in active and valid deals
-        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+        /**
+         * Check if any products are already in other (non-deleted) deals
+         * whose validity period overlaps with this deal's validity window.
+         * This prevents assigning the same product to multiple overlapping deals,
+         * regardless of whether those other deals are currently active or in the future.
+         */
         const existingDealProducts = await DealProduct.findAll({
             where: {
                 product_id: {
@@ -570,16 +574,21 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                 as: 'deal',
                 attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
                 where: {
-                    is_active: true,
                     is_deleted: false,
-                    valid_from: { [Op.lte]: currentUkTime }, // Deal has started (UK time)
-                    valid_to: { [Op.gte]: currentUkTime } // Deal hasn't expired (UK time)
+                    id: { [Op.ne]: parseInt(id, 10) },
+                    // Date range overlap:
+                    // existing.valid_from <= this.valid_to AND
+                    // existing.valid_to   >= this.valid_from
+                    [Op.and]: [
+                        { valid_from: { [Op.lte]: deal.valid_to } },
+                        { valid_to: { [Op.gte]: deal.valid_from } }
+                    ]
                 }
             }],
             transaction
         });
 
-        if (existingDealProducts.length > 0) {            
+        if (existingDealProducts.length > 0) {
             // Check if any products are already in the current deal
             const productsInCurrentDeal = existingDealProducts.filter(dp => dp.deal_id === parseInt(id));
             const productsInOtherDeals = existingDealProducts.filter(dp => dp.deal_id !== parseInt(id));
@@ -944,42 +953,77 @@ module.exports.addProductToDeals = async (req, res) => {
             });
         }
 
-        // Check if product is already in any active and valid deal
-        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
-        const existingDealProduct = await DealProduct.findOne({
+        /**
+         * Check if product is already in any other (non-deleted) deal
+         * whose validity period overlaps with any of the target deals.
+         * This blocks assigning the product to multiple overlapping deals,
+         * even if some of them are inactive or in the future.
+         */
+        const targetDeals = await Deal.findAll({
+            where: {
+                id: {
+                    [Op.in]: deal_ids
+                },
+                is_deleted: false
+            },
+            transaction
+        });
+
+        const existingDealProducts = await DealProduct.findAll({
             where: {
                 product_id: productId
             },
             include: [{
                 model: Deal,
                 as: 'deal',
-                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to', 'is_deleted'],
                 where: {
-                    is_active: true,
-                    is_deleted: false,
-                    valid_from: { [Op.lte]: currentUkTime }, // Deal has started (UK time)
-                    valid_to: { [Op.gte]: currentUkTime } // Deal hasn't expired (UK time)
+                    is_deleted: false
                 }
             }],
             transaction
         });
 
-        if (existingDealProduct) {
+        const conflicts = [];
+        for (const target of targetDeals) {
+            for (const dp of existingDealProducts) {
+                const existing = dp.deal;
+                if (existing.id === target.id) continue;
+
+                const overlaps =
+                    existing.valid_from <= target.valid_to &&
+                    existing.valid_to >= target.valid_from;
+
+                if (overlaps) {
+                    conflicts.push({
+                        target_deal: {
+                            id: target.id,
+                            name: target.name,
+                            slug: target.slug,
+                            valid_from: target.valid_from,
+                            valid_to: target.valid_to
+                        },
+                        existing_deal: {
+                            id: existing.id,
+                            name: existing.name,
+                            slug: existing.slug,
+                            valid_from: existing.valid_from,
+                            valid_to: existing.valid_to
+                        },
+                        product_id: productId,
+                        product_name: product.name
+                    });
+                }
+            }
+        }
+
+        if (conflicts.length > 0) {
             await transaction.rollback();
             return res.status(400).json({
                 status: 'error',
-                message: 'Product is already in a deal',
+                message: 'Product is already assigned to a deal with an overlapping validity period',
                 data: {
-                    existing_deal: {
-                        id: existingDealProduct.deal.id,
-                        name: existingDealProduct.deal.name,
-                        slug: existingDealProduct.deal.slug,
-                        is_active: existingDealProduct.deal.is_active,
-                        valid_from: existingDealProduct.deal.valid_from,
-                        valid_to: existingDealProduct.deal.valid_to
-                    },
-                    product_id: productId,
-                    product_name: product.name
+                    conflicts
                 }
             });
         }
