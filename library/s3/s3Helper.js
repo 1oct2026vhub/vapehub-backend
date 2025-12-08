@@ -256,6 +256,17 @@ const resizeToMaxSize = async (imageBuffer, mimetype) => {
       return imageBuffer;
     }
 
+    const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB in bytes
+    const originalFileSize = imageBuffer.length;
+    
+    // If file is already below 1MB, skip compression and return original
+    if (originalFileSize <= MAX_FILE_SIZE) {
+      const sizeKB = (originalFileSize / 1024).toFixed(2);
+      const sizeMB = (originalFileSize / 1024 / 1024).toFixed(2);
+      console.log(`ℹ️ File size ${sizeKB}KB (${sizeMB}MB) is already below 1MB limit. Skipping compression.`);
+      return imageBuffer;
+    }
+
     // Initialize Sharp with metadata preservation
     const sharpInstance = sharp(imageBuffer, {
       failOn: 'none',
