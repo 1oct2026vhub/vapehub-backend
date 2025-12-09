@@ -1003,7 +1003,7 @@ module.exports = {
           {
             model: ProductImage,
             as: 'ProductImages',
-            where: { is_primary: true, deleted_at: null },
+            where: { is_primary: true },
             required: false,
             attributes: ['image_url']
           }
