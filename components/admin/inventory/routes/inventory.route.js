@@ -11,6 +11,7 @@ const {
   adjustStockValidation,
   getAnalyticsValidation,
   getProductsValidation,
+  getProductVariantsValidation,
   bulkStockUpdateValidation,
   bulkStockUpdateByQuantityValidation,
   updateAllStockValidation,
@@ -1012,6 +1013,114 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *         description: Server error
  */
 router.get('/products', [authMiddleware(true), ...getProductsValidation()], inventoryController.getProducts);
+
+/**
+ * @swagger
+ * /api/admin/inventory/products/{productId}/variants:
+ *   get:
+ *     summary: Get variants for a specific product with stock status filtering (admin)
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Product ID
+ *       - in: query
+ *         name: stock_status
+ *         schema:
+ *           type: string
+ *           enum: [in_stock, out_of_stock, low_stock]
+ *         description: Filter variants by stock status
+ *     responses:
+ *       200:
+ *         description: Product variants retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     product:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         slug:
+ *                           type: string
+ *                         totalStock:
+ *                           type: integer
+ *                           description: Total stock across all variants
+ *                         salesLast28Days:
+ *                           type: integer
+ *                           description: Total sales across all variants in last 28 days
+ *                         stockWillLastDays:
+ *                           type: number
+ *                           nullable: true
+ *                           description: Number of days stock will last based on average daily sales (null if no sales)
+ *                     variants:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           slug:
+ *                             type: string
+ *                           barcode:
+ *                             type: string
+ *                           sku:
+ *                             type: string
+ *                           currentStock:
+ *                             type: integer
+ *                           lowStockThreshold:
+ *                             type: integer
+ *                           isInStock:
+ *                             type: boolean
+ *                           isOutOfStock:
+ *                             type: boolean
+ *                           isLowStock:
+ *                             type: boolean
+ *                           salesLast28Days:
+ *                             type: integer
+ *                             description: Sales for this variant in last 28 days
+ *                           stockWillLastDays:
+ *                             type: number
+ *                             nullable: true
+ *                             description: Number of days stock will last for this variant (null if no sales)
+ *                           price:
+ *                             type: number
+ *                           regular_price:
+ *                             type: number
+ *                           discount_price:
+ *                             type: number
+ *                           image:
+ *                             type: string
+ *                             nullable: true
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
+ *                     totalVariants:
+ *                       type: integer
+ *                       description: Total number of variants after filtering
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/products/:productId/variants', [authMiddleware(true), ...getProductVariantsValidation()], inventoryController.getProductVariants);
 
 /**
  * @swagger
