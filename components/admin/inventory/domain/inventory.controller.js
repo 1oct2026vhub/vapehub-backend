@@ -1000,6 +1000,165 @@ module.exports = {
     }
   },
 
+  // Get variants for a specific product with stock status filtering
+  async getProductVariants(req, res) {
+    try {
+      const { productId } = req.params;
+      const { stock_status } = req.query;
+
+      // Validate product exists
+      const product = await Product.findOne({
+        where: {
+          id: productId,
+          deletedAt: null,
+          status: 'published'
+        },
+        attributes: ['id', 'name', 'slug']
+      });
+
+      if (!product) {
+        return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+      }
+
+      // Build where clause for variants
+      const variantWhereClause = {
+        product_id: productId,
+        deleted_at: null
+      };
+
+      // Apply stock status filter
+      if (stock_status) {
+        switch (stock_status) {
+          case 'in_stock':
+            variantWhereClause.stock = { [Op.gt]: 0 };
+            break;
+          case 'out_of_stock':
+            variantWhereClause.stock = 0;
+            break;
+          case 'low_stock':
+            // We'll handle low stock filtering after fetching
+            variantWhereClause.stock = { [Op.gt]: 0 };
+            break;
+        }
+      }
+
+      // Fetch variants
+      const variants = await ProductVariant.findAll({
+        where: variantWhereClause,
+        include: [
+          {
+            model: ProductVariantImage,
+            as: 'variantImages',
+            where: { is_primary: true, deleted_at: null },
+            required: false,
+            attributes: ['image_url']
+          }
+        ],
+        order: [['created_at', 'ASC']]
+      });
+
+      // Calculate date range for last 28 days
+      const now = new Date();
+      const last28Days = new Date(now);
+      last28Days.setDate(now.getDate() - 28);
+
+      // Get order IDs for completed/delivered orders in last 28 days (once for all calculations)
+      const orderIds = await Order.findAll({
+        attributes: ['id'],
+        where: {
+          status: { [Op.in]: ['completed', 'delivered'] },
+          updatedAt: { [Op.gte]: last28Days }
+        },
+        raw: true
+      }).then(orders => orders.map(o => o.id));
+
+      // Get all variant IDs for this product (for product-level aggregation)
+      const variantIds = variants.map(v => v.id);
+
+      // Calculate product-level sales last 28 days (aggregated across all variants)
+      const productSalesLast28Days = orderIds.length > 0 && variantIds.length > 0
+        ? await OrderItem.sum('quantity', {
+            where: {
+              variant_id: { [Op.in]: variantIds },
+              order_id: { [Op.in]: orderIds }
+            }
+          }) || 0
+        : 0;
+
+      // Calculate product-level total stock (sum of all variant stocks)
+      const productTotalStock = variants.reduce((sum, variant) => sum + variant.stock, 0);
+
+      // Calculate product-level stock will last (in days)
+      const productAvgDailySales = productSalesLast28Days / 28;
+      const productStockWillLastDays = productAvgDailySales > 0
+        ? Math.round(productTotalStock / productAvgDailySales)
+        : null;
+
+      // Format variants with stock status indicators and individual sales data
+      let formattedVariants = await Promise.all(variants.map(async (variant) => {
+        const isInStock = variant.stock > 0;
+        const isOutOfStock = variant.stock === 0;
+        const isLowStock = isInStock && variant.stock <= variant.low_stock_threshold;
+
+        // Calculate variant-level sales last 28 days
+        const variantSalesLast28Days = orderIds.length > 0
+          ? await OrderItem.sum('quantity', {
+              where: {
+                variant_id: variant.id,
+                order_id: { [Op.in]: orderIds }
+              }
+            }) || 0
+          : 0;
+
+        // Calculate variant-level stock will last (in days)
+        const variantAvgDailySales = variantSalesLast28Days / 28;
+        const variantStockWillLastDays = variantAvgDailySales > 0
+          ? Math.round(variant.stock / variantAvgDailySales)
+          : null;
+
+        return {
+          id: variant.id,
+          slug: variant.slug,
+          barcode: variant.barcode,
+          sku: variant.sku,
+          currentStock: variant.stock,
+          lowStockThreshold: variant.low_stock_threshold,
+          isInStock,
+          isOutOfStock,
+          isLowStock,
+          salesLast28Days: variantSalesLast28Days || 0,
+          stockWillLastDays: variantStockWillLastDays,
+          price: variant.price,
+          regular_price: variant.regular_price,
+          discount_price: variant.discount_price,
+          image: variant.variantImages?.[0]?.image_url || null,
+          created_at: variant.created_at,
+          updated_at: variant.updated_at
+        };
+      }));
+
+      // Apply low stock filter if requested
+      if (stock_status === 'low_stock') {
+        formattedVariants = formattedVariants.filter(variant => variant.isLowStock);
+      }
+
+      return successResponse(res, {
+        product: {
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          totalStock: productTotalStock,
+          salesLast28Days: productSalesLast28Days || 0,
+          stockWillLastDays: productStockWillLastDays
+        },
+        variants: formattedVariants,
+        totalVariants: formattedVariants.length
+      }, "Product variants retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
   // Stock Central: Get detailed inventory table for admin
   async getStockCentral(req, res) {
     try {

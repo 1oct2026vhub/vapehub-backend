@@ -1,4 +1,4 @@
-const { body, query, validationResult } = require('express-validator');
+const { body, query, param, validationResult } = require('express-validator');
 
 // Validation middleware
 const validate = (req, res, next) => {
@@ -137,6 +137,20 @@ const getProductsValidation = () => {
   ];
 };
 
+// Product variants validation
+const getProductVariantsValidation = () => {
+  return [
+    param('productId')
+      .isInt({ min: 1 })
+      .withMessage('Product ID must be a positive integer'),
+    query('stock_status')
+      .optional()
+      .isIn(['in_stock', 'out_of_stock', 'low_stock'])
+      .withMessage('Invalid stock status'),
+    validate
+  ];
+};
+
 // Bulk stock update validation
 const bulkStockUpdateValidation = () => {
   return [
@@ -225,6 +239,7 @@ module.exports = {
   adjustStockValidation,
   getAnalyticsValidation,
   getProductsValidation,
+  getProductVariantsValidation,
   bulkStockUpdateValidation,
   bulkStockUpdateByQuantityValidation,
   updateAllStockValidation,
