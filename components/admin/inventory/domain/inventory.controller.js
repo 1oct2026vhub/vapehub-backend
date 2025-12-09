@@ -982,19 +982,120 @@ module.exports = {
   async getProducts(req, res) {
     try {
       const { q } = req.query;
-      const where = q && q.length > 0
-        ? { name: { [Op.like]: `%${q}%` } }
-        : undefined;
+      
+      // Build where clause for products
+      const productWhereClause = {
+        deletedAt: null,
+        status: 'published'
+      };
+      
+      if (q && q.length > 0) {
+        productWhereClause.name = { [Op.like]: `%${q}%` };
+      }
+      
       const limit = q && q.length > 0 ? undefined : 10;
       
+      // Fetch products
       const products = await Product.findAll({
-        where,
-        attributes: ['id', 'name'],
+        where: productWhereClause,
+        attributes: ['id', 'name', 'slug'],
+        include: [
+          {
+            model: ProductImage,
+            as: 'ProductImages',
+            where: { is_primary: true, deleted_at: null },
+            required: false,
+            attributes: ['image_url']
+          }
+        ],
         order: [['name', 'ASC']],
         ...(limit ? { limit } : {})
       });
 
-      return successResponse(res, products, "Products retrieved successfully");
+      // Calculate date range for last 28 days
+      const now = new Date();
+      const last28Days = new Date(now);
+      last28Days.setDate(now.getDate() - 28);
+
+      // Get order IDs for completed/delivered orders in last 28 days (once for all products)
+      const orderIds = await Order.findAll({
+        attributes: ['id'],
+        where: {
+          status: { [Op.in]: ['completed', 'delivered'] },
+          updatedAt: { [Op.gte]: last28Days }
+        },
+        raw: true
+      }).then(orders => orders.map(o => o.id));
+
+      // Get all product IDs
+      const productIds = products.map(p => p.id);
+
+      // Fetch all variants for these products
+      const allVariants = await ProductVariant.findAll({
+        where: {
+          product_id: { [Op.in]: productIds },
+          deleted_at: null
+        },
+        attributes: ['id', 'product_id', 'stock']
+      });
+
+      // Group variants by product_id
+      const variantsByProduct = {};
+      allVariants.forEach(variant => {
+        if (!variantsByProduct[variant.product_id]) {
+          variantsByProduct[variant.product_id] = [];
+        }
+        variantsByProduct[variant.product_id].push(variant);
+      });
+
+      // Calculate products with inventory details
+      const productsWithInventory = await Promise.all(products.map(async (product) => {
+        const productVariants = variantsByProduct[product.id] || [];
+        const variantIds = productVariants.map(v => v.id);
+
+        // Calculate product-level total stock (sum of all variant stocks)
+        const currentStock = productVariants.reduce((sum, variant) => sum + variant.stock, 0);
+
+        // Calculate stock on hold (active reservations) for all variants of this product
+        const stockOnHold = variantIds.length > 0
+          ? await StockReservation.sum('quantity', {
+              where: {
+                variant_id: { [Op.in]: variantIds },
+                expires_at: { [Op.gt]: now }
+              }
+            }) || 0
+          : 0;
+
+        // Calculate product-level sales last 28 days (aggregated across all variants)
+        const salesLast28Days = orderIds.length > 0 && variantIds.length > 0
+          ? await OrderItem.sum('quantity', {
+              where: {
+                variant_id: { [Op.in]: variantIds },
+                order_id: { [Op.in]: orderIds }
+              }
+            }) || 0
+          : 0;
+
+        // Calculate product-level stock will last (in days)
+        const avgDailySales = salesLast28Days / 28;
+        const stockWillLastDays = avgDailySales > 0
+          ? Math.round(currentStock / avgDailySales)
+          : null;
+
+        return {
+          id: product.id,
+          name: product.name,
+          slug: product.slug,
+          image: product.ProductImages?.[0]?.image_url || null,
+          currentStock: currentStock,
+          stockOnHold: stockOnHold,
+          reservedStock: stockOnHold, // Same as stockOnHold
+          salesLast28Days: salesLast28Days || 0,
+          stockWillLastDays: stockWillLastDays
+        };
+      }));
+
+      return successResponse(res, productsWithInventory, "Products retrieved successfully");
     } catch (error) {
       return errorResponse(res, error, error.message);
     }

@@ -979,7 +979,7 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  * @swagger
  * /api/admin/inventory/products:
  *   get:
- *     summary: Get products for inventory selection (admin)
+ *     summary: Get products with inventory details (admin)
  *     tags: [Admin - Inventory]
  *     parameters:
  *       - in: query
@@ -1007,6 +1007,27 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *                         type: integer
  *                       name:
  *                         type: string
+ *                       slug:
+ *                         type: string
+ *                       image:
+ *                         type: string
+ *                         nullable: true
+ *                       currentStock:
+ *                         type: integer
+ *                         description: Total stock across all variants
+ *                       stockOnHold:
+ *                         type: integer
+ *                         description: Stock on hold (active reservations)
+ *                       reservedStock:
+ *                         type: integer
+ *                         description: Reserved stock (same as stockOnHold)
+ *                       salesLast28Days:
+ *                         type: integer
+ *                         description: Total sales across all variants in last 28 days
+ *                       stockWillLastDays:
+ *                         type: integer
+ *                         nullable: true
+ *                         description: Number of days stock will last based on average daily sales (null if no sales)
  *                 message:
  *                   type: string
  *       500:
