@@ -27,15 +27,8 @@ const calculateShippingCost = (shippingMethod, orderTotal) => {
         }
     }
 
-    // Check if order total is within min/max range
-    if (shippingMethod.min_order_total && orderTotal < shippingMethod.min_order_total) {
-        return null;
-    }
-    if (shippingMethod.max_order_total && orderTotal > shippingMethod.max_order_total) {
-        return null;
-    }
-
-    // Check shipping rules if they exist
+    // For non-free shipping methods, apply shipping cost directly
+    // Check shipping rules if they exist (for tiered pricing)
     if (shippingMethod.shipping_rules && Array.isArray(shippingMethod.shipping_rules)) {
         for (const rule of shippingMethod.shipping_rules) {
             if (orderTotal >= rule.min_total && (!rule.max_total || orderTotal <= rule.max_total)) {
