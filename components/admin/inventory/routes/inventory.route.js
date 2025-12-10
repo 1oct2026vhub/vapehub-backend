@@ -987,7 +987,40 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *         schema:
  *           type: string
  *         required: false
- *         description: Partial product name to search for. If omitted, returns the first 10 products.
+ *         description: Partial product name to search for
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         required: false
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         required: false
+ *         description: Number of products per page
+ *       - in: query
+ *         name: sort_by
+ *         schema:
+ *           type: string
+ *           enum: [salesLast28Days, name, currentStock]
+ *           default: salesLast28Days
+ *         required: false
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         required: false
+ *         description: Sort order (ASC or DESC)
  *     responses:
  *       200:
  *         description: Products retrieved successfully
@@ -1028,6 +1061,17 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *                         type: integer
  *                         nullable: true
  *                         description: Number of days stock will last based on average daily sales (null if no sales)
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total_count:
+ *                       type: integer
+ *                     total_pages:
+ *                       type: integer
+ *                     current_page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
  *                 message:
  *                   type: string
  *       500:
