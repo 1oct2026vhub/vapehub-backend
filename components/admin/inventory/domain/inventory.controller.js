@@ -981,7 +981,17 @@ module.exports = {
   // Get products for inventory selection
   async getProducts(req, res) {
     try {
-      const { q } = req.query;
+      const { 
+        q, 
+        page = 1, 
+        limit = 10, 
+        sort_by = 'salesLast28Days', 
+        order = 'DESC' 
+      } = req.query;
+      
+      const parsedPage = parseInt(page, 10);
+      const parsedLimit = parseInt(limit, 10);
+      const parsedOffset = (parsedPage - 1) * parsedLimit;
       
       // Build where clause for products
       const productWhereClause = {
@@ -993,10 +1003,8 @@ module.exports = {
         productWhereClause.name = { [Op.like]: `%${q}%` };
       }
       
-      const limit = q && q.length > 0 ? undefined : 10;
-      
-      // Fetch products
-      const products = await Product.findAll({
+      // Fetch all matching products (we need all to calculate sales and sort)
+      const allProducts = await Product.findAll({
         where: productWhereClause,
         attributes: ['id', 'name', 'slug'],
         include: [
@@ -1008,9 +1016,11 @@ module.exports = {
             attributes: ['image_url']
           }
         ],
-        order: [['name', 'ASC']],
-        ...(limit ? { limit } : {})
+        order: [['name', 'ASC']] // Initial order, will be re-sorted after calculating sales
       });
+
+      // Get total count for pagination
+      const totalCount = allProducts.length;
 
       // Calculate date range for last 28 days
       const now = new Date();
@@ -1028,7 +1038,7 @@ module.exports = {
       }).then(orders => orders.map(o => o.id));
 
       // Get all product IDs
-      const productIds = products.map(p => p.id);
+      const productIds = allProducts.map(p => p.id);
 
       // Fetch all variants for these products
       const allVariants = await ProductVariant.findAll({
@@ -1049,7 +1059,7 @@ module.exports = {
       });
 
       // Calculate products with inventory details
-      const productsWithInventory = await Promise.all(products.map(async (product) => {
+      const productsWithInventory = await Promise.all(allProducts.map(async (product) => {
         const productVariants = variantsByProduct[product.id] || [];
         const variantIds = productVariants.map(v => v.id);
 
@@ -1095,7 +1105,52 @@ module.exports = {
         };
       }));
 
-      return successResponse(res, productsWithInventory, "Products retrieved successfully");
+      // Sort products based on sort_by and order
+      productsWithInventory.sort((a, b) => {
+        let aValue = a[sort_by];
+        let bValue = b[sort_by];
+        
+        // Handle null/undefined values
+        if (aValue === null || aValue === undefined) aValue = 0;
+        if (bValue === null || bValue === undefined) bValue = 0;
+        
+        // Handle string comparison for name
+        if (sort_by === 'name') {
+          aValue = aValue.toString().toLowerCase();
+          bValue = bValue.toString().toLowerCase();
+          return order === 'ASC' 
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
+        
+        // Numeric comparison
+        const comparison = aValue - bValue;
+        return order === 'ASC' ? comparison : -comparison;
+      });
+
+      // Apply pagination
+      const paginatedProducts = productsWithInventory.slice(
+        parsedOffset, 
+        parsedOffset + parsedLimit
+      );
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / parsedLimit);
+      const pagination = {
+        total_count: totalCount,
+        total_pages: totalPages,
+        current_page: parsedPage,
+        limit: parsedLimit
+      };
+
+      return successResponse(
+        res, 
+        { 
+          data: paginatedProducts, 
+          pagination 
+        }, 
+        "Products retrieved successfully"
+      );
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
