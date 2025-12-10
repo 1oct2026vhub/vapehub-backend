@@ -1017,11 +1017,11 @@ module.exports = {
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
 
-      // Get order IDs for completed/delivered orders in last 28 days (once for all products)
+      // Get order IDs for orders (excluding canceled) in last 28 days (once for all products)
       const orderIds = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.in]: ['completed', 'delivered'] },
+          status: { [Op.ne]: 'canceled' },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
@@ -1163,11 +1163,11 @@ module.exports = {
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
 
-      // Get order IDs for completed/delivered orders in last 28 days (once for all calculations)
+      // Get order IDs for orders (excluding canceled) in last 28 days (once for all calculations)
       const orderIds = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.in]: ['completed', 'delivered'] },
+          status: { [Op.ne]: 'canceled' },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
@@ -1312,11 +1312,11 @@ module.exports = {
           }
         }) || 0;
 
-        // Get order IDs for completed/delivered orders in last 28 days
+        // Get order IDs for orders (excluding canceled) in last 28 days
         const orderIds = await Order.findAll({
           attributes: ['id'],
           where: {
-            status: { [Op.in]: ['completed', 'delivered'] },
+            status: { [Op.ne]: 'canceled' },
             updatedAt: { [Op.gte]: last28Days }
           },
           raw: true
@@ -1379,7 +1379,7 @@ module.exports = {
         LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
         LEFT JOIN order_items oi ON p.id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.id 
-          AND o.status IN ('completed', 'delivered')
+          AND o.status != 'canceled'
           AND o.updatedAt >= :startDate 
           AND o.updatedAt <= :endDate
         GROUP BY p.id, p.name, pi.image_url
@@ -1479,7 +1479,7 @@ module.exports = {
           LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status IN ('completed', 'delivered')
+            AND o.status != 'canceled'
             AND o.updatedAt >= :startDate 
             AND o.updatedAt <= :endDate
           WHERE 1=1 ${productWhereClause}
@@ -1502,7 +1502,7 @@ module.exports = {
           LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
           LEFT JOIN order_items oi ON p.id = oi.product_id
           LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status IN ('completed', 'delivered')
+            AND o.status != 'canceled'
             AND o.updatedAt >= :startDate 
             AND o.updatedAt <= :endDate
           WHERE 1=1 ${productWhereClause}
@@ -1562,7 +1562,7 @@ module.exports = {
         const prevOrderIds = await Order.findAll({
           attributes: ['id'],
           where: {
-            status: { [Op.in]: ['completed', 'delivered'] },
+            status: { [Op.ne]: 'canceled' },
             updatedAt: {
               [Op.gte]: prevStart,
               [Op.lte]: prevEnd
@@ -1669,21 +1669,21 @@ module.exports = {
       const endOfLastMonth = new Date(startOfThisMonth - 1);
       const startOfLastMonth = new Date(endOfLastMonth.getFullYear(), endOfLastMonth.getMonth(), 1);
 
-      // Get order IDs for completed/delivered orders in last 28 days
+      // Get order IDs for orders (excluding canceled) in last 28 days
       const orderIds28Days = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.in]: ['completed', 'delivered'] },
+          status: { [Op.ne]: 'canceled' },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
       }).then(orders => orders.map(o => o.id));
 
-      // Get order IDs for completed/delivered orders in previous month
+      // Get order IDs for orders (excluding canceled) in previous month
       const orderIdsLastMonth = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.in]: ['completed', 'delivered'] },
+          status: { [Op.ne]: 'canceled' },
           updatedAt: {
             [Op.gte]: startOfLastMonth,
             [Op.lte]: endOfLastMonth
@@ -1943,10 +1943,10 @@ module.exports = {
               }) || 0
             : 0;
 
-          // Get all completed/delivered order IDs for total sales calculation
+          // Get all order IDs (excluding canceled) for total sales calculation
           const completedOrderIds = await Order.findAll({
             attributes: ['id'],
-            where: { status: { [Op.in]: ['completed', 'delivered'] } },
+            where: { status: { [Op.ne]: 'canceled' } },
             raw: true
           }).then(orders => orders.map(o => o.id));
           // Total sales (all-time)
@@ -2119,10 +2119,10 @@ module.exports = {
               }) || 0
             : 0;
 
-          // Get all completed/delivered order IDs for total sales calculation
+          // Get all order IDs (excluding canceled) for total sales calculation
           const completedOrderIds = await Order.findAll({
             attributes: ['id'],
-            where: { status: { [Op.in]: ['completed', 'delivered'] } },
+            where: { status: { [Op.ne]: 'canceled' } },
             raw: true
           }).then(orders => orders.map(o => o.id));
           // Total sales (all-time)
