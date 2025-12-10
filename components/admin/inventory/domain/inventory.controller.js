@@ -1,4 +1,4 @@
-const { ProductVariant, StockMovement, StockReservation, Product, User, ProductVariantImage, OrderItem, Order, ProductImage } = require('../../../../models');
+const { ProductVariant, StockMovement, StockReservation, Product, User, ProductVariantImage, OrderItem, Order, ProductImage, ProductVariantAttribute, Attribute, AttributeTerm } = require('../../../../models');
 const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../../../../models');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
@@ -981,7 +981,17 @@ module.exports = {
   // Get products for inventory selection
   async getProducts(req, res) {
     try {
-      const { q } = req.query;
+      const { 
+        q, 
+        page = 1, 
+        limit = 10, 
+        sort_by = 'salesLast28Days', 
+        order = 'DESC' 
+      } = req.query;
+      
+      const parsedPage = parseInt(page, 10);
+      const parsedLimit = parseInt(limit, 10);
+      const parsedOffset = (parsedPage - 1) * parsedLimit;
       
       // Build where clause for products
       const productWhereClause = {
@@ -993,10 +1003,8 @@ module.exports = {
         productWhereClause.name = { [Op.like]: `%${q}%` };
       }
       
-      const limit = q && q.length > 0 ? undefined : 10;
-      
-      // Fetch products
-      const products = await Product.findAll({
+      // Fetch all matching products (we need all to calculate sales and sort)
+      const allProducts = await Product.findAll({
         where: productWhereClause,
         attributes: ['id', 'name', 'slug'],
         include: [
@@ -1008,9 +1016,11 @@ module.exports = {
             attributes: ['image_url']
           }
         ],
-        order: [['name', 'ASC']],
-        ...(limit ? { limit } : {})
+        order: [['name', 'ASC']] // Initial order, will be re-sorted after calculating sales
       });
+
+      // Get total count for pagination
+      const totalCount = allProducts.length;
 
       // Calculate date range for last 28 days
       const now = new Date();
@@ -1028,7 +1038,7 @@ module.exports = {
       }).then(orders => orders.map(o => o.id));
 
       // Get all product IDs
-      const productIds = products.map(p => p.id);
+      const productIds = allProducts.map(p => p.id);
 
       // Fetch all variants for these products
       const allVariants = await ProductVariant.findAll({
@@ -1049,7 +1059,7 @@ module.exports = {
       });
 
       // Calculate products with inventory details
-      const productsWithInventory = await Promise.all(products.map(async (product) => {
+      const productsWithInventory = await Promise.all(allProducts.map(async (product) => {
         const productVariants = variantsByProduct[product.id] || [];
         const variantIds = productVariants.map(v => v.id);
 
@@ -1095,7 +1105,52 @@ module.exports = {
         };
       }));
 
-      return successResponse(res, productsWithInventory, "Products retrieved successfully");
+      // Sort products based on sort_by and order
+      productsWithInventory.sort((a, b) => {
+        let aValue = a[sort_by];
+        let bValue = b[sort_by];
+        
+        // Handle null/undefined values
+        if (aValue === null || aValue === undefined) aValue = 0;
+        if (bValue === null || bValue === undefined) bValue = 0;
+        
+        // Handle string comparison for name
+        if (sort_by === 'name') {
+          aValue = aValue.toString().toLowerCase();
+          bValue = bValue.toString().toLowerCase();
+          return order === 'ASC' 
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        }
+        
+        // Numeric comparison
+        const comparison = aValue - bValue;
+        return order === 'ASC' ? comparison : -comparison;
+      });
+
+      // Apply pagination
+      const paginatedProducts = productsWithInventory.slice(
+        parsedOffset, 
+        parsedOffset + parsedLimit
+      );
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / parsedLimit);
+      const pagination = {
+        total_count: totalCount,
+        total_pages: totalPages,
+        current_page: parsedPage,
+        limit: parsedLimit
+      };
+
+      return successResponse(
+        res, 
+        { 
+          data: paginatedProducts, 
+          pagination 
+        }, 
+        "Products retrieved successfully"
+      );
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
@@ -2300,6 +2355,179 @@ module.exports = {
       };
 
       return successResponse(res, dashboard, "Deleted inventory retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error, error.message);
+    }
+  },
+
+  // Export Purchase Order
+  async exportPurchaseOrder(req, res) {
+    try {
+      const { format = 'excel' } = req.query;
+      
+      // Calculate date range for last 28 days
+      const now = new Date();
+      const last28Days = new Date(now);
+      last28Days.setDate(now.getDate() - 28);
+
+      // Get order IDs for orders (excluding canceled) in last 28 days
+      const orderIds = await Order.findAll({
+        attributes: ['id'],
+        where: {
+          status: { [Op.ne]: 'canceled' },
+          updatedAt: { [Op.gte]: last28Days }
+        },
+        raw: true
+      }).then(orders => orders.map(o => o.id));
+
+      // Fetch all active variants with product information
+      const variants = await ProductVariant.findAll({
+        where: {
+          deleted_at: null,
+          status: 'active'
+        },
+        include: [
+          {
+            model: Product,
+            as: 'product',
+            attributes: ['id', 'name'],
+            where: {
+              deletedAt: null,
+              status: 'published'
+            },
+            required: true
+          },
+          {
+            model: ProductVariantAttribute,
+            as: 'variantAttributes',
+            include: [
+              {
+                model: Attribute,
+                as: 'attribute',
+                attributes: ['id', 'name']
+              },
+              {
+                model: AttributeTerm,
+                as: 'term',
+                attributes: ['id', 'name']
+              }
+            ],
+            required: false
+          }
+        ],
+        attributes: ['id', 'product_id', 'slug', 'stock']
+      });
+
+      // Calculate sales for each variant and prepare export data
+      const exportData = await Promise.all(variants.map(async (variant) => {
+        // Calculate sales last 28 days for this variant
+        const salesLast28Days = orderIds.length > 0
+          ? await OrderItem.sum('quantity', {
+              where: {
+                variant_id: variant.id,
+                order_id: { [Op.in]: orderIds }
+              }
+            }) || 0
+          : 0;
+
+        // Build variant name
+        let variantName = variant.product?.name || 'Unknown Product';
+        
+        // Add variant attributes to name if available
+        if (variant.variantAttributes && variant.variantAttributes.length > 0) {
+          const attributeParts = variant.variantAttributes.map(va => {
+            return `${va.attribute?.name || ''}: ${va.term?.name || ''}`;
+          }).filter(Boolean);
+          
+          if (attributeParts.length > 0) {
+            variantName += ` - ${attributeParts.join(', ')}`;
+          } else if (variant.slug) {
+            variantName += ` - ${variant.slug}`;
+          }
+        } else if (variant.slug) {
+          variantName += ` - ${variant.slug}`;
+        } else {
+          variantName += ` - Variant #${variant.id}`;
+        }
+
+        // Required stock for next 28 days = projected sales (based on last 28 days)
+        // This assumes the same sales rate will continue
+        const requiredStockForNext28Days = Math.ceil(salesLast28Days);
+
+        return {
+          variantName: variantName,
+          currentStock: variant.stock || 0,
+          requiredStockForNext28Days: requiredStockForNext28Days
+        };
+      }));
+
+      // Sort by required stock (descending) to prioritize items needing more stock
+      exportData.sort((a, b) => b.requiredStockForNext28Days - a.requiredStockForNext28Days);
+
+      if (format === 'csv') {
+        // CSV Export
+        const csvFields = [
+          { label: 'Product Variant Name', value: 'variantName' },
+          { label: 'Current Stock', value: 'currentStock' },
+          { label: 'Required Stock for Next 28 Days', value: 'requiredStockForNext28Days' }
+        ];
+
+        const parser = new Json2csvParser({ fields: csvFields });
+        const csv = parser.parse(exportData);
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="Export Purchase Order - ${new Date().toISOString().split('T')[0]}.csv"`);
+        
+        return res.send(csv);
+      } else {
+        // Excel Export
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Purchase Order');
+
+        // Define columns
+        worksheet.columns = [
+          { header: 'Product Variant Name', key: 'variantName', width: 50 },
+          { header: 'Current Stock', key: 'currentStock', width: 15 },
+          { header: 'Required Stock for Next 28 Days', key: 'requiredStockForNext28Days', width: 30 }
+        ];
+
+        // Add data rows
+        exportData.forEach(item => {
+          worksheet.addRow({
+            variantName: item.variantName,
+            currentStock: item.currentStock,
+            requiredStockForNext28Days: item.requiredStockForNext28Days
+          });
+        });
+
+        // Style the header row
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE0E0E0' }
+        };
+
+        // Auto-fit columns
+        worksheet.columns.forEach(column => {
+          column.alignment = { vertical: 'middle', horizontal: 'left' };
+        });
+
+        // Set response headers for Excel
+        res.setHeader(
+          'Content-Type',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="Export Purchase Order - ${new Date().toISOString().split('T')[0]}.xlsx"`
+        );
+
+        // Send the workbook
+        await workbook.xlsx.write(res);
+        res.end();
+      }
     } catch (error) {
       return errorResponse(res, error, error.message);
     }

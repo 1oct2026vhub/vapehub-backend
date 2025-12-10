@@ -634,7 +634,8 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                         { valid_from: { [Op.lte]: deal.valid_to } },
                         { valid_to: { [Op.gte]: deal.valid_from } }
                     ]
-                }
+                },
+                paranoid: false // Include deleted deals in the overlap check
             }],
             transaction
         });
@@ -1026,7 +1027,8 @@ module.exports.addProductToDeals = async (req, res) => {
             include: [{
                 model: Deal,
                 as: 'deal',
-                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to', 'is_deleted']
+                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to', 'is_deleted'],
+                paranoid: false // Include deleted deals in the overlap check
             }],
             transaction
         });
