@@ -133,22 +133,6 @@ const getProductsValidation = () => {
       .trim()
       .isLength({ max: 100 })
       .withMessage('Search query too long'),
-    query('page')
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage('Page must be a positive integer'),
-    query('limit')
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage('Limit must be between 1 and 100'),
-    query('sort_by')
-      .optional()
-      .isIn(['salesLast28Days', 'name', 'currentStock'])
-      .withMessage('sort_by must be one of: salesLast28Days, name, currentStock'),
-    query('order')
-      .optional()
-      .isIn(['ASC', 'DESC'])
-      .withMessage('Order must be ASC or DESC'),
     validate
   ];
 };
