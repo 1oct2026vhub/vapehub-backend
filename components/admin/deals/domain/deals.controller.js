@@ -79,6 +79,32 @@ module.exports.createDeal = async (req, res, next) => {
     } catch (error) {
         await transaction.rollback();
         console.log(error);
+        
+        // Handle Sequelize unique constraint errors specifically
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            const field = error.errors?.[0]?.path || 'field';
+            const value = error.errors?.[0]?.value || '';
+            
+            // For slug uniqueness, provide a clearer message
+            if (field === 'slug') {
+                const friendlyError = new Error(`A deal with the name '${value}' already exists. Please use a different name.`);
+                friendlyError.statusCode = 400;
+                return errorResponse(res, friendlyError, friendlyError.message, 400);
+            }
+            
+            // Generic unique constraint error
+            const friendlyError = new Error(`${field} must be unique. The value '${value}' already exists.`);
+            friendlyError.statusCode = 400;
+            return errorResponse(res, friendlyError, friendlyError.message, 400);
+        }
+        
+        // Handle slugManager errors (slug already taken)
+        if (error.message && error.message.includes('already taken')) {
+            const friendlyError = new Error(`A deal with this name already exists. Please use a different name.`);
+            friendlyError.statusCode = 400;
+            return errorResponse(res, friendlyError, friendlyError.message, 400);
+        }
+        
         return errorResponse(res, error, error.message);
     }
 };
@@ -195,6 +221,32 @@ module.exports.updateDeal = async (req, res, next) => {
     } catch (error) {
         console.log("error", error);
         await transaction.rollback();
+        
+        // Handle Sequelize unique constraint errors specifically
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            const field = error.errors?.[0]?.path || 'field';
+            const value = error.errors?.[0]?.value || '';
+            
+            // For slug uniqueness, provide a clearer message
+            if (field === 'slug') {
+                const friendlyError = new Error(`A deal with the name '${value}' already exists. Please use a different name.`);
+                friendlyError.statusCode = 400;
+                return errorResponse(res, friendlyError, friendlyError.message, 400);
+            }
+            
+            // Generic unique constraint error
+            const friendlyError = new Error(`${field} must be unique. The value '${value}' already exists.`);
+            friendlyError.statusCode = 400;
+            return errorResponse(res, friendlyError, friendlyError.message, 400);
+        }
+        
+        // Handle slugManager errors (slug already taken)
+        if (error.message && error.message.includes('already taken')) {
+            const friendlyError = new Error(`A deal with this name already exists. Please use a different name.`);
+            friendlyError.statusCode = 400;
+            return errorResponse(res, friendlyError, friendlyError.message, 400);
+        }
+        
         return errorResponse(res, error, error.message);
     }
 };
@@ -558,10 +610,10 @@ module.exports.addProductsToDeal = async (req, res, next) => {
         }
 
         /**
-         * Check if any products are already in other (non-deleted) deals
+         * Check if any products are already in other deals (including deleted)
          * whose validity period overlaps with this deal's validity window.
          * This prevents assigning the same product to multiple overlapping deals,
-         * regardless of whether those other deals are currently active or in the future.
+         * regardless of whether those other deals are currently active, inactive, or deleted.
          */
         const existingDealProducts = await DealProduct.findAll({
             where: {
@@ -574,7 +626,6 @@ module.exports.addProductsToDeal = async (req, res, next) => {
                 as: 'deal',
                 attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
                 where: {
-                    is_deleted: false,
                     id: { [Op.ne]: parseInt(id, 10) },
                     // Date range overlap:
                     // existing.valid_from <= this.valid_to AND
@@ -954,17 +1005,16 @@ module.exports.addProductToDeals = async (req, res) => {
         }
 
         /**
-         * Check if product is already in any other (non-deleted) deal
+         * Check if product is already in any other deal (including deleted)
          * whose validity period overlaps with any of the target deals.
          * This blocks assigning the product to multiple overlapping deals,
-         * even if some of them are inactive or in the future.
+         * regardless of whether those deals are active, inactive, or deleted.
          */
         const targetDeals = await Deal.findAll({
             where: {
                 id: {
                     [Op.in]: deal_ids
-                },
-                is_deleted: false
+                }
             },
             transaction
         });
@@ -976,10 +1026,7 @@ module.exports.addProductToDeals = async (req, res) => {
             include: [{
                 model: Deal,
                 as: 'deal',
-                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to', 'is_deleted'],
-                where: {
-                    is_deleted: false
-                }
+                attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to', 'is_deleted']
             }],
             transaction
         });
