@@ -988,7 +988,20 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *         schema:
  *           type: string
  *         required: false
- *         description: Partial product name to search for. If omitted, returns the first 10 products.
+ *         description: Partial product name to search for
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *         description: Number of items per page
  *     responses:
  *       200:
  *         description: Products retrieved successfully
@@ -1000,35 +1013,53 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *                 success:
  *                   type: boolean
  *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       name:
- *                         type: string
- *                       slug:
- *                         type: string
- *                       image:
- *                         type: string
- *                         nullable: true
- *                       currentStock:
- *                         type: integer
- *                         description: Total stock across all variants
- *                       stockOnHold:
- *                         type: integer
- *                         description: Stock on hold (active reservations)
- *                       reservedStock:
- *                         type: integer
- *                         description: Reserved stock (same as stockOnHold)
- *                       salesLast28Days:
- *                         type: integer
- *                         description: Total sales across all variants in last 28 days
- *                       stockWillLastDays:
- *                         type: integer
- *                         nullable: true
- *                         description: Number of days stock will last based on average daily sales (null if no sales)
+ *                   type: object
+ *                   properties:
+ *                     products:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           image:
+ *                             type: string
+ *                             nullable: true
+ *                           currentStock:
+ *                             type: integer
+ *                             description: Total stock across all variants
+ *                           stockOnHold:
+ *                             type: integer
+ *                             description: Stock on hold (active reservations)
+ *                           reservedStock:
+ *                             type: integer
+ *                             description: Reserved stock (same as stockOnHold)
+ *                           salesLast28Days:
+ *                             type: integer
+ *                             description: Total sales across all variants in last 28 days
+ *                           stockWillLastDays:
+ *                             type: integer
+ *                             nullable: true
+ *                             description: Number of days stock will last based on average daily sales (null if no sales)
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         total:
+ *                           type: integer
+ *                           description: Total number of products
+ *                         page:
+ *                           type: integer
+ *                           description: Current page number
+ *                         totalPages:
+ *                           type: integer
+ *                           description: Total number of pages
+ *                         limit:
+ *                           type: integer
+ *                           description: Number of items per page
  *                 message:
  *                   type: string
  *       500:
