@@ -1145,11 +1145,10 @@ module.exports = {
 
       return successResponse(
         res, 
-        { 
-          data: paginatedProducts, 
-          pagination 
-        }, 
-        "Products retrieved successfully"
+        paginatedProducts, 
+        "Products retrieved successfully",
+        200,
+        { pagination }
       );
     } catch (error) {
       return errorResponse(res, error, error.message);
