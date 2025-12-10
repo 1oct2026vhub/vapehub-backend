@@ -981,7 +981,7 @@ module.exports = {
   // Get products for inventory selection
   async getProducts(req, res) {
     try {
-      const { q, page = 1, limit = 20 } = req.query;
+      const { q } = req.query;
       
       // Build where clause for products
       const productWhereClause = {
@@ -993,11 +993,10 @@ module.exports = {
         productWhereClause.name = { [Op.like]: `%${q}%` };
       }
       
-      const offset = (page - 1) * limit;
-      const parsedLimit = parseInt(limit);
+      const limit = q && q.length > 0 ? undefined : 10;
       
-      // Fetch products with pagination
-      const { count, rows: products } = await Product.findAndCountAll({
+      // Fetch products
+      const products = await Product.findAll({
         where: productWhereClause,
         attributes: ['id', 'name', 'slug'],
         include: [
@@ -1010,8 +1009,7 @@ module.exports = {
           }
         ],
         order: [['name', 'ASC']],
-        offset: offset,
-        limit: parsedLimit
+        ...(limit ? { limit } : {})
       });
 
       // Calculate date range for last 28 days
@@ -1097,15 +1095,7 @@ module.exports = {
         };
       }));
 
-      return successResponse(res, {
-        products: productsWithInventory,
-        pagination: {
-          total: count,
-          page: parseInt(page),
-          totalPages: Math.ceil(count / parsedLimit),
-          limit: parsedLimit
-        }
-      }, "Products retrieved successfully");
+      return successResponse(res, productsWithInventory, "Products retrieved successfully");
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
