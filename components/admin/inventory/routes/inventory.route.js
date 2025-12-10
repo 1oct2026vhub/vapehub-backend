@@ -15,7 +15,8 @@ const {
   bulkStockUpdateValidation,
   bulkStockUpdateByQuantityValidation,
   updateAllStockValidation,
-  updateProductStockValidation
+  updateProductStockValidation,
+  exportPurchaseOrderValidation
 } = require('../helper/inventory.validator');
 
 /**
@@ -2000,5 +2001,37 @@ router.get('/deleted', [authMiddleware(true)], inventoryController.getDeletedInv
  *         message:
  *           type: string
  */
+
+/**
+ * @swagger
+ * /api/admin/inventory/export/purchase-order:
+ *   get:
+ *     summary: Export Purchase Order sheet with inventory details
+ *     tags: [Admin - Inventory]
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [excel, csv]
+ *           default: excel
+ *         required: false
+ *         description: Export format (excel or csv)
+ *     responses:
+ *       200:
+ *         description: Purchase order exported successfully
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       500:
+ *         description: Server error
+ */
+router.get('/export/purchase-order', [authMiddleware(true), ...exportPurchaseOrderValidation()], inventoryController.exportPurchaseOrder);
 
 module.exports = router; 

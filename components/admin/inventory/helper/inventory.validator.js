@@ -246,6 +246,16 @@ const updateProductStockValidation = () => {
   ];
 };
 
+const exportPurchaseOrderValidation = () => {
+  return [
+    query('format')
+      .optional()
+      .isIn(['excel', 'csv'])
+      .withMessage('Format must be excel or csv'),
+    validate
+  ];
+};
+
 module.exports = {
   getInventoryListValidation,
   getStockMovementsValidation,
@@ -259,5 +269,6 @@ module.exports = {
   bulkStockUpdateValidation,
   bulkStockUpdateByQuantityValidation,
   updateAllStockValidation,
-  updateProductStockValidation
+  updateProductStockValidation,
+  exportPurchaseOrderValidation
 }; 
