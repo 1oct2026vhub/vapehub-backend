@@ -7,10 +7,6 @@ const { ShippingMethod } = require("../../../models");
  * @returns {number|null} - The calculated shipping cost or null if not applicable
  */
 const calculateShippingCost = (shippingMethod, orderTotal) => {
-    // Check if shipping method is active
-    if (!shippingMethod.is_enabled || shippingMethod.deletedAt !== null) {
-        return null;
-    }
 
     // Check if shipping method is marked as free shipping
     if (shippingMethod.is_free_shipping) {
@@ -24,16 +20,6 @@ const calculateShippingCost = (shippingMethod, orderTotal) => {
         } else {
             // No threshold set, always free shipping
             return 0;
-        }
-    }
-
-    // For non-free shipping methods, apply shipping cost directly
-    // Check shipping rules if they exist (for tiered pricing)
-    if (shippingMethod.shipping_rules && Array.isArray(shippingMethod.shipping_rules)) {
-        for (const rule of shippingMethod.shipping_rules) {
-            if (orderTotal >= rule.min_total && (!rule.max_total || orderTotal <= rule.max_total)) {
-                return rule.shipping_cost;
-            }
         }
     }
 
