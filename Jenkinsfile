@@ -47,10 +47,10 @@ pipeline {
                     // Use SSH credentials with sshagent
                     sshagent([sshCredentials]) {
                         // SSH into the server and run commands
-                        sh "ssh ubuntu@${server} \"cd /var/www/Backend/ && git pull\""
-                        sh "ssh ubuntu@${server} \"cd /var/www/Backend/ && source ~/.nvm/nvm.sh && npm install \""
-                        sh "ssh ubuntu@${server} \"cd /var/www/Backend/ && source ~/.nvm/nvm.sh && npm run migrate \""
-                        sh "ssh ubuntu@${server} \"source ~/.nvm/nvm.sh && pm2 restart 'Backend' \"" 
+                        sh "ssh ubuntu@${server} \"cd /var/www/vapehub/backend/ && git pull\""
+                        sh "ssh ubuntu@${server} \"cd /var/www/vapehub/backend/ && npm install \""
+                        sh "ssh ubuntu@${server} \"cd /var/www/vapehub/backend/ && npm run migrate \""
+                        sh "ssh ubuntu@${server} \"pm2 restart 'Backend' \"" 
                     }
 }
             }

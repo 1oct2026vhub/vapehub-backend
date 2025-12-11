@@ -92,7 +92,27 @@ module.exports.listUsers = async (req, res) => {
                 "dob",
                 "createdAt", 
                 "updatedAt",
-                "deletedAt"
+                "deletedAt",
+                // Add total order count
+                [
+                    Sequelize.literal(`(
+                        SELECT COUNT(*)
+                        FROM orders
+                        WHERE orders.user_id = User.id
+                        AND orders.deletedAt IS NULL
+                    )`),
+                    'total_order_count'
+                ],
+                // Add total spend
+                [
+                    Sequelize.literal(`(
+                        SELECT COALESCE(SUM(total), 0)
+                        FROM orders
+                        WHERE orders.user_id = User.id
+                        AND orders.deletedAt IS NULL
+                    )`),
+                    'total_spend'
+                ]
             ],
             include: [{
                 model: Order, 
@@ -112,10 +132,20 @@ module.exports.listUsers = async (req, res) => {
         });
 
         // Format the response to include order details if they exist
-        const formattedUsers = users.map(user => ({
-            ...user.get(), 
-            orders: user.orders || [] 
-        }));
+        const formattedUsers = users.map(user => {
+            const userData = user.get({ plain: true });
+            const totalOrderCount = parseInt(userData.total_order_count) || 0;
+            const totalSpend = parseFloat(userData.total_spend) || 0;
+            const aov = totalOrderCount > 0 ? (totalSpend / totalOrderCount) : 0;
+            
+            return {
+                ...userData,
+                total_order_count: totalOrderCount,
+                total_spend: totalSpend,
+                aov: parseFloat(aov.toFixed(2)), // Round to 2 decimal places
+                orders: user.orders || [] 
+            };
+        });
 
         return successResponse(res, {
             total: totalUsers,
