@@ -12,6 +12,9 @@ module.exports.createDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
         const dealData = req.body;
+        const product_ids = dealData.product_ids || [];
+        delete dealData.product_ids;
+        
         // Handle show_home_page field
         if (dealData.show_home_page !== undefined) {
             dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : false;
@@ -55,11 +58,89 @@ module.exports.createDeal = async (req, res, next) => {
             }
         }
         
+        // Validate products if provided
+        if (product_ids && product_ids.length > 0) {
+            // Check if all products exist
+            const products = await Product.findAll({
+                where: {
+                    id: {
+                        [Op.in]: product_ids
+                    }
+                },
+                transaction
+            });
+
+            if (products.length !== product_ids.length) {
+                await transaction.rollback();
+                const error = new Error('One or more products not found');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // Check if any products are already in other deals with overlapping date ranges
+            const existingDealProducts = await DealProduct.findAll({
+                where: {
+                    product_id: {
+                        [Op.in]: product_ids
+                    }
+                },
+                include: [{
+                    model: Deal,
+                    as: 'deal',
+                    attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                    where: {
+                        // Date range overlap check:
+                        // existing.valid_from <= this.valid_to AND
+                        // existing.valid_to >= this.valid_from
+                        [Op.and]: [
+                            { valid_from: { [Op.lte]: dealData.valid_to } },
+                            { valid_to: { [Op.gte]: dealData.valid_from } }
+                        ]
+                    },
+                    paranoid: false // Include deleted deals in the overlap check
+                }],
+                transaction
+            });
+
+            if (existingDealProducts.length > 0) {
+                await transaction.rollback();
+                const error = new Error('One or more products are already assigned to deals with overlapping validity periods');
+                error.statusCode = 400;
+                error.data = {
+                    products_already_in_deals: existingDealProducts.map(dp => ({
+                        product_id: dp.product_id,
+                        existing_deal: {
+                            id: dp.deal.id,
+                            name: dp.deal.name,
+                            slug: dp.deal.slug,
+                            is_active: dp.deal.is_active,
+                            valid_from: dp.deal.valid_from,
+                            valid_to: dp.deal.valid_to
+                        }
+                    }))
+                };
+                throw error;
+            }
+        }
+        
         // Create the deal first
         const deal = await Deal.create(dealData, { transaction });
         
         // Create slug relation
         await slugManager.createOrUpdateSlug(deal.name, 'deal', deal.id, transaction);
+        
+        // Add products if provided
+        if (product_ids && product_ids.length > 0) {
+            const dealProducts = product_ids.map(product_id => ({
+                deal_id: deal.id,
+                product_id
+            }));
+
+            await DealProduct.bulkCreate(dealProducts, {
+                transaction,
+                ignoreDuplicates: true
+            });
+        }
         
         // Fetch the complete deal with associations
         const createdDeal = await Deal.findByPk(deal.id, {
@@ -114,6 +195,8 @@ module.exports.updateDeal = async (req, res, next) => {
     try {
         const { id } = req.params;
         const dealData = req.body;
+        const product_ids = dealData.product_ids || [];
+        delete dealData.product_ids;
 
         const deal = await Deal.findByPk(id, { transaction });
         if (!deal) {
@@ -159,6 +242,156 @@ module.exports.updateDeal = async (req, res, next) => {
                 throw error;
             }
         }
+
+        // Determine the final date range (use updated values or existing ones)
+        const finalValidFrom = dealData.valid_from ? new Date(dealData.valid_from) : deal.valid_from;
+        const finalValidTo = dealData.valid_to ? new Date(dealData.valid_to) : deal.valid_to;
+
+        // Check if date range is being changed
+        const dateRangeChanged = dealData.valid_from || dealData.valid_to;
+
+        // If date range is being changed, check for conflicts with existing products
+        if (dateRangeChanged) {
+            // Get all products currently in this deal
+            const currentDealProducts = await DealProduct.findAll({
+                where: { deal_id: id },
+                attributes: ['product_id'],
+                transaction
+            });
+
+            const currentProductIds = currentDealProducts.map(dp => dp.product_id);
+
+            if (currentProductIds.length > 0) {
+                // Check if any of these products are in other deals with overlapping date ranges
+                const conflictingDealProducts = await DealProduct.findAll({
+                    where: {
+                        product_id: {
+                            [Op.in]: currentProductIds
+                        },
+                        deal_id: {
+                            [Op.ne]: parseInt(id)
+                        }
+                    },
+                    include: [{
+                        model: Deal,
+                        as: 'deal',
+                        attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                        where: {
+                            // Date range overlap check
+                            [Op.and]: [
+                                { valid_from: { [Op.lte]: finalValidTo } },
+                                { valid_to: { [Op.gte]: finalValidFrom } }
+                            ]
+                        },
+                        paranoid: false
+                    }],
+                    transaction
+                });
+
+                if (conflictingDealProducts.length > 0) {
+                    await transaction.rollback();
+                    const error = new Error('Cannot update deal date range. One or more products in this deal are already assigned to other deals with overlapping validity periods');
+                    error.statusCode = 400;
+                    error.data = {
+                        conflicts: conflictingDealProducts.map(dp => ({
+                            product_id: dp.product_id,
+                            existing_deal: {
+                                id: dp.deal.id,
+                                name: dp.deal.name,
+                                slug: dp.deal.slug,
+                                is_active: dp.deal.is_active,
+                                valid_from: dp.deal.valid_from,
+                                valid_to: dp.deal.valid_to
+                            }
+                        }))
+                    };
+                    throw error;
+                }
+            }
+        }
+
+        // If new products are being added, validate them
+        if (product_ids && product_ids.length > 0) {
+            // Check if all products exist
+            const products = await Product.findAll({
+                where: {
+                    id: {
+                        [Op.in]: product_ids
+                    }
+                },
+                transaction
+            });
+
+            if (products.length !== product_ids.length) {
+                await transaction.rollback();
+                const error = new Error('One or more products not found');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // Check if any products are already in other deals with overlapping date ranges
+            const existingDealProducts = await DealProduct.findAll({
+                where: {
+                    product_id: {
+                        [Op.in]: product_ids
+                    }
+                },
+                include: [{
+                    model: Deal,
+                    as: 'deal',
+                    attributes: ['id', 'name', 'slug', 'is_active', 'valid_from', 'valid_to'],
+                    where: {
+                        id: { [Op.ne]: parseInt(id) },
+                        // Date range overlap check
+                        [Op.and]: [
+                            { valid_from: { [Op.lte]: finalValidTo } },
+                            { valid_to: { [Op.gte]: finalValidFrom } }
+                        ]
+                    },
+                    paranoid: false
+                }],
+                transaction
+            });
+
+            if (existingDealProducts.length > 0) {
+                // Check if products are already in current deal
+                const productsInCurrentDeal = existingDealProducts.filter(dp => dp.deal_id === parseInt(id));
+                const productsInOtherDeals = existingDealProducts.filter(dp => dp.deal_id !== parseInt(id));
+                
+                if (productsInCurrentDeal.length > 0) {
+                    await transaction.rollback();
+                    const error = new Error('Selected product is already added to this deal.');
+                    error.statusCode = 400;
+                    error.data = {
+                        products_already_in_current_deal: productsInCurrentDeal.map(dp => ({
+                            product_id: dp.product_id
+                        }))
+                    };
+                    throw error;
+                }
+                
+                if (productsInOtherDeals.length > 0) {
+                    await transaction.rollback();
+                    const error = new Error('Selected product is already assigned to an existing deal with overlapping validity period');
+                    error.statusCode = 400;
+                    error.data = {
+                        products_already_in_deals: productsInOtherDeals.map(dp => ({
+                            product_id: dp.product_id,
+                            existing_deal: {
+                                id: dp.deal.id,
+                                name: dp.deal.name,
+                                slug: dp.deal.slug,
+                                is_active: dp.deal.is_active,
+                                valid_from: dp.deal.valid_from,
+                                valid_to: dp.deal.valid_to
+                            }
+                        }))
+                    };
+                    throw error;
+                }
+            }
+        }
+
         let slug;
         // Update slug if name has changed
         const nameChanged = dealData.name && dealData.name !== undefined && dealData.name !== deal.name;
@@ -175,6 +408,20 @@ module.exports.updateDeal = async (req, res, next) => {
         // dealData.slug = slug.slug;
         // Update the deal
         await deal.update(dealData, { transaction });
+        
+        // Add new products if provided
+        if (product_ids && product_ids.length > 0) {
+            const dealProducts = product_ids.map(product_id => ({
+                deal_id: id,
+                product_id
+            }));
+
+            await DealProduct.bulkCreate(dealProducts, {
+                transaction,
+                ignoreDuplicates: true
+            });
+        }
+        
         const menu = await Menu.findOne({ where: { entity_id: id} });
         if (menu) {
             // If slug is undefined, extract it from menu's original field
