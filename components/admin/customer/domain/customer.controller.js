@@ -92,7 +92,27 @@ module.exports.listUsers = async (req, res) => {
                 "dob",
                 "createdAt", 
                 "updatedAt",
-                "deletedAt"
+                "deletedAt",
+                // Add total order count
+                [
+                    Sequelize.literal(`(
+                        SELECT COUNT(*)
+                        FROM orders
+                        WHERE orders.user_id = User.id
+                        AND orders.deletedAt IS NULL
+                    )`),
+                    'total_order_count'
+                ],
+                // Add total spend
+                [
+                    Sequelize.literal(`(
+                        SELECT COALESCE(SUM(total), 0)
+                        FROM orders
+                        WHERE orders.user_id = User.id
+                        AND orders.deletedAt IS NULL
+                    )`),
+                    'total_spend'
+                ]
             ],
             include: [{
                 model: Order, 
@@ -112,10 +132,15 @@ module.exports.listUsers = async (req, res) => {
         });
 
         // Format the response to include order details if they exist
-        const formattedUsers = users.map(user => ({
-            ...user.get(), 
-            orders: user.orders || [] 
-        }));
+        const formattedUsers = users.map(user => {
+            const userData = user.get({ plain: true });
+            return {
+                ...userData,
+                total_order_count: parseInt(userData.total_order_count) || 0,
+                total_spend: parseFloat(userData.total_spend) || 0,
+                orders: user.orders || [] 
+            };
+        });
 
         return successResponse(res, {
             total: totalUsers,
