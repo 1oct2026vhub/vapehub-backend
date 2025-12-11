@@ -2020,6 +2020,15 @@ router.get('/deleted', [authMiddleware(true)], inventoryController.getDeletedInv
  *           default: excel
  *         required: false
  *         description: Export format (excel or csv)
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 365
+ *           default: 28
+ *         required: false
+ *         description: Number of days to calculate required stock for (default 28)
  *     responses:
  *       200:
  *         description: Purchase order exported successfully

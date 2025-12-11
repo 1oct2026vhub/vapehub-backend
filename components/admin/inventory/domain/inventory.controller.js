@@ -2367,19 +2367,20 @@ module.exports = {
   // Export Purchase Order
   async exportPurchaseOrder(req, res) {
     try {
-      const { format = 'excel' } = req.query;
+      const { format = 'excel', days = 28 } = req.query;
+      const numberOfDays = parseInt(days, 10) || 28;
       
-      // Calculate date range for last 28 days
+      // Calculate date range for last N days
       const now = new Date();
-      const last28Days = new Date(now);
-      last28Days.setDate(now.getDate() - 28);
+      const lastNDays = new Date(now);
+      lastNDays.setDate(now.getDate() - numberOfDays);
 
-      // Get order IDs for orders (excluding canceled) in last 28 days
+      // Get order IDs for orders (excluding canceled) in last N days
       const orderIds = await Order.findAll({
         attributes: ['id'],
         where: {
           status: { [Op.ne]: 'canceled' },
-          updatedAt: { [Op.gte]: last28Days }
+          updatedAt: { [Op.gte]: lastNDays }
         },
         raw: true
       }).then(orders => orders.map(o => o.id));
@@ -2424,8 +2425,8 @@ module.exports = {
 
       // Calculate sales for each variant and prepare export data
       const exportData = await Promise.all(variants.map(async (variant) => {
-        // Calculate sales last 28 days for this variant
-        const salesLast28Days = orderIds.length > 0
+        // Calculate sales last N days for this variant
+        const salesLastNDays = orderIds.length > 0
           ? await OrderItem.sum('quantity', {
               where: {
                 variant_id: variant.id,
@@ -2454,9 +2455,9 @@ module.exports = {
           variantName += ` - Variant #${variant.id}`;
         }
 
-        // Required stock for next 28 days = projected sales (based on last 28 days)
+        // Required stock for next N days = projected sales (based on last N days)
         // This assumes the same sales rate will continue
-        const requiredStockForNext28Days = Math.ceil(salesLast28Days);
+        const requiredStockForNextNDays = Math.ceil(salesLastNDays);
         const currentStock = variant.stock || 0;
         const lowStockThreshold = variant.low_stock_threshold || 0;
 
@@ -2464,13 +2465,13 @@ module.exports = {
           variantName: variantName,
           currentStock: currentStock,
           lowStockThreshold: lowStockThreshold,
-          requiredStockForNext28Days: requiredStockForNext28Days
+          requiredStockForNextNDays: requiredStockForNextNDays
         };
       }));
 
-      // Filter products where requiredStockForNext28Days > 0 (exclude items with 0 required stock)
+      // Filter products where requiredStockForNextNDays > 0 (exclude items with 0 required stock)
       const filteredData = exportData.filter(item => 
-        item.requiredStockForNext28Days > 0
+        item.requiredStockForNextNDays > 0
       );
 
       // Sort alphabetically by variant name
@@ -2481,7 +2482,7 @@ module.exports = {
         const csvFields = [
           { label: 'Product Variant Name', value: 'variantName' },
           { label: 'Current Stock', value: 'currentStock' },
-          { label: 'Required Stock for Next 28 Days', value: 'requiredStockForNext28Days' }
+          { label: `Required Stock for Next ${numberOfDays} Days`, value: 'requiredStockForNextNDays' }
         ];
 
         const parser = new Json2csvParser({ fields: csvFields });
@@ -2501,7 +2502,7 @@ module.exports = {
         worksheet.columns = [
           { header: 'Product Variant Name', key: 'variantName', width: 50 },
           { header: 'Current Stock', key: 'currentStock', width: 15 },
-          { header: 'Required Stock for Next 28 Days', key: 'requiredStockForNext28Days', width: 30 }
+          { header: `Required Stock for Next ${numberOfDays} Days`, key: 'requiredStockForNextNDays', width: 30 }
         ];
 
         // Add data rows with empty row between each product
@@ -2526,7 +2527,7 @@ module.exports = {
             const row = worksheet.addRow({
               variantName: item.variantName,
               currentStock: item.currentStock,
-              requiredStockForNext28Days: item.requiredStockForNext28Days
+              requiredStockForNextNDays: item.requiredStockForNextNDays
             });
 
             // Add borders to all cells in data row (columns 1, 2, 3)

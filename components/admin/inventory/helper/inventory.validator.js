@@ -252,6 +252,10 @@ const exportPurchaseOrderValidation = () => {
       .optional()
       .isIn(['excel', 'csv'])
       .withMessage('Format must be excel or csv'),
+    query('days')
+      .optional()
+      .isInt({ min: 1, max: 365 })
+      .withMessage('Days must be an integer between 1 and 365'),
     validate
   ];
 };
