@@ -2505,27 +2505,44 @@ module.exports = {
         ];
 
         // Add data rows with empty row between each product
-        filteredData.forEach((item, index) => {
-          // Add data row
-          const row = worksheet.addRow({
-            variantName: item.variantName,
-            currentStock: item.currentStock,
-            requiredStockForNext28Days: item.requiredStockForNext28Days
+        // Group variants by product name (extract product name from variantName)
+        const groupedByProduct = {};
+        filteredData.forEach(item => {
+          // Extract product name (part before " - ")
+          const productName = item.variantName.split(' - ')[0];
+          if (!groupedByProduct[productName]) {
+            groupedByProduct[productName] = [];
+          }
+          groupedByProduct[productName].push(item);
+        });
+
+        // Get array of product groups
+        const productGroups = Object.values(groupedByProduct);
+        
+        // Add rows grouped by product with blank row between products
+        productGroups.forEach((productVariants, productIndex) => {
+          // Add all variants of this product
+          productVariants.forEach((item) => {
+            const row = worksheet.addRow({
+              variantName: item.variantName,
+              currentStock: item.currentStock,
+              requiredStockForNext28Days: item.requiredStockForNext28Days
+            });
+
+            // Add borders to all cells in data row (columns 1, 2, 3)
+            for (let col = 1; col <= 3; col++) {
+              const cell = row.getCell(col);
+              cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+              };
+            }
           });
 
-          // Add borders to all cells in data row (columns 1, 2, 3)
-          for (let col = 1; col <= 3; col++) {
-            const cell = row.getCell(col);
-            cell.border = {
-              top: { style: 'thin' },
-              left: { style: 'thin' },
-              bottom: { style: 'thin' },
-              right: { style: 'thin' }
-            };
-          }
-
-          // Add empty row between products (except after the last one)
-          if (index < filteredData.length - 1) {
+          // Add empty row between products (except after the last product group)
+          if (productIndex < productGroups.length - 1) {
             const emptyRow = worksheet.addRow([]);
             // Add borders to all cells in empty row (columns 1, 2, 3)
             for (let col = 1; col <= 3; col++) {
