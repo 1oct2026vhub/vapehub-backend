@@ -1143,13 +1143,12 @@ module.exports = {
         limit: parsedLimit
       };
 
-      return successResponse(
-        res, 
-        paginatedProducts, 
-        "Products retrieved successfully",
-        200,
-        { pagination }
-      );
+      return res.status(200).json({
+        success: true,
+        message: "Products retrieved successfully",
+        data: paginatedProducts,
+        pagination: pagination
+      });
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
