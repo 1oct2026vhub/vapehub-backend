@@ -2413,7 +2413,7 @@ module.exports = {
             required: false
           }
         ],
-        attributes: ['id', 'product_id', 'slug', 'stock']
+        attributes: ['id', 'product_id', 'slug', 'stock', 'low_stock_threshold']
       });
 
       // Calculate sales for each variant and prepare export data
@@ -2451,16 +2451,24 @@ module.exports = {
         // Required stock for next 28 days = projected sales (based on last 28 days)
         // This assumes the same sales rate will continue
         const requiredStockForNext28Days = Math.ceil(salesLast28Days);
+        const currentStock = variant.stock || 0;
+        const lowStockThreshold = variant.low_stock_threshold || 0;
 
         return {
           variantName: variantName,
-          currentStock: variant.stock || 0,
+          currentStock: currentStock,
+          lowStockThreshold: lowStockThreshold,
           requiredStockForNext28Days: requiredStockForNext28Days
         };
       }));
 
-      // Sort by required stock (descending) to prioritize items needing more stock
-      exportData.sort((a, b) => b.requiredStockForNext28Days - a.requiredStockForNext28Days);
+      // Filter products where currentStock <= low_stock_threshold OR requiredStockForNext28Days > 0
+      const filteredData = exportData.filter(item => 
+        item.currentStock <= item.lowStockThreshold || item.requiredStockForNext28Days > 0
+      );
+
+      // Sort alphabetically by variant name
+      filteredData.sort((a, b) => a.variantName.localeCompare(b.variantName));
 
       if (format === 'csv') {
         // CSV Export
@@ -2471,7 +2479,7 @@ module.exports = {
         ];
 
         const parser = new Json2csvParser({ fields: csvFields });
-        const csv = parser.parse(exportData);
+        const csv = parser.parse(filteredData);
 
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename="Export Purchase Order - ${new Date().toISOString().split('T')[0]}.csv"`);
@@ -2490,22 +2498,61 @@ module.exports = {
           { header: 'Required Stock for Next 28 Days', key: 'requiredStockForNext28Days', width: 30 }
         ];
 
-        // Add data rows
-        exportData.forEach(item => {
-          worksheet.addRow({
+        // Add data rows with empty row between each product
+        filteredData.forEach((item, index) => {
+          // Add data row
+          const row = worksheet.addRow({
             variantName: item.variantName,
             currentStock: item.currentStock,
             requiredStockForNext28Days: item.requiredStockForNext28Days
           });
+
+          // Add borders to all cells in data row (columns 1, 2, 3)
+          for (let col = 1; col <= 3; col++) {
+            const cell = row.getCell(col);
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          }
+
+          // Add empty row between products (except after the last one)
+          if (index < filteredData.length - 1) {
+            const emptyRow = worksheet.addRow([]);
+            // Add borders to all cells in empty row (columns 1, 2, 3)
+            for (let col = 1; col <= 3; col++) {
+              const cell = emptyRow.getCell(col);
+              cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+              };
+            }
+          }
         });
 
         // Style the header row
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true };
+        headerRow.fill = {
           type: 'pattern',
           pattern: 'solid',
           fgColor: { argb: 'FFE0E0E0' }
         };
+        
+        // Add borders to all cells in header row (columns 1, 2, 3)
+        for (let col = 1; col <= 3; col++) {
+          const cell = headerRow.getCell(col);
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        }
 
         // Auto-fit columns
         worksheet.columns.forEach(column => {
