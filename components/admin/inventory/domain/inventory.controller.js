@@ -2468,9 +2468,9 @@ module.exports = {
         };
       }));
 
-      // Filter products where currentStock <= low_stock_threshold OR requiredStockForNext28Days > 0
+      // Filter products where requiredStockForNext28Days > 0 (exclude items with 0 required stock)
       const filteredData = exportData.filter(item => 
-        item.currentStock <= item.lowStockThreshold || item.requiredStockForNext28Days > 0
+        item.requiredStockForNext28Days > 0
       );
 
       // Sort alphabetically by variant name
