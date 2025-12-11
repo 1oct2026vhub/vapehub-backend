@@ -134,10 +134,15 @@ module.exports.listUsers = async (req, res) => {
         // Format the response to include order details if they exist
         const formattedUsers = users.map(user => {
             const userData = user.get({ plain: true });
+            const totalOrderCount = parseInt(userData.total_order_count) || 0;
+            const totalSpend = parseFloat(userData.total_spend) || 0;
+            const aov = totalOrderCount > 0 ? (totalSpend / totalOrderCount) : 0;
+            
             return {
                 ...userData,
-                total_order_count: parseInt(userData.total_order_count) || 0,
-                total_spend: parseFloat(userData.total_spend) || 0,
+                total_order_count: totalOrderCount,
+                total_spend: totalSpend,
+                aov: parseFloat(aov.toFixed(2)), // Round to 2 decimal places
                 orders: user.orders || [] 
             };
         });
