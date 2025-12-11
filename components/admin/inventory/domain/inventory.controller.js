@@ -1046,7 +1046,7 @@ module.exports = {
           product_id: { [Op.in]: productIds },
           deleted_at: null
         },
-        attributes: ['id', 'product_id', 'stock']
+        attributes: ['id', 'product_id', 'stock', 'low_stock_threshold']
       });
 
       // Group variants by product_id
@@ -1065,6 +1065,11 @@ module.exports = {
 
         // Calculate product-level total stock (sum of all variant stocks)
         const currentStock = productVariants.reduce((sum, variant) => sum + variant.stock, 0);
+
+        // Calculate minimum low_stock_threshold across all variants (most conservative)
+        const lowStockThreshold = productVariants.length > 0
+          ? Math.min(...productVariants.map(v => v.low_stock_threshold || 5))
+          : 5; // Default to 5 if no variants
 
         // Calculate stock on hold (active reservations) for all variants of this product
         const stockOnHold = variantIds.length > 0
@@ -1101,7 +1106,8 @@ module.exports = {
           stockOnHold: stockOnHold,
           reservedStock: stockOnHold, // Same as stockOnHold
           salesLast28Days: salesLast28Days || 0,
-          stockWillLastDays: stockWillLastDays
+          stockWillLastDays: stockWillLastDays,
+          low_stock_threshold: lowStockThreshold
         };
       }));
 
@@ -2462,9 +2468,9 @@ module.exports = {
         };
       }));
 
-      // Filter products where currentStock <= low_stock_threshold OR requiredStockForNext28Days > 0
+      // Filter products where requiredStockForNext28Days > 0 (exclude items with 0 required stock)
       const filteredData = exportData.filter(item => 
-        item.currentStock <= item.lowStockThreshold || item.requiredStockForNext28Days > 0
+        item.requiredStockForNext28Days > 0
       );
 
       // Sort alphabetically by variant name

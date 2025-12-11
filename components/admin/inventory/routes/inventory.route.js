@@ -1062,6 +1062,9 @@ router.get('/analytics', [authMiddleware(true), ...getAnalyticsValidation()], in
  *                         type: integer
  *                         nullable: true
  *                         description: Number of days stock will last based on average daily sales (null if no sales)
+ *                       low_stock_threshold:
+ *                         type: integer
+ *                         description: Minimum low stock threshold across all variants of this product
  *                 pagination:
  *                   type: object
  *                   properties:
