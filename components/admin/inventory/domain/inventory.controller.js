@@ -2564,7 +2564,7 @@ module.exports = {
         headerRow.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFE0E0E0' }
+          fgColor: { argb: 'FFE8F1FF' }
         };
         
         // Add borders to all cells in header row (columns 1, 2, 3)
