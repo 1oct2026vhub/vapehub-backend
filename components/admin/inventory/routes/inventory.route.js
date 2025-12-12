@@ -1141,6 +1141,9 @@ router.get('/products', [authMiddleware(true), ...getProductsValidation()], inve
  *                         properties:
  *                           id:
  *                             type: integer
+ *                           name:
+ *                             type: string
+ *                             description: Variant name constructed from product name and attributes
  *                           slug:
  *                             type: string
  *                           barcode:
