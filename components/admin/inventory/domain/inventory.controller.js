@@ -1212,6 +1212,23 @@ module.exports = {
             where: { is_primary: true, deleted_at: null },
             required: false,
             attributes: ['image_url']
+          },
+          {
+            model: ProductVariantAttribute,
+            as: 'variantAttributes',
+            required: false,
+            include: [
+              {
+                model: Attribute,
+                as: 'attribute',
+                attributes: ['id', 'name']
+              },
+              {
+                model: AttributeTerm,
+                as: 'term',
+                attributes: ['id', 'name']
+              }
+            ]
           }
         ],
         order: [['created_at', 'ASC']]
@@ -1276,8 +1293,32 @@ module.exports = {
           ? Math.round(variant.stock / variantAvgDailySales)
           : null;
 
+        // Build variant name - format like in screenshot (just variant identifier, no product name)
+        let variantName;
+        
+        // If variant has attributes, construct name from attribute terms
+        if (variant.variantAttributes && variant.variantAttributes.length > 0) {
+          const attributeTerms = variant.variantAttributes
+            .map(va => va.term?.name)
+            .filter(Boolean);
+          
+          if (attributeTerms.length > 0) {
+            // Join attribute terms with hyphens (matching screenshot format like "Apple-mint-grape")
+            variantName = attributeTerms.join('-').toLowerCase();
+          } else if (variant.slug) {
+            variantName = variant.slug;
+          } else {
+            variantName = `variant-${variant.id}`;
+          }
+        } else if (variant.slug) {
+          variantName = variant.slug;
+        } else {
+          variantName = `variant-${variant.id}`;
+        }
+
         return {
           id: variant.id,
+          name: variantName,
           slug: variant.slug,
           barcode: variant.barcode,
           sku: variant.sku,
