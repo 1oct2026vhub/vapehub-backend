@@ -411,6 +411,7 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
  */
 router.post("/guest/apply-coupon", 
     validateRequest([
+        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
         check('cartItems').isArray({ min: 1 }).withMessage('Cart items are required'),
         check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
         check('cartItems.*.variant_id').optional().isInt({ min: 1 }),

@@ -943,12 +943,7 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                 message: 'Cart is empty'
             };
         }
-        if (!email || typeof email !== "string" || !email.trim()) {
-            throw {
-                statusCode: 400,
-                message: 'Email is required'
-            };
-        }
+
         // Fetch product and variant details for cart items
         const enrichedCartItems = [];
         for (const item of cartItems) {
