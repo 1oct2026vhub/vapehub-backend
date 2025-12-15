@@ -4,7 +4,7 @@ const { Coupon, CouponUsage, User, Product, ProductVariant, UserAddress, Product
 const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
-const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
+const { createTemporaryUser, findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
@@ -1767,24 +1767,32 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             });
 
             if (coupon && checkoutTotal >= (coupon.minimum_purchase || 0)) {
+                // Block same user (identified by email/temporary user) from reusing the same coupon
                 const userUsedCoupon = await CouponUsage.findOne({
                     where: { user_id: userId, coupon_id: coupon.id }
                 });
-                if (!userUsedCoupon) {
-                    let discount = 0;
-                    if (coupon.discount_type === "percentage") {
-                        discount = (coupon.discount_value / 100) * checkoutTotal;
-                    } else if (coupon.discount_type === "fixed_amount") {
-                        discount = coupon.discount_value;
-                    }
-                    if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                        discount = coupon.maximum_discount;
-                    }
-                    if (parseFloat(discount) > parseFloat(checkoutTotal)) {
-                        discount = checkoutTotal;
-                    }
-                    checkoutTotal = Math.max(0, checkoutTotal - discount);
+
+                if (userUsedCoupon) {
+                    throw {
+                        statusCode: 400,
+                        message: 'You have already used this coupon.'
+                    };
                 }
+
+                // First time for this user → apply discount
+                let discount = 0;
+                if (coupon.discount_type === "percentage") {
+                    discount = (coupon.discount_value / 100) * checkoutTotal;
+                } else if (coupon.discount_type === "fixed_amount") {
+                    discount = coupon.discount_value;
+                }
+                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
+                    discount = coupon.maximum_discount;
+                }
+                if (parseFloat(discount) > parseFloat(checkoutTotal)) {
+                    discount = checkoutTotal;
+                }
+                checkoutTotal = Math.max(0, checkoutTotal - discount);
             }
         }
 
