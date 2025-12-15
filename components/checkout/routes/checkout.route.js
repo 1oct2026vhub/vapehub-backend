@@ -284,14 +284,8 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
  *           schema:
  *             type: object
  *             required:
- *               - email
  *               - cartItems
  *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 description: Email address of the guest user used to validate coupon usage history.
- *                 example: "guest@example.com"
  *               couponCode:
  *                 type: string
  *                 description: The coupon code to be applied.
