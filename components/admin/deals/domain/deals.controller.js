@@ -506,6 +506,7 @@ module.exports.listDeals = async (req, res, next) => {
             validNow,
             deleted,
             product_id,
+            search,
             page = 1,
             limit = 10
         } = req.query;
@@ -578,6 +579,16 @@ module.exports.listDeals = async (req, res, next) => {
                 };
                 return successResponse(res, response, 'Success');
             }
+        }
+
+        // Handle text search on deal fields
+        if (search && search.trim()) {
+            const searchTerm = `%${search.trim()}%`;
+            whereCondition[Op.or] = [
+                { name: { [Op.iLike]: searchTerm } },
+                { slug: { [Op.iLike]: searchTerm } },
+                { description: { [Op.iLike]: searchTerm } }
+            ];
         }
 
         // Get total count without includes for accurate pagination
