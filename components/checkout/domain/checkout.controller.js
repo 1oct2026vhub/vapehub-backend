@@ -928,7 +928,7 @@ module.exports.applyCoupon = async (req, res, next) => {
 
 module.exports.applyCouponForGuest = async (req, res, next) => {
     try {
-        const { couponCode, shippingMethodId = 0, loyalty = false, cartItems, email } = req.body;
+        const { couponCode, shippingMethodId = 0, loyalty = false, cartItems } = req.body;
         let subTotal = 0;
         let total = 0;
         let totalItems = 0;
@@ -1050,17 +1050,6 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
 
-        // Try to resolve an existing user by email (for per-user coupon usage checks)
-        let guestUserId = null;
-        if (email) {
-            const existingUser = await User.findOne({
-                where: { email }
-            });
-            if (existingUser) {
-                guestUserId = existingUser.id;
-            }
-        }
-
         // Process coupon if provided
         let coupon = null;
         let discount_amount = 0;
@@ -1145,41 +1134,6 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                         };
                     }
 
-                    // If we have an identified user for this email, enforce per-user usage rules
-                    if (guestUserId) {
-                        // Coupon restricted to a specific user
-                        if (coupon.coupon_user !== null && coupon.coupon_user !== guestUserId) {
-                            throw {
-                                statusCode: 400,
-                                message: 'This coupon is not valid for you.'
-                            };
-                        }
-
-                        // Has this user already used this coupon?
-                        const userUsedCoupon = await CouponUsage.findOne({
-                            where: { user_id: guestUserId, coupon_id: coupon.id }
-                        });
-
-                        // Has this coupon been used at least once (for single-use coupons)?
-                        const singleUsedCoupon = await CouponUsage.findOne({
-                            where: { coupon_id: coupon.id }
-                        });
-
-                        if (coupon.is_single_use && singleUsedCoupon) {
-                            throw {
-                                statusCode: 400,
-                                message: 'This coupon is no longer available — usage limit exceeded.'
-                            };
-                        }
-
-                        if (userUsedCoupon) {
-                            throw {
-                                statusCode: 400,
-                                message: 'You have already used this coupon.'
-                            };
-                        }
-                    }
-
                     // Check date validity
                     const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
                     const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
@@ -1198,7 +1152,7 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                         };
                     }
 
-                    // Check global usage limit
+                    // Check usage limit (but not user-specific usage for guests)
                     if (coupon.usage_limit && (coupon.usage_count >= coupon.usage_limit)) {
                         throw {
                             statusCode: 400,

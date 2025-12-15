@@ -284,14 +284,8 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
  *           schema:
  *             type: object
  *             required:
- *               - email
  *               - cartItems
  *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 description: Email address of the guest user used to validate coupon usage history.
- *                 example: "guest@example.com"
  *               couponCode:
  *                 type: string
  *                 description: The coupon code to be applied.
@@ -411,7 +405,6 @@ router.post("/apply-coupon", authenticateJWT,  checkoutController.applyCoupon)  
  */
 router.post("/guest/apply-coupon", 
     validateRequest([
-        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
         check('cartItems').isArray({ min: 1 }).withMessage('Cart items are required'),
         check('cartItems.*.product_id').isInt({ min: 1 }).withMessage('Each item must have a valid product_id'),
         check('cartItems.*.variant_id').optional().isInt({ min: 1 }),
