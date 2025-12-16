@@ -333,6 +333,11 @@ router.put('/:id', [authMiddleware(true), upload.single('image'), validateReques
  *           type: integer
  *         description: Filter deals that contain the specified product ID
  *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search deals by name, slug or description (partial match)
+ *       - in: query
  *         name: page
  *         schema:
  *           type: integer
