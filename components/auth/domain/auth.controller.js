@@ -1054,3 +1054,52 @@ module.exports.convertGuestAccount = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+/**
+ * Generate CKEditor collaboration token for the authenticated user.
+ * Uses environment variables:
+ *  - CKEDITOR_ENVIRONMENT_ID
+ *  - CKEDITOR_ACCESS_KEY
+ */
+module.exports.getCkEditorToken = async (req, res, next) => {
+    try {
+        const user = req.user;
+
+        const accessKey = process.env.CKEDITOR_ACCESS_KEY;
+        const environmentId = process.env.CKEDITOR_ENVIRONMENT_ID;
+
+        if (!accessKey || !environmentId) {
+            throw new Error('CKEditor environment is not configured. Please set CKEDITOR_ENVIRONMENT_ID and CKEDITOR_ACCESS_KEY.');
+        }
+
+        const userName = (user.first_name && user.last_name)
+            ? `${user.first_name} ${user.last_name}`.trim()
+            : (user.first_name || user.email.split('@')[0]);
+
+        const payload = {
+            aud: environmentId,
+            sub: `user-${user.id}`,
+            user: {
+                email: user.email,
+                name: userName
+            },
+            auth: {
+                collaboration: {
+                    '*': {
+                        role: 'writer'
+                    }
+                }
+            }
+        };
+
+        const token = jwt.sign(payload, accessKey, {
+            algorithm: 'HS256',
+            expiresIn: '24h'
+        });
+
+        res.setHeader('Content-Type', 'text/plain');
+        return res.send(token);
+    } catch (error) {
+        return errorResponse(res, error, error.message || 'Failed to generate CKEditor token');
+    }
+}

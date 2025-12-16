@@ -376,4 +376,28 @@ router.post('/convert-guest-account',
     authController.convertGuestAccount
 );
 
+/**
+ * @swagger
+ * /api/auth/ckeditor-token:
+ *   get:
+ *     summary: Get CKEditor collaboration token
+ *     description: Generates a JWT token for CKEditor Cloud Services collaboration features for the authenticated user.
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: CKEditor token generated successfully
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/ckeditor-token', authenticateJWT, authController.getCkEditorToken);
+
 module.exports = router;
