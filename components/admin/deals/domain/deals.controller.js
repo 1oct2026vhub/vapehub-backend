@@ -158,7 +158,9 @@ module.exports.createDeal = async (req, res, next) => {
         await transaction.commit();
         successResponse(res, createdDeal, 'Deal created successfully', 201);
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         console.log(error);
         
         // Handle Sequelize unique constraint errors specifically
@@ -467,7 +469,9 @@ module.exports.updateDeal = async (req, res, next) => {
         successResponse(res, updatedDeal, 'Deal updated successfully');
     } catch (error) {
         console.log("error", error);
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         
         // Handle Sequelize unique constraint errors specifically
         if (error.name === 'SequelizeUniqueConstraintError') {
