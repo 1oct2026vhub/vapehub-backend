@@ -581,13 +581,13 @@ module.exports.listDeals = async (req, res, next) => {
             }
         }
 
-        // Handle text search on deal fields
+        // Handle text search on deal fields (MySQL-compatible LIKE)
         if (search && search.trim()) {
             const searchTerm = `%${search.trim()}%`;
             whereCondition[Op.or] = [
-                { name: { [Op.iLike]: searchTerm } },
-                { slug: { [Op.iLike]: searchTerm } },
-                { description: { [Op.iLike]: searchTerm } }
+                { name: { [Op.like]: searchTerm } },
+                { slug: { [Op.like]: searchTerm } },
+                { description: { [Op.like]: searchTerm } }
             ];
         }
 
