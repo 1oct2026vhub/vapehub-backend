@@ -191,7 +191,6 @@ module.exports.createDeal = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
-
 module.exports.updateDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
@@ -501,7 +500,6 @@ module.exports.updateDeal = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
-
 module.exports.listDeals = async (req, res, next) => {
     try {
         const { 
