@@ -5,7 +5,7 @@ pipeline {
 
     parameters {
         string(name: 'dev_server', defaultValue: '13.61.169.67', description: 'Development Server')
-        string(name: 'production_server', defaultValue: '13.48.155.56', description: 'Production Server')
+        string(name: 'prod_server', defaultValue: '13.48.155.56', description: 'Production Server')
 
     }
 
