@@ -158,7 +158,9 @@ module.exports.createDeal = async (req, res, next) => {
         await transaction.commit();
         successResponse(res, createdDeal, 'Deal created successfully', 201);
     } catch (error) {
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         console.log(error);
         
         // Handle Sequelize unique constraint errors specifically
@@ -189,7 +191,6 @@ module.exports.createDeal = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
-
 module.exports.updateDeal = async (req, res, next) => {
     const transaction = await Deal.sequelize.transaction();
     try {
@@ -467,7 +468,9 @@ module.exports.updateDeal = async (req, res, next) => {
         successResponse(res, updatedDeal, 'Deal updated successfully');
     } catch (error) {
         console.log("error", error);
-        await transaction.rollback();
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         
         // Handle Sequelize unique constraint errors specifically
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -497,7 +500,6 @@ module.exports.updateDeal = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 };
-
 module.exports.listDeals = async (req, res, next) => {
     try {
         const { 
@@ -581,13 +583,13 @@ module.exports.listDeals = async (req, res, next) => {
             }
         }
 
-        // Handle text search on deal fields
+        // Handle text search on deal fields (MySQL-compatible LIKE)
         if (search && search.trim()) {
             const searchTerm = `%${search.trim()}%`;
             whereCondition[Op.or] = [
-                { name: { [Op.iLike]: searchTerm } },
-                { slug: { [Op.iLike]: searchTerm } },
-                { description: { [Op.iLike]: searchTerm } }
+                { name: { [Op.like]: searchTerm } },
+                { slug: { [Op.like]: searchTerm } },
+                { description: { [Op.like]: searchTerm } }
             ];
         }
 

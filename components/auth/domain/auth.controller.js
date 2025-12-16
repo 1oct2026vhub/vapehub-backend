@@ -1054,7 +1054,6 @@ module.exports.convertGuestAccount = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
-
 /**
  * Generate CKEditor collaboration token for the authenticated user.
  * Uses environment variables:

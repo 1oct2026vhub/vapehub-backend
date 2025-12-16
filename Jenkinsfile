@@ -5,7 +5,7 @@ pipeline {
 
     parameters {
         string(name: 'dev_server', defaultValue: '13.61.169.67', description: 'Development Server')
-        string(name: 'production_server', defaultValue: '', description: 'Production Server')
+        string(name: 'prod_server', defaultValue: '13.48.155.56', description: 'Production Server')
 
     }
 
@@ -33,11 +33,9 @@ pipeline {
                         server = params.dev_server
                         sshCredentials = '5918cce5-91ae-41e6-aa94-bf269093dee1'
                     } else if (branchName == 'main') {
-                        // Use production parameters
-                        echo "Branch $branchName not configured for deployment."
-                        return
-                        server = params.dev_server
-                        sshCredentials = '17ec0c13-3df4-475f-ba8d-e852220e21aa'
+                        // Use production parameters                       
+                        server = params.prod_server
+                        sshCredentials = '11b5722d-376f-47da-b28a-2b3ebc72e5ff'
                     } else {
                         // Handle other branches if needed
                         echo "Branch $branchName not configured for deployment."
