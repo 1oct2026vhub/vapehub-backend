@@ -258,6 +258,24 @@ router.post("/banner-images",
  *                       name:
  *                         type: string
  *                         description: Name of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
+ *                       banners:
+ *                         type: array
+ *                         description: Array of entity banners (if entity_type is brand, category, or deal)
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             image:
+ *                               type: string
+ *                               description: Banner image URL
+ *                             alt:
+ *                               type: string
+ *                               description: Alt text for the banner image
+ *                             url:
+ *                               type: string
+ *                               description: URL associated with the banner
+ *                             order:
+ *                               type: integer
+ *                               description: Display order of the banner
  *       400:
  *         description: Bad request (validation errors)
  *       404:

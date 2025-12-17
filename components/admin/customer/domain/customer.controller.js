@@ -112,6 +112,16 @@ module.exports.listUsers = async (req, res) => {
                         AND orders.deletedAt IS NULL
                     )`),
                     'total_spend'
+                ],
+                // Add last ordered date
+                [
+                    Sequelize.literal(`(
+                        SELECT MAX(createdAt)
+                        FROM orders
+                        WHERE orders.user_id = User.id
+                        AND orders.deletedAt IS NULL
+                    )`),
+                    'last_ordered_at'
                 ]
             ],
             include: [{

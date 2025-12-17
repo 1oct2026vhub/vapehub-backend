@@ -111,6 +111,10 @@ const customerController = require('../domain/customer.controller');
  *                       deletedAt:
  *                         type: string
  *                         format: date-time
+ *                       last_ordered_at:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Date and time of the customer’s most recent order (null if no orders)
  *                       orders:
  *                         type: array
  *                         items:
