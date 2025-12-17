@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1149,6 +1149,104 @@ module.exports.getHomePageBlock = async (req, res, next) => {
 }
 
 /**
+ * Batch fetch entity banners for given entities
+ * @param {Array} entities - Array of objects with type and id
+ * @returns {Map} Map with key as "type_id" and value as array of banner objects
+ */
+const getBatchEntityBanners = async (entities) => {
+    const bannerMap = new Map();
+    
+    if (!entities || entities.length === 0) {
+        return bannerMap;
+    }
+
+    // Group entities by type
+    const categoryEntities = entities.filter(e => e.type === 'category');
+    const brandEntities = entities.filter(e => e.type === 'brand');
+    const dealEntities = entities.filter(e => e.type === 'deal');
+
+    // Fetch banners for categories
+    if (categoryEntities.length > 0) {
+        const categoryIds = categoryEntities.map(e => e.id);
+        const categoryBanners = await EntityBanner.findAll({
+            where: {
+                type: 'category',
+                category_id: { [Op.in]: categoryIds }
+            },
+            attributes: ['id', 'type', 'category_id', 'brand_id', 'deals_id', 'image', 'alt', 'url', 'order'],
+            order: [['order', 'ASC']]
+        });
+
+        categoryBanners.forEach(banner => {
+            const key = `category_${banner.category_id}`;
+            if (!bannerMap.has(key)) {
+                bannerMap.set(key, []);
+            }
+            bannerMap.get(key).push({
+                image: banner.image,
+                alt: banner.alt,
+                url: banner.url,
+                order: banner.order
+            });
+        });
+    }
+
+    // Fetch banners for brands
+    if (brandEntities.length > 0) {
+        const brandIds = brandEntities.map(e => e.id);
+        const brandBanners = await EntityBanner.findAll({
+            where: {
+                type: 'brand',
+                brand_id: { [Op.in]: brandIds }
+            },
+            attributes: ['id', 'type', 'category_id', 'brand_id', 'deals_id', 'image', 'alt', 'url', 'order'],
+            order: [['order', 'ASC']]
+        });
+
+        brandBanners.forEach(banner => {
+            const key = `brand_${banner.brand_id}`;
+            if (!bannerMap.has(key)) {
+                bannerMap.set(key, []);
+            }
+            bannerMap.get(key).push({
+                image: banner.image,
+                alt: banner.alt,
+                url: banner.url,
+                order: banner.order
+            });
+        });
+    }
+
+    // Fetch banners for deals
+    if (dealEntities.length > 0) {
+        const dealIds = dealEntities.map(e => e.id);
+        const dealBanners = await EntityBanner.findAll({
+            where: {
+                type: 'deal',
+                deals_id: { [Op.in]: dealIds }
+            },
+            attributes: ['id', 'type', 'category_id', 'brand_id', 'deals_id', 'image', 'alt', 'url', 'order'],
+            order: [['order', 'ASC']]
+        });
+
+        dealBanners.forEach(banner => {
+            const key = `deal_${banner.deals_id}`;
+            if (!bannerMap.has(key)) {
+                bannerMap.set(key, []);
+            }
+            bannerMap.get(key).push({
+                image: banner.image,
+                alt: banner.alt,
+                url: banner.url,
+                order: banner.order
+            });
+        });
+    }
+
+    return bannerMap;
+};
+
+/**
  * Get slug relations based on provided slugs
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -1238,6 +1336,19 @@ module.exports.getSlugRelations = async (req, res, next) => {
             dealMap = new Map(deals.map(deal => [deal.id, deal]));
         }
 
+        // OPTIMIZED: Batch fetch entity banners for brand, category, and deal entities
+        const entitiesForBanners = slugRelations
+            .filter(rel => ['brand', 'category', 'deal'].includes(rel.entity_type))
+            .map(rel => ({
+                type: rel.entity_type,
+                id: rel.entity_id
+            }));
+
+        let bannerMap = new Map();
+        if (entitiesForBanners.length > 0) {
+            bannerMap = await getBatchEntityBanners(entitiesForBanners);
+        }
+
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
@@ -1285,6 +1396,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (deal) {
                     response.description = deal.description;
                     response.name = deal.name;
+                }
+            }
+
+            // Add entity banners if entity is brand, category, or deal
+            if (['brand', 'category', 'deal'].includes(slugRelations[0].entity_type)) {
+                const key = `${slugRelations[0].entity_type}_${slugRelations[0].entity_id}`;
+                const banners = bannerMap.get(key) || [];
+                if (banners.length > 0) {
+                    response.banners = banners;
                 }
             }
 
@@ -1355,6 +1475,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (deal) {
                             item.description = deal.description;
                             item.name = deal.name;
+                        }
+                    }
+                    
+                    // Add entity banners if entity is brand, category, or deal
+                    if (['brand', 'category', 'deal'].includes(relation.entity_type)) {
+                        const key = `${relation.entity_type}_${relation.entity_id}`;
+                        const banners = bannerMap.get(key) || [];
+                        if (banners.length > 0) {
+                            item.banners = banners;
                         }
                     }
                     
@@ -1493,6 +1622,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (deal) {
                         item.description = deal.description;
                         item.name = deal.name;
+                    }
+                }
+                
+                // Add entity banners if entity is brand, category, or deal
+                if (['brand', 'category', 'deal'].includes(relation.entity_type)) {
+                    const key = `${relation.entity_type}_${relation.entity_id}`;
+                    const banners = bannerMap.get(key) || [];
+                    if (banners.length > 0) {
+                        item.banners = banners;
                     }
                 }
                 
