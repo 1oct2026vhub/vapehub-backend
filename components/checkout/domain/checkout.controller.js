@@ -6,6 +6,7 @@ const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser, findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
+const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
@@ -1754,44 +1755,16 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
 
         checkoutTotal = subTotal - dealsDiscount;
 
-        // Apply coupon only if a real code is present
+        // Apply coupon only if a real code is present, using shared helper
         if (normalizedCouponCode) {
-            const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
-            const coupon = await Coupon.findOne({
-                where: {
-                    code: normalizedCouponCode,
-                    status: "active",
-                    start_date: { [Op.lte]: currentUkTime },
-                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] },
-                }
+            const { coupon, discount } = await validateAndCalculateCouponForUser({
+                couponCode: normalizedCouponCode,
+                userId,
+                subTotal,
+                totalBeforeCoupon: checkoutTotal
             });
 
-            if (coupon && checkoutTotal >= (coupon.minimum_purchase || 0)) {
-                // Block same user (identified by email/temporary user) from reusing the same coupon
-                const userUsedCoupon = await CouponUsage.findOne({
-                    where: { user_id: userId, coupon_id: coupon.id }
-                });
-
-                if (userUsedCoupon) {
-                    throw {
-                        statusCode: 400,
-                        message: 'You have already used this coupon.'
-                    };
-                }
-
-                // First time for this user → apply discount
-                let discount = 0;
-                if (coupon.discount_type === "percentage") {
-                    discount = (coupon.discount_value / 100) * checkoutTotal;
-                } else if (coupon.discount_type === "fixed_amount") {
-                    discount = coupon.discount_value;
-                }
-                if (parseFloat(discount) && parseFloat(coupon.maximum_discount) && parseFloat(discount) > parseFloat(coupon.maximum_discount)) {
-                    discount = coupon.maximum_discount;
-                }
-                if (parseFloat(discount) > parseFloat(checkoutTotal)) {
-                    discount = checkoutTotal;
-                }
+            if (coupon && discount > 0) {
                 checkoutTotal = Math.max(0, checkoutTotal - discount);
             }
         }
