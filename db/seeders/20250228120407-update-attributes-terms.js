@@ -17562,12 +17562,11 @@ module.exports = {
           "attributeId": 12
       }
   ].map(term => ({
-      id: parseInt(term.term_id),
       attribute_id: term.attributeId,
       name: term.name,
       slug: term.slug,
       description: term.description,
-      count: parseInt(term.count),
+      count: parseInt(term.count, 10),
       created_at: new Date(),
       updated_at: new Date()
     }));
