@@ -2,6 +2,57 @@
 const { EntityBanner } = require('../../../models');
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
 const { Op } = require('sequelize');
+const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require('../../../library/s3/s3Helper');
+
+/**
+ * Handle image upload to S3
+ * @param {Object} file - Multer file object
+ * @returns {Promise<string>} - S3 URL of uploaded image
+ */
+const handleImageUpload = async (file) => {
+    if (!file) return null;
+    
+    try {
+        const uniqueFileName = generateUniqueFileName(file.originalname);
+        const folderPath = 'entity-banners';
+        const key = `${folderPath}/${uniqueFileName}`;
+        
+        const uploadParams = {
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: key,
+            Body: file.buffer,
+            ContentType: file.mimetype
+        };
+        
+        const result = await uploadFiletToS3(uploadParams);
+        return result.Location;
+        
+    } catch (error) {
+        console.error('Error uploading image to S3:', error);
+        throw new Error('Failed to upload image to S3');
+    }
+};
+
+/**
+ * Delete image from S3
+ * @param {string} imageUrl - S3 URL of the image
+ */
+const deleteImageFromS3 = async (imageUrl) => {
+    if (!imageUrl) return;
+
+    try {
+        // Extract key from S3 URL
+        const urlParts = imageUrl.split('/');
+        const keyIndex = urlParts.indexOf('entity-banners');
+        if (keyIndex !== -1) {
+            const key = urlParts.slice(keyIndex).join('/');
+            await deleteFile(key);
+        }
+    } catch (error) {
+        console.error('Error deleting image from S3:', error);
+        // Don't throw error as this is not critical
+    }
+};
 
 /**
  * Enforce maximum 3 banners per type.
@@ -73,12 +124,20 @@ module.exports.createEntityBanner = async (req, res) => {
 
         await assertMaxPerType(type);
 
+        // Handle image: if file is uploaded, use it; otherwise use URL from body
+        let imageUrl = image;
+        if (req.file) {
+            imageUrl = await handleImageUpload(req.file);
+        } else if (!image) {
+            return errorResponse(res, { statusCode: 400 }, 'Image is required (either as file upload or URL)');
+        }
+
         const entityBanner = await EntityBanner.create({
             type,
             brand_id,
             category_id,
             deals_id,
-            image,
+            image: imageUrl,
             alt,
             url,
             order
@@ -103,12 +162,22 @@ module.exports.updateEntityBanner = async (req, res) => {
         const newType = type ?? entityBanner.type;
         await assertMaxPerType(newType, entityBanner.id);
 
+        // Handle image update: if new file is uploaded, upload it and delete old one
+        let imageUrl = image ?? entityBanner.image;
+        if (req.file) {
+            // Delete old image if it exists and is from S3
+            if (entityBanner.image) {
+                await deleteImageFromS3(entityBanner.image);
+            }
+            imageUrl = await handleImageUpload(req.file);
+        }
+
         await entityBanner.update({
             type: newType,
             brand_id: brand_id ?? entityBanner.brand_id,
             category_id: category_id ?? entityBanner.category_id,
             deals_id: deals_id ?? entityBanner.deals_id,
-            image: image ?? entityBanner.image,
+            image: imageUrl,
             alt: alt ?? entityBanner.alt,
             url: url ?? entityBanner.url,
             order: order ?? entityBanner.order
@@ -127,6 +196,12 @@ module.exports.deleteEntityBanner = async (req, res) => {
         if (!entityBanner) {
             return errorResponse(res, { statusCode: 404 }, 'Entity banner not found');
         }
+        
+        // Delete image from S3 if it exists
+        if (entityBanner.image) {
+            await deleteImageFromS3(entityBanner.image);
+        }
+        
         await entityBanner.destroy();
         return successResponse(res, {}, 'Entity banner deleted successfully');
     } catch (error) {
