@@ -5424,6 +5424,7 @@ module.exports.getDealProducts = async (req, res, next) => {
 
 /**
  * Get linked published products for a specific product
+ * Uses variant-based pricing via getMinPriceVariant
  * @route GET /api/product/:id/linked-products
  */
 module.exports.getLinkedProducts = async (req, res, next) => {
@@ -5434,7 +5435,7 @@ module.exports.getLinkedProducts = async (req, res, next) => {
         // Parse pagination parameters
         const parsedLimit = limit ? parseInt(limit, 10) : 10;
         let parsedOffset = 0;
-        
+
         if (offset !== undefined) {
             parsedOffset = parseInt(offset, 10);
         } else if (page !== undefined) {
@@ -5444,122 +5445,193 @@ module.exports.getLinkedProducts = async (req, res, next) => {
 
         // Validate pagination parameters
         if (isNaN(parsedLimit) || parsedLimit < 1) {
-            return errorResponse(res, { message: "Limit must be a positive integer" }, "Invalid limit parameter", 400);
+            return errorResponse(
+                res,
+                { message: "Limit must be a positive integer" },
+                "Invalid limit parameter",
+                400
+            );
         }
         if (isNaN(parsedOffset) || parsedOffset < 0) {
-            return errorResponse(res, { message: "Offset/Page must be a non-negative integer" }, "Invalid offset/page parameter", 400);
+            return errorResponse(
+                res,
+                { message: "Offset/Page must be a non-negative integer" },
+                "Invalid offset/page parameter",
+                400
+            );
         }
 
         // Validate product exists
         const product = await Product.findByPk(id);
         if (!product) {
-            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+            return errorResponse(
+                res,
+                { message: "Product not found" },
+                "Product not found",
+                404
+            );
         }
 
         // Get linked product IDs from the junction table
         const linkedProductLinks = await ProductLinkedProduct.findAll({
             where: { product_id: id },
-            attributes: ['linked_product_id']
+            attributes: ["linked_product_id"],
         });
 
         if (linkedProductLinks.length === 0) {
-            return successResponse(res, {
-                product_id: parseInt(id),
-                linked_products: [],
-                count: 0,
-                pagination: {
-                    total_count: 0,
-                    total_pages: 0,
-                    current_page: page ? parseInt(page, 10) : 1,
-                    limit: parsedLimit,
-                    offset: parsedOffset
-                }
-            }, 'Linked products fetched successfully');
+            return successResponse(
+                res,
+                {
+                    product_id: parseInt(id, 10),
+                    linked_products: [],
+                    count: 0,
+                    pagination: {
+                        total_count: 0,
+                        total_pages: 0,
+                        current_page: page ? parseInt(page, 10) : 1,
+                        limit: parsedLimit,
+                        offset: parsedOffset,
+                    },
+                },
+                "Linked products fetched successfully"
+            );
         }
 
-        const linkedProductIds = linkedProductLinks.map(link => link.linked_product_id);
+        const linkedProductIds = linkedProductLinks.map(
+            (link) => link.linked_product_id
+        );
 
         // Get total count for pagination
         const totalCount = await Product.count({
             where: {
                 id: { [Op.in]: linkedProductIds },
                 status: productStatus.PUBLISHED,
-                deletedAt: null
-            }
+                deletedAt: null,
+            },
         });
 
         // Fetch linked products that are published with pagination
+        // Include variants so we can compute min variant price
         const linkedProducts = await Product.findAll({
             where: {
                 id: { [Op.in]: linkedProductIds },
                 status: productStatus.PUBLISHED,
-                deletedAt: null
+                deletedAt: null,
             },
             include: [
                 {
                     model: ProductImage,
-                    as: 'ProductImages',
-                    attributes: ['id', 'image_url', 'image_url_low', 'image_url_mid', 'image_url_high', 'is_primary'],
-                    limit: 1,
-                    order: [['is_primary', 'DESC'], ['id', 'ASC']],
-                    required: false
+                    as: "ProductImages",
+                    attributes: [
+                        "id",
+                        "image_url",
+                        "image_url_low",
+                        "image_url_mid",
+                        "image_url_high",
+                        "is_primary",
+                    ],
+                    required: false,
+                },
+                {
+                    model: ProductVariant,
+                    as: "variants",
+                    attributes: [
+                        "id",
+                        "slug",
+                        "price",
+                        "regular_price",
+                        "discount_price",
+                        "stock",
+                        "stock_status",
+                        "status",
+                    ],
+                    required: false,
                 },
                 {
                     model: Category,
-                    as: 'Categories',
-                    through: { attributes: ['is_primary'] },
-                    attributes: ['id', 'name', 'slug'],
-                    required: false
+                    as: "Categories",
+                    through: { attributes: ["is_primary"] },
+                    attributes: ["id", "name", "slug"],
+                    required: false,
                 },
                 {
                     model: Brand,
-                    as: 'Brands',
-                    through: { attributes: ['is_primary'] },
-                    attributes: ['id', 'name', 'slug'],
-                    required: false
-                }
+                    as: "Brands",
+                    through: { attributes: ["is_primary"] },
+                    attributes: ["id", "name", "slug"],
+                    required: false,
+                },
             ],
-            order: [['name', 'ASC']],
+            order: [["name", "ASC"]],
             limit: parsedLimit,
-            offset: parsedOffset
+            offset: parsedOffset,
         });
 
-        // Format response
-        const formattedProducts = linkedProducts.map(product => ({
-            id: product.id,
-            name: product.name,
-            slug: product.slug,
-            description: product.description,
-            price: product.price,
-            discount_price: product.discount_price,
-            status: product.status,
-            image: product.ProductImages && product.ProductImages.length > 0 
-                ? product.ProductImages[0] 
-                : null,
-            categories: product.Categories || [],
-            brands: product.Brands || [],
-            created_at: product.createdAt,
-            updated_at: product.updatedAt
-        }));
+        // Format response using min variant price when available
+        const formattedProducts = linkedProducts.map((p) => {
+            const minPriceVariant = getMinPriceVariant({
+                variants: p.variants || [],
+                ProductImages: p.ProductImages || [],
+            });
+
+            const finalPrice =
+                minPriceVariant && minPriceVariant.price != null
+                    ? minPriceVariant.price
+                    : p.price;
+
+            const finalDiscountPrice =
+                minPriceVariant && minPriceVariant.discount_price != null
+                    ? minPriceVariant.discount_price
+                    : p.discount_price;
+
+            const primaryImage =
+                (minPriceVariant && minPriceVariant.variant_image) ||
+                (p.ProductImages && p.ProductImages.length > 0
+                    ? p.ProductImages.find((img) => img.is_primary) ||
+                      p.ProductImages[0]
+                    : null);
+
+            return {
+                id: p.id,
+                name: p.name,
+                slug: p.slug,
+                description: p.description,
+                price: finalPrice,
+                discount_price: finalDiscountPrice,
+                status: p.status,
+                image: primaryImage,
+                categories: p.Categories || [],
+                brands: p.Brands || [],
+                created_at: p.createdAt,
+                updated_at: p.updatedAt,
+            };
+        });
 
         // Calculate pagination details
-        const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
-        const currentPage = page ? parseInt(page, 10) : (Math.floor(parsedOffset / parsedLimit) + 1);
+        const totalPages =
+            totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 0;
+        const currentPage = page
+            ? parseInt(page, 10)
+            : Math.floor(parsedOffset / parsedLimit) + 1;
 
-        return successResponse(res, {
-            product_id: parseInt(id),
-            linked_products: formattedProducts,
-            count: formattedProducts.length,
-            pagination: {
-                total_count: totalCount,
-                total_pages: totalPages,
-                current_page: currentPage,
-                limit: parsedLimit,
-                offset: parsedOffset
-            }
-        }, 'Linked products fetched successfully');
+        return successResponse(
+            res,
+            {
+                product_id: parseInt(id, 10),
+                linked_products: formattedProducts,
+                count: formattedProducts.length,
+                pagination: {
+                    total_count: totalCount,
+                    total_pages: totalPages,
+                    current_page: currentPage,
+                    limit: parsedLimit,
+                    offset: parsedOffset,
+                },
+            },
+            "Linked products fetched successfully"
+        );
     } catch (error) {
-        logger.error('Error fetching linked products:', error);
+        logger.error("Error fetching linked products:", error);
         return errorResponse(res, error, error.message);
     }
 };
