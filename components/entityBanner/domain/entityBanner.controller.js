@@ -55,17 +55,46 @@ const deleteImageFromS3 = async (imageUrl) => {
 };
 
 /**
- * Enforce maximum 3 banners per type.
+ * Enforce maximum 3 banners per brand/category/deal.
+ * For:
+ *  - type='brand'    → scoped by brand_id
+ *  - type='category' → scoped by category_id
+ *  - type='deal'     → scoped by deals_id
  * If excludeId is provided, it will be ignored from the count (useful for updates).
  */
-const assertMaxPerType = async (type, excludeId = null) => {
+const assertMaxPerEntity = async ({ type, brand_id, category_id, deals_id }, excludeId = null) => {
     const where = { type };
+
+    if (type === 'brand') {
+        if (!brand_id) {
+            const error = new Error('brand_id is required when type is "brand"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.brand_id = brand_id;
+    } else if (type === 'category') {
+        if (!category_id) {
+            const error = new Error('category_id is required when type is "category"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.category_id = category_id;
+    } else if (type === 'deal') {
+        if (!deals_id) {
+            const error = new Error('deals_id is required when type is "deal"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.deals_id = deals_id;
+    }
+
     if (excludeId) {
         where.id = { [Op.ne]: excludeId };
     }
+
     const currentCount = await EntityBanner.count({ where });
     if (currentCount >= 3) {
-        const error = new Error(`Maximum 3 banners allowed for type "${type}"`);
+        const error = new Error('Maximum 3 banners allowed for this entity');
         error.statusCode = 422;
         throw error;
     }
@@ -122,7 +151,8 @@ module.exports.createEntityBanner = async (req, res) => {
     try {
         const { type, brand_id, category_id, deals_id, image, alt, url, order = 0 } = req.body;
 
-        await assertMaxPerType(type);
+        // Enforce per-entity limit (3 banners per brand/category/deal)
+        await assertMaxPerEntity({ type, brand_id, category_id, deals_id });
 
         // Handle image: if file is uploaded, use it; otherwise use URL from body
         let imageUrl = image;
@@ -160,7 +190,20 @@ module.exports.updateEntityBanner = async (req, res) => {
         }
 
         const newType = type ?? entityBanner.type;
-        await assertMaxPerType(newType, entityBanner.id);
+        const newBrandId = brand_id ?? entityBanner.brand_id;
+        const newCategoryId = category_id ?? entityBanner.category_id;
+        const newDealsId = deals_id ?? entityBanner.deals_id;
+
+        // Enforce per-entity limit (3 banners per brand/category/deal)
+        await assertMaxPerEntity(
+            {
+                type: newType,
+                brand_id: newBrandId,
+                category_id: newCategoryId,
+                deals_id: newDealsId
+            },
+            entityBanner.id
+        );
 
         // Handle image update: if new file is uploaded, upload it and delete old one
         let imageUrl = image ?? entityBanner.image;
@@ -174,9 +217,9 @@ module.exports.updateEntityBanner = async (req, res) => {
 
         await entityBanner.update({
             type: newType,
-            brand_id: brand_id ?? entityBanner.brand_id,
-            category_id: category_id ?? entityBanner.category_id,
-            deals_id: deals_id ?? entityBanner.deals_id,
+            brand_id: newBrandId,
+            category_id: newCategoryId,
+            deals_id: newDealsId,
             image: imageUrl,
             alt: alt ?? entityBanner.alt,
             url: url ?? entityBanner.url,
