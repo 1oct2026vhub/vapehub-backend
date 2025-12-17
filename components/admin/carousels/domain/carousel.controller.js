@@ -279,6 +279,21 @@ module.exports.createCarousel = async (req, res) => {
         
         console.log('✅ Original carousel image uploaded successfully');
 
+        // Handle optional image_url_low upload
+        let image_url_low = null;
+        if (files.image_low && files.image_low[0]) {
+            try {
+                image_url_low = await uploadImageToS3(files.image_low[0], 'low');
+                console.log('✅ Low resolution carousel image uploaded successfully');
+            } catch (error) {
+                console.error('⚠️ Failed to upload image_low, continuing without it:', error.message);
+                // Continue without image_low if upload fails
+            }
+        } else {
+            // If image_low is not provided, use mobile responsive image as fallback
+            console.log('ℹ️ image_low not provided, will use mobile responsive image as fallback');
+        }
+
         // Generate responsive images using migration-style resizing
         console.log('🔄 Generating responsive carousel images using migration approach...');
         console.log('📁 Base S3 Key:', baseS3Key);
@@ -340,10 +355,17 @@ module.exports.createCarousel = async (req, res) => {
         console.log('  - tablet_portrait:', responsiveUrls.tablet_portrait);
         console.log('  - mobile:', responsiveUrls.mobile);
 
+        // Use mobile responsive image as fallback for image_url_low if not provided
+        if (!image_url_low && responsiveUrls.mobile) {
+            image_url_low = responsiveUrls.mobile;
+            console.log('ℹ️ Using mobile responsive image as image_url_low fallback');
+        }
+
         // Ensure all responsive URL fields are properly initialized
         const carouselData = {
             display_order,
             image_url,
+            image_url_low, // Include image_url_low (either uploaded or fallback)
             title,
             description,
             status,
