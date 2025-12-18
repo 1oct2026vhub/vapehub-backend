@@ -100,6 +100,52 @@ const assertMaxPerEntity = async ({ type, brand_id, category_id, deals_id }, exc
     }
 };
 
+/**
+ * Enforce unique order per entity (brand/category/deal).
+ * For:
+ *  - type='brand'    → scoped by brand_id
+ *  - type='category' → scoped by category_id
+ *  - type='deal'     → scoped by deals_id
+ * If excludeId is provided, it will be ignored from the check (useful for updates).
+ */
+const assertUniqueOrder = async ({ type, brand_id, category_id, deals_id, order }, excludeId = null) => {
+    const where = { type, order };
+
+    if (type === 'brand') {
+        if (!brand_id) {
+            const error = new Error('brand_id is required when type is "brand"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.brand_id = brand_id;
+    } else if (type === 'category') {
+        if (!category_id) {
+            const error = new Error('category_id is required when type is "category"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.category_id = category_id;
+    } else if (type === 'deal') {
+        if (!deals_id) {
+            const error = new Error('deals_id is required when type is "deal"');
+            error.statusCode = 400;
+            throw error;
+        }
+        where.deals_id = deals_id;
+    }
+
+    if (excludeId) {
+        where.id = { [Op.ne]: excludeId };
+    }
+
+    const existingBanner = await EntityBanner.findOne({ where });
+    if (existingBanner) {
+        const error = new Error('An entity banner with this order already exists for this entity');
+        error.statusCode = 422;
+        throw error;
+    }
+};
+
 module.exports.listEntityBanners = async (req, res) => {
     try {
         const { page = 1, limit = 10, type, brand_id, category_id, deals_id } = req.query;
@@ -154,6 +200,9 @@ module.exports.createEntityBanner = async (req, res) => {
         // Enforce per-entity limit (3 banners per brand/category/deal)
         await assertMaxPerEntity({ type, brand_id, category_id, deals_id });
 
+        // Enforce unique order per entity
+        await assertUniqueOrder({ type, brand_id, category_id, deals_id, order });
+
         // Handle image: if file is uploaded, use it; otherwise use URL from body
         let imageUrl = image;
         if (req.file) {
@@ -193,6 +242,7 @@ module.exports.updateEntityBanner = async (req, res) => {
         const newBrandId = brand_id ?? entityBanner.brand_id;
         const newCategoryId = category_id ?? entityBanner.category_id;
         const newDealsId = deals_id ?? entityBanner.deals_id;
+        const newOrder = order !== undefined ? order : entityBanner.order;
 
         // Enforce per-entity limit (3 banners per brand/category/deal)
         await assertMaxPerEntity(
@@ -204,6 +254,20 @@ module.exports.updateEntityBanner = async (req, res) => {
             },
             entityBanner.id
         );
+
+        // Enforce unique order per entity (only check if order is being changed)
+        if (order !== undefined && order !== entityBanner.order) {
+            await assertUniqueOrder(
+                {
+                    type: newType,
+                    brand_id: newBrandId,
+                    category_id: newCategoryId,
+                    deals_id: newDealsId,
+                    order: newOrder
+                },
+                entityBanner.id
+            );
+        }
 
         // Handle image update: if new file is uploaded, upload it and delete old one
         let imageUrl = image ?? entityBanner.image;
@@ -223,7 +287,7 @@ module.exports.updateEntityBanner = async (req, res) => {
             image: imageUrl,
             alt: alt ?? entityBanner.alt,
             url: url ?? entityBanner.url,
-            order: order ?? entityBanner.order
+            order: newOrder
         });
 
         return successResponse(res, entityBanner, 'Entity banner updated successfully');
