@@ -545,6 +545,19 @@ const fetchProducts = async (query, status = 'published') => {
         GROUP BY oi.product_id
       ) order_stats ON p.id = order_stats.product_id`;
 
+    const minPriceJoin = `
+      LEFT JOIN (
+        SELECT 
+          pv_min.product_id,
+          MIN(pv_min.price) AS min_price
+        FROM product_variants pv_min
+        WHERE pv_min.status = 'active'
+        AND pv_min.deleted_at IS NULL
+        AND pv_min.price IS NOT NULL
+        AND pv_min.price > 0
+        GROUP BY pv_min.product_id
+      ) price_stats ON p.id = price_stats.product_id`;
+
     // OPTIMIZATION: Convert to raw SQL and execute in parallel to reduce round trips
     const [totalCount, products] = await Promise.all([
       // 1. Get total count with raw SQL (includes variant filtering like original)
@@ -614,9 +627,11 @@ const fetchProducts = async (query, status = 'published') => {
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt,
           p.updatedAt, p.deletedAt,
-          COALESCE(order_stats.order_count, 0) as order_count
+          COALESCE(order_stats.order_count, 0) as order_count,
+          COALESCE(price_stats.min_price, 0) as min_price
         FROM products p
         ${orderCountJoin}
+        ${minPriceJoin}
         WHERE p.deletedAt IS NULL
         AND p.status = :status
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
@@ -660,7 +675,13 @@ const fetchProducts = async (query, status = 'published') => {
           AND pv_active.price IS NOT NULL
           AND pv_active.price > 0
         )
-        ORDER BY ${sort_by === 'order_count' ? `order_count ${order}` : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${order}`}, p.id ASC
+        ORDER BY ${
+          sort_by === 'popularity' || sort_by === 'order_count' 
+            ? `order_count ${order}` 
+            : sort_by === 'price' 
+            ? `min_price ${order}` 
+            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${order}`
+        }, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {
