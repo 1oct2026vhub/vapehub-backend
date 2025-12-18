@@ -245,7 +245,7 @@ const fetchProducts2 = async (query) => {
 const fetchProducts = async (query, status = 'published') => {
   try {
     const {
-      sort_by = 'id',
+      sort_by = 'order_count',
       order = 'ASC',
       limit = 10,
       offset = 0,
@@ -660,7 +660,7 @@ const fetchProducts = async (query, status = 'published') => {
           AND pv_active.price IS NOT NULL
           AND pv_active.price > 0
         )
-        ORDER BY order_count DESC, ${is_new ? 'p.createdAt DESC, ' : ''}${sort_by === 'order_count' ? 'order_count' : 'p.' + sort_by} ${order}, p.id ASC
+        ORDER BY ${sort_by === 'order_count' ? `order_count ${order}` : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${order}`}, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {

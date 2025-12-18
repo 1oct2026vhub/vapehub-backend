@@ -23,7 +23,7 @@ const stockStatus = require('../../../config/constants').productVariants.stockSt
 const fetchProductsOptimized = async (query, status = 'published') => {
   try {
     const {
-      sort_by = 'id',
+      sort_by = 'order_count',
       order = 'ASC',
       limit = 10,
       offset = 0,
