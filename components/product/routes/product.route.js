@@ -1237,10 +1237,15 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
  *                             type: string
  *                           description:
  *                             type: string
+ *                           regular_price:
+ *                             type: number
+ *                             description: Original/actual price
  *                           price:
  *                             type: number
+ *                             description: Sale price
  *                           discount_price:
  *                             type: number
+ *                             description: Discount/sale price (after discount)
  *                           status:
  *                             type: string
  *                           image:
