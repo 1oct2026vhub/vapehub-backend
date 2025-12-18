@@ -102,7 +102,7 @@ module.exports.deleteCategory = async (req, res, next) => {
 const fetchCategoryProducts = async (categoryId, query) => {
     try {
         const {
-            sort_by = 'id',
+            sort_by = 'order_count',
             order = 'ASC',
             limit = 10,
             offset = 0,
@@ -191,7 +191,15 @@ const fetchCategoryProducts = async (categoryId, query) => {
             )
             AND p.status = 'published'
             AND p.deletedAt IS NULL
-            ORDER BY order_count DESC, ${sort_by === 'order_count' ? 'order_count' : sort_by === 'createdAt' ? 'p.createdAt' : 'p.' + sort_by} ${order}, p.id ASC
+            ORDER BY ${
+              sort_by === 'popularity' || sort_by === 'order_count' 
+                ? `order_count ${order}` 
+                : sort_by === 'price' 
+                ? `min_price ${order}` 
+                : sort_by === 'createdAt' 
+                ? `p.createdAt ${order}` 
+                : `p.${sort_by} ${order}`
+            }, p.id ASC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `;
 
