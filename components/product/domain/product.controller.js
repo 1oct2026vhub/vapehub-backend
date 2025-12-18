@@ -5574,11 +5574,19 @@ module.exports.getLinkedProducts = async (req, res, next) => {
                 ProductImages: p.ProductImages || [],
             });
 
+            // regular_price: actual/original price (from variant or fallback to product.price)
+            const finalRegularPrice =
+                minPriceVariant && minPriceVariant.regular_price != null
+                    ? minPriceVariant.regular_price
+                    : p.price;
+
+            // price: sale price (from variant or fallback to product.price)
             const finalPrice =
                 minPriceVariant && minPriceVariant.price != null
                     ? minPriceVariant.price
                     : p.price;
 
+            // discount_price: discount/sale price (from variant or fallback to product.discount_price)
             const finalDiscountPrice =
                 minPriceVariant && minPriceVariant.discount_price != null
                     ? minPriceVariant.discount_price
@@ -5596,6 +5604,7 @@ module.exports.getLinkedProducts = async (req, res, next) => {
                 name: p.name,
                 slug: p.slug,
                 description: p.description,
+                regular_price: finalRegularPrice,
                 price: finalPrice,
                 discount_price: finalDiscountPrice,
                 status: p.status,
