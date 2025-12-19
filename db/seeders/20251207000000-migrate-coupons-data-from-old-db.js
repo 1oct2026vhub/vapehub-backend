@@ -31,11 +31,13 @@ module.exports = {
       console.log('🔍 Detection result:', JSON.stringify(couponsDataExists, null, 2));
       
       if (!couponsDataExists.hasCouponsData) {
-        console.log('⚠️  No coupons data found in old database. Skipping coupons migration.');
-        console.log(`💡 Data source detected: ${couponsDataExists.dataSource}`);
-        console.log(`💡 Coupon count: ${couponsDataExists.couponCount}`);
+        console.log('ℹ️  No coupons data found in old database. Skipping coupons migration.');
+        console.log(`📋 Detection Report:`);
+        console.log(`   - Data source checked: ${couponsDataExists.dataSource || 'none'}`);
+        console.log(`   - Coupons found: ${couponsDataExists.couponCount || 0}`);
         if (couponsDataExists.availableTables && couponsDataExists.availableTables.length > 0) {
-          console.log(`💡 Available tables (first 20): ${couponsDataExists.availableTables.slice(0, 20).join(', ')}`);
+          console.log(`   - Total tables in old DB: ${couponsDataExists.availableTables.length}`);
+          console.log(`   - Sample tables: ${couponsDataExists.availableTables.slice(0, 20).join(', ')}`);
         }
         await crossServerMigration.closeOldDbConnection();
         return;
@@ -88,10 +90,14 @@ async function checkCouponsDataExists(crossServerMigration) {
 
     console.log(`📋 Found ${tableNames.length} tables in old database`);
 
-    // WooCommerce coupons (wp_posts/vh_posts or wp_post/vh_post - handles both singular and plural)
+    // WooCommerce coupons (prioritize vh_posts over wp_posts)
+    // First try to find vh_posts, then fallback to wp_posts
     const postsTableName = tableNames.find(
       name => (name.includes('posts') || (name.includes('post') && !name.includes('meta'))) && 
-              (name.startsWith('wp_') || name.startsWith('vh_'))
+              name.startsWith('vh_')
+    ) || tableNames.find(
+      name => (name.includes('posts') || (name.includes('post') && !name.includes('meta'))) && 
+              name.startsWith('wp_')
     );
     
     if (postsTableName) {
@@ -106,7 +112,7 @@ async function checkCouponsDataExists(crossServerMigration) {
       let couponCount = 0;
       try {
         const couponCountResult = await crossServerMigration.fetchFromOldDb(
-          `SELECT COUNT(*) as count FROM \`${tableName}\` WHERE post_type = 'shop_coupon' AND post_status != 'trash'`
+          `SELECT COUNT(*) as count FROM ${tableName} WHERE post_type = 'shop_coupon' AND post_status != 'trash'`
         );
         couponCount = couponCountResult[0]?.count || 0;
         console.log(`📊 Found ${couponCount} WooCommerce coupons in ${tableName}`);
