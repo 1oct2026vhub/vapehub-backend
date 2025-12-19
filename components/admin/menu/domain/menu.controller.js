@@ -462,16 +462,6 @@ const createMenu = async (req, res) => {
                 },
                 transaction
             });
-
-            if (existingMenu) {
-                await transaction.rollback();
-                return errorResponse(
-                    res,
-                    { message: `Menu with same entityid already exists` },
-                    `Menu with same entity id already exists`,
-                    409
-                );
-            }
         }
 
         // Process entity data
@@ -543,16 +533,6 @@ const updateMenu = async (req, res) => {
                 },
                 transaction
             });
-
-            if (existingMenu) {
-                await transaction.rollback();
-                return errorResponse(
-                    res,
-                    { message: `Menu with same entity id already exists` },
-                    `Menu with same entity id already exists`,
-                    409
-                );
-            }
         }
 
         // Process entity data
