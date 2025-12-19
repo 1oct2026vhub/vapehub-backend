@@ -26,39 +26,15 @@ module.exports = {
       // Connect to old database
       await crossServerMigration.connectToOldDb();
 
-      // Detect source
-      const couponsDataExists = await checkCouponsDataExists(crossServerMigration);
-      console.log('🔍 Detection result:', JSON.stringify(couponsDataExists, null, 2));
-      
-      if (!couponsDataExists.hasCouponsData) {
-        console.log('ℹ️  No coupons data found in old database. Skipping coupons migration.');
-        console.log(`📋 Detection Report:`);
-        console.log(`   - Data source checked: ${couponsDataExists.dataSource || 'none'}`);
-        console.log(`   - Coupons found: ${couponsDataExists.couponCount || 0}`);
-        if (couponsDataExists.availableTables && couponsDataExists.availableTables.length > 0) {
-          console.log(`   - Total tables in old DB: ${couponsDataExists.availableTables.length}`);
-          console.log(`   - Sample tables: ${couponsDataExists.availableTables.slice(0, 20).join(', ')}`);
-        }
-        await crossServerMigration.closeOldDbConnection();
-        return;
-      }
-
-      console.log(`✅ Found coupons data source: ${couponsDataExists.dataSource}`);
-      console.log(`📊 Coupons available: ${couponsDataExists.couponCount}`);
-
-      // Migrate
-      console.log('\n🎯 Step: Migrating coupons...');
-      if (couponsDataExists.dataSource === 'woocommerce') {
-        await migrateWooCommerceCoupons(
-          crossServerMigration, 
-          queryInterface, 
-          Sequelize, 
-          migrationStats,
-          couponsDataExists.postsTableName // Pass the detected table name
-        );
-      } else {
-        await migrateCoupons(crossServerMigration, queryInterface, Sequelize, migrationStats);
-      }
+      // We know for sure coupons live in vh_posts with post_type = 'shop_coupon'
+      console.log('\n🎯 Step: Migrating coupons from vh_posts...');
+      await migrateWooCommerceCoupons(
+        crossServerMigration,
+        queryInterface,
+        Sequelize,
+        migrationStats,
+        'vh_posts'
+      );
 
       await crossServerMigration.closeOldDbConnection();
 
