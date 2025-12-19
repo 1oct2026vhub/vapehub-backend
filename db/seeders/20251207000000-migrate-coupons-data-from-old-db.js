@@ -28,12 +28,15 @@ module.exports = {
 
       // Detect source
       const couponsDataExists = await checkCouponsDataExists(crossServerMigration);
+      console.log('🔍 Detection result:', JSON.stringify(couponsDataExists, null, 2));
+      
       if (!couponsDataExists.hasCouponsData) {
         console.log('⚠️  No coupons data found in old database. Skipping coupons migration.');
-        console.log(
-          '💡 Available tables:',
-          couponsDataExists.availableTables.slice(0, 10).join(', ') + '...'
-        );
+        console.log(`💡 Data source detected: ${couponsDataExists.dataSource}`);
+        console.log(`💡 Coupon count: ${couponsDataExists.couponCount}`);
+        if (couponsDataExists.availableTables && couponsDataExists.availableTables.length > 0) {
+          console.log(`💡 Available tables (first 20): ${couponsDataExists.availableTables.slice(0, 20).join(', ')}`);
+        }
         await crossServerMigration.closeOldDbConnection();
         return;
       }
@@ -44,7 +47,13 @@ module.exports = {
       // Migrate
       console.log('\n🎯 Step: Migrating coupons...');
       if (couponsDataExists.dataSource === 'woocommerce') {
-        await migrateWooCommerceCoupons(crossServerMigration, queryInterface, Sequelize, migrationStats);
+        await migrateWooCommerceCoupons(
+          crossServerMigration, 
+          queryInterface, 
+          Sequelize, 
+          migrationStats,
+          couponsDataExists.postsTableName // Pass the detected table name
+        );
       } else {
         await migrateCoupons(crossServerMigration, queryInterface, Sequelize, migrationStats);
       }
@@ -55,6 +64,7 @@ module.exports = {
       generateMigrationReport(migrationStats);
     } catch (error) {
       console.error('❌ Error during coupons migration:', error);
+      console.error('Stack trace:', error.stack);
       await crossServerMigration.closeOldDbConnection();
       throw error;
     }
@@ -71,20 +81,27 @@ module.exports = {
  */
 async function checkCouponsDataExists(crossServerMigration) {
   try {
+    console.log('🔍 Checking for coupons data in old database...');
     const tables = await crossServerMigration.fetchFromOldDb('SHOW TABLES');
     const tableNames = tables.map(table => Object.values(table)[0].toLowerCase());
+    const actualTableNames = tables.map(table => Object.values(table)[0]); // Keep original case
+
+    console.log(`📋 Found ${tableNames.length} tables in old database`);
 
     // WooCommerce coupons (wp_posts/vh_posts or wp_post/vh_post - handles both singular and plural)
     const postsTableName = tableNames.find(
       name => (name.includes('posts') || (name.includes('post') && !name.includes('meta'))) && 
               (name.startsWith('wp_') || name.startsWith('vh_'))
     );
+    
     if (postsTableName) {
       // Get actual table name with correct case
-      const actualTableName = tables.find(
-        t => Object.values(t)[0].toLowerCase() === postsTableName
+      const actualTableName = actualTableNames.find(
+        t => t.toLowerCase() === postsTableName
       );
-      const tableName = actualTableName ? Object.values(actualTableName)[0] : postsTableName;
+      const tableName = actualTableName || postsTableName;
+      
+      console.log(`🔍 Checking WooCommerce posts table: ${tableName}`);
       
       let couponCount = 0;
       try {
@@ -92,9 +109,12 @@ async function checkCouponsDataExists(crossServerMigration) {
           `SELECT COUNT(*) as count FROM \`${tableName}\` WHERE post_type = 'shop_coupon' AND post_status != 'trash'`
         );
         couponCount = couponCountResult[0]?.count || 0;
+        console.log(`📊 Found ${couponCount} WooCommerce coupons in ${tableName}`);
       } catch (e) {
-        console.log('⚠️  Could not count WooCommerce coupons:', e.message);
+        console.error('⚠️  Could not count WooCommerce coupons:', e.message);
+        console.error('   Error details:', e);
       }
+      
       if (couponCount > 0) {
         return {
           hasCouponsData: true,
@@ -103,25 +123,37 @@ async function checkCouponsDataExists(crossServerMigration) {
           postsTableName: tableName, // Return actual table name with correct case
           availableTables: tableNames
         };
+      } else {
+        console.log(`⚠️  No coupons found in ${tableName} (post_type = 'shop_coupon')`);
       }
+    } else {
+      console.log('⚠️  No WooCommerce posts table found');
     }
 
     // Custom coupons table
     const hasCouponsTable = tableNames.includes('coupons');
     if (hasCouponsTable) {
+      console.log('🔍 Checking custom coupons table...');
       let couponCount = 0;
       try {
         const couponCountResult = await crossServerMigration.fetchFromOldDb(
-          'SELECT COUNT(*) as count FROM coupons WHERE deleted_at IS NULL OR deleted_at IS NULL'
+          'SELECT COUNT(*) as count FROM coupons WHERE deleted_at IS NULL'
         );
         couponCount = couponCountResult[0]?.count || 0;
-      } catch (e) { /* ignore */ }
+        console.log(`📊 Found ${couponCount} coupons in custom coupons table`);
+      } catch (e) {
+        console.error('⚠️  Could not count custom coupons:', e.message);
+        console.error('   Error details:', e);
+      }
+      
       return {
         hasCouponsData: couponCount > 0,
         dataSource: 'coupons',
         couponCount,
         availableTables: tableNames
       };
+    } else {
+      console.log('⚠️  No custom coupons table found');
     }
 
     return {
@@ -131,12 +163,14 @@ async function checkCouponsDataExists(crossServerMigration) {
       availableTables: tableNames
     };
   } catch (error) {
-    console.error('Error checking coupons data:', error);
+    console.error('❌ Error checking coupons data:', error);
+    console.error('   Stack trace:', error.stack);
     return {
       hasCouponsData: false,
       dataSource: 'error',
       couponCount: 0,
-      availableTables: []
+      availableTables: [],
+      error: error.message
     };
   }
 }
@@ -144,9 +178,12 @@ async function checkCouponsDataExists(crossServerMigration) {
 /**
  * Migrate WooCommerce coupons (wp_posts/vh_posts with post_type = shop_coupon).
  */
-async function migrateWooCommerceCoupons(crossServerMigration, queryInterface, Sequelize, migrationStats) {
+async function migrateWooCommerceCoupons(crossServerMigration, queryInterface, Sequelize, migrationStats, postsTableName) {
   try {
-    const postsTableName = await getWooCommercePostsTableName(crossServerMigration);
+    // Use the passed table name or try to detect it
+    if (!postsTableName) {
+      postsTableName = await getWooCommercePostsTableName(crossServerMigration);
+    }
     
     // Handle both wp_post/wp_postmeta and wp_posts/wp_postmeta
     let metaTableName;
@@ -161,6 +198,18 @@ async function migrateWooCommerceCoupons(crossServerMigration, queryInterface, S
     
     console.log(`📋 Using posts table: ${postsTableName}`);
     console.log(`📋 Using meta table: ${metaTableName}`);
+
+    // Verify meta table exists
+    try {
+      const metaTableCheck = await crossServerMigration.fetchFromOldDb(`SHOW TABLES LIKE '${metaTableName}'`);
+      if (metaTableCheck.length === 0) {
+        console.error(`❌ Meta table ${metaTableName} not found!`);
+        throw new Error(`Meta table ${metaTableName} does not exist`);
+      }
+    } catch (e) {
+      console.error(`❌ Error checking meta table: ${e.message}`);
+      throw e;
+    }
 
     // Create temporary mapping table for coupon IDs
     await queryInterface.sequelize.query(`DROP TABLE IF EXISTS temp_coupon_id_mapping`);
@@ -189,6 +238,11 @@ async function migrateWooCommerceCoupons(crossServerMigration, queryInterface, S
     `);
 
     console.log(`📊 Found ${oldCoupons.length} WooCommerce coupons to migrate`);
+
+    if (oldCoupons.length === 0) {
+      console.log('⚠️  No coupons found to migrate');
+      return;
+    }
 
     for (const oldCoupon of oldCoupons) {
       migrationStats.coupons.processed++;
@@ -412,6 +466,11 @@ async function migrateCoupons(crossServerMigration, queryInterface, Sequelize, m
 
     console.log(`📊 Found ${oldCoupons.length} coupons to migrate`);
 
+    if (oldCoupons.length === 0) {
+      console.log('⚠️  No coupons found to migrate');
+      return;
+    }
+
     for (const oldCoupon of oldCoupons) {
       migrationStats.coupons.processed++;
       try {
@@ -475,6 +534,7 @@ async function migrateCoupons(crossServerMigration, queryInterface, Sequelize, m
         );
       } catch (error) {
         console.error(`❌ Error creating coupon ${oldCoupon.code || oldCoupon.id}:`, error.message);
+        console.error('   Full error:', error);
         migrationStats.coupons.errors++;
       }
     }
@@ -484,6 +544,7 @@ async function migrateCoupons(crossServerMigration, queryInterface, Sequelize, m
     );
   } catch (error) {
     console.error('❌ Error in coupons migration:', error);
+    console.error('   Stack trace:', error.stack);
     throw error;
   }
 }
