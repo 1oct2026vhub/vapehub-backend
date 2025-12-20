@@ -6,10 +6,16 @@
  * This seeder migrates:
  * - Deals (with all fields and relationships)
  * - Deal-Product relationships
+ * - Deal images to S3
  * - Handles data validation and error recovery
  */
 
 const CrossServerMigration = require('../../utils/cross-server-migration');
+const { uploadFiletToS3, generateUniqueFileName, generateCloudFrontUrlForS3, checkImageExists } = require('../../library/s3/s3Helper');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -23,7 +29,8 @@ module.exports = {
       const migrationStats = {
         deals: { processed: 0, created: 0, errors: 0 },
         dealProducts: { processed: 0, created: 0, errors: 0 },
-        dealSlugRelations: { processed: 0, created: 0, errors: 0 }
+        dealSlugRelations: { processed: 0, created: 0, errors: 0 },
+        images: { processed: 0, uploaded: 0, skipped: 0, errors: 0 }
       };
 
       // Connect to old database
@@ -195,10 +202,226 @@ async function clearExistingDealsData(queryInterface) {
 }
 
 /**
+ * Check if a column exists in a table
+ */
+async function checkColumnExists(crossServerMigration, tableName, columnName) {
+  try {
+    const result = await crossServerMigration.fetchFromOldDb(`
+      SELECT COUNT(*) as count 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = '${tableName}' 
+        AND COLUMN_NAME = '${columnName}'
+    `);
+    
+    return result && result.length > 0 && result[0].count > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Get deal thumbnail URL from WordPress postmeta using JOIN query
+ * Returns the actual image URL (thumbnail_url) from the JOIN query
+ */
+async function getDealThumbnailUrl(crossServerMigration, dealId) {
+  try {
+    // Use JOIN query pattern like screenshot to get thumbnail_url directly
+    const imageResults = await crossServerMigration.fetchFromOldDb(`
+      SELECT 
+        pm.post_id,
+        pm.meta_value as thumbnail_id,
+        p_thumb.guid as thumbnail_url,
+        pm.meta_key
+      FROM vh_postmeta pm
+      LEFT JOIN vh_posts p_thumb ON pm.meta_value = p_thumb.ID AND p_thumb.post_type = 'attachment'
+      WHERE pm.post_id = ${dealId}
+        AND (
+          pm.meta_key = '_thumbnail_id' 
+          OR pm.meta_key = '_wdr_image' 
+          OR pm.meta_key = 'deal_image'
+          OR pm.meta_key = 'wdr_rule_image'
+          OR pm.meta_key LIKE '%image%'
+        )
+      ORDER BY 
+        CASE pm.meta_key
+          WHEN '_wdr_image' THEN 1
+          WHEN 'deal_image' THEN 2
+          WHEN 'wdr_rule_image' THEN 3
+          WHEN '_thumbnail_id' THEN 4
+          ELSE 5
+        END
+      LIMIT 1
+    `);
+
+    if (imageResults && imageResults.length > 0) {
+      const result = imageResults[0];
+      
+      // If we got a thumbnail_url from the JOIN (guid from vh_posts) - this is the image URL we need
+      if (result.thumbnail_url) {
+        return result.thumbnail_url;
+      }
+      
+      // If meta_value is a direct URL (starts with http) - also use it
+      if (result.thumbnail_id && typeof result.thumbnail_id === 'string' && result.thumbnail_id.startsWith('http')) {
+        return result.thumbnail_id;
+      }
+    }
+
+    // Try to get image from vh_wdr_rules table if it has an image column
+    try {
+      const ruleImage = await crossServerMigration.fetchFromOldDb(`
+        SELECT image_url 
+        FROM vh_wdr_rules 
+        WHERE id = ${dealId}
+        LIMIT 1
+      `);
+      
+      if (ruleImage && ruleImage.length > 0 && ruleImage[0].image_url) {
+        return ruleImage[0].image_url;
+      }
+    } catch (e) {
+      // Column doesn't exist, ignore
+    }
+
+    return null;
+  } catch (error) {
+    console.log(`⚠️ Error fetching thumbnail for deal ${dealId}: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Migrate deal image to S3
+ * Downloads from thumbnail_url and uploads to S3, returns CloudFront URL
+ */
+async function migrateDealImageToS3(thumbnailUrl, dealId, imageStats) {
+  try {
+    if (!thumbnailUrl || thumbnailUrl.trim() === '') {
+      return null;
+    }
+
+    // Skip if already in S3 or CloudFront
+    if (thumbnailUrl.includes('s3') || thumbnailUrl.includes('cloudfront')) {
+      console.log(`⏭️ Image already in S3/CloudFront: ${thumbnailUrl}`);
+      imageStats.skipped++;
+      return thumbnailUrl;
+    }
+
+    imageStats.processed++;
+
+    // Generate S3 key
+    const urlParts = thumbnailUrl.split('/');
+    const originalFileName = urlParts[urlParts.length - 1];
+    const fileExtension = path.extname(originalFileName) || '.jpg';
+    const uniqueFileName = generateUniqueFileName(`deal-${dealId}${fileExtension}`);
+    const s3Key = `deals/${uniqueFileName}`;
+
+    // Check if image already exists in S3
+    const imageExists = await checkImageExists(s3Key);
+    if (imageExists) {
+      console.log(`✅ Image already exists in S3: ${s3Key}`);
+      imageStats.skipped++;
+      return generateCloudFrontUrlForS3(s3Key);
+    }
+
+    // Download and upload to S3
+    const uploadResult = await downloadAndUploadToS3(thumbnailUrl, s3Key, imageStats);
+    if (uploadResult) {
+      imageStats.uploaded++;
+      return generateCloudFrontUrlForS3(s3Key);
+    }
+
+    return null;
+
+  } catch (error) {
+    console.error(`❌ Error migrating deal image ${thumbnailUrl}: ${error.message}`);
+    imageStats.errors++;
+    return null;
+  }
+}
+
+/**
+ * Download image from thumbnail_url and upload to S3
+ */
+async function downloadAndUploadToS3(thumbnailUrl, s3Key, imageStats) {
+  try {
+    console.log(`📥 Downloading from thumbnail_url: ${thumbnailUrl}`);
+
+    let response;
+    try {
+      response = await axios({
+        method: 'GET',
+        url: thumbnailUrl,
+        responseType: 'stream',
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; ImageBot/1.0)',
+          'Accept': 'image/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Connection': 'keep-alive'
+        },
+        maxContentLength: 10 * 1024 * 1024, // 10MB max file size
+        validateStatus: function (status) {
+          return status >= 200 && status < 300;
+        }
+      });
+      
+      console.log(`✅ Successfully downloaded: ${thumbnailUrl}`);
+    } catch (error) {
+      console.error(`❌ Failed to download ${thumbnailUrl}: ${error.message}`);
+      return null;
+    }
+
+    // Save to temporary file
+    const tempDir = os.tmpdir();
+    const tempFileName = generateUniqueFileName('deal-temp.jpg');
+    const tempFile = path.join(tempDir, tempFileName);
+    const writer = fs.createWriteStream(tempFile);
+
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    // Upload to S3
+    const fileBuffer = fs.readFileSync(tempFile);
+    const uploadParams = {
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Key,
+      Body: fileBuffer,
+      ContentType: response.headers['content-type'] || 'image/jpeg',
+      CacheControl: 'max-age=31536000' // 1 year cache
+    };
+
+    console.log(`📤 Uploading to S3: ${s3Key}`);
+    const uploadResult = await uploadFiletToS3(uploadParams);
+    
+    // Clean up temp file
+    fs.unlinkSync(tempFile);
+
+    if (uploadResult && uploadResult.Location) {
+      console.log(`✅ Successfully uploaded to S3: ${s3Key}`);
+      return s3Key;
+    }
+
+    return null;
+
+  } catch (error) {
+    console.error(`❌ Error processing image: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Migrate WooCommerce discount rules as deals
  */
 async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Sequelize, migrationStats) {
   try {
+    // Check if image_url column exists in vh_wdr_rules table
+    const hasImageColumn = await checkColumnExists(crossServerMigration, 'vh_wdr_rules', 'image_url');
+    
     // Get all active WooCommerce discount rules
     const oldDeals = await crossServerMigration.fetchFromOldDb(`
       SELECT 
@@ -216,6 +439,7 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
         usage_limits,
         created_on,
         modified_on
+        ${hasImageColumn ? ', image_url' : ''}
       FROM vh_wdr_rules 
       WHERE enabled = 1 AND deleted = 0
       ORDER BY priority, id
@@ -340,11 +564,41 @@ async function migrateWooCommerceDeals(crossServerMigration, queryInterface, Seq
           description += ' (WooCommerce discount rule)';
         }
 
+        // Get thumbnail_url using JOIN query (this gives us the image URL)
+        let thumbnailUrl = null;
+
+        // First, check if image_url was selected from vh_wdr_rules table
+        if (oldDeal.image_url) {
+          thumbnailUrl = oldDeal.image_url;
+          console.log(`📸 Found image in vh_wdr_rules table: ${thumbnailUrl}`);
+        } else {
+          // Use JOIN query to get thumbnail_url directly (the actual image URL)
+          thumbnailUrl = await getDealThumbnailUrl(crossServerMigration, oldDeal.id);
+          if (thumbnailUrl) {
+            console.log(`📸 Found thumbnail_url from postmeta JOIN: ${thumbnailUrl}`);
+          } else {
+            console.log(`⚠️ No thumbnail found for deal: ${oldDeal.title} (ID: ${oldDeal.id})`);
+          }
+        }
+
+        // Migrate image to S3 if we have a thumbnail_url
+        let finalImageUrl = thumbnailUrl;
+        if (thumbnailUrl) {
+          finalImageUrl = await migrateDealImageToS3(thumbnailUrl, oldDeal.id, migrationStats.images);
+          if (!finalImageUrl) {
+            console.log(`⚠️ Failed to migrate image to S3, using original thumbnail_url: ${thumbnailUrl}`);
+            finalImageUrl = thumbnailUrl; // Fallback to original URL
+          } else {
+            console.log(`✅ Image migrated to S3: ${finalImageUrl}`);
+          }
+        }
+
         // Create deal
         await queryInterface.bulkInsert('deals', [{
           id: oldDeal.id,
           name: oldDeal.title,
           slug: oldDeal.title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim('-'),
+          image_url: finalImageUrl, // S3/CloudFront URL
           deal_type: 'BUY_N_FOR_FIXED', // Default deal type
           required_qty: minQuantity,
           get_qty: maxQuantity,
@@ -444,11 +698,21 @@ async function migrateDeals(crossServerMigration, queryInterface, Sequelize, mig
           counter++;
         }
 
+        // Migrate image to S3 if we have an image URL
+        let finalImageUrl = oldDeal.image_url;
+        if (oldDeal.image_url) {
+          finalImageUrl = await migrateDealImageToS3(oldDeal.image_url, oldDeal.old_id, migrationStats.images);
+          if (!finalImageUrl) {
+            console.log(`⚠️ Failed to migrate image to S3, using original URL: ${oldDeal.image_url}`);
+            finalImageUrl = oldDeal.image_url; // Fallback to original URL
+          }
+        }
+
         // Create deal
         const [newDealId] = await queryInterface.bulkInsert('deals', [{
           name: oldDeal.name,
           slug: finalSlug,
-          image_url: oldDeal.image_url,
+          image_url: finalImageUrl, // S3/CloudFront URL
           deal_type: oldDeal.deal_type,
           required_qty: oldDeal.required_qty,
           get_qty: oldDeal.get_qty,
@@ -609,6 +873,12 @@ Deal-Product Relations Errors: ${migrationStats.dealProducts.errors}
 Deal Slug Relations Processed: ${migrationStats.dealSlugRelations.processed}
 Deal Slug Relations Created: ${migrationStats.dealSlugRelations.created}
 Deal Slug Relations Errors: ${migrationStats.dealSlugRelations.errors}
+
+Image Migration:
+  - Processed: ${migrationStats.images.processed}
+  - Uploaded to S3: ${migrationStats.images.uploaded}
+  - Skipped: ${migrationStats.images.skipped}
+  - Errors: ${migrationStats.images.errors}
 
 Total Deals Migrated: ${migrationStats.deals.created}
 Total Relationships Migrated: ${migrationStats.dealProducts.created}
