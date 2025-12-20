@@ -61,23 +61,42 @@ module.exports = {
           old_vh.display_name,
           old_vh.user_email,
           old_vh.user_status,
-          old_vh.user_registered
+          old_vh.user_registered,
+          MAX(CASE WHEN um.meta_key = 'first_name' THEN um.meta_value END) as meta_first_name,
+          MAX(CASE WHEN um.meta_key = 'last_name' THEN um.meta_value END) as meta_last_name
         FROM vh_users old_vh
+        LEFT JOIN vh_usermeta um ON old_vh.ID = um.user_id 
+          AND um.meta_key IN ('first_name', 'last_name')
         WHERE old_vh.user_email IS NOT NULL
         AND old_vh.user_email != ''
+        GROUP BY old_vh.ID, old_vh.display_name, old_vh.user_email, old_vh.user_status, old_vh.user_registered
         ORDER BY old_vh.ID
       `, BATCH_SIZE, async (batchUsers, offset) => {
         console.log(`\n📦 Processing batch: ${offset + 1} to ${offset + batchUsers.length} (${((offset + batchUsers.length) / totalUsers * 100).toFixed(1)}%)`);
 
         for (const user of batchUsers) {
           try {
-            const firstName = user.display_name && user.display_name.includes(' ') 
-              ? user.display_name.substring(0, user.display_name.indexOf(' '))
-              : (user.display_name || '');
+            // Prefer first_name and last_name from vh_usermeta, fallback to splitting display_name
+            let firstName = '';
+            let lastName = '';
             
-            const lastName = user.display_name && user.display_name.includes(' ')
-              ? user.display_name.substring(user.display_name.indexOf(' ') + 1)
-              : '';
+            if (user.meta_first_name && user.meta_first_name.trim() !== '') {
+              // Use first_name from vh_usermeta
+              firstName = user.meta_first_name.trim();
+            } else if (user.display_name) {
+              // Fallback to splitting display_name
+              firstName = user.display_name.includes(' ') 
+                ? user.display_name.substring(0, user.display_name.indexOf(' ')).trim()
+                : user.display_name.trim();
+            }
+            
+            if (user.meta_last_name && user.meta_last_name.trim() !== '') {
+              // Use last_name from vh_usermeta
+              lastName = user.meta_last_name.trim();
+            } else if (user.display_name && user.display_name.includes(' ')) {
+              // Fallback to splitting display_name
+              lastName = user.display_name.substring(user.display_name.indexOf(' ') + 1).trim();
+            }
 
             // Set roleId: 1 for super.admin@vapehub.com, 0 for all others
             const roleId = user.user_email === 'super.admin@vapehub.com' ? 1 : 0;
@@ -100,6 +119,8 @@ module.exports = {
                 CASE WHEN ? != 0 THEN ? ELSE NULL END
               )
               ON DUPLICATE KEY UPDATE
+                first_name = VALUES(first_name),
+                last_name = VALUES(last_name),
                 roleId = VALUES(roleId),
                 blocked = VALUES(blocked),
                 updatedAt = NOW()
