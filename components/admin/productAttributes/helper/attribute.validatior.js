@@ -11,11 +11,11 @@ const imageUpload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB limit
     },
     fileFilter: (req, file, cb) => {
-        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml'];
         if (allowedMimeTypes.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.'), false);
+            cb(new Error('Invalid file type. Only JPEG, PNG, GIF and SVG are allowed.'), false);
         }
     },
 });
@@ -80,8 +80,8 @@ exports.createAttributeValidator = [
 
     body('image')
         .custom((value, { req }) => {
-            if (req.file && !['image/jpeg', 'image/png', 'image/gif'].includes(req.file.mimetype)) {
-                throw new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.');
+            if (req.file && !['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml'].includes(req.file.mimetype)) {
+                throw new Error('Invalid file type. Only JPEG, PNG, GIF and SVG are allowed.');
             }
             return true;
         })
@@ -133,8 +133,8 @@ exports.updateAttributeValidator = [
 
     body('image')
         .custom((value, { req }) => {
-            if (req.file && !['image/jpeg', 'image/png', 'image/gif'].includes(req.file.mimetype)) {
-                throw new Error('Invalid file type. Only JPEG, PNG and GIF are allowed.');
+            if (req.file && !['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml'].includes(req.file.mimetype)) {
+                throw new Error('Invalid file type. Only JPEG, PNG, GIF and SVG are allowed.');
             }
             return true;
         })
