@@ -34,6 +34,43 @@ const swaggerOptions = {
           description: 'Enter your bearer token in the format **Bearer <token>**',
         },
       },
+      schemas: {
+        Success: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true,
+              description: 'Indicates if the request was successful'
+            },
+            message: {
+              type: 'string',
+              description: 'Response message'
+            }
+          },
+          required: ['success', 'message']
+        },
+        Error: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: false,
+              description: 'Indicates if the request was successful'
+            },
+            message: {
+              type: 'string',
+              description: 'Error message'
+            },
+            error: {
+              type: 'object',
+              description: 'Error details',
+              additionalProperties: true
+            }
+          },
+          required: ['success', 'message']
+        }
+      },
     },
     security: [{ bearerAuth: [] }], // Apply Bearer token globally
   },
