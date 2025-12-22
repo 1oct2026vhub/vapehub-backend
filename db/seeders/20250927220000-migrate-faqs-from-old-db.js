@@ -11,6 +11,8 @@
  * - Extracts Rank Math FAQ blocks from old product descriptions
  * - Parses both JSON and HTML FAQ formats
  * - Inserts FAQs into the FAQs table with proper relationships
+ * - Prevents duplicate FAQ insertion by checking individual questions
+ * - Removes FAQ blocks from product descriptions in new database
  * - Handles transaction safety to prevent staging server issues
  * - Comprehensive error handling and logging
  */
@@ -32,7 +34,9 @@ module.exports = {
         productsProcessed: 0,
         faqsExtracted: 0,
         faqsInserted: 0,
+        faqsSkipped: 0,
         productsWithFAQs: 0,
+        productsUpdated: 0,
         errors: 0
       };
 
@@ -100,34 +104,100 @@ module.exports = {
         try {
           console.log(`\n📦 Processing product: ${product.name} (Old ID: ${product.old_product_id})`);
           
-          // Check if FAQs already exist for this product
-          const [existingFAQs] = await queryInterface.sequelize.query(`
-            SELECT COUNT(*) as count FROM FAQs 
-            WHERE entity_type = 'product' AND entity_id = :productId
-          `, {
-            replacements: { productId: product.old_product_id },
-            type: Sequelize.QueryTypes.SELECT,
-            transaction
-          });
-          
-          if (existingFAQs && existingFAQs.length > 0 && existingFAQs[0].count > 0) {
-            console.log(`   ⚠️  Product ${product.old_product_id} already has ${existingFAQs[0].count} FAQs - skipping`);
-            continue;
-          }
-
           // Extract FAQs from description
           const faqs = extractFAQsFromDescription(product.description);
           
           if (faqs.length > 0) {
             console.log(`   📝 Found ${faqs.length} FAQs`);
             migrationStats.faqsExtracted += faqs.length;
-            migrationStats.productsWithFAQs++;
             
-            // Insert FAQs into database using old product ID as entity_id
-            const insertedFAQs = await insertFAQs(queryInterface, product.old_product_id, faqs, transaction);
-            migrationStats.faqsInserted += insertedFAQs;
+            // Check each FAQ individually to avoid duplicates
+            const faqsToInsert = [];
             
-            console.log(`   ✅ Inserted ${insertedFAQs} FAQs for product ${product.old_product_id}`);
+            for (const faq of faqs) {
+              // Check if this specific FAQ already exists
+              const [existing] = await queryInterface.sequelize.query(`
+                SELECT id FROM FAQs 
+                WHERE entity_type = 'product' 
+                AND entity_id = :productId 
+                AND question = :question
+                AND deletedAt IS NULL
+              `, {
+                replacements: { 
+                  productId: product.old_product_id,
+                  question: faq.question.substring(0, 500)
+                },
+                type: Sequelize.QueryTypes.SELECT,
+                transaction
+              });
+              
+              if (!existing || existing.length === 0) {
+                faqsToInsert.push(faq);
+              } else {
+                migrationStats.faqsSkipped++;
+                console.log(`   ⚠️  FAQ already exists: "${faq.question.substring(0, 50)}..."`);
+              }
+            }
+            
+            if (faqsToInsert.length > 0) {
+              migrationStats.productsWithFAQs++;
+              
+              // Insert only new FAQs into database using old product ID as entity_id
+              const insertedFAQs = await insertFAQs(queryInterface, product.old_product_id, faqsToInsert, transaction);
+              migrationStats.faqsInserted += insertedFAQs;
+              
+              console.log(`   ✅ Inserted ${insertedFAQs} new FAQs for product ${product.old_product_id}`);
+            } else {
+              console.log(`   ℹ️  All FAQs already exist for product ${product.old_product_id}`);
+            }
+            
+            // Remove FAQ blocks from product description in new database
+            try {
+              // Fetch product from new database (products use direct ID mapping)
+              const [newProducts] = await queryInterface.sequelize.query(`
+                SELECT id, description 
+                FROM products 
+                WHERE id = :productId 
+                AND deletedAt IS NULL
+              `, {
+                replacements: { productId: product.old_product_id },
+                type: Sequelize.QueryTypes.SELECT,
+                transaction
+              });
+              
+              if (newProducts && newProducts.length > 0) {
+                const newProduct = newProducts[0];
+                
+                // Remove FAQ blocks from description
+                const cleanedDescription = removeFAQsFromDescription(newProduct.description);
+                
+                // Only update if description actually changed
+                if (cleanedDescription !== newProduct.description) {
+                  // Update product description in new database
+                  await queryInterface.sequelize.query(`
+                    UPDATE products 
+                    SET description = :cleanedDescription, updatedAt = NOW()
+                    WHERE id = :productId
+                  `, {
+                    replacements: {
+                      cleanedDescription,
+                      productId: product.old_product_id
+                    },
+                    transaction
+                  });
+                  
+                  migrationStats.productsUpdated++;
+                  console.log(`   ✅ Cleaned FAQ blocks from product description`);
+                } else {
+                  console.log(`   ℹ️  No FAQ blocks found in product description (already clean)`);
+                }
+              } else {
+                console.log(`   ⚠️  Product ${product.old_product_id} not found in new database - skipping description cleanup`);
+              }
+            } catch (updateError) {
+              console.error(`   ⚠️  Error updating product description:`, updateError.message);
+              // Don't fail the entire migration if description update fails
+            }
           } else {
             console.log(`   ⚠️  No valid FAQs found in description`);
           }
@@ -269,6 +339,33 @@ function extractFAQsFromDescription(description) {
 }
 
 /**
+ * Remove FAQ blocks from product description
+ */
+function removeFAQsFromDescription(description) {
+  if (!description) return description;
+  
+  let cleaned = description;
+  
+  // Remove Rank Math FAQ comment blocks
+  cleaned = cleaned.replace(/<!-- wp:rank-math\/faq-block[^>]*>.*?<!-- \/wp:rank-math\/faq-block -->/gs, '');
+  
+  // Remove FAQ HTML blocks
+  cleaned = cleaned.replace(/<div class="wp-block-rank-math-faq-block">.*?<\/div>/gs, '');
+  
+  // Remove FAQ heading if it exists
+  cleaned = cleaned.replace(/<!-- wp:heading[^>]*>\s*<h[1-6][^>]*>.*?FAQs.*?<\/h[1-6]>\s*<!-- \/wp:heading -->/gi, '');
+  cleaned = cleaned.replace(/<h[1-6][^>]*>.*?FAQs.*?<\/h[1-6]>/gi, '');
+  
+  // Clean up extra whitespace and empty paragraphs
+  cleaned = cleaned
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove excessive line breaks
+    .replace(/<!-- wp:paragraph -->\s*<p>\s*<\/p>\s*<!-- \/wp:paragraph -->/g, '') // Remove empty paragraphs
+    .trim();
+  
+  return cleaned;
+}
+
+/**
  * Clean HTML content and optionally format with <p> tags
  */
 function cleanHtmlContent(content, addPTags = true) {
@@ -386,6 +483,8 @@ STATISTICS:
 - Products with FAQs: ${migrationStats.productsWithFAQs}
 - FAQs Extracted: ${migrationStats.faqsExtracted}
 - FAQs Inserted: ${migrationStats.faqsInserted}
+- FAQs Skipped (Duplicates): ${migrationStats.faqsSkipped}
+- Products Updated (Description Cleaned): ${migrationStats.productsUpdated}
 - Errors: ${migrationStats.errors}
 
 SUCCESS RATE: ${migrationStats.productsProcessed > 0 ? 
@@ -397,13 +496,19 @@ FAQ EXTRACTION RATE: ${migrationStats.productsProcessed > 0 ?
   : 0} FAQs per product
 
 INSERTION SUCCESS RATE: ${migrationStats.faqsExtracted > 0 ? 
-  ((migrationStats.faqsInserted / migrationStats.faqsExtracted) * 100).toFixed(2)
+  ((migrationStats.faqsInserted / (migrationStats.faqsInserted + migrationStats.faqsSkipped)) * 100).toFixed(2)
+  : 0}%
+
+DESCRIPTION CLEANUP RATE: ${migrationStats.productsWithFAQs > 0 ? 
+  ((migrationStats.productsUpdated / migrationStats.productsWithFAQs) * 100).toFixed(2)
   : 0}%
 
 MIGRATION QUALITY:
 - Data Integrity: ${migrationStats.errors === 0 ? '✅ Perfect' : '⚠️ Some errors occurred'}
 - Extraction Success: ${migrationStats.faqsExtracted > 0 ? '✅ Success' : '❌ No FAQs found'}
-- Insertion Success: ${migrationStats.faqsInserted === migrationStats.faqsExtracted ? '✅ Perfect' : '⚠️ Some insertions failed'}
+- Duplicate Prevention: ${migrationStats.faqsSkipped > 0 ? `✅ ${migrationStats.faqsSkipped} duplicates prevented` : '✅ No duplicates found'}
+- Insertion Success: ${migrationStats.faqsInserted > 0 ? '✅ Success' : '⚠️ No new FAQs inserted'}
+- Description Cleanup: ${migrationStats.productsUpdated > 0 ? '✅ Completed' : '⚠️ No descriptions cleaned'}
 
 ================================================================
 `;
