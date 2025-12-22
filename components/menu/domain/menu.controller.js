@@ -373,6 +373,13 @@ module.exports = {
 const buildMenuTree = (menus, parentId = null) => {
     const tree = [];
     
+    // Helper function to check if a menu is a letter menu (single A-Z letter)
+    const isLetterMenu = (menu) => {
+        const label = (menu.label || '').trim();
+        return label.length === 1 && label >= 'A' && label <= 'Z' && 
+               menu.entity_type === 'page' && menu.original === '#';
+    };
+    
     for (const menu of menus) {
         if (menu.menu_parent === parentId) {
             const children = buildMenuTree(menus, menu.id);
@@ -389,8 +396,19 @@ const buildMenuTree = (menus, parentId = null) => {
         }
     }
     
-    // Sort the tree itself by order, then by label for items with same order
-    tree.sort((a, b) => {
+    // Separate letter menus from regular menus
+    const letterMenus = tree.filter(isLetterMenu);
+    const regularMenus = tree.filter(menu => !isLetterMenu(menu));
+    
+    // Sort letter menus alphabetically
+    letterMenus.sort((a, b) => {
+        const labelA = (a.label || '').trim().toUpperCase();
+        const labelB = (b.label || '').trim().toUpperCase();
+        return labelA.localeCompare(labelB);
+    });
+    
+    // Sort regular menus by order, then by label
+    regularMenus.sort((a, b) => {
         if (a.order !== b.order) {
             return a.order - b.order;
         }
@@ -399,7 +417,8 @@ const buildMenuTree = (menus, parentId = null) => {
         return labelA.localeCompare(labelB);
     });
     
-    return tree;
+    // Combine: regular menus first, then letter menus
+    return [...regularMenus, ...letterMenus];
 };
 
 
