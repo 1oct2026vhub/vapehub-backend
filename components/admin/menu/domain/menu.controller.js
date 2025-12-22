@@ -181,9 +181,28 @@ const reorderAlphabetMenus = async (parentId, transaction) => {
         return labelA.localeCompare(labelB);
     });
 
-    // Reassign orders sequentially (0, 1, 2, 3, ...)
+    // Find the maximum order of non-letter menus to avoid conflicts
+    const allMenus = await Menu.findAll({
+        where: { menu_parent: parentId },
+        order: [['order', 'DESC']],
+        transaction
+    });
+    
+    // Find the highest order among non-letter menus
+    const nonLetterMenus = allMenus.filter(menu => {
+        const label = (menu.label || '').trim();
+        const isLetterMenu = label.length === 1 && label >= 'A' && label <= 'Z' && 
+                            menu.entity_type === 'page' && menu.original === '#';
+        return !isLetterMenu;
+    });
+    
+    const startOrder = nonLetterMenus.length > 0 && nonLetterMenus[0].order !== null 
+        ? nonLetterMenus[0].order + 1 
+        : 0;
+
+    // Reassign orders sequentially starting after non-letter menus
     for (let i = 0; i < validLetterMenus.length; i++) {
-        await validLetterMenus[i].update({ order: i }, { transaction });
+        await validLetterMenus[i].update({ order: startOrder + i }, { transaction });
     }
 };
 
