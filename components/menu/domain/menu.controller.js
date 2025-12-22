@@ -97,7 +97,7 @@ module.exports = {
                 // Fetch all blogs
                 Array.from(entityIds.blog).length > 0 ? Blog.findAll({
                     where: { id: { [Op.in]: Array.from(entityIds.blog) } },
-                    attributes: ['id', 'name', 'slug', 'image_url'],
+                    attributes: [['title', 'name'], 'id', 'slug', 'image_url'],
                     raw: true
                 }) : Promise.resolve([]),
                 
