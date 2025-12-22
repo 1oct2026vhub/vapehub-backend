@@ -359,10 +359,59 @@ module.exports = {
             
             const filteredMenuTree = filterExpiredDeals(menuTree);
             
-            // Ensure consistent field mapping after filtering
-            ensureConsistentFields(filteredMenuTree);
+            // Helper function to check if a menu is a letter menu (single A-Z letter)
+            const isLetterMenu = (menu) => {
+                const label = (menu.label || '').trim();
+                return label.length === 1 && label >= 'A' && label <= 'Z' && 
+                       menu.entity_type === 'page' && menu.original === '#';
+            };
             
-            return successResponse(res, { data: filteredMenuTree }, 'Success');
+            // Function to sort menu tree with letter menus properly ordered
+            const sortMenuTree = (items) => {
+                // Separate letter menus from regular menus
+                const letterMenus = items.filter(isLetterMenu);
+                const regularMenus = items.filter(menu => !isLetterMenu(menu));
+                
+                // Sort letter menus alphabetically
+                letterMenus.sort((a, b) => {
+                    const labelA = (a.label || '').trim().toUpperCase();
+                    const labelB = (b.label || '').trim().toUpperCase();
+                    return labelA.localeCompare(labelB);
+                });
+                
+                // Sort regular menus by order, then by label
+                regularMenus.sort((a, b) => {
+                    if (a.order !== b.order) {
+                        return a.order - b.order;
+                    }
+                    const labelA = (a.label || '').trim().toUpperCase();
+                    const labelB = (b.label || '').trim().toUpperCase();
+                    return labelA.localeCompare(labelB);
+                });
+                
+                // Recursively sort children
+                letterMenus.forEach(menu => {
+                    if (menu.children && menu.children.length > 0) {
+                        menu.children = sortMenuTree(menu.children);
+                    }
+                });
+                regularMenus.forEach(menu => {
+                    if (menu.children && menu.children.length > 0) {
+                        menu.children = sortMenuTree(menu.children);
+                    }
+                });
+                
+                // Combine: regular menus first, then letter menus
+                return [...regularMenus, ...letterMenus];
+            };
+            
+            // Re-sort the filtered tree to ensure letter menus are in correct order
+            const finalMenuTree = sortMenuTree(filteredMenuTree);
+            
+            // Ensure consistent field mapping after filtering
+            ensureConsistentFields(finalMenuTree);
+            
+            return successResponse(res, { data: finalMenuTree }, 'Success');
         } catch (error) {
             logger.error('Error fetching menus:', error);
             return errorResponse(res, error);
