@@ -422,8 +422,15 @@ const generateAlphabetAndProductMenus = async (parentMenu, listFlag, transaction
         }, { transaction });
 
         // Create product menus under this alphabet menu
+        // Ensure products are sorted alphabetically before creating menus
+        const sortedProducts = [...productsForLetter].sort((a, b) => {
+            const nameA = (a.name || '').trim().toUpperCase();
+            const nameB = (b.name || '').trim().toUpperCase();
+            return nameA.localeCompare(nameB);
+        });
+        
         let productOrder = 0;
-        for (const product of productsForLetter) {
+        for (const product of sortedProducts) {
             // Get product slug using existing logic
             const productSlug = await getEntitySlug('product', product.id, product.slug);
             

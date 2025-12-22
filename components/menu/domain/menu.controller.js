@@ -377,11 +377,27 @@ const buildMenuTree = (menus, parentId = null) => {
         if (menu.menu_parent === parentId) {
             const children = buildMenuTree(menus, menu.id);
             if (children.length) {
+                // Sort children alphabetically by label
+                children.sort((a, b) => {
+                    const labelA = (a.label || '').trim().toUpperCase();
+                    const labelB = (b.label || '').trim().toUpperCase();
+                    return labelA.localeCompare(labelB);
+                });
                 menu.children = children;
             }
             tree.push(menu);
         }
     }
+    
+    // Sort the tree itself by order, then by label for items with same order
+    tree.sort((a, b) => {
+        if (a.order !== b.order) {
+            return a.order - b.order;
+        }
+        const labelA = (a.label || '').trim().toUpperCase();
+        const labelB = (b.label || '').trim().toUpperCase();
+        return labelA.localeCompare(labelB);
+    });
     
     return tree;
 };
