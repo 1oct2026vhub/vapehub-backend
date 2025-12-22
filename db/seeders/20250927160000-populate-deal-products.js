@@ -13,7 +13,8 @@ module.exports = {
       console.log('✅ Existing deal-product relationships cleared');
 
       // Initialize cross-server migration
-      const crossServerMigration = new CrossServerMigration();
+      const environment = process.env.NODE_ENV || 'local';
+      const crossServerMigration = new CrossServerMigration(environment);
       await crossServerMigration.connectToOldDb();
 
       // Get all WooCommerce discount rules with product filters
@@ -32,6 +33,7 @@ module.exports = {
       let processed = 0;
       let created = 0;
       let errors = 0;
+      let skipped = 0;
 
       for (const rule of wdrRules) {
         processed++;
@@ -42,63 +44,52 @@ module.exports = {
           try {
             filters = JSON.parse(rule.filters);
           } catch (e) {
-            console.log(`⚠️ Skipping rule ${rule.id} - invalid filters JSON`);
+            console.log(`⚠️ Skipping rule ${rule.id} - invalid filters JSON: ${e.message}`);
             errors++;
             continue;
           }
 
-          // Extract product tags from filters
-          const productTags = [];
-          if (filters && typeof filters === 'object') {
+          // Debug: Log filter structure
+          console.log(`\n🔍 Processing rule ${rule.id} (${rule.title})`);
+          console.log(`📋 Filters structure:`, JSON.stringify(filters, null, 2));
+
+          const productIds = new Set(); // Use Set to avoid duplicates
+
+          // Handle different filter structures
+          if (Array.isArray(filters)) {
+            // Filters is an array
+            for (const filter of filters) {
+              await extractProductsFromFilter(filter, crossServerMigration, productIds, rule.id);
+            }
+          } else if (filters && typeof filters === 'object') {
+            // Filters is an object with keys
             for (const key in filters) {
               const filter = filters[key];
-              if (filter && filter.type === 'product_tags' && filter.value && Array.isArray(filter.value)) {
-                productTags.push(...filter.value);
-              }
+              await extractProductsFromFilter(filter, crossServerMigration, productIds, rule.id);
             }
           }
 
-          if (productTags.length === 0) {
-            console.log(`⚠️ Skipping rule ${rule.id} - no product tags found`);
+          if (productIds.size === 0) {
+            console.log(`⚠️ Skipping rule ${rule.id} - no products found in filters`);
+            skipped++;
             continue;
           }
 
-          console.log(`🔍 Rule ${rule.id} (${rule.title}) has product tags: ${productTags.join(', ')}`);
+          console.log(`📦 Found ${productIds.size} unique products for rule ${rule.id}`);
 
-          // Find products with these tags in the new database
-          for (const tagId of productTags) {
+          // Create deal-product relationships
+          for (const productId of productIds) {
             try {
-          // Get products tagged with this specific tag from old database
-          const taggedProducts = await crossServerMigration.fetchFromOldDb(`
-            SELECT DISTINCT
-              tr.object_id as old_product_id,
-              p.post_title as product_name,
-              t.name as tag_name
-            FROM vh_term_relationships tr
-            JOIN vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
-            JOIN vh_terms t ON tt.term_id = t.term_id
-            JOIN vh_posts p ON tr.object_id = p.ID
-            WHERE tt.term_id = ${tagId}
-            AND p.post_type = 'product'
-            AND p.post_status = 'publish'
-            ORDER BY tr.object_id
-          `);
-
-          console.log(`📦 Found ${taggedProducts.length} products tagged with tag ${tagId}`);
-
-          // Map old product IDs to new product IDs
-          for (const taggedProduct of taggedProducts) {
-            try {
-              // Check if this old product ID exists in new database
+              // Check if this product ID exists in new database
               const newProduct = await queryInterface.sequelize.query(`
                 SELECT id, name FROM products WHERE id = ?
               `, {
-                replacements: [taggedProduct.old_product_id],
+                replacements: [productId],
                 type: Sequelize.QueryTypes.SELECT
               });
 
               if (newProduct.length === 0) {
-                console.log(`⚠️ Product ${taggedProduct.old_product_id} (${taggedProduct.product_name}) not found in new database`);
+                console.log(`⚠️ Product ${productId} not found in new database`);
                 continue;
               }
 
@@ -107,35 +98,28 @@ module.exports = {
                 SELECT 1 FROM deal_products 
                 WHERE deal_id = ? AND product_id = ?
               `, {
-                replacements: [rule.id, taggedProduct.old_product_id],
+                replacements: [rule.id, productId],
                 type: Sequelize.QueryTypes.SELECT
               });
 
               if (existingRelation.length > 0) {
-                console.log(`⏭️ Deal-product relationship already exists: deal ${rule.id} -> product ${taggedProduct.old_product_id}`);
+                console.log(`⏭️ Deal-product relationship already exists: deal ${rule.id} -> product ${productId}`);
                 continue;
               }
 
               // Create deal-product relationship
               await queryInterface.bulkInsert('deal_products', [{
                 deal_id: rule.id,
-                product_id: taggedProduct.old_product_id,
+                product_id: productId,
                 createdAt: new Date(),
                 updatedAt: new Date()
               }]);
 
               created++;
-              console.log(`✅ Created deal-product relationship: deal ${rule.id} -> product ${taggedProduct.old_product_id} (${newProduct[0].name})`);
+              console.log(`✅ Created deal-product relationship: deal ${rule.id} -> product ${productId} (${newProduct[0].name})`);
 
             } catch (error) {
-              console.error(`❌ Error processing product ${taggedProduct.old_product_id}:`, error.message);
-              errors++;
-            }
-          }
-
-
-            } catch (error) {
-              console.error(`❌ Error processing tag ${tagId} for rule ${rule.id}:`, error.message);
+              console.error(`❌ Error processing product ${productId}:`, error.message);
               errors++;
             }
           }
@@ -149,9 +133,10 @@ module.exports = {
       // Close old database connection
       await crossServerMigration.closeOldDbConnection();
 
-      console.log(`✅ Deal-product relationships population completed:`);
+      console.log(`\n✅ Deal-product relationships population completed:`);
       console.log(`   - Rules processed: ${processed}`);
       console.log(`   - Relationships created: ${created}`);
+      console.log(`   - Rules skipped (no products): ${skipped}`);
       console.log(`   - Errors: ${errors}`);
 
     } catch (error) {
@@ -171,3 +156,87 @@ module.exports = {
     }
   }
 };
+
+/**
+ * Extract product IDs from a filter based on its type
+ */
+async function extractProductsFromFilter(filter, crossServerMigration, productIds, ruleId) {
+  if (!filter || !filter.type) {
+    return;
+  }
+
+  try {
+    switch (filter.type) {
+      case 'products':
+        // Direct product IDs
+        if (filter.value && Array.isArray(filter.value)) {
+          filter.value.forEach(id => productIds.add(parseInt(id)));
+          console.log(`  ✅ Found ${filter.value.length} direct product IDs`);
+        } else if (filter.value) {
+          productIds.add(parseInt(filter.value));
+          console.log(`  ✅ Found 1 direct product ID`);
+        }
+        break;
+
+      case 'product_tags':
+        // Products via tags
+        if (filter.value && Array.isArray(filter.value)) {
+          for (const tagId of filter.value) {
+            const taggedProducts = await crossServerMigration.fetchFromOldDb(`
+              SELECT DISTINCT
+                tr.object_id as old_product_id
+              FROM vh_term_relationships tr
+              JOIN vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+              JOIN vh_terms t ON tt.term_id = t.term_id
+              JOIN vh_posts p ON tr.object_id = p.ID
+              WHERE tt.term_id = ${parseInt(tagId)}
+              AND tt.taxonomy = 'product_tag'
+              AND p.post_type = 'product'
+              AND p.post_status = 'publish'
+            `);
+            
+            taggedProducts.forEach(p => productIds.add(parseInt(p.old_product_id)));
+            console.log(`  ✅ Found ${taggedProducts.length} products via tag ${tagId}`);
+          }
+        }
+        break;
+
+      case 'product_categories':
+        // Products via categories
+        if (filter.value && Array.isArray(filter.value)) {
+          for (const categoryId of filter.value) {
+            const categoryProducts = await crossServerMigration.fetchFromOldDb(`
+              SELECT DISTINCT
+                tr.object_id as old_product_id
+              FROM vh_term_relationships tr
+              JOIN vh_term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+              JOIN vh_terms t ON tt.term_id = t.term_id
+              JOIN vh_posts p ON tr.object_id = p.ID
+              WHERE tt.term_id = ${parseInt(categoryId)}
+              AND tt.taxonomy = 'product_cat'
+              AND p.post_type = 'product'
+              AND p.post_status = 'publish'
+            `);
+            
+            categoryProducts.forEach(p => productIds.add(parseInt(p.old_product_id)));
+            console.log(`  ✅ Found ${categoryProducts.length} products via category ${categoryId}`);
+          }
+        }
+        break;
+
+      case 'product_attributes':
+        // Products via attributes (more complex, may need additional logic)
+        if (filter.value && Array.isArray(filter.value)) {
+          console.log(`  ⚠️ Product attributes filter found but not fully implemented: ${JSON.stringify(filter.value)}`);
+          // TODO: Implement attribute-based product lookup if needed
+        }
+        break;
+
+      default:
+        console.log(`  ⚠️ Unknown filter type: ${filter.type}`);
+        break;
+    }
+  } catch (error) {
+    console.error(`  ❌ Error extracting products from filter type ${filter.type}:`, error.message);
+  }
+}
