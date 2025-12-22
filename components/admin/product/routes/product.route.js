@@ -1,9 +1,11 @@
 const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const productController = require("../domain/product.controller");
+const attributeController = require("../../productAttributes/domain/attribute.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
 const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation } = require("../helper/product.validator");
+const { createAttributeValidator, updateAttributeValidator, uploadImageMiddleware } = require("../../productAttributes/helper/attribute.validatior");
 
 /**
  * @swagger
@@ -1002,6 +1004,201 @@ router.get('/download-sample',
 router.post('/status',
     [authMiddleware(true), validateRequest(updateProductStatusValidation)],
     productController.updateProductStatus
+);
+
+/**
+ * @swagger
+ * /api/admin/products/attributes:
+ *   post:
+ *     summary: Create a new product attribute with SVG icon support
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - slug
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Name of the attribute
+ *                 example: "Color"
+ *               slug:
+ *                 type: string
+ *                 description: URL-friendly version of the name
+ *                 example: "color"
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the attribute
+ *                 example: "Product color variations"
+ *               type:
+ *                 type: string
+ *                 enum: [select, text, number, textarea, date]
+ *                 default: select
+ *                 description: Type of the attribute
+ *               sort_order:
+ *                 type: string
+ *                 enum: [custom, name, name_num, id]
+ *                 default: custom
+ *                 description: Sort order for attribute terms
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Icon file for the attribute (JPEG, PNG, GIF, SVG)
+ *     responses:
+ *       201:
+ *         description: Attribute created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     name:
+ *                       type: string
+ *                       example: "Color"
+ *                     slug:
+ *                       type: string
+ *                       example: "color"
+ *                     image_url:
+ *                       type: string
+ *                       example: "https://example.com/images/color.svg"
+ *                 message:
+ *                   type: string
+ *                   example: "Attribute created successfully"
+ *       400:
+ *         description: Invalid request parameters
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/attributes',
+    [
+        authMiddleware(true),
+        uploadImageMiddleware,
+        validateRequest(createAttributeValidator)
+    ],
+    attributeController.createAttribute
+);
+
+/**
+ * @swagger
+ * /api/admin/products/attributes/{id}:
+ *   put:
+ *     summary: Update an existing product attribute with SVG icon support
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     consumes:
+ *       - multipart/form-data
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Attribute ID
+ *         example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Name of the attribute
+ *                 example: "Updated Color"
+ *               slug:
+ *                 type: string
+ *                 description: URL-friendly version of the name
+ *                 example: "updated-color"
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the attribute
+ *                 example: "Updated product color variations"
+ *               type:
+ *                 type: string
+ *                 enum: [select, text, number, textarea, date]
+ *                 description: Type of the attribute
+ *                 example: "select"
+ *               sort_order:
+ *                 type: string
+ *                 enum: [custom, name, name_num, id]
+ *                 description: Sort order for attribute terms
+ *                 example: "name"
+ *               new_image:
+ *                 type: boolean
+ *                 description: Set to true to replace existing icon
+ *                 example: true
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: New icon file for the attribute (JPEG, PNG, GIF, SVG)
+ *     responses:
+ *       200:
+ *         description: Attribute updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     name:
+ *                       type: string
+ *                       example: "Updated Color"
+ *                     slug:
+ *                       type: string
+ *                       example: "updated-color"
+ *                     image_url:
+ *                       type: string
+ *                       example: "https://example.com/images/updated-color.svg"
+ *                 message:
+ *                   type: string
+ *                   example: "Attribute updated successfully"
+ *       400:
+ *         description: Invalid request parameters
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Attribute not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/attributes/:id',
+    [
+        authMiddleware(true),
+        uploadImageMiddleware,
+        validateRequest(updateAttributeValidator)
+    ],
+    attributeController.updateAttribute
 );
 
 module.exports = router;
