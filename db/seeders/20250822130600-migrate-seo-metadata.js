@@ -234,7 +234,7 @@ module.exports = {
 
           if (normalizedOldSlug) {
             // Try exact match first with collation
-            [categories] = await queryInterface.sequelize.query(`
+            categories = await queryInterface.sequelize.query(`
               SELECT id, name, slug FROM categories 
               WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
             `, {
@@ -245,7 +245,7 @@ module.exports = {
             
             // If not found, try with original slug
             if (!categories || categories.length === 0) {
-              [categories] = await queryInterface.sequelize.query(`
+              categories = await queryInterface.sequelize.query(`
                 SELECT id, name, slug FROM categories 
                 WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
               `, {
@@ -256,7 +256,7 @@ module.exports = {
             }
           }
 
-          if (!categories || categories.length === 0) {
+          if (!categories || categories.length === 0 || !categories[0]) {
             migrationStats.categoriesSkipped++;
             console.log(`   ⚠️  Category "${seoData.category_name}" (slug: ${seoData.slug}) not found in new DB`);
             continue;
@@ -385,7 +385,7 @@ module.exports = {
 
           if (normalizedOldSlug) {
             // Try exact match first with collation
-            [brands] = await queryInterface.sequelize.query(`
+            brands = await queryInterface.sequelize.query(`
               SELECT id, name, slug FROM brands 
               WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
             `, {
@@ -396,7 +396,7 @@ module.exports = {
             
             // If not found, try with original slug
             if (!brands || brands.length === 0) {
-              [brands] = await queryInterface.sequelize.query(`
+              brands = await queryInterface.sequelize.query(`
                 SELECT id, name, slug FROM brands 
                 WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
               `, {
@@ -407,7 +407,7 @@ module.exports = {
             }
           }
 
-          if (!brands || brands.length === 0) {
+          if (!brands || brands.length === 0 || !brands[0]) {
             migrationStats.brandsSkipped++;
             console.log(`   ⚠️  Brand "${seoData.brand_name}" (slug: ${seoData.slug}) not found in new DB`);
             continue;
