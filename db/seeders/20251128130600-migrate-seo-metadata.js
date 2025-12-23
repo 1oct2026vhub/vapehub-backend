@@ -20,7 +20,10 @@
  */
 
 const CrossServerMigration = require('../../utils/cross-server-migration');
-const slugManager = require('../../utils/slugManager');
+const SlugManager = require('../../utils/slugManager');
+const { SlugRelation } = require('../../models');
+
+const slugManager = new SlugManager(SlugRelation);
 
 module.exports = {
   async up(queryInterface, Sequelize) {
