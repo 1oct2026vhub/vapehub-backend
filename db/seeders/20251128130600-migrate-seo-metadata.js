@@ -99,13 +99,15 @@ module.exports = {
           migrationStats.productsProcessed++;
 
           // Find the product in new database by old ID (products use exact ID mapping)
-          const [products] = await queryInterface.sequelize.query(`
+          const products = await queryInterface.sequelize.query(`
             SELECT id, name, slug, status FROM products WHERE id = ?
           `, {
             replacements: [seoData.old_product_id],
             type: Sequelize.QueryTypes.SELECT,
             transaction
           });
+
+          console.log(`   🔍 Product lookup for old_product_id ${seoData.old_product_id}:`, products);
 
           if (!products || products.length === 0) {
             migrationStats.productsSkipped++;
@@ -225,13 +227,15 @@ module.exports = {
           migrationStats.categoriesProcessed++;
 
           // Find category in new database by slug
-          const [categories] = await queryInterface.sequelize.query(`
+          const categories = await queryInterface.sequelize.query(`
             SELECT id, name, slug FROM categories WHERE slug = ?
           `, {
             replacements: [seoData.slug],
             type: Sequelize.QueryTypes.SELECT,
             transaction
           });
+
+          console.log(`   🔍 Category lookup for slug "${seoData.slug}":`, categories);
 
           if (!categories || categories.length === 0) {
             migrationStats.categoriesSkipped++;
@@ -348,13 +352,15 @@ module.exports = {
           migrationStats.brandsProcessed++;
 
           // Find brand in new database by slug
-          const [brands] = await queryInterface.sequelize.query(`
+          const brands = await queryInterface.sequelize.query(`
             SELECT id, name, slug FROM brands WHERE slug = ?
           `, {
             replacements: [seoData.slug],
             type: Sequelize.QueryTypes.SELECT,
             transaction
           });
+
+          console.log(`   🔍 Brand lookup for slug "${seoData.slug}":`, brands);
 
           if (!brands || brands.length === 0) {
             migrationStats.brandsSkipped++;
