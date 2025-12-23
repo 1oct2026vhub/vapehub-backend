@@ -4,6 +4,61 @@ const logger = require("../../../library/logger");
 const { Op } = require("sequelize");
 const { getNewProducts, getHotProducts, getProductsByEntity, isProductNew, isProductHot } = require("../helper/menu.helper");
 
+// Helper function to check if a menu is a letter menu (single A-Z letter)
+const isLetterMenu = (menu) => {
+    const label = (menu.label || '').trim();
+    return label.length === 1 && label >= 'A' && label <= 'Z' && 
+           menu.entity_type === 'page' && menu.original === '#';
+};
+
+// Optimized function to sort menu items - single pass separation + sort
+const sortMenuItems = (items) => {
+    if (!items || items.length === 0) return items;
+    
+    // Single pass: separate letter menus from regular menus
+    const letterMenus = [];
+    const regularMenus = [];
+    
+    items.forEach(menu => {
+        if (isLetterMenu(menu)) {
+            letterMenus.push(menu);
+        } else {
+            regularMenus.push(menu);
+        }
+    });
+    
+    // Sort letter menus alphabetically
+    if (letterMenus.length > 0) {
+        letterMenus.sort((a, b) => {
+            const labelA = (a.label || '').trim().toUpperCase();
+            const labelB = (b.label || '').trim().toUpperCase();
+            return labelA.localeCompare(labelB);
+        });
+    }
+    
+    // Sort regular menus by order, then by label
+    if (regularMenus.length > 0) {
+        regularMenus.sort((a, b) => {
+            if (a.order !== b.order) {
+                return a.order - b.order;
+            }
+            const labelA = (a.label || '').trim().toUpperCase();
+            const labelB = (b.label || '').trim().toUpperCase();
+            return labelA.localeCompare(labelB);
+        });
+    }
+    
+    // Recursively sort children only once
+    [...letterMenus, ...regularMenus].forEach(menu => {
+        if (menu.children && menu.children.length > 0) {
+            menu.children = sortMenuItems(menu.children);
+        }
+    });
+    
+    // Combine: regular menus first, then letter menus
+    return [...regularMenus, ...letterMenus];
+};
+
 module.exports = {
 
     // Get all menus - OPTIMIZED VERSION
@@ -359,10 +414,13 @@ module.exports = {
             
             const filteredMenuTree = filterExpiredDeals(menuTree);
             
-            // Ensure consistent field mapping after filtering
-            ensureConsistentFields(filteredMenuTree);
+            // Single optimized sort after filtering
+            const finalMenuTree = sortMenuItems(filteredMenuTree);
             
-            return successResponse(res, { data: filteredMenuTree }, 'Success');
+            // Ensure consistent field mapping after filtering
+            ensureConsistentFields(finalMenuTree);
+            
+            return successResponse(res, { data: finalMenuTree }, 'Success');
         } catch (error) {
             logger.error('Error fetching menus:', error);
             return errorResponse(res, error);
@@ -376,13 +434,12 @@ const buildMenuTree = (menus, parentId = null) => {
     for (const menu of menus) {
         if (menu.menu_parent === parentId) {
             const children = buildMenuTree(menus, menu.id);
-            if (children.length) {
-                menu.children = children;
-            }
+            menu.children = children;
             tree.push(menu);
         }
     }
     
+    // Don't sort here - sorting will be done once at the end for better performance
     return tree;
 };
 

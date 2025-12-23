@@ -106,6 +106,15 @@ const groupProductsByAlphabet = (products) => {
         grouped.get(firstLetter).push(product);
     }
     
+    // Sort products within each letter group alphabetically by name
+    for (const [letter, productList] of grouped.entries()) {
+        productList.sort((a, b) => {
+            const nameA = (a.name || '').trim().toUpperCase();
+            const nameB = (b.name || '').trim().toUpperCase();
+            return nameA.localeCompare(nameB);
+        });
+    }
+    
     return grouped;
 };
 

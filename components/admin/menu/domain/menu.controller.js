@@ -93,6 +93,34 @@ const getNextOrder = async (parentId) => {
 };
 
 /**
+ * Get the starting order for letter menus (after all non-letter menus)
+ * @param {number|null} parentId - Parent menu ID
+ * @param {Object} transaction - Sequelize transaction
+ * @returns {Promise<number>} Starting order value for letter menus
+ */
+const getLetterMenusStartOrder = async (parentId, transaction) => {
+    // Find the maximum order of non-letter menus
+    const allMenus = await Menu.findAll({
+        where: { menu_parent: parentId },
+        order: [['order', 'DESC']],
+        transaction
+    });
+    
+    // Find the highest order among non-letter menus
+    const nonLetterMenus = allMenus.filter(menu => {
+        const label = (menu.label || '').trim();
+        const isLetterMenu = label.length === 1 && label >= 'A' && label <= 'Z' && 
+                            menu.entity_type === 'page' && menu.original === '#';
+        return !isLetterMenu;
+    });
+    
+    // Return the max order + 1, or 0 if no non-letter menus
+    return nonLetterMenus.length > 0 && nonLetterMenus[0].order !== null 
+        ? nonLetterMenus[0].order + 1 
+        : 0;
+};
+
+/**
  * Get the correct order position for an alphabet menu and reorder if needed
  * @param {number|null} parentId - Parent menu ID
  * @param {string} letter - The letter to insert (A-Z)
@@ -181,9 +209,28 @@ const reorderAlphabetMenus = async (parentId, transaction) => {
         return labelA.localeCompare(labelB);
     });
 
-    // Reassign orders sequentially (0, 1, 2, 3, ...)
+    // Find the maximum order of non-letter menus to avoid conflicts
+    const allMenus = await Menu.findAll({
+        where: { menu_parent: parentId },
+        order: [['order', 'DESC']],
+        transaction
+    });
+    
+    // Find the highest order among non-letter menus
+    const nonLetterMenus = allMenus.filter(menu => {
+        const label = (menu.label || '').trim();
+        const isLetterMenu = label.length === 1 && label >= 'A' && label <= 'Z' && 
+                            menu.entity_type === 'page' && menu.original === '#';
+        return !isLetterMenu;
+    });
+    
+    const startOrder = nonLetterMenus.length > 0 && nonLetterMenus[0].order !== null 
+        ? nonLetterMenus[0].order + 1 
+        : 0;
+
+    // Reassign orders sequentially starting after non-letter menus
     for (let i = 0; i < validLetterMenus.length; i++) {
-        await validLetterMenus[i].update({ order: i }, { transaction });
+        await validLetterMenus[i].update({ order: startOrder + i }, { transaction });
     }
 };
 
@@ -402,44 +449,84 @@ const generateAlphabetAndProductMenus = async (parentMenu, listFlag, transaction
     // Get sorted alphabet letters
     const alphabetLetters = Array.from(productsByAlphabet.keys()).sort();
     
-    let letterOrder = 0;
+    // CRITICAL: Get the starting order BEFORE creating any menus
+    // This ensures letter menus are placed after all non-letter menus
+    const startOrder = await getLetterMenusStartOrder(parentMenu.id, transaction);
     
-    // Create alphabet menu for each letter
-    for (const letter of alphabetLetters) {
+    // Create alphabet menu for each letter with correct order from the start
+    for (let i = 0; i < alphabetLetters.length; i++) {
+        const letter = alphabetLetters[i];
         const productsForLetter = productsByAlphabet.get(letter);
         
-        // Create alphabet menu
-        const letterMenu = await Menu.create({
-            label: letter,
-            menu_parent: parentMenu.id,
-            entity_type: 'page',
-            entity_id: null,
-            original: '#',
-            order: letterOrder++,
-            status: true,
-            hide_text: false, // Show text (hide_text = false means show text)
-            updated_by: parentMenu.updated_by
-        }, { transaction });
-
-        // Create product menus under this alphabet menu
-        let productOrder = 0;
-        for (const product of productsForLetter) {
-            // Get product slug using existing logic
-            const productSlug = await getEntitySlug('product', product.id, product.slug);
-            
-            await Menu.create({
-                label: product.name,
-                menu_parent: letterMenu.id,
-                entity_type: 'product',
-                entity_id: product.id,
-                original: productSlug,
-                order: productOrder++,
+        // Check if letter menu already exists
+        const existingLetterMenu = await Menu.findOne({
+            where: {
+                menu_parent: parentMenu.id,
+                entity_type: 'page',
+                original: '#',
+                label: letter
+            },
+            transaction
+        });
+        
+        let letterMenu;
+        if (existingLetterMenu) {
+            letterMenu = existingLetterMenu;
+        } else {
+            // Create with CORRECT order from the start (alphabetically positioned)
+            letterMenu = await Menu.create({
+                label: letter,
+                menu_parent: parentMenu.id,
+                entity_type: 'page',
+                entity_id: null,
+                original: '#',
+                order: startOrder + i, // Correct order calculated BEFORE insertion
                 status: true,
                 hide_text: false, // Show text (hide_text = false means show text)
                 updated_by: parentMenu.updated_by
             }, { transaction });
         }
+
+        // Create product menus under this alphabet menu
+        // Ensure products are sorted alphabetically before creating menus
+        const sortedProducts = [...productsForLetter].sort((a, b) => {
+            const nameA = (a.name || '').trim().toUpperCase();
+            const nameB = (b.name || '').trim().toUpperCase();
+            return nameA.localeCompare(nameB);
+        });
+        
+        let productOrder = 0;
+        for (const product of sortedProducts) {
+            // Check if product menu already exists
+            const existingProductMenu = await Menu.findOne({
+                where: {
+                    menu_parent: letterMenu.id,
+                    entity_type: 'product',
+                    entity_id: product.id
+                },
+                transaction
+            });
+            
+            if (!existingProductMenu) {
+                // Get product slug using existing logic
+                const productSlug = await getEntitySlug('product', product.id, product.slug);
+                
+                await Menu.create({
+                    label: product.name,
+                    menu_parent: letterMenu.id,
+                    entity_type: 'product',
+                    entity_id: product.id,
+                    original: productSlug,
+                    order: productOrder++,
+                    status: true,
+                    hide_text: false, // Show text (hide_text = false means show text)
+                    updated_by: parentMenu.updated_by
+                }, { transaction });
+            }
+        }
     }
+    
+    // No need to reorder - orders are already correct from the start!
 };
 
 /**
