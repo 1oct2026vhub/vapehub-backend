@@ -77,6 +77,20 @@ module.exports = {
 
           console.log(`📦 Found ${productIds.size} unique products for rule ${rule.id}`);
 
+          // Check if deal exists in new database BEFORE processing products
+          const existingDeal = await queryInterface.sequelize.query(`
+            SELECT id, name FROM deals WHERE id = ?
+          `, {
+            replacements: [rule.id],
+            type: Sequelize.QueryTypes.SELECT
+          });
+
+          if (existingDeal.length === 0) {
+            console.log(`⚠️ Skipping rule ${rule.id} (${rule.title}) - deal not found in new database`);
+            skipped++;
+            continue; // Skip to next rule
+          }
+
           // Create deal-product relationships
           for (const productId of productIds) {
             try {
