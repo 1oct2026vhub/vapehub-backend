@@ -650,11 +650,31 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                     },
                 }
             });
+
             if (!worldpayResponse.data) {
                 throw new Error('No response data from Worldpay');
             }
         } catch (error) {
-            throw new Error(error.response?.data?.message || 'Failed to process payment with Worldpay');
+            // Log as much detail as possible so we can debug cryptic payloads like {"a":"$@1","f":"","b":"..."}
+            console.error('Worldpay payment_pages error status:', error.response?.status);
+            console.error('Worldpay payment_pages error data:', error.response?.data);
+
+            // Try to surface a useful message if Worldpay sends one in a different shape
+            let worldpayMessage;
+            const data = error.response?.data;
+
+            if (typeof data === 'string') {
+                worldpayMessage = data;
+            } else if (data && typeof data === 'object') {
+                // Common patterns: { message }, { error: { message } }, or { a: 'CODE', b: 'traceId' }
+                worldpayMessage =
+                    data.message ||
+                    data.error?.message ||
+                    data.error_description ||
+                    JSON.stringify(data);
+            }
+
+            throw new Error(worldpayMessage || 'Failed to process payment with Worldpay');
         }
     }
 
