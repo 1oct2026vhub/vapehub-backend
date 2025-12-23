@@ -7,8 +7,8 @@ module.exports = {
     const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
     // Use smaller chunk size for staging and production environments
         // Use very small chunk size to avoid lock timeouts
-        const CHUNK_SIZE = 5;
-        const BATCH_INTERVAL = 3000; // 3 second interval between batches
+        const CHUNK_SIZE = 1000;
+        const BATCH_INTERVAL = 1000; // 1 second interval between batches
     
     try {
       // Step 0: Check existing data and resume from where it stopped
@@ -272,14 +272,15 @@ module.exports = {
       // Step 3: Process orders in chunks with timeout protection
       const CHUNK_TIMEOUT = 180000; // 3 minutes per chunk (reduced for staging)
       const startTime = Date.now();
-      
+      let lastId = 0;
+
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const offset = chunkIndex * CHUNK_SIZE;
         const transaction = await queryInterface.sequelize.transaction();
         const chunkStartTime = Date.now();
         
         try {
-          console.log(`🔄 Processing chunk ${chunkIndex + 1}/${totalChunks} (offset: ${offset})`);
+          console.log(`🔄 Processing chunk ${chunkIndex + 1}/${totalChunks} (offset: ${offset})**********************************************************`);
           
           // Check if we're taking too long overall (6 hour timeout for staging/production)
           const elapsedTime = Date.now() - startTime;
@@ -321,10 +322,12 @@ module.exports = {
             LEFT JOIN vh_postmeta pm_total ON old_o.ID = pm_total.post_id AND pm_total.meta_key = '_order_total'
             LEFT JOIN vh_postmeta pm_tax ON old_o.ID = pm_tax.post_id AND pm_tax.meta_key = '_order_tax'
             LEFT JOIN vh_postmeta pm_email ON old_o.ID = pm_email.post_id AND pm_email.meta_key = '_billing_email'
-            WHERE old_o.post_type = 'shop_order'
+            WHERE old_o.ID > ${lastId}
+            AND old_o.post_type = 'shop_order'
             AND old_o.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold', 'wc-pending', 'wc-cancelled', 'wc-failed', 'wc-refunded')
             AND old_o.ID NOT IN (${migratedIdsList})
-            LIMIT ${CHUNK_SIZE} OFFSET ${offset}
+            ORDER BY old_o.ID ASC
+            LIMIT ${CHUNK_SIZE}
           `);
 
           const fetchTime = Date.now() - fetchStartTime;
@@ -336,6 +339,9 @@ module.exports = {
              await transaction.commit();
              continue;
            }
+
+          lastId = Math.max(...chunkOrders.map(i => i.id));
+          console.log('Last id = ' + lastId);
 
            console.log(`   📦 Found ${chunkOrders.length} new orders to migrate in this chunk`);
 
