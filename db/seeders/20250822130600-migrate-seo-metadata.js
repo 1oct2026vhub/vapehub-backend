@@ -49,11 +49,6 @@ module.exports = {
       await crossServerMigration.connectToOldDb();
       console.log('✅ Connected to old database successfully');
 
-      // Set collation for the session to handle comparisons between old and new DB
-      await queryInterface.sequelize.query(`
-        SET collation_connection = 'utf8mb4_unicode_ci'
-      `, { transaction });
-
       // ============================================
       // STEP 1: MIGRATE PRODUCT SEO METADATA
       // ============================================
@@ -111,7 +106,6 @@ module.exports = {
 
           if (!products || products.length === 0) {
             migrationStats.productsSkipped++;
-            console.log(`   ⚠️  Product ID ${seoData.old_product_id} (slug: ${seoData.slug}) not found in new DB`);
             continue;
           }
 
@@ -121,7 +115,6 @@ module.exports = {
 
           if (!productSlug || !productSlug.trim()) {
             migrationStats.productsSkipped++;
-            console.log(`   ⚠️  Product ID ${newProductId} has no valid slug`);
             continue;
           }
 
@@ -228,37 +221,17 @@ module.exports = {
         try {
           migrationStats.categoriesProcessed++;
 
-          // Find category in new database by slug (with collation handling)
-          const normalizedOldSlug = slugManager.normalizeSlug(seoData.slug);
-          let categories = null;
-
-          if (normalizedOldSlug) {
-            // Try exact match first with collation
-            [categories] = await queryInterface.sequelize.query(`
-              SELECT id, name, slug FROM categories 
-              WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
-            `, {
-              replacements: [normalizedOldSlug],
-              type: Sequelize.QueryTypes.SELECT,
-              transaction
-            });
-            
-            // If not found, try with original slug
-            if (!categories || categories.length === 0) {
-              [categories] = await queryInterface.sequelize.query(`
-                SELECT id, name, slug FROM categories 
-                WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
-              `, {
-                replacements: [seoData.slug],
-                type: Sequelize.QueryTypes.SELECT,
-                transaction
-              });
-            }
-          }
+          // Find category in new database by slug
+          const [categories] = await queryInterface.sequelize.query(`
+            SELECT id, name, slug FROM categories WHERE slug = ?
+          `, {
+            replacements: [seoData.slug],
+            type: Sequelize.QueryTypes.SELECT,
+            transaction
+          });
 
           if (!categories || categories.length === 0) {
             migrationStats.categoriesSkipped++;
-            console.log(`   ⚠️  Category "${seoData.category_name}" (slug: ${seoData.slug}) not found in new DB`);
             continue;
           }
 
@@ -312,29 +285,21 @@ module.exports = {
             }
           }
 
-          try {
-            await insertCategorySeoMeta(queryInterface, Sequelize, {
-              categoryId: newCategoryId,
-              slug: finalSlug,
-              seoData,
-              transaction
-            });
-            
-            migrationStats.categoriesInserted++;
-            if (migrationStats.categoriesInserted % 20 === 0) {
-              console.log(`   ✅ Processed ${migrationStats.categoriesInserted} categories...`);
-            }
-          } catch (error) {
-            migrationStats.errors++;
-            console.error(`   ❌ Error inserting SEO for category "${seoData.category_name}" (ID: ${newCategoryId}):`, error.message);
-            console.error(`   Slug: ${finalSlug}, Error:`, error);
-            // Continue with next category
+          await insertCategorySeoMeta(queryInterface, Sequelize, {
+            categoryId: newCategoryId,
+            slug: finalSlug,
+            seoData,
+            transaction
+          });
+
+          migrationStats.categoriesInserted++;
+          if (migrationStats.categoriesInserted % 20 === 0) {
+            console.log(`   ✅ Processed ${migrationStats.categoriesInserted} categories...`);
           }
 
         } catch (error) {
           migrationStats.errors++;
-          console.error(`   ❌ Error processing category "${seoData.category_name}" (slug: ${seoData.slug}):`, error.message);
-          console.error(`   Stack:`, error.stack);
+          console.error(`   ❌ Error processing category ${seoData.category_name}:`, error.message);
         }
       }
 
@@ -379,37 +344,17 @@ module.exports = {
         try {
           migrationStats.brandsProcessed++;
 
-          // Find brand in new database by slug (with collation handling)
-          const normalizedOldSlug = slugManager.normalizeSlug(seoData.slug);
-          let brands = null;
-
-          if (normalizedOldSlug) {
-            // Try exact match first with collation
-            [brands] = await queryInterface.sequelize.query(`
-              SELECT id, name, slug FROM brands 
-              WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
-            `, {
-              replacements: [normalizedOldSlug],
-              type: Sequelize.QueryTypes.SELECT,
-              transaction
-            });
-            
-            // If not found, try with original slug
-            if (!brands || brands.length === 0) {
-              [brands] = await queryInterface.sequelize.query(`
-                SELECT id, name, slug FROM brands 
-                WHERE LOWER(TRIM(slug)) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(?)) COLLATE utf8mb4_unicode_ci
-              `, {
-                replacements: [seoData.slug],
-                type: Sequelize.QueryTypes.SELECT,
-                transaction
-              });
-            }
-          }
+          // Find brand in new database by slug
+          const [brands] = await queryInterface.sequelize.query(`
+            SELECT id, name, slug FROM brands WHERE slug = ?
+          `, {
+            replacements: [seoData.slug],
+            type: Sequelize.QueryTypes.SELECT,
+            transaction
+          });
 
           if (!brands || brands.length === 0) {
             migrationStats.brandsSkipped++;
-            console.log(`   ⚠️  Brand "${seoData.brand_name}" (slug: ${seoData.slug}) not found in new DB`);
             continue;
           }
 
@@ -463,29 +408,21 @@ module.exports = {
             }
           }
 
-          try {
-            await insertBrandSeoMeta(queryInterface, Sequelize, {
-              brandId: newBrandId,
-              slug: finalSlug,
-              seoData,
-              transaction
-            });
-            
-            migrationStats.brandsInserted++;
-            if (migrationStats.brandsInserted % 20 === 0) {
-              console.log(`   ✅ Processed ${migrationStats.brandsInserted} brands...`);
-            }
-          } catch (error) {
-            migrationStats.errors++;
-            console.error(`   ❌ Error inserting SEO for brand "${seoData.brand_name}" (ID: ${newBrandId}):`, error.message);
-            console.error(`   Slug: ${finalSlug}, Error:`, error);
-            // Continue with next brand
+          await insertBrandSeoMeta(queryInterface, Sequelize, {
+            brandId: newBrandId,
+            slug: finalSlug,
+            seoData,
+            transaction
+          });
+
+          migrationStats.brandsInserted++;
+          if (migrationStats.brandsInserted % 20 === 0) {
+            console.log(`   ✅ Processed ${migrationStats.brandsInserted} brands...`);
           }
 
         } catch (error) {
           migrationStats.errors++;
-          console.error(`   ❌ Error processing brand "${seoData.brand_name}" (slug: ${seoData.slug}):`, error.message);
-          console.error(`   Stack:`, error.stack);
+          console.error(`   ❌ Error processing brand ${seoData.brand_name}:`, error.message);
         }
       }
 
