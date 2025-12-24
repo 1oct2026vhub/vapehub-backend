@@ -34,7 +34,7 @@ module.exports.getCategoryByid = async (req, res, next) => {
 }
 module.exports.createCategory = async (req, res, next) => {
     try {
-        const { name, logo_url, slug, description } = req.body;
+        const { name, logo_url, slug, description, alt_text } = req.body;
         const { id: updated_by } = req.user;
         // check if category already exists
         const categoryExists = await Category.findOne({ where: { name } });
@@ -47,7 +47,7 @@ module.exports.createCategory = async (req, res, next) => {
         }
 
         // Create new category
-        const category = await Category.create({ name, logo_url, updated_by, slug, description });
+        const category = await Category.create({ name, logo_url, updated_by, slug, description, alt_text });
         successResponse(res, category, 'Category created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -56,7 +56,7 @@ module.exports.createCategory = async (req, res, next) => {
 module.exports.updateCategory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, slug, logo_url, description } = req.body;
+        const { name, slug, logo_url, description, alt_text } = req.body;
         const { id: updated_by } = req.user
 
         const category = await Category.findByPk(id);
@@ -73,7 +73,7 @@ module.exports.updateCategory = async (req, res, next) => {
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
             ...(description && { description }),
-            ...(description && { description }),
+            ...(alt_text !== undefined && { alt_text }),
         });
         successResponse(res, category, 'Category updated successfully',);
     } catch (error) {
