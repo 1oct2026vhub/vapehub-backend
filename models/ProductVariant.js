@@ -158,6 +158,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('active', 'inactive'),
       defaultValue: 'active'
     },
+    alt_text: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     updated_by: {
       type: DataTypes.INTEGER,
       references: {
