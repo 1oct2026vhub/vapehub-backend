@@ -90,6 +90,7 @@ router.post('/', authenticateJWT,
         check('logo_url').notEmpty().isString().withMessage('Logo URL must be a string'),
         check('slug').notEmpty().withMessage("Slug is required").isString().withMessage('slug must be a string'),
         check('description').optional().isString().withMessage('description must be a string'),
+        check('alt_text').optional().isString().withMessage('alt_text must be a string'),
     ]),
     brandController.createBrand
 );
@@ -137,6 +138,7 @@ router.put('/:id', authenticateJWT,
         check('logo_url').optional().isString().withMessage('Logo URL must be a string'),
         check('slug').optional().isString().withMessage('Slug must be a string'),
         check('description').optional().isString().withMessage('description must be a string'),
+        check('alt_text').optional().isString().withMessage('alt_text must be a string'),
     ]),
     brandController.updateBrand
 );

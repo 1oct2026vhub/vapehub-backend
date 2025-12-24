@@ -49,6 +49,9 @@
  *         description:
  *           type: string
  *           description: Variant description
+ *         alt_text:
+ *           type: string
+ *           description: Alt text for the variant
  *         barcode:
  *           type: string
  *           description: Unique barcode for the variant
@@ -74,6 +77,8 @@
  *               id:
  *                 type: integer
  *               image_url:
+ *                 type: string
+ *               alt_text:
  *                 type: string
  *               is_primary:
  *                 type: boolean
@@ -332,6 +337,9 @@ router.get('/:variant_id',
  *                     description:
  *                       type: string
  *                       description: Variant description
+ *                     alt_text:
+ *                       type: string
+ *                       description: Alt text for the variant
  *                     status:
  *                       type: string
  *                       enum: [active, inactive]
@@ -614,6 +622,9 @@ router.get('/product/:product_id/attributes',
  *                     description:
  *                       type: string
  *                       description: Variant description
+ *                     alt_text:
+ *                       type: string
+ *                       description: Alt text for the variant
  *                     status:
  *                       type: string
  *                       enum: [active, inactive]
@@ -1051,6 +1062,14 @@ router.put('/variants/:variant_id/restore',
  *                   type: string
  *                   format: binary
  *                 description: Image files (JPEG, PNG, or WEBP only)
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text to apply to all uploaded images (optional)
+ *               alt_texts:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of alt texts, one per image (optional, overrides alt_text if provided)
  *     responses:
  *       200:
  *         description: Images uploaded successfully
@@ -1077,6 +1096,8 @@ router.put('/variants/:variant_id/restore',
  *                               id:
  *                                 type: integer
  *                               image_url:
+ *                                 type: string
+ *                               alt_text:
  *                                 type: string
  *                               is_primary:
  *                                 type: boolean
