@@ -4,56 +4,14 @@ const { Op, Sequelize } = require("sequelize");
 const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3 } = require("../../../../library/s3/s3Helper");
 const path = require('path');
 
-// Carousel responsive image resize configurations (WebP with JPG fallback)
+// Carousel image configurations - NO RESIZING, PRESERVE ORIGINAL FORMAT
 const CAROUSEL_RESIZE_CONFIGS = {
-  desktop_wide: {
-    width: 3240,
-    height: 540,
-    quality: 92,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'high' // Critical for large screens
-  },
-  desktop: {
-    width: 2020,
-    height: 340,
-    quality: 90,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'high' // Most common desktop size
-  },
-  laptop: {
-    width: 1620,
-    height: 270,
-    quality: 88,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'medium' // Common laptop size
-  },
-  tablet_landscape: {
-    width: 1010,
-    height: 170,
-    quality: 85,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'medium' // Tablet landscape
-  },
-  tablet_portrait: {
-    width: 960,
-    height: 160,
-    quality: 85,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'medium' // Tablet portrait
-  },
-  mobile: {
-    width: 480,
-    height: 80,
-    quality: 80,
-    format: 'webp',
-    maintainAspectRatio: true,
-    priority: 'high' // Critical for mobile
-  }
+  desktop_wide: { priority: 'high' },
+  desktop: { priority: 'high' },
+  laptop: { priority: 'medium' },
+  tablet_landscape: { priority: 'medium' },
+  tablet_portrait: { priority: 'medium' },
+  mobile: { priority: 'high' }
 };
 
 /**
@@ -83,51 +41,30 @@ async function generateResponsiveImagesWithMigrationStyle(imageBuffer, baseS3Key
       try {
         console.log(`📐 Starting ${sizeKey}: ${config.width}x${config.height}`);
         
-        // Try WebP first, fallback to JPG if it fails
-        let sizeS3Key, uploadParams, uploadResult;
-        let success = false;
+        // Preserve original format - no WebP conversion
+        const originalExt = path.extname(baseS3Key).toLowerCase();
+        const sizeS3Key = `${directory}/${baseFileName}-${sizeKey}${originalExt}`;
         
-        // First attempt: WebP format
-        try {
-          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.webp`;
-          uploadParams = {
-            Bucket: process.env.AWS_S3_BUCKET,
-            Key: sizeS3Key,
-            Body: imageBuffer,
-            ContentType: 'image/webp'
-          };
-          
-          uploadResult = await uploadImageToS3WithResize(uploadParams, config);
-          
-          if (uploadResult && uploadResult.Location) {
-            const url = generateCloudFrontUrlForS3(sizeS3Key);
-            console.log(`✅ ${sizeKey} uploaded as WebP: ${url}`);
-            return { sizeKey, url, success: true };
-          }
-        } catch (webpError) {
-          console.log(`⚠️ WebP failed for ${sizeKey}, trying JPG fallback: ${webpError.message}`);
-        }
+        // Determine content type from original file extension
+        let contentType = 'image/jpeg'; // default
+        if (originalExt === '.png') contentType = 'image/png';
+        else if (originalExt === '.webp') contentType = 'image/webp';
+        else if (originalExt === '.gif') contentType = 'image/gif';
+        else if (originalExt === '.svg') contentType = 'image/svg+xml';
         
-        // Fallback: JPG format if WebP failed
-        try {
-          const jpgConfig = { ...config, format: 'jpeg' };
-          sizeS3Key = `${directory}/${baseFileName}-${sizeKey}.jpg`;
-          uploadParams = {
-            Bucket: process.env.AWS_S3_BUCKET,
-            Key: sizeS3Key,
-            Body: imageBuffer,
-            ContentType: 'image/jpeg'
-          };
-          
-          uploadResult = await uploadImageToS3WithResize(uploadParams, jpgConfig);
-          
-          if (uploadResult && uploadResult.Location) {
-            const url = generateCloudFrontUrlForS3(sizeS3Key);
-            console.log(`✅ ${sizeKey} uploaded as JPG fallback: ${url}`);
-            return { sizeKey, url, success: true };
-          }
-        } catch (jpgError) {
-          console.log(`❌ Both WebP and JPG failed for ${sizeKey}: ${jpgError.message}`);
+        const uploadParams = {
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: sizeS3Key,
+          Body: imageBuffer,
+          ContentType: contentType
+        };
+        
+        const uploadResult = await uploadImageToS3WithResize(uploadParams, config);
+        
+        if (uploadResult && uploadResult.Location) {
+          const url = generateCloudFrontUrlForS3(sizeS3Key);
+          console.log(`✅ ${sizeKey} uploaded with original format: ${url}`);
+          return { sizeKey, url, success: true };
         }
         
         return { sizeKey, url: null, success: false };
