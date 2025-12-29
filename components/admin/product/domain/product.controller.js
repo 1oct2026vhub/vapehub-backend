@@ -514,7 +514,7 @@ module.exports.getProductById = async (req, res, next) => {
                 include: [{
                     model: ProductImage,
                     as: "ProductImages",
-                    attributes: ['id', 'updated_by', 'product_id', 'image_url', 'is_primary', 'createdAt', 'updatedAt', 'deletedAt']
+                    attributes: ['id', 'updated_by', 'product_id', 'image_url', 'alt_text', 'is_primary', 'createdAt', 'updatedAt', 'deletedAt']
                 }],
                 attributes: []
             }).then(result => result?.ProductImages || []),
@@ -605,7 +605,7 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductImage,
                             as: "ProductImages",
-                            attributes: ['id', 'product_id', 'image_url', 'is_primary'],
+                            attributes: ['id', 'product_id', 'image_url', 'alt_text', 'is_primary'],
                             limit: 1,
                             order: [['is_primary', 'DESC'], ['id', 'ASC']],
                             required: false
@@ -658,6 +658,7 @@ module.exports.getProductById = async (req, res, next) => {
                 image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
+                    alt_text: primaryImage.alt_text,
                     is_primary: primaryImage.is_primary
                 } : null,
                 price: productJson.price,
