@@ -46,6 +46,9 @@ module.exports.listUsers = async (req, res) => {
             whereCondition.roleId = { [Op.notIn]: roleIds };
         }
 
+        // Exclude guest users (temporary users)
+        whereCondition.is_temporary = false;
+
         // Search by first name, last name, email, phone number, or gender
         if (search) {
             whereCondition[Op.or] = [
