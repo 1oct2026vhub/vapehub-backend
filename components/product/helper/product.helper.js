@@ -780,7 +780,7 @@ const fetchProducts = async (query, status = 'published') => {
 
       // 5. Fetch product images
       productIds.length > 0 ? sequelize.query(`
-        SELECT pi.id, pi.product_id, pi.image_url, pi.is_primary
+        SELECT pi.id, pi.product_id, pi.image_url, pi.is_primary, pi.alt_text
         FROM product_images pi
         WHERE pi.product_id IN (${productIds.join(',')})
       `, { type: sequelize.QueryTypes.SELECT }) : [],
@@ -896,7 +896,8 @@ const fetchProducts = async (query, status = 'published') => {
         id: img.id,
         product_id: img.product_id,
         image_url: img.image_url,
-        is_primary: Boolean(img.is_primary)
+        is_primary: Boolean(img.is_primary),
+        alt_text: img.alt_text
       });
     });
 

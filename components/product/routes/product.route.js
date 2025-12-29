@@ -186,6 +186,8 @@ const path = require("path");
  *                                   type: string
  *                                 is_primary:
  *                                   type: boolean
+ *                                 alt_text:
+ *                                   type: string
  *                     category_items:
  *                       type: array
  *                       items:
@@ -716,6 +718,9 @@ router.get('/fetch/:id',
  *                     is_primary:
  *                       type: boolean
  *                       description: Indicates if the image is primary
+ *                     alt_text:
+ *                       type: string
+ *                       description: Alt text for the product image
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -786,6 +791,7 @@ router.post('/', authenticateJWT,
         check('product_images').optional().isArray().withMessage('Product images must be an array'),
         check('product_images.*.image_url').optional().isString().withMessage('Image URL must be a string'),
         check('product_images.*.is_primary').optional().isBoolean().withMessage('is_primary must be a boolean'),
+        check('product_images.*.alt_text').optional().isString().withMessage('Alt text must be a string'),
     ]),
     productController.createProduct
 );
@@ -917,6 +923,9 @@ router.post('/', authenticateJWT,
  *                     is_primary:
  *                       type: boolean
  *                       description: Indicates if the image is primary
+ *                     alt_text:
+ *                       type: string
+ *                       description: Alt text for the product image
  *     responses:
  *       200:
  *         description: Product updated successfully
@@ -991,6 +1000,7 @@ router.put('/:id', authenticateJWT,
         check('product_images').optional().isArray().withMessage('Product images must be an array'),
         check('product_images.*.image_url').optional().isString().withMessage('Image URL must be a string'),
         check('product_images.*.is_primary').optional().isBoolean().withMessage('is_primary must be a boolean'),
+        check('product_images.*.alt_text').optional().isString().withMessage('Alt text must be a string'),
     ]),
     productController.updateProduct
 );
