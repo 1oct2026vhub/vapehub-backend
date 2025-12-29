@@ -52,6 +52,12 @@ const createBannerValidation = [
         .isString().withMessage('Description must be a string')
         .trim(),
     
+    body('alt_text')
+        .optional()
+        .isString().withMessage('Alt text must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
+    
     body('status')
         .optional()
         .isIn(['active', 'inactive']).withMessage('Status must be either active or inactive'),
@@ -88,6 +94,12 @@ const updateBannerValidation = [
         .optional()
         .isString().withMessage('Description must be a string')
         .trim(),
+    
+    body('alt_text')
+        .optional()
+        .isString().withMessage('Alt text must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
     
     body('status')
         .optional()

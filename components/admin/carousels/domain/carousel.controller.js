@@ -240,7 +240,7 @@ module.exports.getCarousels = async (req, res) => {
 module.exports.createCarousel = async (req, res) => {
     try {
         const user_id = req?.user?.id;
-        const { title, description, status, redirect_url } = req.body;
+        const { title, description, status, redirect_url, alt_text } = req.body;
         const files = req.files;
 
         if (!files.image) {
@@ -368,6 +368,7 @@ module.exports.createCarousel = async (req, res) => {
             image_url_low, // Include image_url_low (either uploaded or fallback)
             title,
             description,
+            alt_text,
             status,
             redirect_url,
             updated_by: user_id,
@@ -545,7 +546,7 @@ module.exports.updateCarousel = async (req, res) => {
     try {
         const { id } = req.params;
         const user_id = req?.user?.id;
-        const { title, description, status, redirect_url } = req.body;
+        const { title, description, status, redirect_url, alt_text } = req.body;
         const files = req.files;
 
         const carousel = await Carousel.findByPk(id);
@@ -560,10 +561,11 @@ module.exports.updateCarousel = async (req, res) => {
         }
 
         Object.assign(carousel, {
-            ...(title && { title }),
-            ...(description && { description }),
-            ...(status && { status }),
-            ...(redirect_url && { redirect_url }),
+            ...(title !== undefined && { title }),
+            ...(description !== undefined && { description }),
+            ...(alt_text !== undefined && { alt_text }),
+            ...(status !== undefined && { status }),
+            ...(redirect_url !== undefined && { redirect_url }),
             updated_by: user_id
         });
 
