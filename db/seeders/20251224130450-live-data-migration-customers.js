@@ -63,6 +63,9 @@ module.exports = {
       let totalInserted = 0;
       let totalUpdated = 0;
       let totalErrors = 0;
+      let totalSkippedDuplicates = 0;
+      let totalSkippedExistingEmail = 0;
+      let totalSkippedMissingData = 0;
       const errors = [];
 
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -125,6 +128,11 @@ module.exports = {
             continue;
           }
 
+          // IMPORTANT: Calculate lastId from original fetched records BEFORE deduplication
+          // This ensures pagination continues correctly even if deduplication removes records
+          lastId = Math.max(...chunkCustomers.map(c => c.id));
+          console.log('Last id = ' + lastId);
+
           // Deduplicate by email - keep the record with the highest ID for each email
           const emailMap = new Map();
           for (const customer of chunkCustomers) {
@@ -139,13 +147,11 @@ module.exports = {
           
           const deduplicatedCustomers = Array.from(emailMap.values());
           const duplicatesRemoved = chunkCustomers.length - deduplicatedCustomers.length;
+          totalSkippedDuplicates += duplicatesRemoved;
           
           if (duplicatesRemoved > 0) {
             console.log(`   🔍 Removed ${duplicatesRemoved} duplicate emails from chunk ${chunkIndex + 1}`);
           }
-
-          lastId = Math.max(...deduplicatedCustomers.map(c => c.id));
-          console.log('Last id = ' + lastId);
 
           console.log(`   📦 Found ${deduplicatedCustomers.length} new customers to migrate in this chunk`);
 
@@ -168,11 +174,23 @@ module.exports = {
           console.log(`💾 Preparing customer data for chunk ${chunkIndex + 1}...`);
           const prepareStartTime = Date.now();
           
-          // Get list of existing emails from users table to skip duplicates
-          const [existingEmails] = await queryInterface.sequelize.query(`
-            SELECT LOWER(email) as email FROM users WHERE email IS NOT NULL
-          `, { transaction });
-          const existingEmailSet = new Set(existingEmails.map(row => row.email));
+          // Get list of existing emails for current chunk only (more efficient)
+          const chunkEmails = deduplicatedCustomers
+            .map(c => c.email ? c.email.trim().toLowerCase() : '')
+            .filter(email => email !== '');
+          
+          let existingEmailSet = new Set();
+          if (chunkEmails.length > 0) {
+            const emailPlaceholders = chunkEmails.map(() => '?').join(',');
+            const [existingEmails] = await queryInterface.sequelize.query(`
+              SELECT LOWER(email) as email FROM users 
+              WHERE LOWER(email) IN (${emailPlaceholders})
+            `, { 
+              replacements: chunkEmails,
+              transaction 
+            });
+            existingEmailSet = new Set(existingEmails.map(row => row.email));
+          }
           
           for (const customer of deduplicatedCustomers) {
             try {
@@ -184,12 +202,14 @@ module.exports = {
 
               // Skip if no email or no ID
               if (!email || !userId) {
+                totalSkippedMissingData++;
                 console.log(`⚠️ Skipping customer: missing email or ID (ID: ${userId}, Email: ${email})`);
                 continue;
               }
 
               // Skip if email already exists in users table
               if (existingEmailSet.has(email)) {
+                totalSkippedExistingEmail++;
                 console.log(`⚠️ Skipping customer: email already exists (ID: ${userId}, Email: ${email})`);
                 continue;
               }
@@ -320,6 +340,7 @@ module.exports = {
           const progressPercentage = (((chunkIndex + 1) / totalChunks) * 100).toFixed(1);
           console.log(`✅ Chunk ${chunkIndex + 1}/${totalChunks} completed successfully (${Math.round(chunkElapsedTime/1000)}s) - ${progressPercentage}% complete`);
           console.log(`   ✅ Processed: ${totalProcessed}/${totalCustomers} | Inserted: ${totalInserted} | Updated: ${totalUpdated} | Errors: ${totalErrors}`);
+          console.log(`   ⏭️  Skipped: Duplicates: ${totalSkippedDuplicates} | Existing: ${totalSkippedExistingEmail} | Missing: ${totalSkippedMissingData}`);
           
           // Add interval between batches to reduce database load
           if (BATCH_INTERVAL > 0 && chunkIndex < totalChunks - 1) {
@@ -420,6 +441,10 @@ module.exports = {
       console.log(`   Successfully inserted: ${totalInserted}`);
       console.log(`   Updated (duplicates): ${totalUpdated}`);
       console.log(`   Errors: ${totalErrors}`);
+      console.log(`\n📋 Skipped Records:`);
+      console.log(`   Skipped due to duplicate emails: ${totalSkippedDuplicates}`);
+      console.log(`   Skipped due to existing emails: ${totalSkippedExistingEmail}`);
+      console.log(`   Skipped due to missing data: ${totalSkippedMissingData}`);
       console.log(`\n📈 Final Database State:`);
       console.log(`   Total migrated customers: ${customersCount[0].count}`);
       console.log(`   Active customers (blocked = 0): ${activeCustomersCount[0].count}`);
