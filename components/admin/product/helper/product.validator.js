@@ -239,6 +239,19 @@ const updateProductStatusValidation = [
         .withMessage('Status must be one of: draft, published, archived')
 ];
 
+const updateProductImageAltTextValidation = [
+    param("product_id")
+        .notEmpty().withMessage("Product ID is required")
+        .isInt({ min: 1 }).withMessage("Product ID must be a valid integer"),
+    param("image_id")
+        .notEmpty().withMessage("Image ID is required")
+        .isInt({ min: 1 }).withMessage("Image ID must be a valid integer"),
+    body("alt_text")
+        .optional()
+        .isString().withMessage("Alt text must be a string")
+        .trim()
+];
+
 module.exports = {
     productIdValidation,
     createProductValidation,
@@ -249,5 +262,6 @@ module.exports = {
     bulkUpdateProductsValidation,
     uploadXlxFileMiddleware,
     updateProductStatusValidation,
-    getLinkedProductsValidation
+    getLinkedProductsValidation,
+    updateProductImageAltTextValidation
 };

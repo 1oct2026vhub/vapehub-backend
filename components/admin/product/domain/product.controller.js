@@ -2431,6 +2431,72 @@ module.exports.switchPrimaryImage = async (req, res) => {
     }
 };
 
+module.exports.updateProductImageAltText = async (req, res) => {
+    const transaction = await ProductImage.sequelize.transaction();
+    try {
+        const { product_id, image_id } = req.params;
+        const { alt_text } = req.body;
+
+        // Validate if the product exists
+        const product = await Product.findByPk(product_id);
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Find the image to update
+        const productImage = await ProductImage.findOne({
+            where: { id: image_id, product_id },
+            transaction
+        });
+
+        if (!productImage) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Product image not found" }, "Image not found", 404);
+        }
+
+        // Update alt_text (can be null to clear it)
+        const updatedAltText = alt_text !== undefined ? (alt_text?.trim() || null) : productImage.alt_text;
+        
+        await productImage.update({ 
+            alt_text: updatedAltText,
+            updated_by: req.user.id 
+        }, { transaction });
+
+        // Commit transaction
+        await transaction.commit();
+
+        // Fetch updated image with all details
+        const updatedImage = await ProductImage.findByPk(image_id, {
+            attributes: [
+                'id',
+                'product_id',
+                'image_url',
+                'image_url_low',
+                'image_url_mid',
+                'image_url_high',
+                'alt_text',
+                'is_primary',
+                'updated_by',
+                'createdAt',
+                'updatedAt'
+            ]
+        });
+
+        logger.info(`Alt text updated for image ${image_id} of Product ${product_id}`);
+
+        return successResponse(res, {
+            message: "Product image alt text updated successfully",
+            data: updatedImage
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Update Product Image Alt Text Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.getPriceRanges = async (req, res, next) => {
     try {
         // Fetch distinct price ranges from the ProductVariants table
