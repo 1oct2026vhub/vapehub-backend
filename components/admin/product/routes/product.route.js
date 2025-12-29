@@ -4,7 +4,7 @@ const productController = require("../domain/product.controller");
 const attributeController = require("../../productAttributes/domain/attribute.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation } = require("../helper/product.validator");
+const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation, updateProductImageAltTextValidation } = require("../helper/product.validator");
 const { createAttributeValidator, updateAttributeValidator, uploadImageMiddleware } = require("../../productAttributes/helper/attribute.validatior");
 
 /**
@@ -868,6 +868,82 @@ router.put(
     [authMiddleware(true),
     validateRequest(productImageValidation)],
     productController.switchPrimaryImage
+);
+
+/**
+ * @swagger
+ * /api/admin/products/{product_id}/image/{image_id}/alt-text:
+ *   put:
+ *     summary: Update the alt text for a product image
+ *     tags:
+ *       - ADMIN - Products
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *       - in: path
+ *         name: image_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product image to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               alt_text:
+ *                 type: string
+ *                 nullable: true
+ *                 description: New alt text for the image (can be null to clear)
+ *                 example: "Product image showing the device from front view"
+ *     responses:
+ *       200:
+ *         description: Alt text updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Product image alt text updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     product_id:
+ *                       type: integer
+ *                     image_url:
+ *                       type: string
+ *                     alt_text:
+ *                       type: string
+ *                       nullable: true
+ *                     is_primary:
+ *                       type: boolean
+ *       400:
+ *         description: Invalid request parameters
+ *       404:
+ *         description: Product or product image not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put(
+    "/:product_id/image/:image_id/alt-text",
+    [authMiddleware(true),
+    validateRequest(updateProductImageAltTextValidation)],
+    productController.updateProductImageAltText
 );
 
 /**
