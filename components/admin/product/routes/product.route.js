@@ -335,6 +335,9 @@ router.get('/', [authMiddleware(true), validateRequest(listAllProductsValidation
  *                                     type: integer
  *                                   url:
  *                                     type: string
+ *                                   alt_text:
+ *                                     type: string
+ *                                     description: Alt text for the product image (for accessibility)
  *                                   is_primary:
  *                                     type: boolean
  *                               price:
