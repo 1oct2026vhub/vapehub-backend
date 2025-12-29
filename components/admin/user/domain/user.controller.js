@@ -195,6 +195,9 @@ module.exports.listUsers = async (req, res) => {
             whereCondition.super_user = false;
         }
 
+        // Exclude guest users (temporary users)
+        whereCondition.is_temporary = false;
+
         // Filter by roleId if provided
         if (roleId) {
             whereCondition.roleId = roleId;
