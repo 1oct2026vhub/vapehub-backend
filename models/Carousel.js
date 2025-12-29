@@ -115,6 +115,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.TEXT('long'),
                 allowNull: true
             },
+            alt_text: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Alt text for the carousel image for accessibility'
+            },
             redirect_url: {
                 type: DataTypes.STRING,
                 allowNull: true,

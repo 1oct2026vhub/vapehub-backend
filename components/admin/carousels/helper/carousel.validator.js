@@ -48,6 +48,12 @@ const createCarouselValidation = [
         .isString().withMessage('Description must be a string')
         .trim(),
     
+    body('alt_text')
+        .optional()
+        .isString().withMessage('Alt text must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
+    
     body('redirect_url')
         .optional()
         .custom((value) => {
@@ -79,6 +85,12 @@ const updateCarouselValidation = [
         .optional()
         .isString().withMessage('Description must be a string')
         .trim(),
+    
+    body('alt_text')
+        .optional()
+        .isString().withMessage('Alt text must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
     
     body('redirect_url')
         .optional()
