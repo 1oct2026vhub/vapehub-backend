@@ -309,7 +309,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Product Images query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, image_url, is_primary
+                    id, product_id, image_url, is_primary, alt_text
                 FROM product_images
                 WHERE product_id IN (${productIds.join(',')})
             `, {
@@ -408,7 +408,8 @@ module.exports.listNewProducts = async (req, res, next) => {
                 id: img.id,
                 product_id: img.product_id,
                 image_url: img.image_url,
-                is_primary: img.is_primary
+                is_primary: img.is_primary,
+                alt_text: img.alt_text
             });
         });
 
@@ -1572,6 +1573,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             product_id: img.product_id,
             image_url: img.image_url,
             is_primary: img.is_primary,
+            alt_text: img.alt_text,
             createdAt: img.createdAt,
             updatedAt: img.updatedAt,
             deletedAt: img.deletedAt
@@ -2403,7 +2405,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             id: img.id,
             product_id: img.product_id,
             image_url: img.image_url,
-            is_primary: Boolean(img.is_primary)
+            is_primary: Boolean(img.is_primary),
+            alt_text: img.alt_text
         }));
         
         product.variants = transformedVariants;
@@ -2499,7 +2502,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productImages = productImagesResult.map(img => ({
             id: img.id,
             url: img.image_url,
-            is_primary: Boolean(img.is_primary)
+            is_primary: Boolean(img.is_primary),
+            alt_text: img.alt_text
         }));
 
         // Get primary product image
@@ -2598,7 +2602,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
                     url: primaryProductImage.image_url,
-                    is_primary: Boolean(primaryProductImage.is_primary)
+                    is_primary: Boolean(primaryProductImage.is_primary),
+                    alt_text: primaryProductImage.alt_text
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
@@ -3142,7 +3147,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             id: img.id,
             product_id: img.product_id,
             image_url: img.image_url,
-            is_primary: Boolean(img.is_primary)
+            is_primary: Boolean(img.is_primary),
+            alt_text: img.alt_text
         }));
         
         product.variants = transformedVariants;
@@ -3196,7 +3202,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         const productImages = productImagesResult.map(img => ({
             id: img.id,
             url: img.image_url,
-            is_primary: Boolean(img.is_primary)
+            is_primary: Boolean(img.is_primary),
+            alt_text: img.alt_text
         }));
 
         // Get primary product image
@@ -3291,7 +3298,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
                     url: primaryProductImage.image_url,
-                    is_primary: Boolean(primaryProductImage.is_primary)
+                    is_primary: Boolean(primaryProductImage.is_primary),
+                    alt_text: primaryProductImage.alt_text
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
@@ -3697,7 +3705,8 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
         const productImages = product.ProductImages.map(img => ({
             id: img.id,
             url: img.image_url,
-            is_primary: img.is_primary
+            is_primary: img.is_primary,
+            alt_text: img.alt_text
         }));
 
         // Get primary product image
@@ -3781,7 +3790,8 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
                 primary_image: primaryProductImage ? {
                     id: primaryProductImage.id,
                     url: primaryProductImage.image_url,
-                    is_primary: primaryProductImage.is_primary
+                    is_primary: primaryProductImage.is_primary,
+                    alt_text: primaryProductImage.alt_text
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
@@ -4067,7 +4077,8 @@ module.exports.getDealsByCategory = async (req, res, next) => {
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
-                    is_primary: primaryImage.is_primary
+                    is_primary: primaryImage.is_primary,
+                    alt_text: primaryImage.alt_text
                 } : null,
                 flavors: product.Flavors ? product.Flavors.map(flavor => ({
                     id: flavor.id,
@@ -4617,7 +4628,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             // Product Images
             Product.sequelize.query(`
                 SELECT 
-                    pi.id, pi.product_id, pi.image_url, pi.is_primary
+                    pi.id, pi.product_id, pi.image_url, pi.is_primary, pi.alt_text
                 FROM product_images pi
                 WHERE pi.product_id IN (${productIds.join(',')})
                 AND pi.is_primary = 1
@@ -4943,7 +4954,8 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
-                    is_primary: primaryImage.is_primary
+                    is_primary: primaryImage.is_primary,
+                    alt_text: primaryImage.alt_text
                 } : null,
                 attribute_terms: Array.from(attributeTermsMapForProduct.values()),
                 deals: dealsMap.get(product.id) || [],
@@ -5122,7 +5134,7 @@ module.exports.getDealProducts = async (req, res, next) => {
             // Product Images
             Product.sequelize.query(`
                 SELECT 
-                    pi.id, pi.product_id, pi.image_url, pi.is_primary
+                    pi.id, pi.product_id, pi.image_url, pi.is_primary, pi.alt_text
                 FROM product_images pi
                 WHERE pi.product_id IN (${productIds.join(',')})
             `, {
@@ -5207,7 +5219,8 @@ module.exports.getDealProducts = async (req, res, next) => {
             productImagesMap.get(img.product_id).push({
                 id: img.id,
                 image_url: img.image_url,
-                is_primary: img.is_primary
+                is_primary: img.is_primary,
+                alt_text: img.alt_text
             });
         });
 

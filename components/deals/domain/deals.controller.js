@@ -109,6 +109,7 @@ module.exports.listAllDeals = async (req, res, next) => {
                 'valid_from',
                 'valid_to',
                 'image_url',
+                'alt_text',
                 'createdAt',
                 'updatedAt'
             ],

@@ -99,6 +99,9 @@ const upload = multer({
  *         image_url:
  *           type: string
  *           description: S3 URL for deal image
+ *         alt_text:
+ *           type: string
+ *           description: Alt text for the deal image
  */
 
 /**
@@ -168,6 +171,9 @@ const upload = multer({
  *                 type: string
  *                 format: date-time
  *                 description: Deal validity end date
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the deal image (optional)
  *     responses:
  *       201:
  *         description: Deal created successfully

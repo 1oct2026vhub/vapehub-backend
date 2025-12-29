@@ -2213,12 +2213,20 @@ module.exports.uploadImage = async (req, res) => {
         );
 
                 // Save uploaded images in ProductImage table with resized URLs
+                // Support both single alt_text (for all images) or array of alt_texts (one per image)
+                const altTexts = Array.isArray(req.body.alt_texts) 
+                    ? req.body.alt_texts 
+                    : req.body.alt_text 
+                        ? [req.body.alt_text] 
+                        : [];
+                
                 const imageRecords = uploadedImages.map(({ Location, Key, resizedResults }, index) => ({
                     product_id,
                     image_url: Location,
                     image_url_low: resizedResults.low?.url || null,
                     image_url_mid: resizedResults.mid?.url || null,
                     image_url_high: resizedResults.high?.url || null,
+                    alt_text: altTexts[index] || null,
                     is_primary: existingPrimaryImage ? false : index === 0,
                     updated_by: req.user.id
                 }));
@@ -2241,7 +2249,8 @@ module.exports.uploadImage = async (req, res) => {
                         'image_url_low',
                         'image_url_mid',
                         'image_url_high',
-                        'is_primary'
+                        'is_primary',
+                        'alt_text'
                     ]
                 });
 
