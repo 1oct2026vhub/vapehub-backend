@@ -106,7 +106,13 @@ const createDealValidation = [
         .optional()
         .isBoolean()
         .withMessage('show_home_page must be a boolean')
-        .toBoolean()
+        .toBoolean(),
+
+    body('alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string')
 ];
 
 const updateDealValidation = [
@@ -207,7 +213,13 @@ const updateDealValidation = [
         .optional()
         .isBoolean()
         .withMessage('show_home_page must be a boolean')
-        .toBoolean()
+        .toBoolean(),
+
+    body('alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string')
 ];
 
 const listDealsValidation = [

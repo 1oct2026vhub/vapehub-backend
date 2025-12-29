@@ -315,7 +315,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
 
       // Product images
       sequelize.query(`
-        SELECT id, product_id, image_url, is_primary
+        SELECT id, product_id, image_url, is_primary, alt_text
         FROM product_images
         WHERE product_id IN (${productIds.join(',')})
         ORDER BY product_id, is_primary DESC, id
@@ -662,7 +662,8 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           id: pi.id,
           product_id: pi.product_id,
           image_url: pi.image_url,
-          is_primary: pi.is_primary
+          is_primary: pi.is_primary,
+          alt_text: pi.alt_text
         })),
         deals: dealsData.map(d => ({
           id: d.id,

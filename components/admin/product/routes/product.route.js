@@ -766,6 +766,14 @@ router.put("/:id/restore", [authMiddleware(true), validateRequest(productIdValid
  *                   type: string
  *                   format: binary
  *                 description: Product images (PNG, JPG, JPEG, WEBP)
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text to apply to all uploaded images (optional)
+ *               alt_texts:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of alt texts, one per image (optional, overrides alt_text if provided)
  *     responses:
  *       200:
  *         description: Images uploaded and associated successfully

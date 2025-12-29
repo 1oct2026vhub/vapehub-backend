@@ -52,6 +52,10 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
             comment: 'High resolution image URL (1200x1200)'
         },
+        alt_text: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         is_primary: {
             type: DataTypes.BOOLEAN,
             allowNull: false
