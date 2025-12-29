@@ -4339,6 +4339,7 @@ module.exports.getAllDeals = async (req, res, next) => {
                 'valid_from',
                 'valid_to',
                 'image_url',
+                'alt_text',
                 'createdAt',
                 'show_home_page',
                 'updatedAt'
@@ -4369,6 +4370,7 @@ module.exports.getAllDeals = async (req, res, next) => {
             valid_from: deal.valid_from,
             valid_to: deal.valid_to,
             image_url: deal.image_url,
+            alt_text: deal.alt_text,
             show_home_page: deal.show_home_page,
             created_at: deal.createdAt,
             updated_at: deal.updatedAt
@@ -4724,7 +4726,8 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             productImagesMap.set(img.product_id, {
                 id: img.id,
                 image_url: img.image_url,
-                is_primary: img.is_primary
+                is_primary: img.is_primary,
+                alt_text: img.alt_text
             });
         });
 

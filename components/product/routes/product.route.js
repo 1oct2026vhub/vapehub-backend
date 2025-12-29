@@ -2093,6 +2093,14 @@ router.get('/categories-with-deals',
  *                             type: string
  *                             format: date-time
  *                             description: Deal end date
+ *                           image_url:
+ *                             type: string
+ *                             description: Deal image URL
+ *                             nullable: true
+ *                           alt_text:
+ *                             type: string
+ *                             description: Alt text for the deal image
+ *                             nullable: true
  *                           created_at:
  *                             type: string
  *                             format: date-time
@@ -2334,6 +2342,10 @@ router.get('/deals',
  *                                 type: string
  *                               is_primary:
  *                                 type: boolean
+ *                               alt_text:
+ *                                 type: string
+ *                                 description: Alt text for the primary image
+ *                                 nullable: true
  *                           attribute_terms:
  *                             type: array
  *                             items:
