@@ -17,7 +17,7 @@ module.exports = {
       console.log('✅ Connected to old database successfully');
 
       // Get all existing product images from new database that don't have alt_text
-      const [existingImages] = await queryInterface.sequelize.query(`
+      const existingImages = await queryInterface.sequelize.query(`
         SELECT 
           id, 
           product_id, 

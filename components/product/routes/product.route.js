@@ -1261,6 +1261,26 @@ router.get('/slug/:slug', productController.listAllproductsBySlug);
  *                           image:
  *                             type: object
  *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               image_url:
+ *                                 type: string
+ *                               image_url_low:
+ *                                 type: string
+ *                                 nullable: true
+ *                               image_url_mid:
+ *                                 type: string
+ *                                 nullable: true
+ *                               image_url_high:
+ *                                 type: string
+ *                                 nullable: true
+ *                               is_primary:
+ *                                 type: boolean
+ *                               alt_text:
+ *                                 type: string
+ *                                 nullable: true
+ *                                 description: Alternative text for the image
  *                           categories:
  *                             type: array
  *                           brands:

@@ -5542,6 +5542,7 @@ module.exports.getLinkedProducts = async (req, res, next) => {
                         "image_url_mid",
                         "image_url_high",
                         "is_primary",
+                        "alt_text",
                     ],
                     required: false,
                 },
