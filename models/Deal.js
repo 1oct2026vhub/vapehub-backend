@@ -43,6 +43,10 @@ module.exports = (sequelize, DataTypes) => {
                 }
             }
         },
+        alt_text: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         description: {
             type: DataTypes.TEXT('long'),
             allowNull: true
