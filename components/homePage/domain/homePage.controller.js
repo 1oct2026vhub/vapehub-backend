@@ -1113,7 +1113,7 @@ module.exports.getHomePageBlock = async (req, res, next) => {
                 include: [{
                     model: Category,
                     as: 'category',
-                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'parent_id'],
+                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
                     where: {
                         deletedAt: null
                     },
@@ -1129,7 +1129,7 @@ module.exports.getHomePageBlock = async (req, res, next) => {
                 include: [{
                     model: Category,
                     as: 'category',
-                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'parent_id'],
+                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
                     where: {
                         deletedAt: null
                     },
