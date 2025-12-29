@@ -118,7 +118,12 @@ const commonValidations = {
                 if (['active', 'inactive'].includes(value)) return true;
                 throw new Error('Status must be either active or inactive');
             })
-            .default('active')
+            .default('active'),
+        body('alt_text')
+            .optional()
+            .isString()
+            .trim()
+            .withMessage('Alt text must be a string')
     ],
 
     attributeTermId: [
@@ -369,6 +374,11 @@ const createProductVariantsValidator = [
         .optional()
         .isIn(['active', 'inactive'])
         .withMessage('Status must be either active or inactive'),
+    body('variants.*.alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string'),
     body('variants.*.attributes')
         .isArray()
         .withMessage('Variant attributes must be an array')
@@ -453,6 +463,11 @@ const updateProductVariantValidator = [
         .optional()
         .isIn(['active', 'inactive'])
         .withMessage('Status must be either active or inactive'),
+    body('alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string'),
     body('attributes')
         .optional()
         .isArray()

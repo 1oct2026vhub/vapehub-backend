@@ -125,10 +125,29 @@ module.exports = {
             continue;
           }
 
-          lastId = Math.max(...chunkCustomers.map(c => c.id));
+          // Deduplicate by email - keep the record with the highest ID for each email
+          const emailMap = new Map();
+          for (const customer of chunkCustomers) {
+            const email = customer.email ? customer.email.trim().toLowerCase() : '';
+            if (!email) continue;
+            
+            const existing = emailMap.get(email);
+            if (!existing || customer.id > existing.id) {
+              emailMap.set(email, customer);
+            }
+          }
+          
+          const deduplicatedCustomers = Array.from(emailMap.values());
+          const duplicatesRemoved = chunkCustomers.length - deduplicatedCustomers.length;
+          
+          if (duplicatesRemoved > 0) {
+            console.log(`   🔍 Removed ${duplicatesRemoved} duplicate emails from chunk ${chunkIndex + 1}`);
+          }
+
+          lastId = Math.max(...deduplicatedCustomers.map(c => c.id));
           console.log('Last id = ' + lastId);
 
-          console.log(`   📦 Found ${chunkCustomers.length} new customers to migrate in this chunk`);
+          console.log(`   📦 Found ${deduplicatedCustomers.length} new customers to migrate in this chunk`);
 
           // Step 3b: Create temporary table for this chunk
           await queryInterface.sequelize.query(`
@@ -149,7 +168,13 @@ module.exports = {
           console.log(`💾 Preparing customer data for chunk ${chunkIndex + 1}...`);
           const prepareStartTime = Date.now();
           
-          for (const customer of chunkCustomers) {
+          // Get list of existing emails from users table to skip duplicates
+          const [existingEmails] = await queryInterface.sequelize.query(`
+            SELECT LOWER(email) as email FROM users WHERE email IS NOT NULL
+          `, { transaction });
+          const existingEmailSet = new Set(existingEmails.map(row => row.email));
+          
+          for (const customer of deduplicatedCustomers) {
             try {
               // Clean and validate data
               const firstName = customer.first_name ? customer.first_name.trim() : '';
@@ -160,6 +185,12 @@ module.exports = {
               // Skip if no email or no ID
               if (!email || !userId) {
                 console.log(`⚠️ Skipping customer: missing email or ID (ID: ${userId}, Email: ${email})`);
+                continue;
+              }
+
+              // Skip if email already exists in users table
+              if (existingEmailSet.has(email)) {
+                console.log(`⚠️ Skipping customer: email already exists (ID: ${userId}, Email: ${email})`);
                 continue;
               }
 
@@ -202,7 +233,7 @@ module.exports = {
           }
 
           const prepareTime = Date.now() - prepareStartTime;
-          console.log(`✅ Prepared ${chunkCustomers.length} customers in ${prepareTime}ms`);
+          console.log(`✅ Prepared ${deduplicatedCustomers.length} customers in ${prepareTime}ms`);
 
           // Step 3d: Temporarily disable foreign key checks for this chunk
           console.log(`🔧 Disabling foreign key checks for chunk ${chunkIndex + 1}...`);
@@ -210,7 +241,7 @@ module.exports = {
           console.log(`✅ Foreign key checks disabled`);
 
           // Step 3e: Bulk insert customers using INSERT ... SELECT (BULK INSERT)
-          console.log(`💾 Bulk inserting ${chunkCustomers.length} customers into database...`);
+          console.log(`💾 Bulk inserting ${deduplicatedCustomers.length} customers into database...`);
           const insertStartTime = Date.now();
           
           const [insertResult] = await queryInterface.sequelize.query(`
@@ -221,9 +252,9 @@ module.exports = {
               super_user, roleId, referred_by, referral_points, createdAt, updatedAt, deletedAt
             )
             SELECT 
-              id,
-              first_name,
-              last_name,
+              MAX(id) as id,
+              MAX(first_name) as first_name,
+              MAX(last_name) as last_name,
               email,
               NULL as phone,
               'temp_password_reset_required' as password,
@@ -237,15 +268,16 @@ module.exports = {
               NULL as referral_code,
               0 as loyalty_points,
               0 as receive_promotions,
-              blocked,
+              MAX(blocked) as blocked,
               0 as super_user,
-              roleId,
+              MAX(roleId) as roleId,
               NULL as referred_by,
               0 as referral_points,
-              createdAt,
+              MAX(createdAt) as createdAt,
               NOW() as updatedAt,
               NULL as deletedAt
             FROM temp_customers_chunk
+            GROUP BY email
             ON DUPLICATE KEY UPDATE
               first_name = VALUES(first_name),
               last_name = VALUES(last_name),
@@ -267,8 +299,8 @@ module.exports = {
           `, { transaction });
           
           totalInserted += insertCount[0].count;
-          totalUpdated += (chunkCustomers.length - insertCount[0].count);
-          totalProcessed += chunkCustomers.length;
+          totalUpdated += (deduplicatedCustomers.length - insertCount[0].count);
+          totalProcessed += deduplicatedCustomers.length;
 
           // Step 3f: Re-enable foreign key checks
           console.log(`🔧 Re-enabling foreign key checks...`);
@@ -303,13 +335,19 @@ module.exports = {
           console.error(`   Stack: ${error.stack}`);
           console.error(`   Chunk offset: ${offset}, Chunk size: ${CHUNK_SIZE}`);
           
-          // If it's a timeout, connection, or lock issue, continue with next chunk
+          // If it's a timeout, connection, lock issue, or duplicate key error, continue with next chunk
           if (error.message.includes('timeout') || 
               error.message.includes('connection') || 
               error.message.includes('ECONNRESET') ||
               error.message.includes('Lock wait timeout') ||
-              error.message.includes('lock wait timeout')) {
-            console.log(`🔄 Continuing with next chunk due to connection/timeout/lock issue...`);
+              error.message.includes('lock wait timeout') ||
+              error.name === 'SequelizeUniqueConstraintError' ||
+              error.message.includes('Duplicate entry') ||
+              error.message.includes('ER_DUP_ENTRY')) {
+            console.log(`🔄 Continuing with next chunk due to connection/timeout/lock/duplicate issue...`);
+            if (error.name === 'SequelizeUniqueConstraintError' || error.message.includes('Duplicate entry')) {
+              console.log(`   ⚠️  Duplicate email detected, skipping this chunk and continuing...`);
+            }
             continue;
           }
           

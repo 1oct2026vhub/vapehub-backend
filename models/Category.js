@@ -64,6 +64,10 @@ module.exports = (sequelize, DataTypes) => {
         logo_url: {
             type: DataTypes.TEXT('long'),
             allowNull: true
+        },
+        alt_text: {
+            type: DataTypes.STRING,
+            allowNull: true
         }
     }, {
         sequelize,

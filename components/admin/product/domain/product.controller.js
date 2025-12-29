@@ -514,7 +514,7 @@ module.exports.getProductById = async (req, res, next) => {
                 include: [{
                     model: ProductImage,
                     as: "ProductImages",
-                    attributes: ['id', 'updated_by', 'product_id', 'image_url', 'is_primary', 'createdAt', 'updatedAt', 'deletedAt']
+                    attributes: ['id', 'updated_by', 'product_id', 'image_url', 'alt_text', 'is_primary', 'createdAt', 'updatedAt', 'deletedAt']
                 }],
                 attributes: []
             }).then(result => result?.ProductImages || []),
@@ -605,7 +605,7 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductImage,
                             as: "ProductImages",
-                            attributes: ['id', 'product_id', 'image_url', 'is_primary'],
+                            attributes: ['id', 'product_id', 'image_url', 'alt_text', 'is_primary'],
                             limit: 1,
                             order: [['is_primary', 'DESC'], ['id', 'ASC']],
                             required: false
@@ -658,6 +658,7 @@ module.exports.getProductById = async (req, res, next) => {
                 image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
+                    alt_text: primaryImage.alt_text,
                     is_primary: primaryImage.is_primary
                 } : null,
                 price: productJson.price,
@@ -2213,12 +2214,20 @@ module.exports.uploadImage = async (req, res) => {
         );
 
                 // Save uploaded images in ProductImage table with resized URLs
+                // Support both single alt_text (for all images) or array of alt_texts (one per image)
+                const altTexts = Array.isArray(req.body.alt_texts) 
+                    ? req.body.alt_texts 
+                    : req.body.alt_text 
+                        ? [req.body.alt_text] 
+                        : [];
+                
                 const imageRecords = uploadedImages.map(({ Location, Key, resizedResults }, index) => ({
                     product_id,
                     image_url: Location,
                     image_url_low: resizedResults.low?.url || null,
                     image_url_mid: resizedResults.mid?.url || null,
                     image_url_high: resizedResults.high?.url || null,
+                    alt_text: altTexts[index] || null,
                     is_primary: existingPrimaryImage ? false : index === 0,
                     updated_by: req.user.id
                 }));
@@ -2241,7 +2250,8 @@ module.exports.uploadImage = async (req, res) => {
                         'image_url_low',
                         'image_url_mid',
                         'image_url_high',
-                        'is_primary'
+                        'is_primary',
+                        'alt_text'
                     ]
                 });
 
@@ -2417,6 +2427,72 @@ module.exports.switchPrimaryImage = async (req, res) => {
     } catch (error) {
         await transaction.rollback();
         logger.error(error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.updateProductImageAltText = async (req, res) => {
+    const transaction = await ProductImage.sequelize.transaction();
+    try {
+        const { product_id, image_id } = req.params;
+        const { alt_text } = req.body;
+
+        // Validate if the product exists
+        const product = await Product.findByPk(product_id);
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Find the image to update
+        const productImage = await ProductImage.findOne({
+            where: { id: image_id, product_id },
+            transaction
+        });
+
+        if (!productImage) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Product image not found" }, "Image not found", 404);
+        }
+
+        // Update alt_text (can be null to clear it)
+        const updatedAltText = alt_text !== undefined ? (alt_text?.trim() || null) : productImage.alt_text;
+        
+        await productImage.update({ 
+            alt_text: updatedAltText,
+            updated_by: req.user.id 
+        }, { transaction });
+
+        // Commit transaction
+        await transaction.commit();
+
+        // Fetch updated image with all details
+        const updatedImage = await ProductImage.findByPk(image_id, {
+            attributes: [
+                'id',
+                'product_id',
+                'image_url',
+                'image_url_low',
+                'image_url_mid',
+                'image_url_high',
+                'alt_text',
+                'is_primary',
+                'updated_by',
+                'createdAt',
+                'updatedAt'
+            ]
+        });
+
+        logger.info(`Alt text updated for image ${image_id} of Product ${product_id}`);
+
+        return successResponse(res, {
+            message: "Product image alt text updated successfully",
+            data: updatedImage
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Update Product Image Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }
 };

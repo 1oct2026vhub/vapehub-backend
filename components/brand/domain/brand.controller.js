@@ -40,9 +40,9 @@ module.exports.getBrandByid = async (req, res, next) => {
 
 module.exports.createBrand = async (req, res, next) => {
     try {
-        const { name, logo_url, slug, description } = req.body;
+        const { name, logo_url, slug, description, alt_text } = req.body;
         const { id: updated_by } = req.user
-        const brand = await Brand.create({ name, logo_url, updated_by, slug, description });
+        const brand = await Brand.create({ name, logo_url, updated_by, slug, description, alt_text });
         successResponse(res, brand, 'Brand created successfully', 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -52,7 +52,7 @@ module.exports.createBrand = async (req, res, next) => {
 module.exports.updateBrand = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, logo_url, slug, description } = req.body;
+        const { name, logo_url, slug, description, alt_text } = req.body;
         const { id: updated_by } = req.user
 
         const brand = await Brand.findByPk(id);
@@ -69,6 +69,7 @@ module.exports.updateBrand = async (req, res, next) => {
             ...(logo_url && { logo_url }),
             ...(updated_by && { updated_by }),
             ...(description && { description }),
+            ...(alt_text !== undefined && { alt_text }),
         });
         successResponse(res, brand, 'Brand updated successfully',);
     } catch (error) {
@@ -146,7 +147,7 @@ module.exports.listBrandsWithPagination = async (req, res, next) => {
             limit,
             offset,
             order: [['name', sortOrder]],  // Default: name ASC (A-Z)
-            attributes: ['id', 'name', 'logo_url', 'slug']
+            attributes: ['id', 'name', 'logo_url', 'slug', 'alt_text']
         });
 
         const totalPages = Math.ceil(count / limit);
