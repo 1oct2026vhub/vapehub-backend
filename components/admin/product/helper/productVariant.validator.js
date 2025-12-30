@@ -500,6 +500,16 @@ const deleteVariantImageValidator = [
     commonValidations.imageId
 ];
 
+const updateVariantImageAltTextValidator = [
+    commonValidations.productId,
+    commonValidations.variantId,
+    commonValidations.imageId,
+    body("alt_text")
+        .optional()
+        .isString().withMessage("Alt text must be a string")
+        .trim()
+];
+
 const getProductVariantsValidator = [
     commonValidations.productId
 ];
@@ -663,6 +673,7 @@ module.exports = {
     uploadVariantImagesValidator,
     setVariantPrimaryImageValidator,
     deleteVariantImageValidator,
+    updateVariantImageAltTextValidator,
     getProductVariantsValidator,
     getProductVariantValidator,
     uploadVariantImageMiddleware,
