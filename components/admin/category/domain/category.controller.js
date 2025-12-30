@@ -139,7 +139,7 @@ module.exports.getCategoryById = async (req, res, next) => {
 module.exports.createCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        let { name, slug, description, parent_id } = req.body;
+        let { name, slug, description, parent_id, alt_text } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
         const { file } = req;
@@ -204,7 +204,15 @@ module.exports.createCategory = async (req, res, next) => {
         }
 
         // Create category
-        const category = await Category.create({ name, slug, description, parent_id, updated_by, logo_url }, { transaction: t });
+        const category = await Category.create({ 
+            name, 
+            slug, 
+            description, 
+            parent_id, 
+            updated_by, 
+            logo_url,
+            alt_text: alt_text?.trim() || null
+        }, { transaction: t });
 
         // Create slug relation
         await slugManager.createOrUpdateSlug(slug, 'category', category.id, t);
@@ -224,7 +232,7 @@ module.exports.updateCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, parent_id: rawParentId } = req.body;
+        const { name, slug, description, parent_id: rawParentId, alt_text } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
@@ -293,6 +301,7 @@ module.exports.updateCategory = async (req, res, next) => {
             slug: slug?.trim() || category.slug,
             logo_url,
             description: description?.trim() || category.description,
+            alt_text: alt_text !== undefined ? (alt_text?.trim() || null) : category.alt_text,
             updated_by,
             parent_id
         }, { transaction: t });
