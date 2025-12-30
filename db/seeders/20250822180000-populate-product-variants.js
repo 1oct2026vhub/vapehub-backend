@@ -190,14 +190,16 @@ module.exports = {
       await queryInterface.sequelize.query('SET FOREIGN_KEY_CHECKS = 1', { transaction });
       console.log('✅ Cleared existing product variant images data');
       
-      // Get variant images from old database
-      const variantImages = await crossServerMigration.fetchFromOldDb(`
+      // Method 1: Get variant images from direct attachments (post_parent relationship)
+      console.log('📥 Fetching variant images from direct attachments...');
+      const directAttachments = await crossServerMigration.fetchFromOldDb(`
         SELECT 
           p.ID as attachment_id,
           p.post_title as image_title,
           p.guid as image_url,
           p.post_parent as variant_id,
-          parent.post_title as variant_title
+          parent.post_title as variant_title,
+          'attachment' as source_type
         FROM vh_posts p
         JOIN vh_posts parent ON p.post_parent = parent.ID
         WHERE p.post_type = 'attachment'
@@ -208,10 +210,124 @@ module.exports = {
         ORDER BY p.post_parent, p.ID
       `);
       
-      console.log(`📊 Found ${variantImages.length} variant images to migrate`);
+      console.log(`   • Found ${directAttachments.length} images from direct attachments`);
+      
+      // Method 2: Get variant images from postmeta (_thumbnail_id and _product_image_gallery)
+      console.log('📥 Fetching variant images from postmeta...');
+      const variantImageMeta = await crossServerMigration.fetchFromOldDb(`
+        SELECT 
+          pm.post_id as variant_id,
+          pm.meta_key,
+          pm.meta_value as attachment_id,
+          p.guid as image_url,
+          p.post_title as image_title,
+          parent.post_title as variant_title,
+          'postmeta' as source_type
+        FROM vh_postmeta pm
+        LEFT JOIN vh_posts p ON p.ID = CAST(pm.meta_value AS UNSIGNED) AND p.post_type = 'attachment'
+        LEFT JOIN vh_posts parent ON pm.post_id = parent.ID AND parent.post_type = 'product_variation'
+        WHERE pm.meta_key IN ('_thumbnail_id', '_product_image_gallery')
+          AND pm.meta_value IS NOT NULL
+          AND pm.meta_value != ''
+          AND pm.meta_value != '0'
+          AND p.guid IS NOT NULL
+          AND parent.ID IS NOT NULL
+        ORDER BY pm.post_id, pm.meta_key
+      `);
+      
+      console.log(`   • Found ${variantImageMeta.length} image meta records from postmeta`);
+      
+      // Process postmeta images - handle _thumbnail_id and _product_image_gallery
+      const postmetaImages = [];
+      for (const meta of variantImageMeta) {
+        if (meta.meta_key === '_thumbnail_id') {
+          // Single primary image
+          postmetaImages.push({
+            attachment_id: meta.attachment_id,
+            image_title: meta.image_title,
+            image_url: meta.image_url,
+            variant_id: meta.variant_id,
+            variant_title: meta.variant_title,
+            source_type: 'postmeta',
+            is_primary: true
+          });
+        } else if (meta.meta_key === '_product_image_gallery') {
+          // Comma-separated gallery images
+          const attachmentIds = meta.attachment_id
+            .split(',')
+            .map(id => id.trim())
+            .filter(Boolean)
+            .map(id => parseInt(id))
+            .filter(id => !isNaN(id) && id > 0); // Validate numeric IDs
+          
+          // Fetch image URLs for gallery images
+          if (attachmentIds.length > 0) {
+            const galleryImages = await crossServerMigration.fetchFromOldDb(`
+              SELECT 
+                p.ID as attachment_id,
+                p.post_title as image_title,
+                p.guid as image_url
+              FROM vh_posts p
+              WHERE p.ID IN (${attachmentIds.join(',')})
+                AND p.post_type = 'attachment'
+                AND p.post_mime_type LIKE 'image%'
+                AND p.guid IS NOT NULL
+                AND p.guid != ''
+              ORDER BY FIELD(p.ID, ${attachmentIds.join(',')})
+            `);
+            
+            galleryImages.forEach((img, index) => {
+              postmetaImages.push({
+                attachment_id: img.attachment_id,
+                image_title: img.image_title,
+                image_url: img.image_url,
+                variant_id: meta.variant_id,
+                variant_title: meta.variant_title,
+                source_type: 'postmeta',
+                is_primary: false,
+                gallery_index: index
+              });
+            });
+          }
+        }
+      }
+      
+      console.log(`   • Processed ${postmetaImages.length} images from postmeta`);
+      
+      // Combine both sources and deduplicate by variant_id + image_url
+      const allVariantImages = [...directAttachments, ...postmetaImages];
+      const uniqueImages = new Map();
+      
+      allVariantImages.forEach(image => {
+        if (!image.image_url || image.image_url.trim() === '') {
+          return; // Skip invalid URLs
+        }
+        
+        // Create unique key: variant_id + image_url
+        const key = `${image.variant_id}_${image.image_url}`;
+        if (!uniqueImages.has(key)) {
+          uniqueImages.set(key, {
+            ...image,
+            is_primary: image.is_primary !== undefined ? image.is_primary : false
+          });
+        } else {
+          // If duplicate found, prefer postmeta source and preserve is_primary flag
+          const existing = uniqueImages.get(key);
+          if (image.source_type === 'postmeta' && image.is_primary) {
+            existing.is_primary = true;
+          }
+        }
+      });
+      
+      const variantImages = Array.from(uniqueImages.values());
+      
+      console.log(`📊 Found ${variantImages.length} unique variant images to migrate`);
+      console.log(`   • From direct attachments: ${directAttachments.length}`);
+      console.log(`   • From postmeta: ${postmetaImages.length}`);
       
       let variantImagesInserted = 0;
       let variantImagesSkipped = 0;
+      const skippedVariants = new Set();
       
       // Group images by variant_id to set primary image
       const imagesByVariant = {};
@@ -237,13 +353,40 @@ module.exports = {
           if (variantExists.length === 0) {
             console.log(`⚠️ Skipping images for variant ${variantId} - variant not found in new database`);
             variantImagesSkipped += images.length;
+            skippedVariants.add(variantId);
             continue;
+          }
+          
+          // Sort images: primary first, then by gallery_index or attachment_id
+          images.sort((a, b) => {
+            if (a.is_primary && !b.is_primary) return -1;
+            if (!a.is_primary && b.is_primary) return 1;
+            if (a.gallery_index !== undefined && b.gallery_index !== undefined) {
+              return a.gallery_index - b.gallery_index;
+            }
+            return (a.attachment_id || 0) - (b.attachment_id || 0);
+          });
+          
+          // Ensure at least one primary image
+          const hasPrimary = images.some(img => img.is_primary);
+          if (!hasPrimary && images.length > 0) {
+            images[0].is_primary = true;
           }
           
           // Insert images for this variant
           for (let i = 0; i < images.length; i++) {
             const image = images[i];
-            const isPrimary = i === 0; // First image is primary
+            
+            // Validate URL
+            try {
+              new URL(image.image_url);
+            } catch (urlError) {
+              console.log(`⚠️ Skipping invalid image URL for variant ${variantId}: ${image.image_url}`);
+              variantImagesSkipped++;
+              continue;
+            }
+            
+            const isPrimary = image.is_primary || (i === 0 && !hasPrimary);
             
             await queryInterface.sequelize.query(`
               INSERT INTO product_variant_images (
@@ -270,12 +413,17 @@ module.exports = {
           }
           
         } catch (error) {
+          console.error(`❌ Error processing images for variant ${variantId}:`, error.message);
           variantImagesSkipped += images.length;
+          skippedVariants.add(variantId);
         }
       }
       
       console.log(`✅ Variant images inserted: ${variantImagesInserted}`);
       console.log(`⚠️ Variant images skipped: ${variantImagesSkipped}`);
+      if (skippedVariants.size > 0) {
+        console.log(`⚠️ Variants with skipped images: ${Array.from(skippedVariants).slice(0, 10).join(', ')}${skippedVariants.size > 10 ? '...' : ''}`);
+      }
       
       // Step 6: Final verification
       console.log('\n🔍 Step 6: Final verification...');
@@ -326,7 +474,8 @@ module.exports = {
       console.log('\n🎉 PRODUCT VARIANTS MIGRATION completed successfully!');
       console.log('✅ Product variants now have exact IDs matching old database');
       console.log('✅ All variant data properly mapped from vh_posts and vh_postmeta');
-      console.log('✅ Variant images migrated from vh_posts attachments');
+      console.log('✅ Variant images migrated from both direct attachments and postmeta (_thumbnail_id, _product_image_gallery)');
+      console.log('✅ Images deduplicated and validated before insertion');
       console.log('✅ Fresh start with cleared existing data');
       
     } catch (error) {
