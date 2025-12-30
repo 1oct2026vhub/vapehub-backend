@@ -25,9 +25,10 @@ const userListValidationRules = [
       .isIn([
         'id', 'first_name', 'last_name', 'email', 'phone', 
         'gender', 'createdAt', 'updatedAt', 'deletedAt',
-        'email_verified_at', 'blocked', 'dob'
+        'email_verified_at', 'blocked', 'dob',
+        'aov', 'total_order_count', 'total_spend', 'last_ordered_at'
       ])
-      .withMessage("sort_by must be one of: id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob"),
+      .withMessage("sort_by must be one of: id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob, aov, total_order_count, total_spend, last_ordered_at"),
   
     query("order")
       .optional()
