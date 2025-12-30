@@ -2491,7 +2491,10 @@ module.exports.updateProductImageAltText = async (req, res) => {
         });
 
     } catch (error) {
-        await transaction.rollback();
+        // Only rollback if transaction hasn't been committed
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Update Product Image Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }
