@@ -24,7 +24,8 @@ module.exports.createDeal = async (req, res, next) => {
         // Handle image upload if file is provided
         if (req.file) {
             try {
-                const fileName = generateUniqueFileName(req.file.originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(req.file.originalname, 'deals');
                 const key = `deals/${fileName}`;
                 
                 const uploadParams = {
@@ -209,7 +210,8 @@ module.exports.updateDeal = async (req, res, next) => {
         // Handle image upload if file is provided
         if (req.file) {
             try {
-                const fileName = generateUniqueFileName(req.file.originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(req.file.originalname, 'deals');
                 const key = `deals/${fileName}`;
                 
                 const uploadParams = {

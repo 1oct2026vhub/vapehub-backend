@@ -244,7 +244,8 @@ const uploadMenuImage = async (file) => {
     }
 
     try {
-        const fileName = generateUniqueFileName(file.originalname);
+        const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+        const fileName = await getUniqueFileNameWithPrefix(file.originalname, 'menus');
         const params = {
             Bucket: process.env.AWS_S3_BUCKET,
             Key: `menus/${fileName}`,
