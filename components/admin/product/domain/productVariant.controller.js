@@ -1146,6 +1146,84 @@ module.exports.setVariantPrimaryImage = async (req, res) => {
     }
 };
 
+// Update variant image alt text
+module.exports.updateVariantImageAltText = async (req, res) => {
+    const transaction = await ProductVariantImage.sequelize.transaction();
+    try {
+        const { product_id, variant_id, image_id } = req.params;
+        const { alt_text } = req.body;
+
+        // Validate if the product exists
+        const product = await Product.findByPk(product_id);
+        if (!product) {
+            await transaction.rollback();
+            return errorResponse(res, { message: ERROR_MESSAGES.PRODUCT_NOT_FOUND }, ERROR_MESSAGES.PRODUCT_NOT_FOUND, 404);
+        }
+
+        // Validate if the variant exists
+        const variant = await ProductVariant.findOne({
+            where: { id: variant_id, product_id },
+            transaction
+        });
+        if (!variant) {
+            await transaction.rollback();
+            return errorResponse(res, { message: ERROR_MESSAGES.VARIANT_NOT_FOUND }, ERROR_MESSAGES.VARIANT_NOT_FOUND, 404);
+        }
+
+        // Find the image to update
+        const variantImage = await ProductVariantImage.findOne({
+            where: { id: image_id, variant_id },
+            transaction
+        });
+
+        if (!variantImage) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Variant image not found" }, "Image not found", 404);
+        }
+
+        // Update alt_text (can be null to clear it)
+        const updatedAltText = alt_text !== undefined ? (alt_text?.trim() || null) : variantImage.alt_text;
+        
+        await variantImage.update({ 
+            alt_text: updatedAltText,
+            updated_by: req.user.id 
+        }, { transaction });
+
+        // Commit transaction
+        await transaction.commit();
+
+        // Fetch updated image with all details
+        const updatedImage = await ProductVariantImage.findByPk(image_id, {
+            attributes: [
+                'id',
+                'variant_id',
+                'image_url',
+                'image_url_low',
+                'image_url_mid',
+                'image_url_high',
+                'alt_text',
+                'is_primary',
+                'sort_order',
+                'updated_by',
+                'createdAt',
+                'updatedAt'
+            ]
+        });
+
+        logger.info(`Alt text updated for variant image ${image_id} of variant ${variant_id}`);
+
+        return successResponse(res, {
+            image: updatedImage,
+            message: "Variant image alt text updated successfully"
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Update Variant Image Alt Text Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 // Delete variant image
 module.exports.deleteVariantImage = async (req, res) => {
     const transaction = await Product.sequelize.transaction();

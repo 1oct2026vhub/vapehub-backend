@@ -78,6 +78,12 @@ exports.createAttributeValidator = [
         .withMessage('Invalid sort order')
         .default('custom'),
 
+    body('alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string'),
+
     body('image')
         .custom((value, { req }) => {
             if (req.file && !['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml'].includes(req.file.mimetype)) {
@@ -130,6 +136,12 @@ exports.updateAttributeValidator = [
         .optional()
         .isBoolean()
         .withMessage('new_image must be a boolean'),
+
+    body('alt_text')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Alt text must be a string'),
 
     body('image')
         .custom((value, { req }) => {

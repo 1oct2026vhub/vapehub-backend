@@ -27,7 +27,11 @@ const categoryValidation = [
       .customSanitizer(value => (value === "" ? null : value)) 
       .isString()
       .withMessage("Description must be a string"),
-
+    check("alt_text")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .withMessage("Alt text must be a string"),
     check("parent_id")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
@@ -58,6 +62,11 @@ const categoryUpdatesValidation = [
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
       .isString().withMessage("Logo URL must be a string"),
+    check("alt_text")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .withMessage("Alt text must be a string"),
     check("parent_id")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 

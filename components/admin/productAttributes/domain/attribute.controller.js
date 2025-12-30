@@ -31,7 +31,8 @@ module.exports.createAttribute = async (req, res, next) => {
             slug, 
             description, 
             type = 'select',
-            sort_order = 'custom'
+            sort_order = 'custom',
+            alt_text
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -58,6 +59,7 @@ module.exports.createAttribute = async (req, res, next) => {
             description,
             type,
             sort_order,
+            alt_text: alt_text || null,
             updated_by
         }, { transaction });
 
@@ -105,7 +107,8 @@ module.exports.updateAttribute = async (req, res, next) => {
             description, 
             type,
             sort_order,
-            new_image = false
+            new_image = false,
+            alt_text
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -157,6 +160,7 @@ module.exports.updateAttribute = async (req, res, next) => {
             description: description !== undefined ? description : attribute.description,
             type: type || attribute.type,
             sort_order: sort_order || attribute.sort_order,
+            alt_text: alt_text !== undefined ? (alt_text?.trim() || null) : attribute.alt_text,
             updated_by
         }, { transaction });
 
@@ -609,6 +613,7 @@ module.exports.getAttribute = async (req, res, next) => {
                 'slug',
                 'description',
                 'image_url',
+                'alt_text',
                 'type',
                 'sort_order',
                 'created_at',
@@ -674,6 +679,7 @@ module.exports.getAttributes = async (req, res, next) => {
                 'slug',
                 'description',
                 'image_url',
+                'alt_text',
                 'type',
                 'sort_order',
                 'created_at',
