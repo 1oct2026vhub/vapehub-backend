@@ -128,32 +128,11 @@ module.exports = {
             continue;
           }
 
-          // IMPORTANT: Calculate lastId from original fetched records BEFORE deduplication
-          // This ensures pagination continues correctly even if deduplication removes records
+          // Calculate lastId from fetched records for pagination
           lastId = Math.max(...chunkCustomers.map(c => c.id));
           console.log('Last id = ' + lastId);
 
-          // Deduplicate by email - keep the record with the highest ID for each email
-          const emailMap = new Map();
-          for (const customer of chunkCustomers) {
-            const email = customer.email ? customer.email.trim().toLowerCase() : '';
-            if (!email) continue;
-            
-            const existing = emailMap.get(email);
-            if (!existing || customer.id > existing.id) {
-              emailMap.set(email, customer);
-            }
-          }
-          
-          const deduplicatedCustomers = Array.from(emailMap.values());
-          const duplicatesRemoved = chunkCustomers.length - deduplicatedCustomers.length;
-          totalSkippedDuplicates += duplicatesRemoved;
-          
-          if (duplicatesRemoved > 0) {
-            console.log(`   🔍 Removed ${duplicatesRemoved} duplicate emails from chunk ${chunkIndex + 1}`);
-          }
-
-          console.log(`   📦 Found ${deduplicatedCustomers.length} new customers to migrate in this chunk`);
+          console.log(`   📦 Found ${chunkCustomers.length} customers to migrate in this chunk`);
 
           // Step 3b: Create temporary table for this chunk
           await queryInterface.sequelize.query(`
@@ -175,7 +154,7 @@ module.exports = {
           const prepareStartTime = Date.now();
           
           // Get list of existing emails for current chunk only (more efficient)
-          const chunkEmails = deduplicatedCustomers
+          const chunkEmails = chunkCustomers
             .map(c => c.email ? c.email.trim().toLowerCase() : '')
             .filter(email => email !== '');
           
@@ -192,7 +171,7 @@ module.exports = {
             existingEmailSet = new Set(existingEmails.map(row => row.email));
           }
           
-          for (const customer of deduplicatedCustomers) {
+          for (const customer of chunkCustomers) {
             try {
               // Clean and validate data
               const firstName = customer.first_name ? customer.first_name.trim() : '';
@@ -253,7 +232,7 @@ module.exports = {
           }
 
           const prepareTime = Date.now() - prepareStartTime;
-          console.log(`✅ Prepared ${deduplicatedCustomers.length} customers in ${prepareTime}ms`);
+          console.log(`✅ Prepared ${chunkCustomers.length} customers in ${prepareTime}ms`);
 
           // Step 3d: Temporarily disable foreign key checks for this chunk
           console.log(`🔧 Disabling foreign key checks for chunk ${chunkIndex + 1}...`);
@@ -261,7 +240,7 @@ module.exports = {
           console.log(`✅ Foreign key checks disabled`);
 
           // Step 3e: Bulk insert customers using INSERT ... SELECT (BULK INSERT)
-          console.log(`💾 Bulk inserting ${deduplicatedCustomers.length} customers into database...`);
+          console.log(`💾 Bulk inserting ${chunkCustomers.length} customers into database...`);
           const insertStartTime = Date.now();
           
           const [insertResult] = await queryInterface.sequelize.query(`
@@ -309,7 +288,26 @@ module.exports = {
 
           const insertTime = Date.now() - insertStartTime;
           const affectedRows = insertResult.affectedRows || 0;
+          
+          // Calculate duplicates: records in temp table vs distinct emails inserted
+          // GROUP BY email in the bulk insert handles duplicates, so we track the difference
+          const [tempTableCount] = await queryInterface.sequelize.query(`
+            SELECT COUNT(*) as count FROM temp_customers_chunk
+          `, { transaction });
+          
+          const [distinctEmailsCount] = await queryInterface.sequelize.query(`
+            SELECT COUNT(DISTINCT email) as count FROM temp_customers_chunk
+          `, { transaction });
+          
+          const recordsInTemp = tempTableCount[0].count;
+          const distinctEmailsInTemp = distinctEmailsCount[0].count;
+          const duplicatesInChunk = Math.max(0, recordsInTemp - distinctEmailsInTemp);
+          totalSkippedDuplicates += duplicatesInChunk;
+          
           console.log(`✅ Bulk inserted customers in ${insertTime}ms (${affectedRows} rows affected)`);
+          if (duplicatesInChunk > 0) {
+            console.log(`   🔍 ${duplicatesInChunk} duplicate emails handled by GROUP BY in this chunk`);
+          }
 
           // Count inserts vs updates
           const [insertCount] = await queryInterface.sequelize.query(`
@@ -319,8 +317,8 @@ module.exports = {
           `, { transaction });
           
           totalInserted += insertCount[0].count;
-          totalUpdated += (deduplicatedCustomers.length - insertCount[0].count);
-          totalProcessed += deduplicatedCustomers.length;
+          totalUpdated += (chunkCustomers.length - insertCount[0].count);
+          totalProcessed += chunkCustomers.length;
 
           // Step 3f: Re-enable foreign key checks
           console.log(`🔧 Re-enabling foreign key checks...`);
