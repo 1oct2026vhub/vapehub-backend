@@ -120,7 +120,8 @@ module.exports.createBlogCategory = async (req, res, next) => {
         let image_url = null;
         if (file) {
             const { originalname, mimetype, buffer } = file;
-            const fileName = generateUniqueFileName(originalname);
+            const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+            const fileName = await getUniqueFileNameWithPrefix(originalname, 'blog-categories');
             const params = {
                 Bucket: process.env.AWS_S3_BUCKET,
                 Key: `blog-categories/${fileName}`,
@@ -219,7 +220,8 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         let image_url = category.image_url;
         if (file) {
             const { originalname, mimetype, buffer } = file;
-            const fileName = generateUniqueFileName(originalname);
+            const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+            const fileName = await getUniqueFileNameWithPrefix(originalname, 'blog-categories');
             const params = {
                 Bucket: process.env.AWS_S3_BUCKET,
                 Key: `blog-categories/${fileName}`,

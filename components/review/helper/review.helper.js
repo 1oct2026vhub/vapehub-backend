@@ -61,7 +61,8 @@ const handleMediaUpload = async (file) => {
     if (!file) return null;
     try {
         const { originalname, mimetype, buffer } = file;
-        const fileName = generateUniqueFileName(originalname);
+        const { getUniqueFileNameWithPrefix } = require("../../../library/s3/s3Helper");
+        const fileName = await getUniqueFileNameWithPrefix(originalname, 'reviews');
         const params = {
             Bucket: process.env.AWS_S3_BUCKET,
             Key: `reviews/${fileName}`,

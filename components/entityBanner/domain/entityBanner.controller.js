@@ -13,9 +13,9 @@ const handleImageUpload = async (file) => {
     if (!file) return null;
     
     try {
-        const uniqueFileName = generateUniqueFileName(file.originalname);
-        const folderPath = 'entity-banners';
-        const key = `${folderPath}/${uniqueFileName}`;
+        const { getUniqueFileNameWithPrefix } = require("../../../library/s3/s3Helper");
+        const uniqueFileName = await getUniqueFileNameWithPrefix(file.originalname, 'entity-banners');
+        const key = `entity-banners/${uniqueFileName}`;
         
         const uploadParams = {
             Bucket: process.env.AWS_S3_BUCKET,
