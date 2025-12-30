@@ -560,7 +560,7 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductVariantImage,
                             as: "variantImages",
-                            attributes: ["id", "variant_id", "image_url", "is_primary"]
+                            attributes: ["id", "variant_id", "image_url", "alt_text", "is_primary"]
                         },
                         {
                             model: ProductVariantAttribute,

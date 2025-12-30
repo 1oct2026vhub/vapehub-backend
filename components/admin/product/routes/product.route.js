@@ -132,6 +132,10 @@ const { createAttributeValidator, updateAttributeValidator, uploadImageMiddlewar
  *           type: integer
  *         image_url:
  *           type: string
+ *         alt_text:
+ *           type: string
+ *           description: Alt text for the product image (for accessibility)
+ *           nullable: true
  *         is_primary:
  *           type: boolean
  * 
