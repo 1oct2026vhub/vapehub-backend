@@ -145,6 +145,7 @@ const {
     uploadVariantImagesValidator,
     setVariantPrimaryImageValidator,
     deleteVariantImageValidator,
+    updateVariantImageAltTextValidator,
     getProductVariantsValidator,
     getProductVariantValidator,
     uploadVariantImageMiddleware,
@@ -1256,6 +1257,93 @@ router.post('/product/:product_id/variants/:variant_id/images',
 router.put('/product/:product_id/variants/:variant_id/images/:image_id/primary',
     [authMiddleware(true), validateRequest(setVariantPrimaryImageValidator)],
     productVariantController.setVariantPrimaryImage
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/product/{product_id}/variants/{variant_id}/images/{image_id}/alt-text:
+ *   put:
+ *     summary: Update the alt text for a product variant image
+ *     tags:
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: product_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *       - in: path
+ *         name: variant_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the variant
+ *       - in: path
+ *         name: image_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the variant image to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               alt_text:
+ *                 type: string
+ *                 nullable: true
+ *                 description: New alt text for the image (can be null to clear)
+ *                 example: "Variant image showing the device from front view"
+ *     responses:
+ *       200:
+ *         description: Alt text updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Variant image alt text updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     image:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         variant_id:
+ *                           type: integer
+ *                         image_url:
+ *                           type: string
+ *                         alt_text:
+ *                           type: string
+ *                           nullable: true
+ *                         is_primary:
+ *                           type: boolean
+ *       400:
+ *         description: Invalid request parameters
+ *       404:
+ *         description: Product, variant, or variant image not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put(
+    "/product/:product_id/variants/:variant_id/images/:image_id/alt-text",
+    [
+        authMiddleware(true),
+        validateRequest(updateVariantImageAltTextValidator)
+    ],
+    productVariantController.updateVariantImageAltText
 );
 
 /**
