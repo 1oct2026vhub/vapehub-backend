@@ -13,7 +13,8 @@ const s3 = new AWS.S3();
 // Helper function for image upload
 const uploadAttributeImage = async (file, attributeId) => {
     const { originalname, mimetype, buffer } = file;
-    const fileName = generateUniqueFileName(originalname);
+    const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+    const fileName = await getUniqueFileNameWithPrefix(originalname, 'attributes', attributeId);
     const params = {
         Bucket: process.env.AWS_S3_BUCKET,
         Key: `attributes/${attributeId}/${fileName}`,
