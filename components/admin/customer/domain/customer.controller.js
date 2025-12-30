@@ -25,7 +25,8 @@ module.exports.listUsers = async (req, res) => {
         const allowedSortFields = [
             'id', 'first_name', 'last_name', 'email', 'phone', 
             'gender', 'createdAt', 'updatedAt', 'deletedAt',
-            'email_verified_at', 'blocked', 'dob'
+            'email_verified_at', 'blocked', 'dob',
+            'aov', 'total_order_count', 'total_spend', 'last_ordered_at'
         ];
         
         const validatedSortBy = allowedSortFields.includes(sort_by) ? sort_by : 'createdAt';
@@ -80,53 +81,156 @@ module.exports.listUsers = async (req, res) => {
 
         const totalUsers = await User.count({ where: whereCondition });
 
+        // Build attributes array with calculated fields
+        const attributes = [
+            "id", 
+            "first_name", 
+            "last_name", 
+            "gender",
+            "email", 
+            "phone",
+            "blocked", 
+            "email_verified_at",
+            "profile_pic_url",
+            "dob",
+            "createdAt", 
+            "updatedAt",
+            "deletedAt",
+            // Add total order count
+            [
+                Sequelize.literal(`(
+                    SELECT COUNT(*)
+                    FROM orders
+                    WHERE orders.user_id = User.id
+                    AND orders.deletedAt IS NULL
+                )`),
+                'total_order_count'
+            ],
+            // Add total spend
+            [
+                Sequelize.literal(`(
+                    SELECT COALESCE(SUM(total), 0)
+                    FROM orders
+                    WHERE orders.user_id = User.id
+                    AND orders.deletedAt IS NULL
+                )`),
+                'total_spend'
+            ],
+            // Add AOV (Average Order Value) - calculated in database for sorting
+            [
+                Sequelize.literal(`(
+                    CASE 
+                        WHEN (
+                            SELECT COUNT(*)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        ) > 0
+                        THEN (
+                            SELECT COALESCE(SUM(total), 0)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        ) / (
+                            SELECT COUNT(*)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        )
+                        ELSE 0
+                    END
+                )`),
+                'aov'
+            ],
+            // Add last ordered date
+            [
+                Sequelize.literal(`(
+                    SELECT MAX(createdAt)
+                    FROM orders
+                    WHERE orders.user_id = User.id
+                    AND orders.deletedAt IS NULL
+                )`),
+                'last_ordered_at'
+            ]
+        ];
+
+        // Build order clause - handle calculated fields with Sequelize.literal
+        let orderClause;
+        if (['aov', 'total_order_count', 'total_spend', 'last_ordered_at'].includes(validatedSortBy)) {
+            // For calculated fields, use the same literal expression as in attributes
+            if (validatedSortBy === 'aov') {
+                orderClause = [
+                    [
+                        Sequelize.literal(`(
+                            CASE 
+                                WHEN (
+                                    SELECT COUNT(*)
+                                    FROM orders
+                                    WHERE orders.user_id = User.id
+                                    AND orders.deletedAt IS NULL
+                                ) > 0
+                                THEN (
+                                    SELECT COALESCE(SUM(total), 0)
+                                    FROM orders
+                                    WHERE orders.user_id = User.id
+                                    AND orders.deletedAt IS NULL
+                                ) / (
+                                    SELECT COUNT(*)
+                                    FROM orders
+                                    WHERE orders.user_id = User.id
+                                    AND orders.deletedAt IS NULL
+                                )
+                                ELSE 0
+                            END
+                        )`),
+                        validatedOrder
+                    ]
+                ];
+            } else if (validatedSortBy === 'total_order_count') {
+                orderClause = [
+                    [
+                        Sequelize.literal(`(
+                            SELECT COUNT(*)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        )`),
+                        validatedOrder
+                    ]
+                ];
+            } else if (validatedSortBy === 'total_spend') {
+                orderClause = [
+                    [
+                        Sequelize.literal(`(
+                            SELECT COALESCE(SUM(total), 0)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        )`),
+                        validatedOrder
+                    ]
+                ];
+            } else if (validatedSortBy === 'last_ordered_at') {
+                orderClause = [
+                    [
+                        Sequelize.literal(`(
+                            SELECT MAX(createdAt)
+                            FROM orders
+                            WHERE orders.user_id = User.id
+                            AND orders.deletedAt IS NULL
+                        )`),
+                        validatedOrder
+                    ]
+                ];
+            }
+        } else {
+            // For regular fields, use standard sorting
+            orderClause = [[validatedSortBy, validatedOrder]];
+        }
+
         const users = await User.findAll({
             where: whereCondition,
-            attributes: [
-                "id", 
-                "first_name", 
-                "last_name", 
-                "gender",
-                "email", 
-                "phone",
-                "blocked", 
-                "email_verified_at",
-                "profile_pic_url",
-                "dob",
-                "createdAt", 
-                "updatedAt",
-                "deletedAt",
-                // Add total order count
-                [
-                    Sequelize.literal(`(
-                        SELECT COUNT(*)
-                        FROM orders
-                        WHERE orders.user_id = User.id
-                        AND orders.deletedAt IS NULL
-                    )`),
-                    'total_order_count'
-                ],
-                // Add total spend
-                [
-                    Sequelize.literal(`(
-                        SELECT COALESCE(SUM(total), 0)
-                        FROM orders
-                        WHERE orders.user_id = User.id
-                        AND orders.deletedAt IS NULL
-                    )`),
-                    'total_spend'
-                ],
-                // Add last ordered date
-                [
-                    Sequelize.literal(`(
-                        SELECT MAX(createdAt)
-                        FROM orders
-                        WHERE orders.user_id = User.id
-                        AND orders.deletedAt IS NULL
-                    )`),
-                    'last_ordered_at'
-                ]
-            ],
+            attributes: attributes,
             include: [{
                 model: Order, 
                 as: "orders", 
@@ -140,7 +244,7 @@ module.exports.listUsers = async (req, res) => {
             }],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [[validatedSortBy, validatedOrder]],
+            order: orderClause,
             paranoid: false,
         });
 
@@ -149,7 +253,7 @@ module.exports.listUsers = async (req, res) => {
             const userData = user.get({ plain: true });
             const totalOrderCount = parseInt(userData.total_order_count) || 0;
             const totalSpend = parseFloat(userData.total_spend) || 0;
-            const aov = totalOrderCount > 0 ? (totalSpend / totalOrderCount) : 0;
+            const aov = parseFloat(userData.aov) || 0;
             
             return {
                 ...userData,
