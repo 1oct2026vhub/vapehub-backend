@@ -1205,8 +1205,8 @@ module.exports.updateVariantImageAltText = async (req, res) => {
                 'is_primary',
                 'sort_order',
                 'updated_by',
-                'createdAt',
-                'updatedAt'
+                'created_at',
+                'updated_at'
             ]
         });
 
@@ -1218,7 +1218,10 @@ module.exports.updateVariantImageAltText = async (req, res) => {
         });
 
     } catch (error) {
-        await transaction.rollback();
+        // Only rollback if transaction hasn't been committed
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Update Variant Image Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }
