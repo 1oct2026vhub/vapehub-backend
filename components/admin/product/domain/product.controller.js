@@ -2151,7 +2151,8 @@ module.exports.uploadImage = async (req, res) => {
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
                 const { originalname, mimetype, buffer } = image;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'products', product_id);
                 const s3Key = `products/${product_id}/${fileName}`;
                 
                 // Resize original image to max 1920x1080 if larger

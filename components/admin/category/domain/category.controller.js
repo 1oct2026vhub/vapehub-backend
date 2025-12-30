@@ -184,7 +184,8 @@ module.exports.createCategory = async (req, res, next) => {
         if (file) {
             try {
                 const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'categories');
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: `categories/${fileName}`,
@@ -268,7 +269,8 @@ module.exports.updateCategory = async (req, res, next) => {
             
             try {
                 const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'categories');
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: `categories/${fileName}`,
