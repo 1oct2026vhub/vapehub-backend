@@ -8,9 +8,9 @@ const handleIconUpload = async (file) => {
   if (!file) return null;
   
   try {
-    const uniqueFileName = generateUniqueFileName(file.originalname);
-    const folderPath = 'feature-content';
-    const key = `${folderPath}/${uniqueFileName}`;
+    const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+    const uniqueFileName = await getUniqueFileNameWithPrefix(file.originalname, 'feature-content');
+    const key = `feature-content/${uniqueFileName}`;
     
     const uploadParams = {
       Bucket: process.env.AWS_S3_BUCKET,
