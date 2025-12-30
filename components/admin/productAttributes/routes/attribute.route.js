@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { validateRequest } = require('../../../../utils/validationMiddleware');
 const { check } = require("express-validator");
-const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadImageMiddleware, uploadExcelMiddleware, removeAttributeImageValidator } = require('../helper/attribute.validatior');
+const { createAttributeValidator, updateAttributeValidator, deleteAttributeValidator, getAttributeValidator, getAttributesValidator, bulkUpdateAttributesValidator, uploadImageMiddleware, uploadExcelMiddleware, removeAttributeImageValidator, updateAttributeAltTextValidator } = require('../helper/attribute.validatior');
 const attributeController = require('../domain/attribute.controller');
 const { authMiddleware } = require('../../../../library/middleware');
 
@@ -445,6 +445,79 @@ router.put('/:id',
         validateRequest(updateAttributeValidator)
     ],
     attributeController.updateAttribute
+);
+
+/**
+ * @swagger
+ * /api/admin/attributes/{id}/alt-text:
+ *   put:
+ *     summary: Update the alt text for an attribute
+ *     tags:
+ *       - ADMIN - Attributes
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the attribute to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               alt_text:
+ *                 type: string
+ *                 nullable: true
+ *                 description: New alt text for the attribute (can be null to clear)
+ *                 example: "Color attribute icon showing color palette"
+ *     responses:
+ *       200:
+ *         description: Alt text updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Attribute alt text updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     attribute:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         image_url:
+ *                           type: string
+ *                         alt_text:
+ *                           type: string
+ *                           nullable: true
+ *       400:
+ *         description: Invalid request parameters
+ *       404:
+ *         description: Attribute not found
+ *       500:
+ *         description: Internal server error
+ */
+router.put(
+    "/:id/alt-text",
+    [
+        authMiddleware(true),
+        validateRequest(updateAttributeAltTextValidator)
+    ],
+    attributeController.updateAttributeAltText
 );
 
 /**

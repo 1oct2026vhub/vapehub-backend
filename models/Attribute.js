@@ -44,6 +44,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: true
     },
+    alt_text: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
     slug: {
       type: DataTypes.STRING(255),
       allowNull: false,

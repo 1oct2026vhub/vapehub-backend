@@ -31,7 +31,8 @@ module.exports.createAttribute = async (req, res, next) => {
             slug, 
             description, 
             type = 'select',
-            sort_order = 'custom'
+            sort_order = 'custom',
+            alt_text
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -58,6 +59,7 @@ module.exports.createAttribute = async (req, res, next) => {
             description,
             type,
             sort_order,
+            alt_text: alt_text || null,
             updated_by
         }, { transaction });
 
@@ -105,7 +107,8 @@ module.exports.updateAttribute = async (req, res, next) => {
             description, 
             type,
             sort_order,
-            new_image = false
+            new_image = false,
+            alt_text
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -157,6 +160,7 @@ module.exports.updateAttribute = async (req, res, next) => {
             description: description !== undefined ? description : attribute.description,
             type: type || attribute.type,
             sort_order: sort_order || attribute.sort_order,
+            alt_text: alt_text !== undefined ? (alt_text?.trim() || null) : attribute.alt_text,
             updated_by
         }, { transaction });
 
@@ -180,6 +184,66 @@ module.exports.updateAttribute = async (req, res, next) => {
     } catch (error) {
         await transaction.rollback();
         logger.error('Update Attribute Error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+// Update attribute alt text
+module.exports.updateAttributeAltText = async (req, res) => {
+    const transaction = await Attribute.sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { alt_text } = req.body;
+
+        // Find the attribute to update
+        const attribute = await Attribute.findOne({
+            where: { id },
+            transaction
+        });
+
+        if (!attribute) {
+            await transaction.rollback();
+            return errorResponse(res, { message: "Attribute not found" }, "Attribute not found", 404);
+        }
+
+        // Update alt_text (can be null to clear it)
+        const updatedAltText = alt_text !== undefined ? (alt_text?.trim() || null) : attribute.alt_text;
+        
+        await attribute.update({ 
+            alt_text: updatedAltText,
+            updated_by: req.user.id 
+        }, { transaction });
+
+        // Commit transaction
+        await transaction.commit();
+
+        // Fetch updated attribute with all details
+        const updatedAttribute = await Attribute.findByPk(id, {
+            attributes: [
+                'id',
+                'name',
+                'slug',
+                'description',
+                'image_url',
+                'alt_text',
+                'type',
+                'sort_order',
+                'updated_by',
+                'createdAt',
+                'updatedAt'
+            ]
+        });
+
+        logger.info(`Alt text updated for attribute ${id}`);
+
+        return successResponse(res, {
+            attribute: updatedAttribute,
+            message: "Attribute alt text updated successfully"
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Update Attribute Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }
 };
