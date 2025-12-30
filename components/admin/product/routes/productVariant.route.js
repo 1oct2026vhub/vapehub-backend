@@ -457,6 +457,23 @@ router.post('/product/:product_id',
  *     responses:
  *       200:
  *         description: Product variants retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ProductVariant'
+ *                 message:
+ *                   type: string
+ *                   example: Product variants retrieved successfully
+ *       404:
+ *         description: No variants found for this product
  */
 router.get('/product/:product_id',
     [authMiddleware(true), validateRequest(getProductVariantsValidator)],
