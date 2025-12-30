@@ -188,66 +188,6 @@ module.exports.updateAttribute = async (req, res, next) => {
     }
 };
 
-// Update attribute alt text
-module.exports.updateAttributeAltText = async (req, res) => {
-    const transaction = await Attribute.sequelize.transaction();
-    try {
-        const { id } = req.params;
-        const { alt_text } = req.body;
-
-        // Find the attribute to update
-        const attribute = await Attribute.findOne({
-            where: { id },
-            transaction
-        });
-
-        if (!attribute) {
-            await transaction.rollback();
-            return errorResponse(res, { message: "Attribute not found" }, "Attribute not found", 404);
-        }
-
-        // Update alt_text (can be null to clear it)
-        const updatedAltText = alt_text !== undefined ? (alt_text?.trim() || null) : attribute.alt_text;
-        
-        await attribute.update({ 
-            alt_text: updatedAltText,
-            updated_by: req.user.id 
-        }, { transaction });
-
-        // Commit transaction
-        await transaction.commit();
-
-        // Fetch updated attribute with all details
-        const updatedAttribute = await Attribute.findByPk(id, {
-            attributes: [
-                'id',
-                'name',
-                'slug',
-                'description',
-                'image_url',
-                'alt_text',
-                'type',
-                'sort_order',
-                'updated_by',
-                'createdAt',
-                'updatedAt'
-            ]
-        });
-
-        logger.info(`Alt text updated for attribute ${id}`);
-
-        return successResponse(res, {
-            attribute: updatedAttribute,
-            message: "Attribute alt text updated successfully"
-        });
-
-    } catch (error) {
-        await transaction.rollback();
-        logger.error('Update Attribute Alt Text Error:', error);
-        return errorResponse(res, error, error.message);
-    }
-};
-
 module.exports.deleteAttribute = async (req, res, next) => {
     const transaction = await Attribute.sequelize.transaction();
     try {

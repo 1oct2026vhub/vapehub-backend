@@ -213,14 +213,3 @@ exports.removeAttributeImageValidator = [
         .isInt({ min: 1 })
         .withMessage('Invalid attribute ID')
 ];
-
-exports.updateAttributeAltTextValidator = [
-    param('id')
-        .isInt({ min: 1 })
-        .withMessage('Invalid attribute ID'),
-    body('alt_text')
-        .optional()
-        .isString()
-        .withMessage('Alt text must be a string')
-        .trim()
-];
