@@ -54,6 +54,12 @@ const createCarouselValidation = [
         .trim()
         .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
     
+    body('alt_text_mobile')
+        .optional()
+        .isString().withMessage('Alt text mobile must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text mobile must be less than 255 characters'),
+    
     body('redirect_url')
         .optional()
         .custom((value) => {
@@ -91,6 +97,12 @@ const updateCarouselValidation = [
         .isString().withMessage('Alt text must be a string')
         .trim()
         .isLength({ max: 255 }).withMessage('Alt text must be less than 255 characters'),
+    
+    body('alt_text_mobile')
+        .optional()
+        .isString().withMessage('Alt text mobile must be a string')
+        .trim()
+        .isLength({ max: 255 }).withMessage('Alt text mobile must be less than 255 characters'),
     
     body('redirect_url')
         .optional()

@@ -178,7 +178,7 @@ module.exports.getBanners = async (req, res) => {
 module.exports.createBanner = async (req, res) => {
     try {
         const user_id = req?.user?.id;
-        const { title, description, status, redirect_url, alt_text } = req.body;
+        const { title, description, status, redirect_url, alt_text, alt_text_mobile } = req.body;
         const files = req.files;
 
         if (!files.image) {
@@ -277,6 +277,7 @@ module.exports.createBanner = async (req, res) => {
             title,
             description,
             alt_text,
+            alt_text_mobile,
             status,
             redirect_url,
             updated_by: user_id
@@ -441,7 +442,7 @@ module.exports.updateBanner = async (req, res) => {
     try {
         const { id } = req.params;
         const user_id = req?.user?.id;
-        const { title, description, status, redirect_url, alt_text } = req.body;
+        const { title, description, status, redirect_url, alt_text, alt_text_mobile } = req.body;
         const files = req.files;
 
         const banner = await BannerImage.findByPk(id);
@@ -459,6 +460,7 @@ module.exports.updateBanner = async (req, res) => {
             ...(title !== undefined && { title }),
             ...(description !== undefined && { description }),
             ...(alt_text !== undefined && { alt_text }),
+            ...(alt_text_mobile !== undefined && { alt_text_mobile }),
             ...(status !== undefined && { status }),
             ...(redirect_url !== undefined && { redirect_url }),
             updated_by: user_id

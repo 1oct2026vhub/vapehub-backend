@@ -57,6 +57,9 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *         alt_text:
  *           type: string
  *           description: Alt text for the carousel image (for accessibility)
+ *         alt_text_mobile:
+ *           type: string
+ *           description: Alt text for the carousel mobile image (for accessibility)
  *         status:
  *           type: string
  *           enum: [active, inactive]
@@ -181,6 +184,9 @@ router.get('/',
  *               alt_text:
  *                 type: string
  *                 description: Alt text for the carousel image (for accessibility)
+ *               alt_text_mobile:
+ *                 type: string
+ *                 description: Alt text for the carousel mobile image (for accessibility)
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
