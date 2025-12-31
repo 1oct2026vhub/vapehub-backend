@@ -47,7 +47,12 @@ const createShopByCategoryValidation = [
     check('order')
         .optional()
         .isInt()
-        .withMessage('Order must be an integer')
+        .withMessage('Order must be an integer'),
+    check('alt_text')
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage('Alt text must be a string with maximum 500 characters')
 ];
 
 const updateShopByCategoryValidation = [
@@ -66,7 +71,12 @@ const updateShopByCategoryValidation = [
     check('order')
         .optional()
         .isInt()
-        .withMessage('Order must be an integer')
+        .withMessage('Order must be an integer'),
+    check('alt_text')
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage('Alt text must be a string with maximum 500 characters')
 ];
 
 const restoreValidation = [

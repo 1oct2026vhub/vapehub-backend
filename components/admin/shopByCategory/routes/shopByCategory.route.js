@@ -228,6 +228,10 @@ router.get('/:id', [authMiddleware(true), validateRequest(shopByCategoryIdValida
  *               order:
  *                 type: integer
  *                 default: 0
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the shop by category image (for accessibility)
+ *                 example: "Electronics category banner"
  *     responses:
  *       201:
  *         description: Shop by category created successfully
@@ -265,6 +269,10 @@ router.post('/', [authMiddleware(true), upload.single('image'), validateRequest(
  *                 type: boolean
  *               order:
  *                 type: integer
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the shop by category image (for accessibility)
+ *                 example: "Updated electronics category banner"
  *     responses:
  *       200:
  *         description: Shop by category updated successfully
