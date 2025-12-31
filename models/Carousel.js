@@ -120,6 +120,11 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
                 comment: 'Alt text for the carousel image for accessibility'
             },
+            alt_text_mobile: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Alt text for the carousel mobile image for accessibility'
+            },
             redirect_url: {
                 type: DataTypes.STRING,
                 allowNull: true,
