@@ -27,7 +27,13 @@ const welcomeContentValidation = [
     body('status')
         .optional()
         .isIn(['active', 'inactive'])
-        .withMessage('Status must be either active or inactive')
+        .withMessage('Status must be either active or inactive'),
+    
+    body('alt_text')
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage('Alt text must be a string with maximum 500 characters')
 ];
 
 
