@@ -39,6 +39,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'URL of the welcome image stored in S3'
     },
+    alt_text: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: 'Alt text for the welcome content image'
+    },
     status: {
       type: DataTypes.ENUM('active', 'inactive'),
       allowNull: false,
