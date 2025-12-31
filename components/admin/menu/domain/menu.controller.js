@@ -639,6 +639,7 @@ const updateMenu = async (req, res) => {
             ...(menuData.status !== undefined && { status: menuData.status }),
             ...(menuData.show_image !== undefined && { show_image: menuData.show_image }),
             ...(menuData.icon && { icon: menuData.icon }),
+            ...(menuData.alt_text !== undefined && { alt_text: menuData.alt_text }),
             ...(menuData.hide_text !== undefined && { hide_text: menuData.hide_text }),
             ...(menuData.hide_mobile_view !== undefined && { hide_mobile_view: menuData.hide_mobile_view }),
             ...(menuData.hide_desktop_view !== undefined && { hide_desktop_view: menuData.hide_desktop_view }),
