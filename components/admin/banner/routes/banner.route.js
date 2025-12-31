@@ -61,6 +61,9 @@ const withValidation = (validationRules) => [...authMiddlewareAdmin, validateReq
  *         alt_text:
  *           type: string
  *           description: Alt text for the banner image (for accessibility)
+ *         alt_text_mobile:
+ *           type: string
+ *           description: Alt text for the banner mobile image (for accessibility)
  *         status:
  *           type: string
  *           enum: [active, inactive]
@@ -189,6 +192,9 @@ router.get('/',
  *               alt_text:
  *                 type: string
  *                 description: Alt text for the banner image (for accessibility)
+ *               alt_text_mobile:
+ *                 type: string
+ *                 description: Alt text for the banner mobile image (for accessibility)
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
@@ -258,6 +264,9 @@ router.post('/',
  *               alt_text:
  *                 type: string
  *                 description: Alt text for the banner image (for accessibility)
+ *               alt_text_mobile:
+ *                 type: string
+ *                 description: Alt text for the banner mobile image (for accessibility)
  *               status:
  *                 type: string
  *                 enum: [active, inactive]
