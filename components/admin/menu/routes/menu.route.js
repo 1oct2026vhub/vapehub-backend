@@ -150,6 +150,9 @@ router.get('/ordered',
  *               image_url:
  *                 type: string
  *                 description: External image URL when no file is uploaded
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the menu image
  *               hide_text:
  *                 type: boolean
  *                 description: Hide label text (icon-only)
@@ -229,6 +232,9 @@ router.post('/',
  *               image_url:
  *                 type: string
  *                 description: External image URL when no file is uploaded
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the menu image
  *               hide_text:
  *                 type: boolean
  *                 description: Hide label text (icon-only)
