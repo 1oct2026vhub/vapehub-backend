@@ -68,6 +68,10 @@ module.exports = (sequelize, DataTypes) => {
                 isUrl: true
             }
         },
+        alt_text: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
         author_id: {
             type: DataTypes.INTEGER,
             allowNull: false,

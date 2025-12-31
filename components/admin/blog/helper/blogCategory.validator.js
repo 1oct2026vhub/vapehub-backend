@@ -52,7 +52,12 @@ const blogCategoryValidation = [
                 }
             }
             return true;
-        })
+        }),
+    check("alt_text")
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage("Alt text must be a string with maximum 500 characters")
 ];
 
 const blogCategoryUpdatesValidation = [
@@ -101,7 +106,12 @@ const blogCategoryUpdatesValidation = [
                 }
             }
             return true;
-        })
+        }),
+    check("alt_text")
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage("Alt text must be a string with maximum 500 characters")
 ];
 
 // Configure multer for handling file uploads
