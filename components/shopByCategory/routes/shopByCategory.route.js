@@ -42,6 +42,22 @@ const shopByCategoryController = require("../domain/shopByCategory.controller");
  *                       type: array
  *                       items:
  *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           category_id:
+ *                             type: integer
+ *                           image_url:
+ *                             type: string
+ *                           alt_text:
+ *                             type: string
+ *                             example: "Electronics category banner"
+ *                           status:
+ *                             type: boolean
+ *                           order:
+ *                             type: integer
+ *                           category:
+ *                             type: object
  *                     pagination:
  *                       type: object
  *                       properties:

@@ -135,7 +135,7 @@ module.exports.getShopByCategoryById = async (req, res, next) => {
 module.exports.createShopByCategory = async (req, res, next) => {
     let t;
     try {
-        const { category_id, status = true, order } = req.body;
+        const { category_id, status = true, order, alt_text } = req.body;
 
         // Check if category_id already exists (unique constraint)
         const existing = await ShopByCategory.findOne({
@@ -170,6 +170,7 @@ module.exports.createShopByCategory = async (req, res, next) => {
         const shopByCategory = await ShopByCategory.create({
             category_id,
             image_url: finalImageUrl,
+            alt_text,
             status,
             order: finalOrder
         }, { transaction: t });
@@ -203,7 +204,7 @@ module.exports.updateShopByCategory = async (req, res, next) => {
     let t;
     try {
         const { id } = req.params;
-        const { category_id, image_url, status, order } = req.body;
+        const { category_id, image_url, status, order, alt_text } = req.body;
 
         const shopByCategory = await ShopByCategory.findByPk(id, { paranoid: false });
         if (!shopByCategory) {
@@ -242,6 +243,7 @@ module.exports.updateShopByCategory = async (req, res, next) => {
         } else if (image_url !== undefined) {
             updateData.image_url = image_url.trim();
         }
+        if (alt_text !== undefined) updateData.alt_text = alt_text;
         if (status !== undefined) updateData.status = status;
         if (order !== undefined) updateData.order = parseInt(order);
 

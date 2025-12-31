@@ -44,6 +44,11 @@ module.exports = (sequelize, DataTypes) => {
                 }
             }
         },
+        alt_text: {
+            type: DataTypes.STRING(500),
+            allowNull: true,
+            comment: 'Alt text for the shop by category image for accessibility'
+        },
         status: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
