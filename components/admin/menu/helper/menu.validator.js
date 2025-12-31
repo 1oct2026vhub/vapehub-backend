@@ -70,6 +70,12 @@ const validateMenuCreate = [
         .withMessage('Image URL must be a string')
         .trim(),
 
+    body('alt_text')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Alt text must be a string')
+        .trim(),
+
     body('hide_text')
         .optional()
         .isBoolean()
@@ -164,6 +170,12 @@ const validateMenuUpdate = [
         .optional({ nullable: true })
         .isString()
         .withMessage('Image URL must be a string')
+        .trim(),
+
+    body('alt_text')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('Alt text must be a string')
         .trim(),
 
     body('hide_text')
