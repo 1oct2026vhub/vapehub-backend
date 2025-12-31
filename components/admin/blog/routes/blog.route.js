@@ -183,6 +183,10 @@ router.get('/posts/:id',
  *               image:
  *                 type: string
  *                 format: binary
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the blog post image
+ *                 example: "A beautiful sunset over mountains"
  *               published_at:
  *                 type: string
  *                 format: date-time
@@ -384,6 +388,10 @@ router.put('/posts/bulk-restore',
  *               image:
  *                 type: string
  *                 format: binary
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the blog post image
+ *                 example: "A beautiful sunset over mountains"
  *               published_at:
  *                 type: string
  *                 format: date-time
@@ -484,6 +492,9 @@ router.use('/tags', blogTagRoute);
  *         image_url:
  *           type: string
  *           description: URL of the blog post's featured image
+ *         alt_text:
+ *           type: string
+ *           description: Alt text for the blog post image
  *         status:
  *           type: string
  *           enum: [draft, published, archived]

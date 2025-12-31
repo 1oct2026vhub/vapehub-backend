@@ -2,6 +2,7 @@
 const s3 = require('../../config/awsConfig');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const path = require('path');
 const { generateCloudFrontUrl } = require('./cloudFrontHelper');
 
 /**
@@ -63,6 +64,84 @@ const generateUniqueFileName = (originalName) => {
   const randomString = crypto.randomBytes(8).toString('hex');
   const extension = originalName.split('.').pop();
   return `${timestamp}-${randomString}.${extension}`;
+};
+
+/**
+ * Sanitize filename to prevent security issues while preserving original name
+ * @param {string} originalName - Original filename from frontend
+ * @returns {string} - Sanitized filename
+ */
+const sanitizeFileName = (originalName) => {
+  // Remove path components to prevent directory traversal
+  const basename = path.basename(originalName);
+  
+  // Remove or replace dangerous characters
+  let sanitized = basename
+    .replace(/[^a-zA-Z0-9._-]/g, '_') // Replace special chars except dots, dashes, underscores
+    .replace(/\.\./g, '_') // Prevent path traversal
+    .replace(/^\.+|\.+$/g, ''); // Remove leading/trailing dots
+  
+  // Ensure it's not empty
+  if (!sanitized || sanitized.trim() === '') {
+    sanitized = `image_${Date.now()}`;
+  }
+  
+  // Ensure it has an extension
+  if (!path.extname(sanitized)) {
+    const originalExt = path.extname(originalName) || '.jpg';
+    sanitized += originalExt;
+  }
+  
+  return sanitized;
+};
+
+/**
+ * Get unique filename preserving original name, adding suffix prefix if file exists
+ * @param {string} originalName - Original filename from frontend
+ * @param {string} folder - S3 folder path (e.g., 'products', 'categories')
+ * @param {string} subFolder - Optional subfolder (e.g., product_id)
+ * @returns {Promise<string>} - Unique filename that doesn't exist in S3
+ */
+const getUniqueFileNameWithPrefix = async (originalName, folder, subFolder = null) => {
+  // Sanitize the original filename
+  const sanitized = sanitizeFileName(originalName);
+  
+  // Build base S3 key
+  const basePath = subFolder ? `${folder}/${subFolder}` : folder;
+  let s3Key = `${basePath}/${sanitized}`;
+  
+  // Check if file exists
+  let exists = await checkImageExists(s3Key);
+  
+  // If file doesn't exist, return the original sanitized filename
+  if (!exists) {
+    return sanitized;
+  }
+  
+  // If file exists, add suffix prefix after filename (before extension)
+  const ext = path.extname(sanitized);
+  const nameWithoutExt = path.basename(sanitized, ext);
+  let counter = 1;
+  let finalFileName;
+  
+  // Keep trying until we find a unique filename
+  do {
+    // Add prefix AFTER the filename: my-product_1.jpg, my-product_2.jpg
+    finalFileName = `${nameWithoutExt}_${counter}${ext}`;
+    s3Key = `${basePath}/${finalFileName}`;
+    exists = await checkImageExists(s3Key);
+    counter++;
+    
+    // Safety limit to prevent infinite loop
+    if (counter > 1000) {
+      // Fallback to timestamp if too many collisions
+      const timestamp = Date.now();
+      finalFileName = `${nameWithoutExt}_${timestamp}${ext}`;
+      break;
+    }
+  } while (exists);
+  
+  return finalFileName;
 };
 
 /**
@@ -223,6 +302,8 @@ module.exports = {
   deleteFile, 
   uploadFiletToS3, 
   generateUniqueFileName, 
+  sanitizeFileName,
+  getUniqueFileNameWithPrefix,
   generateCloudFrontUrlForS3,
   checkImageExists,
   getImageMetadata,

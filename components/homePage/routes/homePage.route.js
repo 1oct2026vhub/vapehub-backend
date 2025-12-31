@@ -833,6 +833,9 @@ router.get('/trustpilot-product-reviews',
  *                           type: string
  *                         image_url:
  *                           type: string
+ *                         alt_text:
+ *                           type: string
+ *                           example: "Welcome banner image"
  *                         status:
  *                           type: string
  *                           enum: [active, inactive]

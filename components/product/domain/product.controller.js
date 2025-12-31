@@ -1338,23 +1338,34 @@ module.exports.uploadImage = async (req, res) => {
             // Resize to max 1920x1080 if larger
             let processedBuffer = buffer;
             try {
-                const { resizeToMaxSize } = require("../../../library/s3/s3Helper");
+                const { resizeToMaxSize, getUniqueFileNameWithPrefix } = require("../../../library/s3/s3Helper");
                 processedBuffer = await resizeToMaxSize(buffer, mimetype);
                 if (processedBuffer !== buffer) {
                     console.log(`📐 Image resized to max 1920x1080: ${originalname}`);
                 }
+                
+                // Get unique filename preserving original name
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'products');
+                const params = {
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: `products/${fileName}`,
+                    Body: processedBuffer,
+                    ContentType: mimetype
+                }
+                return uploadFiletToS3(params)
             } catch (resizeError) {
                 console.error(`⚠️ Error resizing image, using original: ${resizeError.message}`);
+                // Fallback to original processing
+                const { getUniqueFileNameWithPrefix } = require("../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'products');
+                const params = {
+                    Bucket: process.env.AWS_S3_BUCKET,
+                    Key: `products/${fileName}`,
+                    Body: buffer,
+                    ContentType: mimetype
+                }
+                return uploadFiletToS3(params)
             }
-            
-            const fileName = generateUniqueFileName(originalname)
-            const params = {
-                Bucket: process.env.AWS_S3_BUCKET,
-                Key: `products/${fileName}`,
-                Body: processedBuffer,
-                ContentType: mimetype
-            }
-            return uploadFiletToS3(params)
         })
         const uploadedImages = await Promise.all(uploadPromise);
         const response = uploadedImages.map(item => {

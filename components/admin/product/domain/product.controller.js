@@ -560,7 +560,7 @@ module.exports.getProductById = async (req, res, next) => {
                         {
                             model: ProductVariantImage,
                             as: "variantImages",
-                            attributes: ["id", "variant_id", "image_url", "is_primary"]
+                            attributes: ["id", "variant_id", "image_url", "alt_text", "is_primary"]
                         },
                         {
                             model: ProductVariantAttribute,
@@ -2151,7 +2151,8 @@ module.exports.uploadImage = async (req, res) => {
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
                 const { originalname, mimetype, buffer } = image;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'products', product_id);
                 const s3Key = `products/${product_id}/${fileName}`;
                 
                 // Resize original image to max 1920x1080 if larger
@@ -2491,7 +2492,10 @@ module.exports.updateProductImageAltText = async (req, res) => {
         });
 
     } catch (error) {
-        await transaction.rollback();
+        // Only rollback if transaction hasn't been committed
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Update Product Image Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }

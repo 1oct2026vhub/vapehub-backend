@@ -127,7 +127,8 @@ module.exports.createBrand = async (req, res, next) => {
         if (file) {
             try {
                 const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'brands');
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: `brands/${fileName}`,
@@ -199,7 +200,8 @@ module.exports.updateBrand = async (req, res, next) => {
         if (file) {
             try {
                 const { originalname, mimetype, buffer } = file;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'brands');
                 const params = {
                     Bucket: process.env.AWS_S3_BUCKET,
                     Key: `brands/${fileName}`,

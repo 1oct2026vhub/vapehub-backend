@@ -33,8 +33,8 @@ const customerController = require('../domain/customer.controller');
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob]
- *         description: Sort users by field (default createdAt) Valid fields are  id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob
+ *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob, aov, total_order_count, total_spend, last_ordered_at]
+ *         description: Sort users by field (default createdAt) Valid fields are id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked, dob, aov, total_order_count, total_spend, last_ordered_at
  *       - in: query
  *         name: order
  *         schema:
@@ -114,7 +114,18 @@ const customerController = require('../domain/customer.controller');
  *                       last_ordered_at:
  *                         type: string
  *                         format: date-time
- *                         description: Date and time of the customer’s most recent order (null if no orders)
+ *                         description: Date and time of the customer's most recent order (null if no orders)
+ *                       total_order_count:
+ *                         type: integer
+ *                         description: Total number of orders placed by the customer
+ *                       total_spend:
+ *                         type: number
+ *                         format: float
+ *                         description: Total amount spent by the customer across all orders
+ *                       aov:
+ *                         type: number
+ *                         format: float
+ *                         description: Average Order Value (total_spend / total_order_count)
  *                       orders:
  *                         type: array
  *                         items:

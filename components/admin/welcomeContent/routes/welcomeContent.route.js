@@ -203,6 +203,10 @@ router.get("/:id",
  *                 type: string
  *                 format: binary
  *                 description: Welcome image (optional, max 5MB)
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the welcome content image
+ *                 example: "Welcome banner image"
  *     responses:
  *       200:
  *         description: Welcome content updated successfully

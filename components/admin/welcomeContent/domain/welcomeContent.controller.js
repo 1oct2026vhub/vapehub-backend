@@ -8,9 +8,9 @@ const handleImageUpload = async (file) => {
   if (!file) return null;
   
   try {
-    const uniqueFileName = generateUniqueFileName(file.originalname);
-    const folderPath = 'welcome-content';
-    const key = `${folderPath}/${uniqueFileName}`;
+    const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+    const uniqueFileName = await getUniqueFileNameWithPrefix(file.originalname, 'welcome-content');
+    const key = `welcome-content/${uniqueFileName}`;
     
     const uploadParams = {
       Bucket: process.env.AWS_S3_BUCKET,
@@ -167,7 +167,7 @@ module.exports.getWelcomeContentById = async (req, res) => {
 module.exports.createOrUpdateWelcomeContent = async (req, res) => {
   try {
     console.log("req.body", req.body);
-    const { title, content, status = 'active' } = req.body;
+    const { title, content, status = 'active', alt_text } = req.body;
     const userId = req.user.id;
 
     // Check if welcome content already exists
@@ -206,6 +206,7 @@ module.exports.createOrUpdateWelcomeContent = async (req, res) => {
         content: content || existingWelcomeContent.content,
         status: status || existingWelcomeContent.status,
         image_url: imageUrl || existingWelcomeContent.image_url,
+        ...(alt_text !== undefined && { alt_text }),
         updated_by: userId
       });
 
@@ -216,6 +217,7 @@ module.exports.createOrUpdateWelcomeContent = async (req, res) => {
         title,
         content,
         image_url: imageUrl,
+        alt_text,
         status,
         updated_by: userId
       });

@@ -971,7 +971,8 @@ module.exports.uploadVariantImages = async (req, res) => {
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
                 const { originalname, mimetype, buffer } = image;
-                const fileName = generateUniqueFileName(originalname);
+                const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+                const fileName = await getUniqueFileNameWithPrefix(originalname, 'products', `${variant.product_id}/variants/${variant_id}`);
                 const s3Key = `products/${variant.product_id}/variants/${variant_id}/${fileName}`;
                 
                 // Resize original image to max 1920x1080 if larger
@@ -1205,8 +1206,8 @@ module.exports.updateVariantImageAltText = async (req, res) => {
                 'is_primary',
                 'sort_order',
                 'updated_by',
-                'createdAt',
-                'updatedAt'
+                'created_at',
+                'updated_at'
             ]
         });
 
@@ -1218,7 +1219,10 @@ module.exports.updateVariantImageAltText = async (req, res) => {
         });
 
     } catch (error) {
-        await transaction.rollback();
+        // Only rollback if transaction hasn't been committed
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error('Update Variant Image Alt Text Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -1304,7 +1308,7 @@ module.exports.getProductVariants = async (req, res) => {
                 {
                     model: ProductVariantImage,
                     as: 'variantImages',
-                    attributes: ["id", "variant_id", "image_url", "is_primary"]
+                    attributes: ["id", "variant_id", "image_url", "alt_text", "is_primary"]
                 },
                 {
                     model: ProductVariantAttribute,

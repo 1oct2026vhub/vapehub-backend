@@ -94,7 +94,7 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
 module.exports.createBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page, alt_text } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -120,7 +120,8 @@ module.exports.createBlogCategory = async (req, res, next) => {
         let image_url = null;
         if (file) {
             const { originalname, mimetype, buffer } = file;
-            const fileName = generateUniqueFileName(originalname);
+            const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+            const fileName = await getUniqueFileNameWithPrefix(originalname, 'blog-categories');
             const params = {
                 Bucket: process.env.AWS_S3_BUCKET,
                 Key: `blog-categories/${fileName}`,
@@ -139,6 +140,7 @@ module.exports.createBlogCategory = async (req, res, next) => {
             slug,
             description,
             image_url,
+            alt_text,
             status,
             show_home_page: typeof show_home_page === "boolean" ? show_home_page : false,
             updated_by: req.user.id
@@ -170,7 +172,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, description, status, parent_id: initialParentId, slug, show_home_page } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page, alt_text } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
@@ -219,7 +221,8 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         let image_url = category.image_url;
         if (file) {
             const { originalname, mimetype, buffer } = file;
-            const fileName = generateUniqueFileName(originalname);
+            const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
+            const fileName = await getUniqueFileNameWithPrefix(originalname, 'blog-categories');
             const params = {
                 Bucket: process.env.AWS_S3_BUCKET,
                 Key: `blog-categories/${fileName}`,
@@ -238,6 +241,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             slug,
             description,
             image_url,
+            ...(alt_text !== undefined && { alt_text }),
             status,
             show_home_page: typeof show_home_page === "boolean" ? show_home_page : category.show_home_page,
             updated_by: req.user.id
