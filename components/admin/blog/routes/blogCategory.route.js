@@ -150,6 +150,10 @@ router.get('/:id', [authMiddleware(true), validateRequest(blogCategoryIdValidati
  *                 type: string
  *                 format: binary
  *                 description: Category image file (png, jpg, jpeg, webp)
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the category image
+ *                 example: "Technology category banner"
  *     responses:
  *       201:
  *         description: Blog category created successfully
@@ -291,6 +295,10 @@ router.put('/bulk-restore',
  *                 type: string
  *                 format: binary
  *                 description: Category image file (png, jpg, jpeg, webp)
+ *               alt_text:
+ *                 type: string
+ *                 description: Alt text for the category image
+ *                 example: "Updated technology category banner"
  *     responses:
  *       200:
  *         description: Blog category updated successfully
@@ -399,6 +407,9 @@ router.put('/:id/restore',
  *           type: string
  *         image_url:
  *           type: string
+ *         alt_text:
+ *           type: string
+ *           description: Alt text for the category image
  *         parent_id:
  *           type: integer
  *           nullable: true
