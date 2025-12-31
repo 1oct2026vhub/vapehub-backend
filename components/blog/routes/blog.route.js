@@ -109,6 +109,9 @@ const blogController = require("../domain/blog.controller");
  *                             type: string
  *                             format: uri
  *                             example: "https://example.com/images/blog-1.jpg"
+ *                           alt_text:
+ *                             type: string
+ *                             example: "Blog post featured image"
  *                           published_at:
  *                             type: string
  *                             format: date-time
@@ -243,6 +246,9 @@ router.get('/', blogController.listAllCategories);
  *                       type: string
  *                       format: uri
  *                       example: "https://example.com/images/blog-1.jpg"
+ *                     alt_text:
+ *                       type: string
+ *                       example: "Blog post featured image"
  *                     author:
  *                       type: object
  *                       properties:
@@ -379,6 +385,9 @@ router.get('/post/:slug', blogController.getBlogBySlug);
  *                           type: string
  *                           format: uri
  *                           example: "https://example.com/images/categories/vaping-guides.jpg"
+ *                         alt_text:
+ *                           type: string
+ *                           example: "Category image"
  *                     blogs:
  *                       type: array
  *                       items:
@@ -400,6 +409,9 @@ router.get('/post/:slug', blogController.getBlogBySlug);
  *                             type: string
  *                             format: uri
  *                             example: "https://example.com/images/blog-1.jpg"
+ *                           alt_text:
+ *                             type: string
+ *                             example: "Blog post featured image"
  *                           created_at:
  *                             type: string
  *                             format: date-time

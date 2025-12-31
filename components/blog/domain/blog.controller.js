@@ -255,7 +255,7 @@ module.exports.listAllCategories = async (req, res, next) => {
         
         const categories = await BlogCategory.findAll({
             where: whereClause,
-            attributes: ['id', 'name', 'slug', 'description', 'image_url','show_home_page'],
+            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
             include: [
                 {
                     model: Blog,
@@ -267,7 +267,7 @@ module.exports.listAllCategories = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'parent_id','show_home_page'],
+                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'parent_id','show_home_page'],
                     where: {
                         status: 'active',
                         ...(show_home_page !== undefined && {
@@ -278,7 +278,7 @@ module.exports.listAllCategories = async (req, res, next) => {
                         {
                             model: BlogCategory,
                             as: 'parent',
-                            attributes: ['id', 'name', 'slug', 'description', 'image_url','show_home_page'],
+                            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
                             required: false
                         },
                         {
@@ -341,18 +341,18 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                 slug: req.params.slug,
                 status: 'active'
             },
-            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'status', 'parent_id'],
+            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'status', 'parent_id'],
             include: [
                 {
                     model: BlogCategory,
                     as: 'parent',
-                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'status'],
+                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'status'],
                     required: false
                 },
                 {
                     model: Blog,
                     as: 'blogs',
-                    attributes: ['id', 'title', 'slug', 'content', 'image_url', 'published_at', 'created_at', 'status'],
+                    attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at', 'created_at', 'status'],
                     include: [
                         {
                             model: User,
@@ -377,14 +377,14 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                 {
                     model: BlogCategory,
                     as: 'children',
-                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'status'],
+                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'status'],
                     where: {
                         status: 'active'
                     },
                     include: [{
                         model: Blog,
                         as: 'blogs',
-                        attributes: ['id', 'title', 'slug', 'content', 'image_url', 'published_at', 'created_at', 'status'],
+                        attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at', 'created_at', 'status'],
                         include: [
                             {
                                 model: User,

@@ -67,7 +67,13 @@ const blogValidation = [
                 throw new Error('Tags must be valid integers');
             }
             return true;
-        })
+        }),
+    
+    body('alt_text')
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage('Alt text must be a string with maximum 500 characters')
 ];
 
 const blogUpdateValidation = [
@@ -158,7 +164,13 @@ const blogUpdateValidation = [
                 throw new Error('Published date is required for published posts');
             }
             return true;
-        })
+        }),
+    
+    body('alt_text')
+        .optional()
+        .isString()
+        .isLength({ max: 500 })
+        .withMessage('Alt text must be a string with maximum 500 characters')
 ];
 
 const filterValidations = [

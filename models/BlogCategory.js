@@ -51,6 +51,10 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        alt_text: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
         parent_id: {
             type: DataTypes.INTEGER,
             allowNull: true,

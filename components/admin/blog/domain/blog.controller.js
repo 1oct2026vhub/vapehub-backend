@@ -182,7 +182,7 @@ module.exports.createBlog = async (req, res) => {
             timeout: 30000
         });
 
-        const { title, content, slug, published_at } = req.body;
+        const { title, content, slug, published_at, alt_text } = req.body;
         const categories = req.body.categories ? 
             req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
         const tags = req.body.tags ? 
@@ -201,6 +201,7 @@ module.exports.createBlog = async (req, res) => {
             content,
             slug,
             image_url,
+            alt_text,
             author_id,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
@@ -297,7 +298,7 @@ module.exports.updateBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { title, content, slug, categories, tags, published_at } = req.body;
+        const { title, content, slug, categories, tags, published_at, alt_text } = req.body;
         const { id: updated_by } = req.user;
         const status = req.body.status;
         const blog = await Blog.findByPk(id, { transaction });
@@ -323,6 +324,7 @@ module.exports.updateBlog = async (req, res) => {
             ...(content && { content }),
             ...(slug && { slug }),
             ...(image_url && { image_url }),
+            ...(alt_text !== undefined && { alt_text }),
             ...(status && { status }),
             updated_by
         };
