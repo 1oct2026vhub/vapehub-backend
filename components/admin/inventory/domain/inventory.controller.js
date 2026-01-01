@@ -2416,36 +2416,34 @@ module.exports = {
       const lastNDays = new Date(now);
       lastNDays.setDate(now.getDate() - numberOfDays);
 
-      // Get order IDs for orders (excluding canceled) in last N days
-      const orderIds = await Order.findAll({
-        attributes: ['id'],
-        where: {
-          status: { [Op.ne]: 'canceled' },
-          updatedAt: { [Op.gte]: lastNDays }
-        },
-        raw: true
-      }).then(orders => orders.map(o => o.id));
-
-      // OPTIMIZATION: Get all sales data in a single aggregated query instead of N queries
+      // OPTIMIZATION: Use raw SQL with JOIN for maximum performance
+      // This eliminates the need to fetch orderIds first and avoids slow IN clauses
       // This prevents timeout issues when processing many variants with many days
-      const salesData = orderIds.length > 0
-        ? await OrderItem.findAll({
-            attributes: [
-              'variant_id',
-              [Sequelize.fn('SUM', Sequelize.col('quantity')), 'total_sales']
-            ],
-            where: {
-              order_id: { [Op.in]: orderIds }
-            },
-            group: ['variant_id'],
-            raw: true
-          })
-        : [];
+      const salesData = await sequelize.query(
+        `
+          SELECT 
+            oi.variant_id,
+            COALESCE(SUM(oi.quantity), 0) as total_sales
+          FROM order_items oi
+          INNER JOIN orders o ON oi.order_id = o.id
+          WHERE o.status != 'canceled'
+            AND o.updatedAt >= :lastNDays
+            AND oi.variant_id IS NOT NULL
+            AND oi.deletedAt IS NULL
+          GROUP BY oi.variant_id
+        `,
+        {
+          replacements: { lastNDays: lastNDays },
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
 
       // Create a map for quick lookup: variant_id -> total_sales
       const salesMap = {};
       salesData.forEach(item => {
-        salesMap[item.variant_id] = parseInt(item.total_sales) || 0;
+        if (item.variant_id) {
+          salesMap[item.variant_id] = parseInt(item.total_sales) || 0;
+        }
       });
 
       // Fetch all active variants with product information
