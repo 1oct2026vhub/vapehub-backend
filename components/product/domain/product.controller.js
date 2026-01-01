@@ -2186,49 +2186,65 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         
         // Get available terms for other attributes
         const availableTermsMap = new Map();
+        
+        // Create a lookup map for used_in_variation from productAttributeTermsResult
+        const usedInVariationMap = new Map();
+        productAttributeTermsResult.forEach(pat => {
+            const key = `${pat.attr_id}-${pat.term_id}`;
+            usedInVariationMap.set(key, Boolean(pat.used_in_variation));
+        });
+        
         filteredVariants.forEach(variant => {
             variant.variantAttributes.forEach(va => {
                 const attributeId = va.attribute.id;
+                const termId = va.term.id;
+                
                 // Only consider attributes not in the filter (if using processedAttributeTerms)
                 if (!processedAttributeTerms || !Array.isArray(processedAttributeTerms) || !processedAttributeTerms.some(f => f.attribute_id === attributeId)) {
-                    if (!availableTermsMap.has(attributeId)) {
-                        availableTermsMap.set(attributeId, {
-                            attribute: {
-                                id: va.attribute.id,
-                                name: va.attribute.name,
-                                type: va.attribute.type,
-                                image_url: va.attribute.image_url,
-                                description: va.attribute.description || null
-                            },
-                            terms: new Map() // Use Map to track variant slugs per term
-                        });
-                    }
+                    // Check if this attribute-term combination has used_in_variation = true
+                    const key = `${attributeId}-${termId}`;
+                    const usedInVariation = usedInVariationMap.get(key);
                     
-                    const termId = va.term.id;
-                    const termsMap = availableTermsMap.get(attributeId).terms;
-                    
-                    if (!termsMap.has(termId)) {
-                        termsMap.set(termId, {
-                            id: va.term.id,
-                            name: va.term.name,
-                            slug: va.term.slug,
-                            description: va.term.description || null,
-                            stock_status: variant.stock_status,
-                            is_in_stock: variant.stock > 0,
-                            variant_slugs: []
-                        });
-                    }
-                    
-                    // Add variant slug if not already present
-                    const termData = termsMap.get(termId);
-                    if (!termData.variant_slugs.includes(variant.slug)) {
-                        termData.variant_slugs.push(variant.slug);
-                    }
-                    
-                    // Update stock_status and is_in_stock if this variant has better stock
-                    if (variant.stock > 0 && !termData.is_in_stock) {
-                        termData.is_in_stock = true;
-                        termData.stock_status = variant.stock_status;
+                    // Only include terms with used_in_variation = true
+                    if (usedInVariation === true) {
+                        if (!availableTermsMap.has(attributeId)) {
+                            availableTermsMap.set(attributeId, {
+                                attribute: {
+                                    id: va.attribute.id,
+                                    name: va.attribute.name,
+                                    type: va.attribute.type,
+                                    image_url: va.attribute.image_url,
+                                    description: va.attribute.description || null
+                                },
+                                terms: new Map() // Use Map to track variant slugs per term
+                            });
+                        }
+                        
+                        const termsMap = availableTermsMap.get(attributeId).terms;
+                        
+                        if (!termsMap.has(termId)) {
+                            termsMap.set(termId, {
+                                id: va.term.id,
+                                name: va.term.name,
+                                slug: va.term.slug,
+                                description: va.term.description || null,
+                                stock_status: variant.stock_status,
+                                is_in_stock: variant.stock > 0,
+                                variant_slugs: []
+                            });
+                        }
+                        
+                        // Add variant slug if not already present
+                        const termData = termsMap.get(termId);
+                        if (!termData.variant_slugs.includes(variant.slug)) {
+                            termData.variant_slugs.push(variant.slug);
+                        }
+                        
+                        // Update stock_status and is_in_stock if this variant has better stock
+                        if (variant.stock > 0 && !termData.is_in_stock) {
+                            termData.is_in_stock = true;
+                            termData.stock_status = variant.stock_status;
+                        }
                     }
                 }
             });
@@ -2545,8 +2561,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     }
                 });
             
-            // Add terms from variant attributes and collect variant slugs
-            structuredVariants.forEach(variant => {
+            // Add terms from filtered variant attributes and collect variant slugs
+            // Use filteredVariants instead of structuredVariants to only show terms from variants matching current filter
+            filteredVariants.forEach(variant => {
                 variant.variantAttributes
                     .filter(va => va.attribute.id === filter.attribute_id)
                     .forEach(va => {
@@ -2568,8 +2585,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         }
                     });
             });
-            // Convert Map to array
-            const terms = Array.from(allTermsForAttribute.values());
+            // Convert Map to array and filter out terms with no variant slugs
+            // Only show terms that actually exist in filtered variants
+            const terms = Array.from(allTermsForAttribute.values())
+                .filter(term => term.variant_slugs.length > 0);
             
             // Sort terms alphabetically by name
             terms.sort((a, b) => {

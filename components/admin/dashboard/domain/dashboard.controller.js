@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const dashboardHelper = require('../helper/dashboard.helper');
 const logger = require("../../../../library/logger");
 const { getDashboardDateRanges } = require("../../../../utils/dateUtils");
+const constants = require("../../../../config/constants");
 const seoService = require('../../seo/domain/seo.service');
 
 module.exports.getDashboardStats = async (req, res, next) => {
@@ -17,7 +18,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 createdAt: {
                     [Op.between]: [todayStart, todayEnd]
                 },
-                status: 'completed',
+                status: constants.transactionStatus.COMPLETED,
                 transactionType: 'PURCHASE'
             }
         });
@@ -27,7 +28,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 createdAt: {
                     [Op.gte]: weekStart
                 },
-                status: 'COMPLETED',
+                status: constants.transactionStatus.COMPLETED,
                 transactionType: 'PURCHASE'
             }
         });
@@ -37,7 +38,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 createdAt: {
                     [Op.gte]: monthStart
                 },
-                status: 'COMPLETED',
+                status: constants.transactionStatus.COMPLETED,
                 transactionType: 'PURCHASE'
             }
         });
@@ -47,7 +48,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 createdAt: {
                     [Op.gte]: yearStart
                 },
-                status: 'COMPLETED',
+                status: constants.transactionStatus.COMPLETED,
                 transactionType: 'PURCHASE'
             }
         });
@@ -294,8 +295,8 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
 
         // --- Today ---
         const [todaySales, yesterdaySales, todayOrders, yesterdayOrders, todayUsers, yesterdayUsers] = await Promise.all([
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
             Order.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
             Order.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } }),
             User.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
@@ -304,8 +305,8 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
 
         // --- Week ---
         const [weekSales, prevWeekSales, weekOrders, prevWeekOrders, weekUsers, prevWeekUsers] = await Promise.all([
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
             Order.count({ where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd } } }),
             Order.count({ where: { createdAt: { [Op.gte]: prevWeekStart, [Op.lt]: prevWeekEnd } } }),
             User.count({ where: { createdAt: { [Op.gte]: weekStart, [Op.lt]: weekEnd } } }),
@@ -314,8 +315,8 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
 
         // --- Month ---
         const [monthSales, prevMonthSales, monthOrders, prevMonthOrders, monthUsers, prevMonthUsers] = await Promise.all([
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
-            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd }, status: 'COMPLETED', transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
+            Transaction.sum('amount', { where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
             Order.count({ where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart } } }),
             Order.count({ where: { createdAt: { [Op.gte]: prevMonthStart, [Op.lt]: prevMonthEnd } } }),
             User.count({ where: { createdAt: { [Op.gte]: monthStart, [Op.lt]: nextMonthStart } } }),

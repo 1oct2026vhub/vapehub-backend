@@ -139,6 +139,11 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
                 comment: 'Alt text for the banner image for accessibility'
             },
+            alt_text_mobile: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                comment: 'Alt text for the banner mobile image for accessibility'
+            },
             redirect_url: {
                 type: DataTypes.STRING,
                 allowNull: true,

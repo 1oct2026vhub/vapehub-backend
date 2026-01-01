@@ -171,6 +171,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        alt_text: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         hide_text: {
             type: DataTypes.BOOLEAN,
             allowNull: false,
