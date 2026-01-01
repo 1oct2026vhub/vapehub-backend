@@ -2426,6 +2426,28 @@ module.exports = {
         raw: true
       }).then(orders => orders.map(o => o.id));
 
+      // OPTIMIZATION: Get all sales data in a single aggregated query instead of N queries
+      // This prevents timeout issues when processing many variants with many days
+      const salesData = orderIds.length > 0
+        ? await OrderItem.findAll({
+            attributes: [
+              'variant_id',
+              [Sequelize.fn('SUM', Sequelize.col('quantity')), 'total_sales']
+            ],
+            where: {
+              order_id: { [Op.in]: orderIds }
+            },
+            group: ['variant_id'],
+            raw: true
+          })
+        : [];
+
+      // Create a map for quick lookup: variant_id -> total_sales
+      const salesMap = {};
+      salesData.forEach(item => {
+        salesMap[item.variant_id] = parseInt(item.total_sales) || 0;
+      });
+
       // Fetch all active variants with product information
       const variants = await ProductVariant.findAll({
         where: {
@@ -2464,17 +2486,10 @@ module.exports = {
         attributes: ['id', 'product_id', 'slug', 'stock', 'low_stock_threshold']
       });
 
-      // Calculate sales for each variant and prepare export data
-      const exportData = await Promise.all(variants.map(async (variant) => {
-        // Calculate sales last N days for this variant
-        const salesLastNDays = orderIds.length > 0
-          ? await OrderItem.sum('quantity', {
-              where: {
-                variant_id: variant.id,
-                order_id: { [Op.in]: orderIds }
-              }
-            }) || 0
-          : 0;
+      // Calculate sales for each variant using the pre-fetched map (NO MORE QUERIES!)
+      const exportData = variants.map((variant) => {
+        // Get sales from map (O(1) lookup instead of database query)
+        const salesLastNDays = salesMap[variant.id] || 0;
 
         // Build variant name
         let variantName = variant.product?.name || 'Unknown Product';
@@ -2508,7 +2523,7 @@ module.exports = {
           lowStockThreshold: lowStockThreshold,
           requiredStockForNextNDays: requiredStockForNextNDays
         };
-      }));
+      });
 
       // Filter products where requiredStockForNextNDays > 0 (exclude items with 0 required stock)
       const filteredData = exportData.filter(item => 
