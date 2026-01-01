@@ -138,6 +138,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 }
             ]
         });
+
         // SEO Statistics
         const seoStats = await Promise.all([
             // Get total content count by type
