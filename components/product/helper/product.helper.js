@@ -1107,9 +1107,19 @@ const fetchProducts = async (query, status = 'published') => {
 
       // Add flavors and flavor_count to each product
       let flavorTerms = [];
-      if (product.productAttributeTerms) {
+      if (product.productAttributeTerms && product.productAttributeTerms.length > 0) {
         flavorTerms = product.productAttributeTerms
-          .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+          .filter(pat => {
+            // Case-insensitive check for flavour attribute
+            // Check both the mapped attribute object (pat.attribute.name) 
+            // AND the raw SQL column (pat.attr_name) as fallback
+            const attrName = (pat.attribute && pat.attribute.name) || pat.attr_name;
+            return attrName && 
+                   attrName.toLowerCase().trim() === 'flavour' && 
+                   pat.term && 
+                   pat.term.id && 
+                   pat.term.name;
+          })
           .map(pat => ({
             id: pat.term.id,
             name: pat.term.name,
