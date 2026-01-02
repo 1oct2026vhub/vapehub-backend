@@ -362,7 +362,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id IN (${productIds.join(',')})
-                AND a.name IN ('number-of-puffs', 'flavour')
+                AND LOWER(a.name) IN ('number-of-puffs', 'flavour')
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             })
@@ -504,9 +504,17 @@ module.exports.listNewProducts = async (req, res, next) => {
 
             // Get flavors
             let flavorTerms = [];
-            if (productAttributeTerms.length > 0) {
+            if (productAttributeTerms && productAttributeTerms.length > 0) {
                 flavorTerms = productAttributeTerms
-                    .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
+                    .filter(pat => {
+                        // Case-insensitive check for flavour attribute
+                        const attrName = pat.attribute && pat.attribute.name;
+                        return attrName && 
+                               attrName.toLowerCase().trim() === 'flavour' && 
+                               pat.term && 
+                               pat.term.id && 
+                               pat.term.name;
+                    })
                     .map(pat => ({
                         id: pat.term.id,
                         name: pat.term.name,
