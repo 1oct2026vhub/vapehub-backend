@@ -68,6 +68,7 @@ const generateUniqueFileName = (originalName) => {
 
 /**
  * Sanitize filename to prevent security issues while preserving original name
+ * Only removes truly dangerous characters, preserves spaces, parentheses, etc.
  * @param {string} originalName - Original filename from frontend
  * @returns {string} - Sanitized filename
  */
@@ -75,14 +76,16 @@ const sanitizeFileName = (originalName) => {
   // Remove path components to prevent directory traversal
   const basename = path.basename(originalName);
   
-  // Remove or replace dangerous characters
+  // Only replace truly dangerous characters for security
+  // Preserve: spaces, parentheses, most special characters
   let sanitized = basename
-    .replace(/[^a-zA-Z0-9._-]/g, '_') // Replace special chars except dots, dashes, underscores
-    .replace(/\.\./g, '_') // Prevent path traversal
-    .replace(/^\.+|\.+$/g, ''); // Remove leading/trailing dots
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_') // Only dangerous chars: < > : " | ? * and control chars
+    .replace(/\.\./g, '_') // Prevent path traversal (..)
+    .replace(/^\.+|\.+$/g, '') // Remove leading/trailing dots only
+    .trim(); // Remove leading/trailing whitespace
   
   // Ensure it's not empty
-  if (!sanitized || sanitized.trim() === '') {
+  if (!sanitized || sanitized.length === 0) {
     sanitized = `image_${Date.now()}`;
   }
   
