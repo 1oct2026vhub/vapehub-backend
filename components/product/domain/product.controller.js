@@ -471,9 +471,12 @@ module.exports.listNewProducts = async (req, res, next) => {
             let puffCount = product.puff_count; // Use direct field first
             const productAttributeTerms = attributeTermsMap.get(product.id) || [];
             if (productAttributeTerms.length > 0) {
-                const puffAttributes = productAttributeTerms.filter(pat => 
-                    pat.attribute && pat.attribute.name === 'number-of-puffs'
-                );
+                const puffAttributes = productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
+                    const normalizedName = pat.attribute.name.toLowerCase().replace(/[\s\-_]/g, '');
+                    return normalizedName === 'numberofpuffs';
+                });
                 
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
@@ -2743,7 +2746,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         // 4. Get product images with raw SQL
         const productImagesResult = await Product.sequelize.query(`
             SELECT 
-                id, product_id, image_url, is_primary
+                id, product_id, image_url, is_primary, alt_text
             FROM product_images
             WHERE product_id = :product_id
         `, {
