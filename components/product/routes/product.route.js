@@ -1413,6 +1413,21 @@ router.get('/:id/linked-products',
  *                             type: boolean
  *                           primary_image:
  *                             type: object
+ *                             nullable: true
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               url:
+ *                                 type: string
+ *                               alt_text:
+ *                                 type: string
+ *                                 nullable: true
+ *                                 description: Alternative text for the image
+ *                               is_primary:
+ *                                 type: boolean
+ *                               sort_order:
+ *                                 type: integer
+ *                                 nullable: true
  *                           attributes:
  *                             type: array
  *                             items:

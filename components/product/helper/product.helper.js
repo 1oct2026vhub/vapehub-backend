@@ -1064,9 +1064,11 @@ const fetchProducts = async (query, status = 'published') => {
       // Extract largest puff count from number-of-puffs attribute
       let puffCount = null;
       if (product.productAttributeTerms) {
-        const puffAttributes = product.productAttributeTerms.filter(pat => 
-          pat.attribute && pat.attribute.name === 'number-of-puffs'
-        );
+        const puffAttributes = product.productAttributeTerms.filter(pat => {
+          if (!pat.attribute || !pat.attribute.name) return false;
+          // Case-insensitive regex match for "number of puffs" with flexible spacing
+          return /number\s+of\s+puffs/i.test(pat.attribute.name);
+        });
         
         if (puffAttributes.length > 0) {
           let maxPuffCount = 0;
