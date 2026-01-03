@@ -2743,7 +2743,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         // 4. Get product images with raw SQL
         const productImagesResult = await Product.sequelize.query(`
             SELECT 
-                id, product_id, image_url, is_primary
+                id, product_id, image_url, is_primary, alt_text
             FROM product_images
             WHERE product_id = :product_id
         `, {
