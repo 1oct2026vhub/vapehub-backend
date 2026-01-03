@@ -471,9 +471,12 @@ module.exports.listNewProducts = async (req, res, next) => {
             let puffCount = product.puff_count; // Use direct field first
             const productAttributeTerms = attributeTermsMap.get(product.id) || [];
             if (productAttributeTerms.length > 0) {
-                const puffAttributes = productAttributeTerms.filter(pat => 
-                    pat.attribute && pat.attribute.name === 'number-of-puffs'
-                );
+                const puffAttributes = productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
+                    const normalizedName = pat.attribute.name.toLowerCase().replace(/[\s\-_]/g, '');
+                    return normalizedName === 'numberofpuffs';
+                });
                 
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
