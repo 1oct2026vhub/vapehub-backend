@@ -148,10 +148,11 @@ const fetchCategoryProducts = async (categoryId, query) => {
                  WHERE pi.product_id = p.id 
                  ORDER BY pi.is_primary DESC LIMIT 1) as product_image,
                 -- Get all puff count attributes for processing (matching fetchProducts logic)
+                -- Use LOWER for case-insensitive matching
                 (SELECT GROUP_CONCAT(pat_term.name SEPARATOR '|') FROM product_attribute_terms pat 
                  JOIN attributes a ON pat.attribute_id = a.id 
                  JOIN attribute_terms pat_term ON pat.term_id = pat_term.id 
-                 WHERE pat.product_id = p.id AND a.name = 'number-of-puffs' 
+                 WHERE pat.product_id = p.id AND LOWER(a.name) = LOWER('number-of-puffs')
                  AND pat.deleted_at IS NULL) as puff_count_attributes,
                 -- Get flavor count
                 (SELECT COUNT(*) FROM product_attribute_terms pat2 
@@ -283,7 +284,8 @@ const fetchCategoryProducts = async (categoryId, query) => {
             .filter(product => product.min_price && parseFloat(product.min_price) > 0)
             .map(product => {
                 // Extract largest puff count from number-of-puffs attribute (EXACT fetchProducts logic)
-                let puffCount = null;
+                // Use direct database field first (matching pattern in product.controller.js line 471)
+                let puffCount = product.puff_count;
                 if (product.puff_count_attributes) {
                     const puffAttributeNames = product.puff_count_attributes.split('|');
                     
