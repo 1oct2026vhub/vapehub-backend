@@ -1016,9 +1016,11 @@ module.exports.getProductByid = async (req, res, next) => {
         // Extract largest puff count from number-of-puffs attribute
         let puffCount = null;
         if (product.productAttributeTerms) {
-            const puffAttributes = product.productAttributeTerms.filter(pat => 
-                pat.attribute && pat.attribute.name === 'number-of-puffs'
-            );
+            const puffAttributes = product.productAttributeTerms.filter(pat => {
+                if (!pat.attribute || !pat.attribute.name) return false;
+                // Case-insensitive regex match for "number of puffs" with flexible spacing
+                return /number\s+of\s+puffs/i.test(pat.attribute.name);
+            });
             
             if (puffAttributes.length > 0) {
                 let maxPuffCount = 0;
@@ -1709,9 +1711,11 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // Extract largest puff count from number-of-puffs attribute
         let puffCount = null;
         if (product.productAttributeTerms) {
-            const puffAttributes = product.productAttributeTerms.filter(pat => 
-                pat.attribute && pat.attribute.name === 'number-of-puffs'
-            );
+            const puffAttributes = product.productAttributeTerms.filter(pat => {
+                if (!pat.attribute || !pat.attribute.name) return false;
+                // Case-insensitive regex match for "number of puffs" with flexible spacing
+                return /number\s+of\s+puffs/i.test(pat.attribute.name);
+            });
             
             if (puffAttributes.length > 0) {
                 let maxPuffCount = 0;
@@ -2366,7 +2370,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
-            return attribute && attribute.attr_name === 'number-of-puffs';
+            return attribute && attribute.attr_name && /number\s+of\s+puffs/i.test(attribute.attr_name);
         }) : null;
         
         if (filteredPuffAttribute) {
@@ -2392,9 +2396,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         } else {
             // Fallback to largest puff count from all product attribute terms
             if (productAttributeTermsResult) {
-                const puffAttributes = productAttributeTermsResult.filter(pat => 
-                    pat.attr_name === 'number-of-puffs'
-                );
+                const puffAttributes = productAttributeTermsResult.filter(pat => {
+                    if (!pat.attr_name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attr_name);
+                });
                 
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
@@ -3111,7 +3117,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             const attribute = productAttributeTermsResult.find(pat => 
                 pat.attr_id === filter.attribute_id
             );
-            return attribute && attribute.attr_name === 'number-of-puffs';
+            return attribute && attribute.attr_name && /number\s+of\s+puffs/i.test(attribute.attr_name);
         }) : null;
         
         if (filteredPuffAttribute) {
@@ -3137,9 +3143,11 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         } else {
             // Fallback to largest puff count from all product attribute terms
             if (productAttributeTermsResult) {
-                const puffAttributes = productAttributeTermsResult.filter(pat => 
-                    pat.attr_name === 'number-of-puffs'
-                );
+                const puffAttributes = productAttributeTermsResult.filter(pat => {
+                    if (!pat.attr_name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attr_name);
+                });
                 
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
@@ -3637,7 +3645,7 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
             const attribute = product.productAttributeTerms.find(pat => 
                 pat.attribute.id === filter.attribute_id
             )?.attribute;
-            return attribute && attribute.name === 'number-of-puffs';
+            return attribute && attribute.name && /number\s+of\s+puffs/i.test(attribute.name);
         }) : null;
         
         if (filteredPuffAttribute) {
@@ -3663,9 +3671,11 @@ module.exports.filterVariantsByAttributesOld = async (req, res, next) => {
         } else {
             // Fallback to largest puff count from all product attribute terms
             if (product.productAttributeTerms) {
-                const puffAttributes = product.productAttributeTerms.filter(pat => 
-                    pat.attribute && pat.attribute.name === 'number-of-puffs'
-                );
+                const puffAttributes = product.productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
+                });
                 
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
@@ -4047,9 +4057,11 @@ module.exports.getDealsByCategory = async (req, res, next) => {
             // Puff count extraction logic (copied from product.helper.js)
             let puffCount = null;
             if (product.productAttributeTerms) {
-                const puffAttributes = product.productAttributeTerms.filter(pat => 
-                    pat.attribute && pat.attribute.name === 'number-of-puffs'
-                );
+                const puffAttributes = product.productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
+                });
                 if (puffAttributes.length > 0) {
                     let maxPuffCount = 0;
                     let maxPuffTerm = null;
@@ -4911,9 +4923,11 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             // Extract puff count from attributes
             let puffCount = null;
             const productAttributeTerms = attributeTermsMap.get(product.id) || [];
-            const puffAttributes = productAttributeTerms.filter(pat => 
-                pat.attribute && pat.attribute.name === 'number-of-puffs'
-            );
+            const puffAttributes = productAttributeTerms.filter(pat => {
+                if (!pat.attribute || !pat.attribute.name) return false;
+                // Case-insensitive regex match for "number of puffs" with flexible spacing
+                return /number\s+of\s+puffs/i.test(pat.attribute.name);
+            });
             if (puffAttributes.length > 0) {
                 let maxPuffCount = 0;
                 let maxPuffTerm = null;

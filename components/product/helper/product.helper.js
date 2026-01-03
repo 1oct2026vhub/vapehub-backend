@@ -1066,9 +1066,8 @@ const fetchProducts = async (query, status = 'published') => {
       if (product.productAttributeTerms) {
         const puffAttributes = product.productAttributeTerms.filter(pat => {
           if (!pat.attribute || !pat.attribute.name) return false;
-          // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
-          const normalizedName = pat.attribute.name.toLowerCase().replace(/[\s\-_]/g, '');
-          return normalizedName === 'numberofpuffs';
+          // Case-insensitive regex match for "number of puffs" with flexible spacing
+          return /number\s+of\s+puffs/i.test(pat.attribute.name);
         });
         
         if (puffAttributes.length > 0) {
