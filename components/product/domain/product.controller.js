@@ -473,9 +473,8 @@ module.exports.listNewProducts = async (req, res, next) => {
             if (productAttributeTerms.length > 0) {
                 const puffAttributes = productAttributeTerms.filter(pat => {
                     if (!pat.attribute || !pat.attribute.name) return false;
-                    // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
-                    const normalizedName = pat.attribute.name.toLowerCase().replace(/[\s\-_]/g, '');
-                    return normalizedName === 'numberofpuffs';
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
                 });
                 
                 if (puffAttributes.length > 0) {
@@ -1461,7 +1460,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             // Product Images query
             Product.sequelize.query(`
                 SELECT 
-                    id, updated_by, product_id, image_url, is_primary, createdAt, updatedAt, deletedAt
+                    id, updated_by, product_id, image_url, is_primary, alt_text, createdAt, updatedAt, deletedAt
                 FROM product_images
                 WHERE product_id = :productId
             `, {
@@ -1752,6 +1751,29 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
         
+        // Get primary product image
+        const primaryProductImage = product.ProductImages && product.ProductImages.length > 0 
+            ? product.ProductImages.find(img => img.is_primary) || product.ProductImages[0]
+            : null;
+        
+        // Transform ProductImages to all_images format
+        const all_images = product.ProductImages && product.ProductImages.length > 0
+            ? product.ProductImages.map(img => ({
+                id: img.id,
+                url: img.image_url,
+                alt_text: img.alt_text,
+                is_primary: Boolean(img.is_primary)
+            }))
+            : [];
+        
+        // Transform primary image
+        const primary_image = primaryProductImage ? {
+            id: primaryProductImage.id,
+            url: primaryProductImage.image_url,
+            alt_text: primaryProductImage.alt_text,
+            is_primary: Boolean(primaryProductImage.is_primary)
+        } : null;
+        
         // **Modify the response** (same logic as original)
         const response = {
             ...product,  // Use parsed product object instead of toJSON()
@@ -1760,6 +1782,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
             discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
             min_price_variant: minPriceVariant,
+            primary_image: primary_image,
+            all_images: all_images,
             attributeTerms,
             deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
                 id: deal.id,
