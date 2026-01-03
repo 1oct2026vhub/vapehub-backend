@@ -494,9 +494,12 @@ const fetchProductsOptimized = async (query, status = 'published') => {
 
       // Calculate puff count efficiently
       let puffCount = null;
-      const puffAttributes = productAttributeTermsData.filter(pat => 
-        pat.attribute_name === 'number-of-puffs'
-      );
+      const puffAttributes = productAttributeTermsData.filter(pat => {
+        if (!pat.attribute_name) return false;
+        // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
+        const normalizedName = pat.attribute_name.toLowerCase().replace(/[\s\-_]/g, '');
+        return normalizedName === 'numberofpuffs';
+      });
       
       if (puffAttributes.length > 0) {
         let maxPuffCount = 0;
