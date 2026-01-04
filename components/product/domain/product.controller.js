@@ -353,6 +353,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             }),
             
             // Product Attribute Terms query - only essential fields
+            // Use LIKE pattern to match both "number-of-puffs" and "number of puffs" formats (similar to JavaScript regex)
             Product.sequelize.query(`
                 SELECT 
                     pat.product_id, pat.attribute_id, pat.term_id,
@@ -362,7 +363,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id IN (${productIds.join(',')})
-                AND LOWER(a.name) IN ('number-of-puffs', 'flavour')
+                AND (LOWER(a.name) LIKE LOWER('number%of%puffs') OR LOWER(a.name) = LOWER('flavour'))
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             })
