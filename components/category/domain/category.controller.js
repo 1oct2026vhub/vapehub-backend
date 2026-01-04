@@ -148,11 +148,12 @@ const fetchCategoryProducts = async (categoryId, query) => {
                  WHERE pi.product_id = p.id 
                  ORDER BY pi.is_primary DESC LIMIT 1) as product_image,
                 -- Get all puff count attributes for processing (matching fetchProducts logic)
-                -- Use LOWER for case-insensitive matching
+                -- Use LIKE pattern to match both "number-of-puffs" and "number of puffs" formats (similar to JavaScript regex)
                 (SELECT GROUP_CONCAT(pat_term.name SEPARATOR '|') FROM product_attribute_terms pat 
                  JOIN attributes a ON pat.attribute_id = a.id 
                  JOIN attribute_terms pat_term ON pat.term_id = pat_term.id 
-                 WHERE pat.product_id = p.id AND LOWER(a.name) = LOWER('number-of-puffs')
+                 WHERE pat.product_id = p.id 
+                 AND LOWER(a.name) LIKE LOWER('number%of%puffs')
                  AND pat.deleted_at IS NULL) as puff_count_attributes,
                 -- Get flavor count
                 (SELECT COUNT(*) FROM product_attribute_terms pat2 
