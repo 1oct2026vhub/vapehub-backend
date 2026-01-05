@@ -18,10 +18,14 @@ module.exports = {
       
       // Configuration for status updates
       const STATUS_CONFIG = {
-        // Set status to 'published' if stock > 0
+        // Set status to 'published' if stock > 0 (for products)
         PUBLISH_IF_STOCK_GT: parseInt(process.env.JSON_PUBLISH_STOCK_THRESHOLD) || 0,
-        // Set status to 'archived' if stock = 0
+        // Set status to 'archived' if stock = 0 (for products)
         ARCHIVE_IF_STOCK_EQ: parseInt(process.env.JSON_ARCHIVE_STOCK_THRESHOLD) || 0,
+        // Set status to 'active' if stock > 0 (for variants)
+        ACTIVATE_VARIANT_IF_STOCK_GT: parseInt(process.env.JSON_ACTIVATE_VARIANT_STOCK_THRESHOLD) || 0,
+        // Set status to 'inactive' if stock = 0 (for variants)
+        DEACTIVATE_VARIANT_IF_STOCK_EQ: parseInt(process.env.JSON_DEACTIVATE_VARIANT_STOCK_THRESHOLD) || 0,
         // Only update status if product is currently published (set to false to update all)
         ONLY_UPDATE_PUBLISHED: process.env.JSON_ONLY_UPDATE_PUBLISHED === 'true' || false
       };
@@ -29,6 +33,8 @@ module.exports = {
       console.log('📋 Status Update Configuration:');
       console.log(`   - Publish products with stock > ${STATUS_CONFIG.PUBLISH_IF_STOCK_GT}`);
       console.log(`   - Archive products with stock = ${STATUS_CONFIG.ARCHIVE_IF_STOCK_EQ}`);
+      console.log(`   - Activate variants with stock > ${STATUS_CONFIG.ACTIVATE_VARIANT_IF_STOCK_GT}`);
+      console.log(`   - Deactivate variants with stock = ${STATUS_CONFIG.DEACTIVATE_VARIANT_IF_STOCK_EQ}`);
       console.log(`   - Only update published products: ${STATUS_CONFIG.ONLY_UPDATE_PUBLISHED}`);
       
       // Check if JSON file exists
@@ -62,7 +68,17 @@ module.exports = {
       
       console.log(`🔍 Found ${existingProducts.length} existing products in database`);
       
-      // Create lookup maps for faster matching
+      // Get existing product variants from database for matching
+      const existingVariants = await queryInterface.sequelize.query(`
+        SELECT id, slug, stock, status
+        FROM product_variants
+        WHERE deleted_at IS NULL
+        ${STATUS_CONFIG.ONLY_UPDATE_PUBLISHED ? "AND status = 'active'" : ''}
+      `, { type: Sequelize.QueryTypes.SELECT });
+      
+      console.log(`🔍 Found ${existingVariants.length} existing product variants in database`);
+      
+      // Create lookup maps for products
       const productByName = new Map();
       const productBySku = new Map();
       const productBySlug = new Map();
@@ -83,12 +99,25 @@ module.exports = {
         }
       });
       
-      // Match and update products
-      let matchedCount = 0;
-      let stockUpdatedCount = 0;
-      let statusUpdatedCount = 0;
+      // Create lookup map for variants (by slug only, as variants typically use slug for matching)
+      const variantBySlug = new Map();
+      existingVariants.forEach(variant => {
+        if (variant.slug) {
+          variantBySlug.set(variant.slug.toLowerCase().trim(), variant);
+        }
+      });
+      
+      // Match and update products and variants
+      let matchedProductCount = 0;
+      let matchedVariantCount = 0;
+      let productStockUpdatedCount = 0;
+      let variantStockUpdatedCount = 0;
+      let productStatusUpdatedCount = 0;
+      let variantStatusUpdatedCount = 0;
       let publishedCount = 0;
       let archivedCount = 0;
+      let activatedCount = 0;
+      let deactivatedCount = 0;
       let notFoundCount = 0;
       const notFoundProducts = [];
       const statusChanges = [];
@@ -96,28 +125,103 @@ module.exports = {
       console.log('\n🔄 Processing inventory items...');
       
       for (const item of inventoryItems) {
-        // Try to match by slug first (most reliable), then SKU, then name
+        // Try to match variant first (by slug - most reliable for variants)
+        let matchedVariant = null;
         let matchedProduct = null;
         
+        // Priority 1: Try to match variant by slug
         if (item.slug) {
-          matchedProduct = productBySlug.get(item.slug.toLowerCase().trim());
+          matchedVariant = variantBySlug.get(item.slug.toLowerCase().trim());
         }
         
-        if (!matchedProduct && item.sku) {
-          matchedProduct = productBySku.get(item.sku.toLowerCase().trim());
+        // Priority 2: If no variant match, try to match product
+        if (!matchedVariant) {
+          if (item.slug) {
+            matchedProduct = productBySlug.get(item.slug.toLowerCase().trim());
+          }
+          
+          if (!matchedProduct && item.sku) {
+            matchedProduct = productBySku.get(item.sku.toLowerCase().trim());
+          }
+          
+          if (!matchedProduct && item.full_name) {
+            matchedProduct = findMatchingProduct(
+              item.full_name,
+              productByName,
+              productBySku,
+              productBySlug
+            );
+          }
         }
         
-        if (!matchedProduct && item.full_name) {
-          matchedProduct = findMatchingProduct(
-            item.full_name,
-            productByName,
-            productBySku,
-            productBySlug
-          );
+        // Update variant if matched
+        if (matchedVariant) {
+          matchedVariantCount++;
+          
+          const newStock = parseInt(item.stock) || 0;
+          const oldStock = matchedVariant.stock || 0;
+          const oldStatus = matchedVariant.status;
+          
+          // Determine new status based on stock
+          let newStatus = oldStatus;
+          if (newStock > STATUS_CONFIG.ACTIVATE_VARIANT_IF_STOCK_GT) {
+            newStatus = 'active';
+          } else if (newStock === STATUS_CONFIG.DEACTIVATE_VARIANT_IF_STOCK_EQ) {
+            newStatus = 'inactive';
+          }
+          
+          // Check if updates are needed
+          const needsStockUpdate = oldStock !== newStock;
+          const needsStatusUpdate = oldStatus !== newStatus;
+          
+          if (needsStockUpdate || needsStatusUpdate) {
+            // Build update query for variant
+            const updateFields = [];
+            const replacements = { variantId: matchedVariant.id };
+            
+            if (needsStockUpdate) {
+              updateFields.push('stock = :stock');
+              replacements.stock = newStock;
+              variantStockUpdatedCount++;
+            }
+            
+            if (needsStatusUpdate) {
+              updateFields.push('status = :status');
+              replacements.status = newStatus;
+              variantStatusUpdatedCount++;
+              
+              if (newStatus === 'active') {
+                activatedCount++;
+              } else if (newStatus === 'inactive') {
+                deactivatedCount++;
+              }
+              
+              statusChanges.push({
+                type: 'variant',
+                id: matchedVariant.id,
+                slug: item.slug,
+                oldStatus: oldStatus,
+                newStatus: newStatus,
+                stock: newStock
+              });
+            }
+            
+            updateFields.push('updated_at = NOW()');
+            
+            await queryInterface.sequelize.query(`
+              UPDATE product_variants 
+              SET ${updateFields.join(', ')}
+              WHERE id = :variantId
+            `, { replacements });
+            
+            if ((variantStockUpdatedCount + variantStatusUpdatedCount) % 50 === 0) {
+              console.log(`  ✅ Updated ${variantStockUpdatedCount} variant stock + ${variantStatusUpdatedCount} variant status...`);
+            }
+          }
         }
-        
-        if (matchedProduct) {
-          matchedCount++;
+        // Update product if matched (and no variant was matched)
+        else if (matchedProduct) {
+          matchedProductCount++;
           
           const newStock = parseInt(item.stock) || 0;
           const oldStock = matchedProduct.stock_quantity || 0;
@@ -143,13 +247,13 @@ module.exports = {
             if (needsStockUpdate) {
               updateFields.push('stock_quantity = :stock');
               replacements.stock = newStock;
-              stockUpdatedCount++;
+              productStockUpdatedCount++;
             }
             
             if (needsStatusUpdate) {
               updateFields.push('status = :status');
               replacements.status = newStatus;
-              statusUpdatedCount++;
+              productStatusUpdatedCount++;
               
               if (newStatus === 'published') {
                 publishedCount++;
@@ -158,7 +262,8 @@ module.exports = {
               }
               
               statusChanges.push({
-                productId: matchedProduct.id,
+                type: 'product',
+                id: matchedProduct.id,
                 name: matchedProduct.name,
                 oldStatus: oldStatus,
                 newStatus: newStatus,
@@ -174,8 +279,8 @@ module.exports = {
               WHERE id = :productId
             `, { replacements });
             
-            if ((stockUpdatedCount + statusUpdatedCount) % 50 === 0) {
-              console.log(`  ✅ Updated ${stockUpdatedCount} stock + ${statusUpdatedCount} status...`);
+            if ((productStockUpdatedCount + productStatusUpdatedCount) % 50 === 0) {
+              console.log(`  ✅ Updated ${productStockUpdatedCount} product stock + ${productStatusUpdatedCount} product status...`);
             }
           }
         } else {
@@ -185,7 +290,7 @@ module.exports = {
           
           // Log first 10 not found products as examples
           if (notFoundCount <= 10) {
-            console.log(`  ⚠️  Product not found: "${productName}" (Stock: ${item.stock}, Slug: ${item.slug || 'N/A'}, SKU: ${item.sku || 'N/A'})`);
+            console.log(`  ⚠️  Product/Variant not found: "${productName}" (Stock: ${item.stock}, Slug: ${item.slug || 'N/A'}, SKU: ${item.sku || 'N/A'})`);
           }
         }
       }
@@ -193,18 +298,28 @@ module.exports = {
       console.log('\n📊 Migration Summary:');
       console.log('================================================');
       console.log(`✅ Total items in JSON: ${inventoryItems.length}`);
-      console.log(`✅ Matched products: ${matchedCount}`);
-      console.log(`✅ Stock quantities updated: ${stockUpdatedCount}`);
-      console.log(`✅ Statuses updated: ${statusUpdatedCount}`);
-      console.log(`   - Published: ${publishedCount}`);
-      console.log(`   - Archived: ${archivedCount}`);
-      console.log(`⚠️  Products not found: ${notFoundCount}`);
+      console.log(`✅ Matched products: ${matchedProductCount}`);
+      console.log(`✅ Matched variants: ${matchedVariantCount}`);
+      console.log(`✅ Product stock quantities updated: ${productStockUpdatedCount}`);
+      console.log(`✅ Variant stock quantities updated: ${variantStockUpdatedCount}`);
+      console.log(`✅ Product statuses updated: ${productStatusUpdatedCount}`);
+      console.log(`✅ Variant statuses updated: ${variantStatusUpdatedCount}`);
+      console.log(`   - Products Published: ${publishedCount}`);
+      console.log(`   - Products Archived: ${archivedCount}`);
+      console.log(`   - Variants Activated: ${activatedCount}`);
+      console.log(`   - Variants Deactivated: ${deactivatedCount}`);
+      console.log(`⚠️  Products/Variants not found: ${notFoundCount}`);
       
       if (statusChanges.length > 0) {
         console.log('\n📋 Status Changes (first 20):');
         statusChanges.slice(0, 20).forEach((change, idx) => {
-          console.log(`   ${idx + 1}. "${change.name}" (ID: ${change.productId})`);
-          console.log(`      ${change.oldStatus} → ${change.newStatus} (Stock: ${change.stock})`);
+          if (change.type === 'variant') {
+            console.log(`   ${idx + 1}. Variant (ID: ${change.id}, Slug: ${change.slug})`);
+            console.log(`      ${change.oldStatus} → ${change.newStatus} (Stock: ${change.stock})`);
+          } else {
+            console.log(`   ${idx + 1}. Product "${change.name}" (ID: ${change.id})`);
+            console.log(`      ${change.oldStatus} → ${change.newStatus} (Stock: ${change.stock})`);
+          }
         });
         if (statusChanges.length > 20) {
           console.log(`   ... and ${statusChanges.length - 20} more status changes`);
@@ -212,7 +327,7 @@ module.exports = {
       }
       
       if (notFoundProducts.length > 0) {
-        console.log('\n💡 Products not found in database (first 20):');
+        console.log('\n💡 Products/Variants not found in database (first 20):');
         notFoundProducts.slice(0, 20).forEach((name, idx) => {
           console.log(`   ${idx + 1}. ${name}`);
         });
