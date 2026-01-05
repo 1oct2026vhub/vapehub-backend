@@ -4593,7 +4593,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
         // Step 4: Find similar products with pagination applied FIRST (match original logic)
         const similarProductsQuery = `
             SELECT DISTINCT
-                p.id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity,
+                p.id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity, p.puff_count,
                 p.createdAt, p.updatedAt
             FROM products p
             INNER JOIN product_categories pc ON p.id = pc.product_id
@@ -4927,33 +4927,35 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             });
 
             // Extract puff count from attributes
-            let puffCount = null;
+            let puffCount = product.puff_count; // Use direct field first
             const productAttributeTerms = attributeTermsMap.get(product.id) || [];
-            const puffAttributes = productAttributeTerms.filter(pat => {
-                if (!pat.attribute || !pat.attribute.name) return false;
-                // Case-insensitive regex match for "number of puffs" with flexible spacing
-                return /number\s+of\s+puffs/i.test(pat.attribute.name);
-            });
-            if (puffAttributes.length > 0) {
-                let maxPuffCount = 0;
-                let maxPuffTerm = null;
-                puffAttributes.forEach(pat => {
-                    if (pat.term) {
-                        const puffMatches = pat.term.name.match(/(\d+)/g);
-                        if (puffMatches) {
-                            const count = Math.max(...puffMatches.map(Number));
-                            if (count > maxPuffCount) {
-                                maxPuffCount = count;
-                                maxPuffTerm = pat.term.name;
+            if (productAttributeTerms.length > 0) {
+                const puffAttributes = productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
+                });
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    puffAttributes.forEach(pat => {
+                        if (pat.term) {
+                            const puffMatches = pat.term.name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = pat.term.name;
+                                }
                             }
                         }
-                    }
-                });
-                if (maxPuffCount > 0) {
-                    if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
-                        puffCount = `~${maxPuffCount} puffs`;
-                    } else {
-                        puffCount = maxPuffTerm;
+                    });
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
                     }
                 }
             }
