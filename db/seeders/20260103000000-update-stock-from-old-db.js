@@ -161,7 +161,7 @@ module.exports = {
       });
       
       // Show sample of updated variants
-      const [sampleVariants] = await queryInterface.sequelize.query(`
+      const sampleVariants = await queryInterface.sequelize.query(`
         SELECT 
           id, product_id, slug, stock, stock_status
         FROM product_variants
