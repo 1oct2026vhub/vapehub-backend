@@ -178,9 +178,9 @@ module.exports = {
       console.log(`   • Variants updated: ${updatedCount}`);
       console.log(`   • Variants unchanged: ${unchangedCount}`);
       console.log(`   • Variants skipped: ${skippedCount}`);
-      console.log(`   • Total variants in DB: ${totalVariants[0].count}`);
-      console.log(`   • Variants with stock > 0: ${variantsWithStock[0].count}`);
-      console.log(`   • Total stock quantity: ${totalStock[0].total || 0}`);
+      console.log(`   • Total variants in DB: ${totalVariants.count}`);
+      console.log(`   • Variants with stock > 0: ${variantsWithStock.count}`);
+      console.log(`   • Total stock quantity: ${totalStock.total || 0}`);
       
       console.log('\n📋 Sample updated variants:');
       sampleVariants.forEach(variant => {
