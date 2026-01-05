@@ -5,28 +5,25 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
-// Handle different export patterns for pdf-parse
-const pdfParseModule = require('pdf-parse');
-const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : (pdfParseModule.default || pdfParseModule);
 
 module.exports = {
   async up(queryInterface, Sequelize) {
     try {
-      console.log('🚀 Starting PDF Inventory Report Migration...');
+      console.log('🚀 Starting JSON Inventory Report Migration...');
       console.log('================================================');
       
-      // Get PDF path from environment variable or use default
-      const defaultPdfPath = path.join(__dirname, '../../public/pdfs/VapeHub-atum-inventory-report-2026-01-05.pdf');
-      const pdfPath = process.env.PDF_INVENTORY_PATH || defaultPdfPath;
+      // Get JSON path from environment variable or use default
+      const defaultJsonPath = path.join(__dirname, '../../public/json/vapehub_inventory_data.json');
+      const jsonPath = process.env.JSON_INVENTORY_PATH || defaultJsonPath;
       
       // Configuration for status updates
       const STATUS_CONFIG = {
         // Set status to 'published' if stock > 0
-        PUBLISH_IF_STOCK_GT: parseInt(process.env.PDF_PUBLISH_STOCK_THRESHOLD) || 0,
+        PUBLISH_IF_STOCK_GT: parseInt(process.env.JSON_PUBLISH_STOCK_THRESHOLD) || 0,
         // Set status to 'archived' if stock = 0
-        ARCHIVE_IF_STOCK_EQ: parseInt(process.env.PDF_ARCHIVE_STOCK_THRESHOLD) || 0,
+        ARCHIVE_IF_STOCK_EQ: parseInt(process.env.JSON_ARCHIVE_STOCK_THRESHOLD) || 0,
         // Only update status if product is currently published (set to false to update all)
-        ONLY_UPDATE_PUBLISHED: process.env.PDF_ONLY_UPDATE_PUBLISHED === 'true' || false
+        ONLY_UPDATE_PUBLISHED: process.env.JSON_ONLY_UPDATE_PUBLISHED === 'true' || false
       };
       
       console.log('📋 Status Update Configuration:');
@@ -34,27 +31,26 @@ module.exports = {
       console.log(`   - Archive products with stock = ${STATUS_CONFIG.ARCHIVE_IF_STOCK_EQ}`);
       console.log(`   - Only update published products: ${STATUS_CONFIG.ONLY_UPDATE_PUBLISHED}`);
       
-      // Check if PDF exists
-      if (!fs.existsSync(pdfPath)) {
-        console.error(`❌ PDF file not found at: ${pdfPath}`);
-        if (!process.env.PDF_INVENTORY_PATH) {
-          console.log('💡 Using default path. If PDF is in a different location, set PDF_INVENTORY_PATH in .env file');
+      // Check if JSON file exists
+      if (!fs.existsSync(jsonPath)) {
+        console.error(`❌ JSON file not found at: ${jsonPath}`);
+        if (!process.env.JSON_INVENTORY_PATH) {
+          console.log('💡 Using default path. If JSON is in a different location, set JSON_INVENTORY_PATH in .env file');
         } else {
-          console.log('💡 Please check the PDF_INVENTORY_PATH in your .env file');
+          console.log('💡 Please check the JSON_INVENTORY_PATH in your .env file');
         }
-        throw new Error(`PDF file not found: ${pdfPath}`);
+        throw new Error(`JSON file not found: ${jsonPath}`);
       }
 
-      console.log(`\n📄 Reading PDF from: ${pdfPath}`);
-      const dataBuffer = fs.readFileSync(pdfPath);
-      const pdfData = await pdfParse(dataBuffer);
+      console.log(`\n📄 Reading JSON from: ${jsonPath}`);
+      const jsonData = fs.readFileSync(jsonPath, 'utf8');
+      const inventoryItems = JSON.parse(jsonData);
       
-      console.log(`📊 PDF Info: ${pdfData.numpages} pages, ${pdfData.text.length} characters`);
+      if (!Array.isArray(inventoryItems)) {
+        throw new Error('JSON file must contain an array of inventory items');
+      }
       
-      // Parse products from PDF text
-      const inventoryItems = parseInventoryFromPDF(pdfData.text);
-      
-      console.log(`📦 Found ${inventoryItems.length} inventory items in PDF`);
+      console.log(`📦 Found ${inventoryItems.length} inventory items in JSON`);
       
       // Get existing products from database for matching
       const existingProducts = await queryInterface.sequelize.query(`
@@ -100,17 +96,30 @@ module.exports = {
       console.log('\n🔄 Processing inventory items...');
       
       for (const item of inventoryItems) {
-        const matchedProduct = findMatchingProduct(
-          item.productName,
-          productByName,
-          productBySku,
-          productBySlug
-        );
+        // Try to match by slug first (most reliable), then SKU, then name
+        let matchedProduct = null;
+        
+        if (item.slug) {
+          matchedProduct = productBySlug.get(item.slug.toLowerCase().trim());
+        }
+        
+        if (!matchedProduct && item.sku) {
+          matchedProduct = productBySku.get(item.sku.toLowerCase().trim());
+        }
+        
+        if (!matchedProduct && item.full_name) {
+          matchedProduct = findMatchingProduct(
+            item.full_name,
+            productByName,
+            productBySku,
+            productBySlug
+          );
+        }
         
         if (matchedProduct) {
           matchedCount++;
           
-          const newStock = parseInt(item.currentStock) || 0;
+          const newStock = parseInt(item.stock) || 0;
           const oldStock = matchedProduct.stock_quantity || 0;
           const oldStatus = matchedProduct.status;
           
@@ -121,7 +130,6 @@ module.exports = {
           } else if (newStock === STATUS_CONFIG.ARCHIVE_IF_STOCK_EQ) {
             newStatus = 'archived';
           }
-          // If stock is between thresholds, keep current status (or set to draft if needed)
           
           // Check if updates are needed
           const needsStockUpdate = oldStock !== newStock;
@@ -172,18 +180,19 @@ module.exports = {
           }
         } else {
           notFoundCount++;
-          notFoundProducts.push(item.productName);
+          const productName = item.full_name || item.slug || item.sku || 'Unknown';
+          notFoundProducts.push(productName);
           
           // Log first 10 not found products as examples
           if (notFoundCount <= 10) {
-            console.log(`  ⚠️  Product not found: "${item.productName}" (Stock: ${item.currentStock})`);
+            console.log(`  ⚠️  Product not found: "${productName}" (Stock: ${item.stock}, Slug: ${item.slug || 'N/A'}, SKU: ${item.sku || 'N/A'})`);
           }
         }
       }
       
       console.log('\n📊 Migration Summary:');
       console.log('================================================');
-      console.log(`✅ Total items in PDF: ${inventoryItems.length}`);
+      console.log(`✅ Total items in JSON: ${inventoryItems.length}`);
       console.log(`✅ Matched products: ${matchedCount}`);
       console.log(`✅ Stock quantities updated: ${stockUpdatedCount}`);
       console.log(`✅ Statuses updated: ${statusUpdatedCount}`);
@@ -212,158 +221,20 @@ module.exports = {
         }
       }
       
-      console.log('\n🎉 PDF inventory migration completed successfully!');
+      console.log('\n🎉 JSON inventory migration completed successfully!');
       
     } catch (error) {
-      console.error('❌ Error during PDF migration:', error);
+      console.error('❌ Error during JSON migration:', error);
       throw error;
     }
   },
 
   async down(queryInterface, Sequelize) {
-    console.log('⚠️  Rolling back PDF inventory migration...');
+    console.log('⚠️  Rolling back JSON inventory migration...');
     console.log('💡 Note: Stock quantities and statuses cannot be automatically restored.');
     console.log('💡 You may need to restore from a backup if needed.');
   }
 };
-
-/**
- * Parse inventory data from PDF text
- * Handles the table structure: Product Name | Product Type | Current Stock | Sales last 28 days | Stock will Last
- */
-function parseInventoryFromPDF(pdfText) {
-  const items = [];
-  const lines = pdfText.split('\n');
-  
-  // Skip header rows - look for the actual data
-  let inDataSection = false;
-  let headerFound = false;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // Detect header row
-    if (line.includes('Product Name') || line.includes('Current Stock')) {
-      headerFound = true;
-      inDataSection = true;
-      continue;
-    }
-    
-    // Skip empty lines
-    if (!line || line.length < 2) {
-      continue;
-    }
-    
-    // Start parsing after header is found
-    if (headerFound && inDataSection) {
-      // Parse table row
-      const product = parseInventoryRow(line);
-      if (product && product.productName) {
-        items.push(product);
-      }
-    }
-  }
-  
-  return items;
-}
-
-/**
- * Parse a single inventory row
- * Handles various formats like "Product Name | Stock | Sales | Days"
- */
-function parseInventoryRow(line) {
-  // Split by common delimiters (tabs, multiple spaces, or pipe)
-  const parts = line.split(/\s{2,}|\t|\|/).map(p => p.trim()).filter(p => p);
-  
-  if (parts.length < 2) {
-    return null;
-  }
-  
-  // First part is usually product name
-  let productName = parts[0];
-  
-  // Find current stock - look for numeric values or "0 | -" pattern
-  let currentStock = null;
-  let salesLast28Days = null;
-  let stockWillLast = null;
-  
-  // Try to identify columns
-  // Pattern: Product Name | [icon/type] | Current Stock | Sales | Days
-  for (let i = 1; i < parts.length; i++) {
-    const part = parts[i];
-    
-    // Skip icon/type indicators (non-numeric, short strings)
-    if (part.length <= 2 && !/^\d+$/.test(part)) {
-      continue;
-    }
-    
-    // Current Stock pattern: "3", "0 | -", "5", etc.
-    if (currentStock === null) {
-      const stockMatch = part.match(/^(\d+)/);
-      if (stockMatch) {
-        currentStock = stockMatch[1];
-        continue;
-      }
-      // Handle "0 | -" pattern
-      if (part.includes('|') && part.match(/^\d+/)) {
-        currentStock = part.split('|')[0].trim();
-        continue;
-      }
-    }
-    
-    // Sales last 28 days: numeric or "-"
-    if (salesLast28Days === null && /^-?\d+$/.test(part)) {
-      salesLast28Days = part;
-      continue;
-    } else if (salesLast28Days === null && part === '-') {
-      salesLast28Days = '0';
-      continue;
-    }
-    
-    // Stock will Last: numeric, ">30", or "-"
-    if (stockWillLast === null) {
-      if (/^>?\d+$/.test(part)) {
-        stockWillLast = part;
-      } else if (part === '-') {
-        stockWillLast = '0';
-      }
-    }
-  }
-  
-  // If we couldn't parse properly, try a simpler approach
-  // Look for product name (usually first substantial text) and stock (first number)
-  if (currentStock === null) {
-    const numbers = line.match(/\d+/g);
-    if (numbers && numbers.length > 0) {
-      // Product name is everything before the first significant number
-      const firstNumIndex = line.search(/\d/);
-      if (firstNumIndex > 0) {
-        productName = line.substring(0, firstNumIndex).trim();
-        currentStock = numbers[0];
-      }
-    }
-  }
-  
-  // Clean product name
-  productName = productName
-    .replace(/\s{2,}/g, ' ')
-    .replace(/[|•]/g, '')
-    .trim();
-  
-  // Skip if product name is too short or looks like a header
-  if (productName.length < 2 || 
-      productName.toLowerCase().includes('product name') ||
-      productName.toLowerCase().includes('stock counters')) {
-    return null;
-  }
-  
-  return {
-    productName: productName,
-    currentStock: currentStock || '0',
-    salesLast28Days: salesLast28Days || '0',
-    stockWillLast: stockWillLast || '0'
-  };
-}
 
 /**
  * Normalize product name for matching
@@ -388,7 +259,7 @@ function findMatchingProduct(productName, productByName, productBySku, productBy
     return nameMatches[0]; // Return first match
   }
   
-  // Strategy 2: Partial match (product name contains PDF name or vice versa)
+  // Strategy 2: Partial match (product name contains JSON name or vice versa)
   for (const [dbName, products] of productByName.entries()) {
     if (normalized.includes(dbName) || dbName.includes(normalized)) {
       return products[0];
@@ -424,4 +295,3 @@ function findMatchingProduct(productName, productByName, productBySku, productBy
   
   return null;
 }
-
