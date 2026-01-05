@@ -5,7 +5,9 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
-const pdf = require('pdf-parse');
+// Handle different export patterns for pdf-parse
+const pdfParseModule = require('pdf-parse');
+const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : (pdfParseModule.default || pdfParseModule);
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -45,7 +47,7 @@ module.exports = {
 
       console.log(`\n📄 Reading PDF from: ${pdfPath}`);
       const dataBuffer = fs.readFileSync(pdfPath);
-      const pdfData = await pdf(dataBuffer);
+      const pdfData = await pdfParse(dataBuffer);
       
       console.log(`📊 PDF Info: ${pdfData.numpages} pages, ${pdfData.text.length} characters`);
       
