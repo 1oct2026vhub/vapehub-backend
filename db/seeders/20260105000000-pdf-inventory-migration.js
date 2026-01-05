@@ -13,17 +13,9 @@ module.exports = {
       console.log('🚀 Starting PDF Inventory Report Migration...');
       console.log('================================================');
       
-      // Get PDF path from environment variable (required)
-      const pdfPath = process.env.PDF_INVENTORY_PATH;
-      
-      if (!pdfPath) {
-        console.error('❌ PDF_INVENTORY_PATH environment variable is not set!');
-        console.log('\n💡 Please add the following to your .env file:');
-        console.log('   PDF_INVENTORY_PATH=C:/Users/tophi/Downloads/VapeHub-atum-inventory-report-2026-01-05.pdf');
-        console.log('\n   Or set it when running the seeder:');
-        console.log('   PDF_INVENTORY_PATH=path/to/file.pdf npx sequelize-cli db:seed --seed <seeder-name>');
-        throw new Error('PDF_INVENTORY_PATH environment variable is required');
-      }
+      // Get PDF path from environment variable or use default
+      const defaultPdfPath = path.join(__dirname, '../../public/pdfs/VapeHub-atum-inventory-report-2026-01-05.pdf');
+      const pdfPath = process.env.PDF_INVENTORY_PATH || defaultPdfPath;
       
       // Configuration for status updates
       const STATUS_CONFIG = {
@@ -43,7 +35,11 @@ module.exports = {
       // Check if PDF exists
       if (!fs.existsSync(pdfPath)) {
         console.error(`❌ PDF file not found at: ${pdfPath}`);
-        console.log('💡 Please check the PDF_INVENTORY_PATH in your .env file');
+        if (!process.env.PDF_INVENTORY_PATH) {
+          console.log('💡 Using default path. If PDF is in a different location, set PDF_INVENTORY_PATH in .env file');
+        } else {
+          console.log('💡 Please check the PDF_INVENTORY_PATH in your .env file');
+        }
         throw new Error(`PDF file not found: ${pdfPath}`);
       }
 
