@@ -1928,7 +1928,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             // Get product images with raw SQL
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, image_url, is_primary
+                    id, product_id, image_url, is_primary, alt_text
                 FROM product_images
                 WHERE product_id = :product_id
             `, {
