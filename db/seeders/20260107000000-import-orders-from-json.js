@@ -93,7 +93,7 @@ module.exports = {
       const uniqueOrders = Array.from(ordersMap.values());
       console.log(`✅ Normalized to ${uniqueOrders.length} unique orders`);
 
-      // Step 3: Check for already migrated orders using primary key id
+      // Step 3: Check for already migrated orders AND verify they have items
       console.log('🔍 Checking for already migrated orders...');
       const [migratedOrderIds] = await queryInterface.sequelize.query(`
         SELECT id FROM orders WHERE id IS NOT NULL
@@ -102,15 +102,70 @@ module.exports = {
       const migratedIds = new Set(migratedOrderIds.map(row => row.id.toString()));
       console.log(`📋 Found ${migratedIds.size} already migrated orders`);
 
-      // Filter out already migrated orders
-      const ordersToMigrate = uniqueOrders.filter(order => {
-        return !migratedIds.has(order.id.toString());
-      });
+      // Check which orders are missing items or have incomplete items
+      console.log('🔍 Checking for orders with missing or incomplete items...');
+      const orderIdsFromJson = Array.from(ordersMap.keys()).map(id => parseInt(id));
+      let ordersToMigrate = [];
+      let newOrdersCount = 0;
+      let incompleteOrdersCount = 0; // Orders with 0 items
+      let partialOrdersCount = 0; // Orders with fewer items than expected
+      let completeOrdersCount = 0; // Orders with all items
 
-      console.log(`📦 ${ordersToMigrate.length} new orders to migrate`);
+      if (orderIdsFromJson.length > 0) {
+        const [ordersWithItemCounts] = await queryInterface.sequelize.query(`
+          SELECT 
+            o.id,
+            COUNT(oi.id) as item_count
+          FROM orders o
+          LEFT JOIN order_items oi ON o.id = oi.order_id AND oi.deletedAt IS NULL
+          WHERE o.id IN (${orderIdsFromJson.join(',')})
+          GROUP BY o.id
+        `);
+
+        const ordersWithItems = new Map();
+        ordersWithItemCounts.forEach(row => {
+          ordersWithItems.set(row.id.toString(), row.item_count);
+        });
+
+        // Categorize orders
+        ordersToMigrate = uniqueOrders.filter(order => {
+          const orderIdStr = order.id.toString();
+          const exists = migratedIds.has(orderIdStr);
+          const itemCount = ordersWithItems.get(orderIdStr) || 0;
+          const expectedItemCount = orderItemsMap.get(orderIdStr)?.length || 0;
+          
+          if (!exists) {
+            newOrdersCount++;
+            return true; // Order doesn't exist - needs migration
+          } else if (itemCount === 0) {
+            incompleteOrdersCount++;
+            return true; // Order exists but has no items - needs migration
+          } else if (itemCount < expectedItemCount) {
+            partialOrdersCount++;
+            return true; // Order exists but has fewer items than expected - needs migration
+          } else {
+            completeOrdersCount++;
+            return false; // Order exists with all items - skip
+          }
+        });
+
+        console.log('\n📊 Order Status Analysis:');
+        console.log(`   ✅ Complete orders (all items present): ${completeOrdersCount}`);
+        console.log(`   🆕 New orders (not in database): ${newOrdersCount}`);
+        console.log(`   ⚠️ Incomplete orders (0 items): ${incompleteOrdersCount}`);
+        console.log(`   📉 Partial orders (fewer items than expected): ${partialOrdersCount}`);
+        console.log(`   📦 Total orders to migrate: ${ordersToMigrate.length}`);
+      } else {
+        // Fallback if no orders found
+        ordersToMigrate = uniqueOrders.filter(order => {
+          return !migratedIds.has(order.id.toString());
+        });
+        newOrdersCount = ordersToMigrate.length;
+        console.log(`📦 ${ordersToMigrate.length} new orders to migrate`);
+      }
 
       if (ordersToMigrate.length === 0) {
-        console.log('✅ All orders already migrated!');
+        console.log('✅ All orders already migrated with complete items!');
         return;
       }
 
@@ -134,6 +189,13 @@ module.exports = {
           orderMappingNotFound: 0,
           insertError: 0
         }
+      };
+
+      // Track product mapping methods
+      const mappingStats = {
+        directProductId: 0,
+        viaVariantId: 0,
+        nameMatch: 0
       };
 
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -389,6 +451,7 @@ module.exports = {
                 let productId = null;
                 let variantId = null;
                 let skipReason = null;
+                let mappingMethod = null; // Track how product was found
 
                 if (!item.product_id) {
                   skipReason = 'Product ID is NULL in JSON';
@@ -401,13 +464,14 @@ module.exports = {
                   
                   if (productCheck.length > 0) {
                     productId = productCheck[0].id;
+                    mappingMethod = 'directProductId';
                   } else {
                     skipReason = `Product ID ${item.product_id} not found in new database`;
                     skipStats.items.productNotFound++;
                   }
                 }
 
-                if (item.variation_id && !skipReason) {
+                if (item.variation_id && !productId) {
                   // Direct lookup: check if variation_id from JSON exists in new database
                   const [variantCheck] = await queryInterface.sequelize.query(`
                     SELECT id, product_id FROM product_variants WHERE id = ? LIMIT 1
@@ -418,6 +482,7 @@ module.exports = {
                     // If product wasn't found by product_id, use product_id from variant
                     if (!productId) {
                       productId = variantCheck[0].product_id;
+                      mappingMethod = 'viaVariantId';
                       skipReason = null; // Clear skip reason if variant provides product
                     }
                   } else {
@@ -439,6 +504,7 @@ module.exports = {
                   });
                   if (nameMatch.length > 0) {
                     productId = nameMatch[0].id;
+                    mappingMethod = 'nameMatch';
                     skipReason = null; // Clear skip reason if name match found
                   }
                 }
@@ -468,6 +534,10 @@ module.exports = {
                     transaction
                   });
                   successfulItems++;
+                  // Track mapping method
+                  if (mappingMethod) {
+                    mappingStats[mappingMethod]++;
+                  }
                 } else {
                   // Track skipped item with reason
                   skippedItemsDetails.push({
@@ -568,6 +638,13 @@ module.exports = {
                                 skipStats.items.productIdNull + skipStats.items.orderMappingNotFound + 
                                 skipStats.items.insertError;
       console.log(`   📊 Total skipped items: ${totalSkippedItems}`);
+
+      console.log('\n🔗 Product Mapping Statistics:');
+      console.log(`   ✅ Direct product ID match: ${mappingStats.directProductId || 0}`);
+      console.log(`   ✅ Via variant ID: ${mappingStats.viaVariantId || 0}`);
+      console.log(`   ✅ Name-based match: ${mappingStats.nameMatch || 0}`);
+      const totalMappedItems = (mappingStats.directProductId || 0) + (mappingStats.viaVariantId || 0) + (mappingStats.nameMatch || 0);
+      console.log(`   📊 Total successfully mapped items: ${totalMappedItems}`);
 
       console.log('🎉 JSON orders import completed successfully!');
 
