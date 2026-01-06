@@ -4962,13 +4962,23 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
 
             // Get flavors
             let flavorTerms = [];
-            flavorTerms = productAttributeTerms
-                .filter(pat => pat.attribute && pat.attribute.name === 'flavour' && pat.term)
-                .map(pat => ({
-                    id: pat.term.id,
-                    name: pat.term.name,
-                    slug: pat.term.slug
-                }));
+            if (productAttributeTerms && productAttributeTerms.length > 0) {
+                flavorTerms = productAttributeTerms
+                    .filter(pat => {
+                        // Case-insensitive check for flavour attribute
+                        const attrName = pat.attribute && pat.attribute.name;
+                        return attrName && 
+                               attrName.toLowerCase().trim() === 'flavour' && 
+                               pat.term && 
+                               pat.term.id && 
+                               pat.term.name;
+                    })
+                    .map(pat => ({
+                        id: pat.term.id,
+                        name: pat.term.name,
+                        slug: pat.term.slug
+                    }));
+            }
             const flavor_count = flavorTerms.length;
 
             // Add out_of_stock assessment (same logic as fetchProducts)
