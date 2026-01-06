@@ -353,6 +353,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             }),
             
             // Product Attribute Terms query - only essential fields
+            // Use LIKE pattern to match both "number-of-puffs" and "number of puffs" formats (similar to JavaScript regex)
             Product.sequelize.query(`
                 SELECT 
                     pat.product_id, pat.attribute_id, pat.term_id,
@@ -362,7 +363,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id IN (${productIds.join(',')})
-                AND LOWER(a.name) IN ('number-of-puffs', 'flavour')
+                AND (LOWER(a.name) LIKE LOWER('number%of%puffs') OR LOWER(a.name) = LOWER('flavour'))
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             })
@@ -473,9 +474,8 @@ module.exports.listNewProducts = async (req, res, next) => {
             if (productAttributeTerms.length > 0) {
                 const puffAttributes = productAttributeTerms.filter(pat => {
                     if (!pat.attribute || !pat.attribute.name) return false;
-                    // Normalize: lowercase, replace spaces/hyphens/underscores with nothing, then compare
-                    const normalizedName = pat.attribute.name.toLowerCase().replace(/[\s\-_]/g, '');
-                    return normalizedName === 'numberofpuffs';
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
                 });
                 
                 if (puffAttributes.length > 0) {
@@ -1461,7 +1461,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             // Product Images query
             Product.sequelize.query(`
                 SELECT 
-                    id, updated_by, product_id, image_url, is_primary, createdAt, updatedAt, deletedAt
+                    id, updated_by, product_id, image_url, is_primary, alt_text, createdAt, updatedAt, deletedAt
                 FROM product_images
                 WHERE product_id = :productId
             `, {
@@ -1752,6 +1752,29 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
         
+        // Get primary product image
+        const primaryProductImage = product.ProductImages && product.ProductImages.length > 0 
+            ? product.ProductImages.find(img => img.is_primary) || product.ProductImages[0]
+            : null;
+        
+        // Transform ProductImages to all_images format
+        const all_images = product.ProductImages && product.ProductImages.length > 0
+            ? product.ProductImages.map(img => ({
+                id: img.id,
+                url: img.image_url,
+                alt_text: img.alt_text,
+                is_primary: Boolean(img.is_primary)
+            }))
+            : [];
+        
+        // Transform primary image
+        const primary_image = primaryProductImage ? {
+            id: primaryProductImage.id,
+            url: primaryProductImage.image_url,
+            alt_text: primaryProductImage.alt_text,
+            is_primary: Boolean(primaryProductImage.is_primary)
+        } : null;
+        
         // **Modify the response** (same logic as original)
         const response = {
             ...product,  // Use parsed product object instead of toJSON()
@@ -1760,6 +1783,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
             discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
             min_price_variant: minPriceVariant,
+            primary_image: primary_image,
+            all_images: all_images,
             attributeTerms,
             deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
                 id: deal.id,
@@ -1903,7 +1928,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             // Get product images with raw SQL
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, image_url, is_primary
+                    id, product_id, image_url, is_primary, alt_text
                 FROM product_images
                 WHERE product_id = :product_id
             `, {
@@ -4587,7 +4612,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
         // Step 4: Find similar products with pagination applied FIRST (match original logic)
         const similarProductsQuery = `
             SELECT DISTINCT
-                p.id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity,
+                p.id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity, p.puff_count,
                 p.createdAt, p.updatedAt
             FROM products p
             INNER JOIN product_categories pc ON p.id = pc.product_id
@@ -4921,33 +4946,35 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             });
 
             // Extract puff count from attributes
-            let puffCount = null;
+            let puffCount = product.puff_count; // Use direct field first
             const productAttributeTerms = attributeTermsMap.get(product.id) || [];
-            const puffAttributes = productAttributeTerms.filter(pat => {
-                if (!pat.attribute || !pat.attribute.name) return false;
-                // Case-insensitive regex match for "number of puffs" with flexible spacing
-                return /number\s+of\s+puffs/i.test(pat.attribute.name);
-            });
-            if (puffAttributes.length > 0) {
-                let maxPuffCount = 0;
-                let maxPuffTerm = null;
-                puffAttributes.forEach(pat => {
-                    if (pat.term) {
-                        const puffMatches = pat.term.name.match(/(\d+)/g);
-                        if (puffMatches) {
-                            const count = Math.max(...puffMatches.map(Number));
-                            if (count > maxPuffCount) {
-                                maxPuffCount = count;
-                                maxPuffTerm = pat.term.name;
+            if (productAttributeTerms.length > 0) {
+                const puffAttributes = productAttributeTerms.filter(pat => {
+                    if (!pat.attribute || !pat.attribute.name) return false;
+                    // Case-insensitive regex match for "number of puffs" with flexible spacing
+                    return /number\s+of\s+puffs/i.test(pat.attribute.name);
+                });
+                if (puffAttributes.length > 0) {
+                    let maxPuffCount = 0;
+                    let maxPuffTerm = null;
+                    puffAttributes.forEach(pat => {
+                        if (pat.term) {
+                            const puffMatches = pat.term.name.match(/(\d+)/g);
+                            if (puffMatches) {
+                                const count = Math.max(...puffMatches.map(Number));
+                                if (count > maxPuffCount) {
+                                    maxPuffCount = count;
+                                    maxPuffTerm = pat.term.name;
+                                }
                             }
                         }
-                    }
-                });
-                if (maxPuffCount > 0) {
-                    if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
-                        puffCount = `~${maxPuffCount} puffs`;
-                    } else {
-                        puffCount = maxPuffTerm;
+                    });
+                    if (maxPuffCount > 0) {
+                        if (maxPuffTerm && maxPuffTerm.toLowerCase().includes('up to')) {
+                            puffCount = `~${maxPuffCount} puffs`;
+                        } else {
+                            puffCount = maxPuffTerm;
+                        }
                     }
                 }
             }
