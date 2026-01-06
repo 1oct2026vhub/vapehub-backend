@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const CrossServerMigration = require('../../utils/cross-server-migration');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -115,117 +114,27 @@ module.exports = {
         return;
       }
 
-      // Step 4: Create product and variant mapping tables (using old DB if available)
-      console.log('🗺️ Creating product and variant mapping...');
-      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
-      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
-
-      await queryInterface.sequelize.query(`
-        CREATE TABLE temp_product_mapping (
-          old_product_id BIGINT,
-          new_product_id BIGINT,
-          product_slug VARCHAR(255),
-          INDEX idx_old_product (old_product_id),
-          INDEX idx_new_product (new_product_id)
-        ) ENGINE=MEMORY
-      `);
-
-      await queryInterface.sequelize.query(`
-        CREATE TABLE temp_variant_mapping (
-          old_variant_id BIGINT,
-          new_variant_id BIGINT,
-          product_id BIGINT,
-          variant_slug VARCHAR(255),
-          INDEX idx_old_variant (old_variant_id),
-          INDEX idx_new_variant (new_variant_id)
-        ) ENGINE=MEMORY
-      `);
-
-      // Try to populate mapping from old database if accessible
-      try {
-        const crossServerMigration = new CrossServerMigration(process.env.NODE_ENV || 'local');
-        await crossServerMigration.connectToOldDb();
-        const oldDbName = process.env.OLD_DB_NAME || 'vapehub_live';
-
-        console.log('🔗 Fetching product mapping from old database...');
-        await queryInterface.sequelize.query(`
-          INSERT INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
-          SELECT 
-            old_p.ID as old_product_id,
-            p.id as new_product_id,
-            p.slug as product_slug
-          FROM ${oldDbName}.vh_posts old_p
-          INNER JOIN products p ON p.slug = old_p.post_name COLLATE utf8mb4_unicode_ci
-          WHERE old_p.post_type = 'product' 
-            AND old_p.post_status IN ('publish', 'draft', 'private')
-        `);
-
-        // Fallback mappings
-        await queryInterface.sequelize.query(`
-          INSERT IGNORE INTO temp_product_mapping (old_product_id, new_product_id, product_slug)
-          SELECT 
-            old_p.ID as old_product_id,
-            p.id as new_product_id,
-            p.slug as product_slug
-          FROM ${oldDbName}.vh_posts old_p
-          INNER JOIN products p ON LOWER(p.slug COLLATE utf8mb4_unicode_ci) = LOWER(old_p.post_name COLLATE utf8mb4_unicode_ci)
-          WHERE old_p.post_type = 'product' 
-            AND old_p.post_status IN ('publish', 'draft', 'private')
-            AND old_p.ID NOT IN (SELECT old_product_id FROM temp_product_mapping)
-        `);
-
-        console.log('🔗 Fetching variant mapping from old database...');
-        await queryInterface.sequelize.query(`
-          INSERT INTO temp_variant_mapping (old_variant_id, new_variant_id, product_id, variant_slug)
-          SELECT 
-            old_p.ID as old_variant_id,
-            pv.id as new_variant_id,
-            pv.product_id,
-            pv.slug as variant_slug
-          FROM ${oldDbName}.vh_posts old_p
-          INNER JOIN ${oldDbName}.vh_posts parent_p ON old_p.post_parent = parent_p.ID
-          INNER JOIN temp_product_mapping pm ON parent_p.ID = pm.old_product_id
-          INNER JOIN product_variants pv ON pv.product_id = pm.new_product_id 
-            AND pv.slug = old_p.post_name COLLATE utf8mb4_unicode_ci
-          WHERE old_p.post_type = 'product_variation' 
-            AND old_p.post_status IN ('publish', 'draft', 'private')
-        `);
-
-        // Fallback variant mapping
-        await queryInterface.sequelize.query(`
-          INSERT IGNORE INTO temp_variant_mapping (old_variant_id, new_variant_id, product_id, variant_slug)
-          SELECT 
-            old_p.ID as old_variant_id,
-            pv.id as new_variant_id,
-            pv.product_id,
-            pv.slug as variant_slug
-          FROM ${oldDbName}.vh_posts old_p
-          INNER JOIN ${oldDbName}.vh_posts parent_p ON old_p.post_parent = parent_p.ID
-          INNER JOIN temp_product_mapping pm ON parent_p.ID = pm.old_product_id
-          INNER JOIN product_variants pv ON pv.product_id = pm.new_product_id 
-            AND (
-              pv.slug COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', old_p.post_name COLLATE utf8mb4_unicode_ci, '%') 
-              OR old_p.post_name COLLATE utf8mb4_unicode_ci LIKE CONCAT('%', pv.slug COLLATE utf8mb4_unicode_ci, '%')
-              OR LOWER(pv.slug COLLATE utf8mb4_unicode_ci) = LOWER(old_p.post_name COLLATE utf8mb4_unicode_ci)
-            )
-          WHERE old_p.post_type = 'product_variation' 
-            AND old_p.post_status IN ('publish', 'draft', 'private')
-            AND old_p.ID NOT IN (SELECT old_variant_id FROM temp_variant_mapping)
-        `);
-
-        await crossServerMigration.closeOldDbConnection();
-
-        const [productMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_product_mapping');
-        const [variantMappingCount] = await queryInterface.sequelize.query('SELECT COUNT(*) as count FROM temp_variant_mapping');
-        console.log(`✅ Mapped ${productMappingCount[0].count} products and ${variantMappingCount[0].count} variants`);
-      } catch (error) {
-        console.log('⚠️ Could not connect to old database for mapping. Products/variants may not be mapped.');
-        console.log(`   Error: ${error.message}`);
-      }
+      // Step 4: Skip - We'll use JSON product IDs directly to check against new database
+      console.log('✅ Using JSON product IDs directly (no mapping tables needed)');
 
       // Step 5: Process orders in chunks
       const totalChunks = Math.ceil(ordersToMigrate.length / CHUNK_SIZE);
       console.log(`🔄 Processing ${ordersToMigrate.length} orders in ${totalChunks} chunks...`);
+
+      // Track skipped orders and items with reasons
+      const skipStats = {
+        orders: {
+          duplicate: 0, // Already exists in database
+          noMapping: 0 // Order wasn't inserted (shouldn't happen with INSERT IGNORE)
+        },
+        items: {
+          productNotFound: 0,
+          variantNotFound: 0,
+          productIdNull: 0,
+          orderMappingNotFound: 0,
+          insertError: 0
+        }
+      };
 
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const startIdx = chunkIndex * CHUNK_SIZE;
@@ -307,6 +216,11 @@ module.exports = {
           // Step 5c: Insert orders (using INSERT IGNORE to prevent duplicates by primary key)
           await queryInterface.sequelize.query(`SET FOREIGN_KEY_CHECKS = 0`, { transaction });
 
+          // Count orders before insert
+          const [ordersBeforeCount] = await queryInterface.sequelize.query(`
+            SELECT COUNT(*) as count FROM temp_orders_chunk
+          `, { transaction });
+
           await queryInterface.sequelize.query(`
             INSERT IGNORE INTO orders (
               id, user_id, coupon_id, total, discount_price, status, shipping_method_id,
@@ -366,6 +280,20 @@ module.exports = {
               CASE WHEN status IN ('wc-completed', 'completed') THEN 1 ELSE 0 END as ordered
             FROM temp_orders_chunk
           `, { transaction });
+
+          // Count how many orders were actually inserted vs skipped (duplicates)
+          const [ordersAfterCount] = await queryInterface.sequelize.query(`
+            SELECT COUNT(*) as count 
+            FROM temp_orders_chunk toc
+            INNER JOIN orders o ON o.id = toc.id
+          `, { transaction });
+
+          const duplicateCount = parseInt(ordersBeforeCount[0].count) - parseInt(ordersAfterCount[0].count);
+          skipStats.orders.duplicate += duplicateCount;
+          
+          if (duplicateCount > 0) {
+            console.log(`   ⚠️ Skipped ${duplicateCount} duplicate orders (already exist in database)`);
+          }
 
           // Step 5d: Create order mapping using primary key id
           await queryInterface.sequelize.query(`
@@ -429,9 +357,10 @@ module.exports = {
             WHERE oa.deleted_at IS NULL
           `, { transaction });
 
-          // Step 5g: Insert order items
+          // Step 5g: Insert order items with detailed skip tracking
           let successfulItems = 0;
           let failedItems = 0;
+          const skippedItemsDetails = [];
 
           for (const order of chunk) {
             const items = orderItemsMap.get(order.id.toString()) || [];
@@ -442,52 +371,80 @@ module.exports = {
               transaction 
             });
 
-            if (orderMapping.length > 0) {
-              const newOrderId = orderMapping[0].new_order_id;
+            if (orderMapping.length === 0) {
+              skipStats.items.orderMappingNotFound += items.length;
+              skippedItemsDetails.push({
+                orderId: order.id,
+                itemCount: items.length,
+                reason: 'Order mapping not found (order was not inserted)'
+              });
+              continue;
+            }
 
-              for (const item of items) {
-                try {
-                  // Try to get mapped product/variant IDs
-                  let productId = null;
-                  let variantId = null;
+            const newOrderId = orderMapping[0].new_order_id;
 
-                  if (item.product_id) {
-                    const [productMapping] = await queryInterface.sequelize.query(`
-                      SELECT new_product_id FROM temp_product_mapping WHERE old_product_id = ?
-                    `, { replacements: [item.product_id], transaction });
-                    
-                    if (productMapping.length > 0) {
-                      productId = productMapping[0].new_product_id;
+            for (const item of items) {
+              try {
+                // Try to get product/variant IDs directly from new database using JSON IDs
+                let productId = null;
+                let variantId = null;
+                let skipReason = null;
+
+                if (!item.product_id) {
+                  skipReason = 'Product ID is NULL in JSON';
+                  skipStats.items.productIdNull++;
+                } else {
+                  // Direct lookup: check if product_id from JSON exists in new database
+                  const [productCheck] = await queryInterface.sequelize.query(`
+                    SELECT id FROM products WHERE id = ? LIMIT 1
+                  `, { replacements: [item.product_id], transaction });
+                  
+                  if (productCheck.length > 0) {
+                    productId = productCheck[0].id;
+                  } else {
+                    skipReason = `Product ID ${item.product_id} not found in new database`;
+                    skipStats.items.productNotFound++;
+                  }
+                }
+
+                if (item.variation_id && !skipReason) {
+                  // Direct lookup: check if variation_id from JSON exists in new database
+                  const [variantCheck] = await queryInterface.sequelize.query(`
+                    SELECT id, product_id FROM product_variants WHERE id = ? LIMIT 1
+                  `, { replacements: [item.variation_id], transaction });
+                  
+                  if (variantCheck.length > 0) {
+                    variantId = variantCheck[0].id;
+                    // If product wasn't found by product_id, use product_id from variant
+                    if (!productId) {
+                      productId = variantCheck[0].product_id;
+                      skipReason = null; // Clear skip reason if variant provides product
+                    }
+                  } else {
+                    // Variant not found, but we can still proceed if product is found
+                    if (!productId) {
+                      skipReason = `Variant ID ${item.variation_id} not found in new database`;
+                      skipStats.items.variantNotFound++;
                     }
                   }
+                }
 
-                  if (item.variation_id) {
-                    const [variantMapping] = await queryInterface.sequelize.query(`
-                      SELECT new_variant_id, product_id FROM temp_variant_mapping WHERE old_variant_id = ?
-                    `, { replacements: [item.variation_id], transaction });
-                    
-                    if (variantMapping.length > 0) {
-                      variantId = variantMapping[0].new_variant_id;
-                      if (!productId) {
-                        productId = variantMapping[0].product_id;
-                      }
-                    }
+                // Try name-based matching as fallback
+                if (!productId && item.order_item_name) {
+                  const [nameMatch] = await queryInterface.sequelize.query(`
+                    SELECT id FROM products WHERE name LIKE ? LIMIT 1
+                  `, { 
+                    replacements: [`%${item.order_item_name.split(' - ')[0]}%`],
+                    transaction 
+                  });
+                  if (nameMatch.length > 0) {
+                    productId = nameMatch[0].id;
+                    skipReason = null; // Clear skip reason if name match found
                   }
+                }
 
-                  // Try name-based matching as fallback
-                  if (!productId && item.order_item_name) {
-                    const [nameMatch] = await queryInterface.sequelize.query(`
-                      SELECT id FROM products WHERE name LIKE ? LIMIT 1
-                    `, { 
-                      replacements: [`%${item.order_item_name.split(' - ')[0]}%`],
-                      transaction 
-                    });
-                    if (nameMatch.length > 0) {
-                      productId = nameMatch[0].id;
-                    }
-                  }
-
-                  // Insert order item (product/variant may be NULL if not mapped)
+                // Only insert order item if product_id is found (product_id is NOT NULL in schema)
+                if (productId) {
                   await queryInterface.sequelize.query(`
                     INSERT INTO order_items (
                       order_id, product_id, variant_id, unit, unit_price, quantity,
@@ -511,15 +468,37 @@ module.exports = {
                     transaction
                   });
                   successfulItems++;
-                } catch (error) {
-                  failedItems++;
-                  console.error(`⚠️ Failed to insert order item for order ${order.id}: ${error.message}`);
+                } else {
+                  // Track skipped item with reason
+                  skippedItemsDetails.push({
+                    orderId: order.id,
+                    itemName: item.order_item_name,
+                    productId: item.product_id,
+                    variationId: item.variation_id,
+                    reason: skipReason || 'Product not found (no ID match and name match failed)'
+                  });
                 }
+              } catch (error) {
+                failedItems++;
+                skipStats.items.insertError++;
+                console.error(`⚠️ Failed to insert order item for order ${order.id}: ${error.message}`);
               }
             }
           }
 
           console.log(`📊 Order items: ${successfulItems} successful, ${failedItems} failed`);
+          
+          // Log skipped items summary for this chunk
+          if (skippedItemsDetails.length > 0) {
+            console.log(`   ⚠️ Skipped ${skippedItemsDetails.length} order items in this chunk`);
+            // Log first 5 skipped items as examples
+            skippedItemsDetails.slice(0, 5).forEach(skipped => {
+              console.log(`      - Order ${skipped.orderId}: ${skipped.reason}${skipped.itemName ? ` (${skipped.itemName})` : ''}`);
+            });
+            if (skippedItemsDetails.length > 5) {
+              console.log(`      ... and ${skippedItemsDetails.length - 5} more`);
+            }
+          }
 
           // Step 5h: Insert order logs
           await queryInterface.sequelize.query(`
@@ -554,10 +533,6 @@ module.exports = {
         }
       }
 
-      // Cleanup mapping tables
-      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_product_mapping');
-      await queryInterface.sequelize.query('DROP TABLE IF EXISTS temp_variant_mapping');
-
       // Final summary
       const [finalOrdersCount] = await queryInterface.sequelize.query(`
         SELECT COUNT(*) as count FROM orders WHERE id IS NOT NULL
@@ -578,6 +553,22 @@ module.exports = {
       console.log(`   📍 Total order addresses: ${finalAddressesCount[0].count}`);
       console.log(`   📝 Total order logs: ${finalLogsCount[0].count}`);
       console.log(`   ✅ New orders imported: ${ordersToMigrate.length}`);
+
+      console.log('\n⚠️ Skip Statistics:');
+      console.log(`   📦 Skipped Orders:`);
+      console.log(`      - Duplicate (already exist): ${skipStats.orders.duplicate}`);
+      console.log(`      - No mapping found: ${skipStats.orders.noMapping}`);
+      console.log(`   🛍️ Skipped Order Items:`);
+      console.log(`      - Product not found: ${skipStats.items.productNotFound}`);
+      console.log(`      - Variant not found: ${skipStats.items.variantNotFound}`);
+      console.log(`      - Product ID is NULL: ${skipStats.items.productIdNull}`);
+      console.log(`      - Order mapping not found: ${skipStats.items.orderMappingNotFound}`);
+      console.log(`      - Insert error: ${skipStats.items.insertError}`);
+      const totalSkippedItems = skipStats.items.productNotFound + skipStats.items.variantNotFound + 
+                                skipStats.items.productIdNull + skipStats.items.orderMappingNotFound + 
+                                skipStats.items.insertError;
+      console.log(`   📊 Total skipped items: ${totalSkippedItems}`);
+
       console.log('🎉 JSON orders import completed successfully!');
 
     } catch (error) {
