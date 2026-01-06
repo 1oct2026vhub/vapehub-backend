@@ -16,7 +16,7 @@ module.exports = {
       await crossServerMigration.connectToOldDb();
       console.log('✅ Connected to old database successfully');
 
-      // Get all existing variant images from new database that don't have alt_text
+      // Get all existing variant images from new database (we backfill alt_text for all)
       const existingImages = await queryInterface.sequelize.query(`
         SELECT 
           id, 
@@ -25,14 +25,13 @@ module.exports = {
           is_primary,
           sort_order
         FROM product_variant_images
-        WHERE alt_text IS NULL OR alt_text = ''
         ORDER BY variant_id, is_primary DESC, sort_order ASC, id ASC
       `, { 
         type: Sequelize.QueryTypes.SELECT,
         transaction 
       });
 
-      console.log(`📊 Found ${existingImages.length} variant images without alt_text`);
+      console.log(`📊 Found ${existingImages.length} variant images to backfill alt_text`);
 
       if (existingImages.length === 0) {
         console.log('✅ No variant images need alt_text backfill');
