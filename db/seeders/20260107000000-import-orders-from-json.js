@@ -397,7 +397,7 @@ module.exports = {
                 INSERT INTO order_addresses (
                   order_id, user_id, name, last_name, company_name, country, street,
                   apartment, town, county, region, post_code, phone, token, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NULL)
               `, {
                 replacements: [
                   newOrderId,
