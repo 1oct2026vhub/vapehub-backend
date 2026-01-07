@@ -27,6 +27,25 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
     });
 }
 
+// Cache the base64 logo to avoid reading it on every email send
+let logoBase64 = null;
+
+async function getLogoBase64() {
+    if (logoBase64) {
+        return logoBase64;
+    }
+    try {
+        const logoPath = path.join(__dirname, '../../public/images/logo.png');
+        const logoBuffer = await fs.readFile(logoPath);
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+        return logoBase64;
+    } catch (error) {
+        logger.error(`Error reading logo file: ${error.message}`);
+        // Return empty string if logo can't be read
+        return '';
+    }
+}
+
 module.exports = async (to, emailType, context = {}, attachments = []) => {
     try {
         // if unknown type, throw error
@@ -66,6 +85,9 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
             }
         }
 
+        // Get base64 logo
+        const logoBase64Data = await getLogoBase64();
+
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
@@ -82,7 +104,8 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 ...context, 
                 host: process.env.HOST_URL, 
                 FRONTEND_URL: process.env.FRONTEND_URL, 
-                currentYear: new Date().getFullYear()
+                currentYear: new Date().getFullYear(),
+                logoBase64: logoBase64Data
             });
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
