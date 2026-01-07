@@ -2409,17 +2409,16 @@ module.exports = {
   async exportPurchaseOrder(req, res) {
     try {
       const { format = 'excel', days = 28 } = req.query;
-      const numberOfDays = parseInt(days, 10) || 28;
+      const numberOfDays = parseInt(days, 10) || 28; // N = number of days from request
       
-      // Calculate date range for last N days
+      // Calculate date range for last 28 days (fixed for standard formula)
       const now = new Date();
-      const lastNDays = new Date(now);
-      lastNDays.setDate(now.getDate() - numberOfDays);
+      const last28Days = new Date(now);
+      last28Days.setDate(now.getDate() - 28);
 
       // OPTIMIZATION: Use raw SQL with JOIN for maximum performance
-      // This eliminates the need to fetch orderIds first and avoids slow IN clauses
-      // This prevents timeout issues when processing many variants with many days
-      const salesData = await sequelize.query(
+      // Get sales data for last 28 days (for products ≥ 28 days old)
+      const salesDataLast28Days = await sequelize.query(
         `
           SELECT 
             oi.variant_id,
@@ -2427,26 +2426,26 @@ module.exports = {
           FROM order_items oi
           INNER JOIN orders o ON oi.order_id = o.id
           WHERE o.status != 'canceled'
-            AND o.updatedAt >= :lastNDays
+            AND o.updatedAt >= :last28Days
             AND oi.variant_id IS NOT NULL
             AND oi.deletedAt IS NULL
           GROUP BY oi.variant_id
         `,
         {
-          replacements: { lastNDays: lastNDays },
+          replacements: { last28Days: last28Days },
           type: sequelize.QueryTypes.SELECT
         }
       );
 
-      // Create a map for quick lookup: variant_id -> total_sales
-      const salesMap = {};
-      salesData.forEach(item => {
+      // Create a map for quick lookup: variant_id -> total_sales (last 28 days)
+      const salesMapLast28Days = {};
+      salesDataLast28Days.forEach(item => {
         if (item.variant_id) {
-          salesMap[item.variant_id] = parseInt(item.total_sales) || 0;
+          salesMapLast28Days[item.variant_id] = parseInt(item.total_sales) || 0;
         }
       });
 
-      // Fetch all active variants with product information
+      // Fetch all active variants with product information (including product creation date)
       const variants = await ProductVariant.findAll({
         where: {
           deleted_at: null,
@@ -2456,7 +2455,7 @@ module.exports = {
           {
             model: Product,
             as: 'product',
-            attributes: ['id', 'name'],
+            attributes: ['id', 'name', 'createdAt'], // Include createdAt for age calculation
             where: {
               deletedAt: null,
               status: 'published'
@@ -2484,10 +2483,92 @@ module.exports = {
         attributes: ['id', 'product_id', 'slug', 'stock', 'low_stock_threshold']
       });
 
-      // Calculate sales for each variant using the pre-fetched map (NO MORE QUERIES!)
+      // Identify products < 28 days old and get their variant IDs
+      const variantIdsForNewProducts = [];
+      const productCreationDates = {};
+      
+      variants.forEach(variant => {
+        const productCreatedAt = variant.product?.createdAt;
+        if (productCreatedAt) {
+          productCreationDates[variant.id] = new Date(productCreatedAt);
+          const daysSinceCreation = Math.floor((now - new Date(productCreatedAt)) / (1000 * 60 * 60 * 24));
+          if (daysSinceCreation < 28) {
+            variantIdsForNewProducts.push(variant.id);
+          }
+        }
+      });
+
+      // Get sales to date for products < 28 days old (from product creation date)
+      const salesMapToDate = {};
+      if (variantIdsForNewProducts.length > 0) {
+        const salesDataToDate = await sequelize.query(
+          `
+            SELECT 
+              oi.variant_id,
+              COALESCE(SUM(oi.quantity), 0) as total_sales
+            FROM order_items oi
+            INNER JOIN orders o ON oi.order_id = o.id
+            INNER JOIN product_variants pv ON oi.variant_id = pv.id
+            INNER JOIN products p ON pv.product_id = p.id
+            WHERE o.status != 'canceled'
+              AND oi.variant_id IN (:variantIds)
+              AND o.updatedAt >= p.createdAt
+              AND oi.variant_id IS NOT NULL
+              AND oi.deletedAt IS NULL
+            GROUP BY oi.variant_id
+          `,
+          {
+            replacements: { variantIds: variantIdsForNewProducts },
+            type: sequelize.QueryTypes.SELECT
+          }
+        );
+
+        salesDataToDate.forEach(item => {
+          if (item.variant_id) {
+            salesMapToDate[item.variant_id] = parseInt(item.total_sales) || 0;
+          }
+        });
+      }
+
+      // Calculate units to order for each variant using the correct formula
       const exportData = variants.map((variant) => {
-        // Get sales from map (O(1) lookup instead of database query)
-        const salesLastNDays = salesMap[variant.id] || 0;
+        const currentStock = variant.stock || 0;
+        const productCreatedAt = variant.product?.createdAt;
+        
+        let unitsToOrder = 0;
+        let daysLive = 28; // Default for products ≥ 28 days
+
+        if (productCreatedAt) {
+          const creationDate = new Date(productCreatedAt);
+          daysLive = Math.floor((now - creationDate) / (1000 * 60 * 60 * 24));
+          
+          if (daysLive < 28 && daysLive > 0) {
+            // Product is less than 28 days old
+            // Formula: (Sales to date ÷ Days live × N) - Current Stock
+            // where N = numberOfDays from request
+            const salesToDate = salesMapToDate[variant.id] || 0;
+            unitsToOrder = (salesToDate / daysLive) * numberOfDays - currentStock;
+          } else if (daysLive === 0) {
+            // Product created today (edge case)
+            const salesToDate = salesMapToDate[variant.id] || 0;
+            // Use 1 day to avoid division by zero, or use sales directly
+            unitsToOrder = salesToDate * numberOfDays - currentStock;
+          } else {
+            // Product is 28 days or older
+            // Formula: (Sales last 28 days ÷ 28 × N) - Current Stock
+            // where N = numberOfDays from request
+            const salesLast28Days = salesMapLast28Days[variant.id] || 0;
+            unitsToOrder = (salesLast28Days / 28) * numberOfDays - currentStock;
+          }
+        } else {
+          // Fallback: if no creation date, use standard formula
+          // Formula: (Sales last 28 days ÷ 28 × N) - Current Stock
+          const salesLast28Days = salesMapLast28Days[variant.id] || 0;
+          unitsToOrder = (salesLast28Days / 28) * numberOfDays - currentStock;
+        }
+
+        // Round up to next whole number if decimal
+        unitsToOrder = Math.ceil(unitsToOrder);
 
         // Build variant name
         let variantName = variant.product?.name || 'Unknown Product';
@@ -2509,21 +2590,17 @@ module.exports = {
           variantName += ` - Variant #${variant.id}`;
         }
 
-        // Required stock for next N days = projected sales (based on last N days)
-        // This assumes the same sales rate will continue
-        const requiredStockForNextNDays = Math.ceil(salesLastNDays);
-        const currentStock = variant.stock || 0;
         const lowStockThreshold = variant.low_stock_threshold || 0;
 
         return {
           variantName: variantName,
           currentStock: currentStock,
           lowStockThreshold: lowStockThreshold,
-          requiredStockForNextNDays: requiredStockForNextNDays
+          requiredStockForNextNDays: unitsToOrder // This is now "units to order"
         };
       });
 
-      // Filter products where requiredStockForNextNDays > 0 (exclude items with 0 required stock)
+      // Filter products where unitsToOrder > 0 (exclude items with 0 or negative units to order)
       const filteredData = exportData.filter(item => 
         item.requiredStockForNextNDays > 0
       );
@@ -2536,7 +2613,7 @@ module.exports = {
         const csvFields = [
           { label: 'Product Variant Name', value: 'variantName' },
           { label: 'Current Stock', value: 'currentStock' },
-          { label: `Required Stock for Next ${numberOfDays} Days`, value: 'requiredStockForNextNDays' }
+          { label: `Units to Order (Next ${numberOfDays} Days)`, value: 'requiredStockForNextNDays' }
         ];
 
         const parser = new Json2csvParser({ fields: csvFields });
@@ -2556,7 +2633,7 @@ module.exports = {
         worksheet.columns = [
           { header: 'Product Variant Name', key: 'variantName', width: 50 },
           { header: 'Current Stock', key: 'currentStock', width: 15 },
-          { header: `Required Stock for Next ${numberOfDays} Days`, key: 'requiredStockForNextNDays', width: 30 }
+          { header: `Units to Order (Next ${numberOfDays} Days)`, key: 'requiredStockForNextNDays', width: 30 }
         ];
 
         // Add data rows with empty row between each product
