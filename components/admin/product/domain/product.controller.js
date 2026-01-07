@@ -2406,8 +2406,8 @@ module.exports.deleteProductImage = async (req, res) => {
             console.log(`✅ Deleted ${resizedUrls.length} resized versions`);
         }
 
-        // Remove the image record from the database
-        await productImage.destroy({ transaction });
+        // Remove the image record from the database (HARD DELETE)
+        await productImage.destroy({ force: true, transaction });
 
         // If the deleted image was the primary image, assign a new primary image
         if (productImage.is_primary) {
