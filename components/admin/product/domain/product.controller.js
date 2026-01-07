@@ -2298,24 +2298,33 @@ module.exports.deleteProductImage = async (req, res) => {
         // Validate if the product exists
         const product = await Product.findByPk(product_id);
         if (!product) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
         // Find all images associated with the product
+        // Query WITHOUT transaction first to ensure we see the latest committed data
+        // This fixes the issue where after switching primary image, the delete query 
+        // might not see both images due to transaction isolation
         const productImages = await ProductImage.findAll({
             where: { product_id },
             order: [['is_primary', 'DESC']], // Ensure primary image is prioritized
-            transaction
+            // Note: No transaction here - ensures we see latest committed state
         });
 
         if (!productImages || productImages.length < 2) {
+            await transaction.rollback();
             return errorResponse(res, { message: "At least two images are required to delete one" }, "Deletion not allowed", 400);
         }
 
-        // Find the image to be deleted
-        const productImage = productImages.find(img => img.id === parseInt(image_id));
+        // Find the image to be deleted (now query WITH transaction for consistency)
+        const productImage = await ProductImage.findOne({
+            where: { id: parseInt(image_id), product_id },
+            transaction
+        });
 
         if (!productImage) {
+            await transaction.rollback();
             return errorResponse(res, { message: "Product image not found" }, "Image not found", 404);
         }
 
@@ -2402,8 +2411,17 @@ module.exports.deleteProductImage = async (req, res) => {
 
         // If the deleted image was the primary image, assign a new primary image
         if (productImage.is_primary) {
-            const newPrimaryImage = productImages.find(img => img.id !== parseInt(image_id));
-            if (newPrimaryImage) {
+            // Query remaining images with transaction to ensure consistency
+            const remainingImages = await ProductImage.findAll({
+                where: { 
+                    product_id,
+                    id: { [Op.ne]: parseInt(image_id) }
+                },
+                transaction
+            });
+            
+            if (remainingImages.length > 0) {
+                const newPrimaryImage = remainingImages[0];
                 await newPrimaryImage.update({ is_primary: true }, { transaction });
                 logger.info(`New primary image set: ${newPrimaryImage.id} for Product ${product_id}`);
             }
