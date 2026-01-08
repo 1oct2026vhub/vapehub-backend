@@ -36,7 +36,13 @@ module.exports.login = async (req, res, next) => {
         }
 
         // Security check: user has no password and is not temporary
-        if ((user.password === null || user.password === undefined) && user.is_temporary !== true) {
+        // Security check: user has no password or has temp password and is not temporary
+        if (
+            (user.password === null || 
+             user.password === undefined || 
+             user.password === 'temp_password_reset_required') && 
+             user.is_temporary !== true
+        ) {
             return errorResponse(
                 res,
                 { message: "For security reasons, you need to reset your password" },
