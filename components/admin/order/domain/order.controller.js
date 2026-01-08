@@ -369,6 +369,12 @@ module.exports.getOrderById = async (req, res, next) => {
                     model: PaymentMethod,
                     as: 'paymentMethod',
                     attributes: ['id', 'payment_method', 'status']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping'],
+                    required: false
                 }
             ]
         });
