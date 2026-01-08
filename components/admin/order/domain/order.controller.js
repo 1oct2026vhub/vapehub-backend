@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon, PaymentMethod, ShippingMethod } = require("../../../../models");
+const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductImage, OrderAddress, UserAddress, sequelize, OrderLog, ProductVariantImage, ProductVariantAttribute, Attribute, AttributeTerm, Coupon, PaymentMethod, ShippingMethod, Transaction } = require("../../../../models");
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
@@ -373,8 +373,15 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: ShippingMethod,
                     as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping'],
+                    attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
                     required: false
+                },
+                {
+                    model: Transaction,
+                    as: 'transactions',
+                    attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
+                    required: false,
+                    order: [['createdAt', 'DESC']]
                 }
             ]
         });
