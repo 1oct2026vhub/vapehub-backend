@@ -98,9 +98,22 @@ const getOrderReportValidation = [
         })
 ];
 
+const bulkUpdateOrderStatusValidation = [
+    body('order_ids')
+        .isArray({ min: 1, max: 100 })
+        .withMessage('order_ids must be an array with at least 1 and at most 100 items'),
+    body('order_ids.*')
+        .isInt({ min: 1 })
+        .withMessage('Each order ID must be a positive integer'),
+    body('status')
+        .isIn(ORDER_STATUS)
+        .withMessage('Invalid order status')
+];
+
 module.exports = {
     listAllOrdersValidation,
     updateOrderStatusValidation,
     getOrderStatsValidation,
-    getOrderReportValidation
+    getOrderReportValidation,
+    bulkUpdateOrderStatusValidation
 }; 

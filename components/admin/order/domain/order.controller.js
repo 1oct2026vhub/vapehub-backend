@@ -373,7 +373,6 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: ShippingMethod,
                     as: 'shippingMethod',
-                    foreignKey: 'shipping_method_id',
                     attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
                     required: false,
                     paranoid: false
@@ -381,7 +380,6 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: Transaction,
                     as: 'transactions',
-                    foreignKey: 'orderId',
                     attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
                     required: false,
                     paranoid: false,
@@ -402,6 +400,26 @@ module.exports.getOrderById = async (req, res, next) => {
 
         // Add status timeline to the response
         const orderResponse = order.toJSON();
+        
+        // Manually ensure associations are included if they're missing
+        if (!orderResponse.shippingMethod && order.shipping_method_id) {
+            const shippingMethod = await ShippingMethod.findByPk(order.shipping_method_id, {
+                attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
+                paranoid: false
+            });
+            orderResponse.shippingMethod = shippingMethod ? shippingMethod.toJSON() : null;
+        }
+        
+        if (!orderResponse.transactions) {
+            const transactions = await Transaction.findAll({
+                where: { orderId: order.id },
+                attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
+                paranoid: false,
+                order: [['createdAt', 'DESC']]
+            });
+            orderResponse.transactions = transactions.map(t => t.toJSON());
+        }
+        
         orderResponse.statusTimeline = statusTimeline;
 
         successResponse(res, orderResponse, 'Success');
@@ -541,6 +559,203 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         successResponse(res, responseData, 'Order status updated successfully');
     } catch (error) {
         console.error("updateOrderStatus error:", error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
+    try {
+        const { order_ids, status } = req.body;
+        const user_id = req?.user?.id;
+
+        // Validate input
+        if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
+            const error = new Error('order_ids array is required and must not be empty');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (order_ids.length > 100) {
+            const error = new Error('Maximum 100 orders can be updated at once');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate status exists in enum
+        if (!status || !Object.values(orderStatusEnums).includes(status)) {
+            const error = new Error('Invalid order status');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate all order IDs are integers
+        const invalidIds = order_ids.filter(id => !(Number.isInteger(id) && id > 0));
+        if (invalidIds.length > 0) {
+            const error = new Error('All order IDs must be positive integers');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Use transaction for bulk update
+        const transaction = await sequelize.transaction();
+
+        try {
+            // Find all orders
+            const orders = await Order.findAll({
+                where: {
+                    id: { [Op.in]: order_ids }
+                },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'first_name', 'last_name', 'email']
+                    },
+                    {
+                        model: OrderItem,
+                        as: 'orderItems',
+                        attributes: ['id', 'quantity'],
+                        include: [
+                            {
+                                model: ProductVariant,
+                                as: 'variant',
+                                attributes: ['id', 'stock']
+                            }
+                        ]
+                    },
+                    {
+                        model: ShippingMethod,
+                        as: 'shippingMethod',
+                        attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderShippingAddress',
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderBillingAddress',
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                    }
+                ],
+                transaction
+            });
+
+            const foundOrderIds = orders.map(order => order.id);
+            const missingOrderIds = order_ids.filter(id => !foundOrderIds.includes(id));
+
+            if (missingOrderIds.length > 0) {
+                await transaction.rollback();
+                const error = new Error('Some orders not found');
+                error.statusCode = 404;
+                error.missingOrderIds = missingOrderIds;
+                throw error;
+            }
+
+            const results = [];
+            const errors = [];
+
+            // Process each order
+            for (const order of orders) {
+                try {
+                    // Update order status
+                    await order.update({
+                        status: status,
+                        updated_by: user_id
+                    }, {
+                        isAdmin: true,
+                        userId: user_id,
+                        transaction
+                    });
+
+                    // Create notification for order status change
+                    await createNotification({
+                        userId: order.user_id,
+                        type: 'system',
+                        action: 'alert',
+                        data: {
+                            message: `Your order #${order.order_unique_id} status has been updated to ${status}`
+                        },
+                        title: 'Order Status Updated',
+                        url: `/my-account/orders/${order.id}`
+                    });
+
+                    // Handle stock updates for cancelled orders
+                    if (status === orderStatus.CANCEL) {
+                        for (const item of order.orderItems) {
+                            if (item.variant) {
+                                await item.variant.increment('stock', { 
+                                    by: item.quantity 
+                                }, { transaction });
+                            }
+                        }
+                    }
+
+                    // Handle ShipStation order creation when status is packed
+                    let shipStationResponse = null;
+                    if (status === orderStatus.PACKED) {
+                        try {
+                            shipStationResponse = await createShipStationOrder(order);
+                        } catch (shipStationError) {
+                            console.error(`ShipStation order creation failed for order ${order.id}:`, shipStationError);
+                            // Don't fail the entire request, just log the error
+                        }
+                    }
+
+                    results.push({
+                        order_id: order.id,
+                        order_unique_id: order.order_unique_id,
+                        status: status,
+                        success: true,
+                        shipstation_data: shipStationResponse ? {
+                            order_id: shipStationResponse.orderResponse?.orderId,
+                            label_data: shipStationResponse.labelResponse ? {
+                                shipment_id: shipStationResponse.labelResponse.shipmentId,
+                                tracking_number: shipStationResponse.labelResponse.trackingNumber,
+                                shipment_cost: shipStationResponse.labelResponse.shipmentCost
+                            } : null
+                        } : null
+                    });
+                } catch (orderError) {
+                    console.error(`Error updating order ${order.id}:`, orderError);
+                    errors.push({
+                        order_id: order.id,
+                        order_unique_id: order.order_unique_id,
+                        error: orderError.message
+                    });
+                }
+            }
+
+            // If all updates failed, rollback
+            if (results.length === 0 && errors.length > 0) {
+                await transaction.rollback();
+                const error = new Error('All order updates failed');
+                error.statusCode = 500;
+                error.errors = errors;
+                throw error;
+            }
+
+            // Commit transaction if at least one update succeeded
+            await transaction.commit();
+
+            const response = {
+                total: order_ids.length,
+                successful: results.length,
+                failed: errors.length,
+                status: status,
+                results: results,
+                errors: errors
+            };
+
+            const message = `Successfully updated ${results.length} out of ${order_ids.length} orders`;
+            successResponse(res, response, message);
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    } catch (error) {
+        console.error("bulkUpdateOrderStatus error:", error);
         return errorResponse(res, error, error.message);
     }
 };

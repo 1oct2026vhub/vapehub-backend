@@ -6,7 +6,8 @@ const {
     listAllOrdersValidation, 
     updateOrderStatusValidation, 
     getOrderStatsValidation,
-    getOrderReportValidation
+    getOrderReportValidation,
+    bulkUpdateOrderStatusValidation
 } = require("../helper/order.validator");
 
 /**
@@ -87,6 +88,70 @@ router.get('/stats', [authMiddleware(true), validateRequest(getOrderStatsValidat
  *         description: Unauthorized
  */
 router.get('/report', [authMiddleware(true), validateRequest(getOrderReportValidation)], orderController.generateOrderReport);
+
+/**
+ * @swagger
+ * /api/admin/orders/bulk-status:
+ *   put:
+ *     summary: Bulk update order status
+ *     tags:
+ *       - Admin 
+ *         - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - order_ids
+ *               - status
+ *             properties:
+ *               order_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 minItems: 1
+ *                 maxItems: 100
+ *                 description: Array of order IDs to update
+ *               status:
+ *                 type: string
+ *                 enum: ['draft', 'pending', 'processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed', 'fail', 'cancel', 'return_requested', 'return_approved', 'return_received', 'refunded']
+ *                 description: New status to set for all orders
+ *     responses:
+ *       200:
+ *         description: Orders updated successfully (may include partial success)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total:
+ *                   type: integer
+ *                 successful:
+ *                   type: integer
+ *                 failed:
+ *                   type: integer
+ *                 status:
+ *                   type: string
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Invalid request (invalid status or order IDs)
+ *       404:
+ *         description: Some or all orders not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.put('/bulk-status', [authMiddleware(true), validateRequest(bulkUpdateOrderStatusValidation)], orderController.bulkUpdateOrderStatus);
 
 /**
  * @swagger
