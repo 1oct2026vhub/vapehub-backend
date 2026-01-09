@@ -63,20 +63,21 @@ async function createShipStationOrder(order) {
                 }
                 
                 return {
-                sku: variantSku || productSku,
-                name: productName,
-                quantity: item.quantity,
-                unitPrice: item.unit_price,
-            };
+                    sku: variantSku || productSku,
+                    name: productName,
+                    quantity: item.quantity,
+                    unitPrice: item.unit_price,
+                };
             }) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
+            shippingAmount: order.shipping_cost || 0,
             requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
         };
-        // console.log("shipStationOrder>>>>>>", shipStationOrder);
+        console.log("<<<<<< shipStationOrder >>>>>>", shipStationOrder);
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
-        // console.log("orderResponse>>>>>>", orderResponse);
+        console.log("<<<<<< orderResponse >>>>>>", orderResponse);
         
         // Extract orderId from response
         const orderId = orderResponse.orderId;
