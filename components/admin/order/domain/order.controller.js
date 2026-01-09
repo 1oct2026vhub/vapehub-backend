@@ -426,12 +426,12 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 {
                     model: Order.sequelize.models.OrderAddress,
                     as: 'orderShippingAddress',
-                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
                 },
                 {
                     model: Order.sequelize.models.OrderAddress,
                     as: 'orderBillingAddress',
-                    attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                    attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
                 },
                 {
                     model: ShippingMethod,
@@ -451,7 +451,29 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                         {
                             model: Order.sequelize.models.ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'slug', 'price', 'weight']
+                            attributes: ['id', 'slug', 'sku', 'price', 'weight'],
+                            include: [
+                                {
+                                    model: Order.sequelize.models.ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                    include: [
+                                        {
+                                            model: Order.sequelize.models.Attribute,
+                                            as: 'attribute',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        },
+                                        {
+                                            model: Order.sequelize.models.AttributeTerm,
+                                            as: 'term',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 }
@@ -515,6 +537,9 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         if (status === orderStatus.PACKED) {
             try {
                 shipStationResponse = await createShipStationOrder(order);
+                
+                // Reload order to get updated shipstation_order_id
+                await order.reload();
             } catch (shipStationError) {
                 console.error("ShipStation order creation failed:", shipStationError);
                 // Don't fail the entire request, just log the error
