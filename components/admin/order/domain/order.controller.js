@@ -397,6 +397,31 @@ module.exports.getOrderById = async (req, res, next) => {
             throw error;
         }
 
+        // Debug logging - check if associations are loaded
+        console.log('=== DEBUG ASSOCIATIONS ===');
+        console.log('Order ID:', order.id);
+        console.log('Shipping Method ID:', order.shipping_method_id);
+        console.log('Has shippingMethod on model?', 'shippingMethod' in order);
+        console.log('shippingMethod value:', order.shippingMethod);
+        console.log('shippingMethod type:', typeof order.shippingMethod);
+        console.log('shippingMethod is null?', order.shippingMethod === null);
+        console.log('shippingMethod is undefined?', order.shippingMethod === undefined);
+        console.log('Has transactions on model?', 'transactions' in order);
+        console.log('transactions value:', order.transactions);
+        console.log('transactions type:', typeof order.transactions);
+        console.log('transactions is array?', Array.isArray(order.transactions));
+        console.log('transactions length:', order.transactions?.length);
+        console.log('All order model properties:', Object.keys(order));
+        
+        // Check JSON output
+        const orderJSON = order.toJSON();
+        console.log('JSON keys:', Object.keys(orderJSON));
+        console.log('JSON has shippingMethod?', 'shippingMethod' in orderJSON);
+        console.log('JSON has transactions?', 'transactions' in orderJSON);
+        console.log('JSON shippingMethod value:', orderJSON.shippingMethod);
+        console.log('JSON transactions value:', orderJSON.transactions);
+        console.log('==========================');
+
         // Get the status timeline
         const statusTimeline = await order.getStatusTimeline();
 
