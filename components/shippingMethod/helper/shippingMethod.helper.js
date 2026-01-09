@@ -5,7 +5,7 @@ const { ShippingMethod } = require("../../../models");
  * @param {Object} shippingMethod - The shipping method object
  * @param {number} orderTotal - The total order amount
  * @returns {number|null} - The calculated shipping cost or null if not applicable
- */s
+ */
 const calculateShippingCost = (shippingMethod, orderTotal) => {
     // Check if shipping method is marked as free shipping
     if (shippingMethod.is_free_shipping) {
