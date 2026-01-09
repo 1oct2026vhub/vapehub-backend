@@ -451,7 +451,29 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                         {
                             model: Order.sequelize.models.ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'slug', 'price', 'weight']
+                            attributes: ['id', 'slug', 'sku', 'price', 'weight'],
+                            include: [
+                                {
+                                    model: Order.sequelize.models.ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                    include: [
+                                        {
+                                            model: Order.sequelize.models.Attribute,
+                                            as: 'attribute',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        },
+                                        {
+                                            model: Order.sequelize.models.AttributeTerm,
+                                            as: 'term',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 }

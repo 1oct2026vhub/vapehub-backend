@@ -46,11 +46,25 @@ async function createShipStationOrder(order) {
             items: order.orderItems ? order.orderItems.map(item => {
                 const variantSku = item.variant?.sku || item.variant?.slug || (item.variant?.id ? String(item.variant.id) : null);
                 const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
+                
+                // Build product name with attributes
+                let productName = item.product.name;
+                
+                // If variant has attributes, append them in readable format
+                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
+                    const attributeParts = item.variant.variantAttributes
+                        .filter(va => va.attribute && va.term) // Ensure both exist
+                        .map(va => `${va.attribute.name}: ${va.term.name}`)
+                        .filter(Boolean); // Remove any empty strings
+                    
+                    if (attributeParts.length > 0) {
+                        productName = `${productName}, ${attributeParts.join(', ')}`;
+                    }
+                }
+                
                 return {
                 sku: variantSku || productSku,
-                name: item.variant
-                    ? `${item.product.name} - ${(variantSku || item.variant.slug || item.variant.id)}`
-                    : item.product.name,
+                name: productName,
                 quantity: item.quantity,
                 unitPrice: item.unit_price,
             };
