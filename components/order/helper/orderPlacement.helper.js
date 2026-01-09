@@ -551,6 +551,9 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         calculatedTotal = calculatedTotal - totalDiscount;
     }
 
+    // Track the actual shipping cost used for this order
+    let shippingCostUsed = 0;
+
     // Apply Shipping Cost
     const shippingMethod = await ShippingMethod.findOne({ 
         where: { 
@@ -565,7 +568,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         const orderTotalBeforeShipping = calculatedTotal;
         const calculatedShippingCost = calculateShippingCost(shippingMethod, orderTotalBeforeShipping);
         if (calculatedShippingCost !== null) {
-            calculatedTotal += parseFloat(calculatedShippingCost);
+            shippingCostUsed = parseFloat(calculatedShippingCost);
+            calculatedTotal += shippingCostUsed;
         } else {
             // Shipping method not applicable, set to null
             shippingMethodId = null;
@@ -694,7 +698,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         shipping_method_id: shippingMethodId ? shippingMethodId : null,
         order_unique_id: orderUniqueId,
         order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
-        shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
+        // Store the actual shipping cost that was applied to this order
+        shipping_cost: shippingCostUsed,
         email: email,
         phone: phone,
         sub_total: subTotal,
@@ -742,7 +747,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             order_items: orderDetails,
             pricing: {
                 subtotal: subTotal,
-                shipping_cost: shippingMethod ? shippingMethod.shipping_cost : 0,
+                // Reflect the same shipping cost as stored on the order
+                shipping_cost: shippingCostUsed,
                 deals_discount: dealsDiscount,
                 coupon_discount: coupon ? discount : 0,
                 referral_discount: referralDiscount,
