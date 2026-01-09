@@ -5,25 +5,34 @@ const { ShippingMethod } = require("../../../models");
  * @param {Object} shippingMethod - The shipping method object
  * @param {number} orderTotal - The total order amount
  * @returns {number|null} - The calculated shipping cost or null if not applicable
- */
+ */s
 const calculateShippingCost = (shippingMethod, orderTotal) => {
-
     // Check if shipping method is marked as free shipping
     if (shippingMethod.is_free_shipping) {
         // If free shipping is enabled, check if threshold is set
         if (shippingMethod.free_shipping_threshold) {
             // Only apply free shipping if order total meets the threshold
             if (orderTotal >= shippingMethod.free_shipping_threshold) {
-                return 0;
+                return 0;  // ✅ Free shipping when threshold is met
             }
-            // Threshold not met, continue to calculate regular shipping cost
+            
+            // Order is BELOW threshold - must charge shipping
+            // Return the actual shipping cost from database
+            const actualCost = parseFloat(shippingMethod.shipping_cost || 0);
+            
+            // If shipping_cost is 0, method is misconfigured - reject it to prevent £0 shipping bypass
+            if (actualCost > 0) {
+                return actualCost;  // ✅ Return actual cost (e.g., 3.99)
+            } else {
+                return null;  // ❌ Misconfigured - method unavailable
+            }
         } else {
             // No threshold set, always free shipping
             return 0;
         }
     }
 
-    // Return default shipping cost if no rules match
+    // Normal paid shipping method (not marked as free shipping)
     return shippingMethod.shipping_cost;
 };
 
