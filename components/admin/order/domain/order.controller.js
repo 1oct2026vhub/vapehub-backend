@@ -373,14 +373,19 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: ShippingMethod,
                     as: 'shippingMethod',
+                    foreignKey: 'shipping_method_id',
                     attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
-                    required: false
+                    required: false,
+                    paranoid: false
                 },
                 {
                     model: Transaction,
                     as: 'transactions',
+                    foreignKey: 'orderId',
                     attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
                     required: false,
+                    paranoid: false,
+                    separate: true,
                     order: [['createdAt', 'DESC']]
                 }
             ]
