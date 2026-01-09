@@ -4,6 +4,20 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
 
+/**
+ * Capitalize first letter of each word in a string
+ * @param {string} str - String to capitalize
+ * @returns {string} Capitalized string
+ */
+function capitalizeName(str) {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
 async function createShipStationOrder(order) {
     try {
         // Validate required order data
@@ -23,8 +37,8 @@ async function createShipStationOrder(order) {
             customerEmail: order.email || order.user?.email,
             billTo: order.orderBillingAddress ? {
                 name: order.orderBillingAddress.last_name 
-                    ? `${order.orderBillingAddress.name} ${order.orderBillingAddress.last_name}`.trim()
-                    : order.orderBillingAddress.name,
+                    ? `${capitalizeName(order.orderBillingAddress.name)} ${capitalizeName(order.orderBillingAddress.last_name)}`.trim()
+                    : capitalizeName(order.orderBillingAddress.name),
                 street1: order.orderBillingAddress.street,
                 city: order.orderBillingAddress.town,
                 state: order.orderBillingAddress.region,
@@ -34,8 +48,8 @@ async function createShipStationOrder(order) {
             } : undefined,
             shipTo: order.orderShippingAddress ? {
                 name: order.orderShippingAddress.last_name 
-                    ? `${order.orderShippingAddress.name} ${order.orderShippingAddress.last_name}`.trim()
-                    : order.orderShippingAddress.name,
+                    ? `${capitalizeName(order.orderShippingAddress.name)} ${capitalizeName(order.orderShippingAddress.last_name)}`.trim()
+                    : capitalizeName(order.orderShippingAddress.name),
                 street1: order.orderShippingAddress.street,
                 city: order.orderShippingAddress.town,
                 state: order.orderShippingAddress.region,
