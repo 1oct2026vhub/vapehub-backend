@@ -22,7 +22,9 @@ async function createShipStationOrder(order) {
             customerUsername: order.user?.email,
             customerEmail: order.email || order.user?.email,
             billTo: order.orderBillingAddress ? {
-                name: order.orderBillingAddress.name,
+                name: order.orderBillingAddress.last_name 
+                    ? `${order.orderBillingAddress.name} ${order.orderBillingAddress.last_name}`.trim()
+                    : order.orderBillingAddress.name,
                 street1: order.orderBillingAddress.street,
                 city: order.orderBillingAddress.town,
                 state: order.orderBillingAddress.region,
@@ -31,7 +33,9 @@ async function createShipStationOrder(order) {
                 phone: order.orderBillingAddress.phone,
             } : undefined,
             shipTo: order.orderShippingAddress ? {
-                name: order.orderShippingAddress.name,
+                name: order.orderShippingAddress.last_name 
+                    ? `${order.orderShippingAddress.name} ${order.orderShippingAddress.last_name}`.trim()
+                    : order.orderShippingAddress.name,
                 street1: order.orderShippingAddress.street,
                 city: order.orderShippingAddress.town,
                 state: order.orderShippingAddress.region,
