@@ -373,7 +373,6 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: ShippingMethod,
                     as: 'shippingMethod',
-                    foreignKey: 'shipping_method_id',
                     attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
                     required: false,
                     paranoid: false
@@ -381,7 +380,6 @@ module.exports.getOrderById = async (req, res, next) => {
                 {
                     model: Transaction,
                     as: 'transactions',
-                    foreignKey: 'orderId',
                     attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
                     required: false,
                     paranoid: false,
@@ -402,6 +400,26 @@ module.exports.getOrderById = async (req, res, next) => {
 
         // Add status timeline to the response
         const orderResponse = order.toJSON();
+        
+        // Manually ensure associations are included if they're missing
+        if (!orderResponse.shippingMethod && order.shipping_method_id) {
+            const shippingMethod = await ShippingMethod.findByPk(order.shipping_method_id, {
+                attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService', 'display_text', 'description', 'is_free_shipping', 'method_order', 'is_enabled', 'free_shipping_threshold', 'min_order_total', 'max_order_total', 'shipping_rules', 'createdAt', 'updatedAt'],
+                paranoid: false
+            });
+            orderResponse.shippingMethod = shippingMethod ? shippingMethod.toJSON() : null;
+        }
+        
+        if (!orderResponse.transactions) {
+            const transactions = await Transaction.findAll({
+                where: { orderId: order.id },
+                attributes: ['id', 'paymentMethod', 'transactionType', 'amount', 'currency', 'status', 'referenceNumber', 'notes', 'metadata', 'createdAt', 'updatedAt'],
+                paranoid: false,
+                order: [['createdAt', 'DESC']]
+            });
+            orderResponse.transactions = transactions.map(t => t.toJSON());
+        }
+        
         orderResponse.statusTimeline = statusTimeline;
 
         successResponse(res, orderResponse, 'Success');
