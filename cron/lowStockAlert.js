@@ -72,7 +72,7 @@ cron.schedule('0 * * * *', async () => {
       
       const data = {
         emailTypes: constants.emailTypes.INVENTORY_LOW_STOCK,
-        to: process.env.ADMIN_EMAIL || 'admin@example.com',
+        to: process.env.ADMIN_EMAIL || 'admin@vapehub.co.uk',
         context: {
             lowStockList: lowStockList,
             totalLowStockCount: lowStockList.length,
