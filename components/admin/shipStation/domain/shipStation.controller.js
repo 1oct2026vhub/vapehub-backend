@@ -22,7 +22,9 @@ async function createShipStationOrder(order) {
             customerUsername: order.user?.email,
             customerEmail: order.email || order.user?.email,
             billTo: order.orderBillingAddress ? {
-                name: order.orderBillingAddress.name,
+                name: order.orderBillingAddress.last_name 
+                    ? `${order.orderBillingAddress.name} ${order.orderBillingAddress.last_name}`.trim()
+                    : order.orderBillingAddress.name,
                 street1: order.orderBillingAddress.street,
                 city: order.orderBillingAddress.town,
                 state: order.orderBillingAddress.region,
@@ -31,7 +33,9 @@ async function createShipStationOrder(order) {
                 phone: order.orderBillingAddress.phone,
             } : undefined,
             shipTo: order.orderShippingAddress ? {
-                name: order.orderShippingAddress.name,
+                name: order.orderShippingAddress.last_name 
+                    ? `${order.orderShippingAddress.name} ${order.orderShippingAddress.last_name}`.trim()
+                    : order.orderShippingAddress.name,
                 street1: order.orderShippingAddress.street,
                 city: order.orderShippingAddress.town,
                 state: order.orderShippingAddress.region,
@@ -42,23 +46,38 @@ async function createShipStationOrder(order) {
             items: order.orderItems ? order.orderItems.map(item => {
                 const variantSku = item.variant?.sku || item.variant?.slug || (item.variant?.id ? String(item.variant.id) : null);
                 const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
+                
+                // Build product name with attributes
+                let productName = item.product.name;
+                
+                // If variant has attributes, append them in readable format
+                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
+                    const attributeParts = item.variant.variantAttributes
+                        .filter(va => va.attribute && va.term) // Ensure both exist
+                        .map(va => `${va.attribute.name}: ${va.term.name}`)
+                        .filter(Boolean); // Remove any empty strings
+                    
+                    if (attributeParts.length > 0) {
+                        productName = `${productName}, ${attributeParts.join(', ')}`;
+                    }
+                }
+                
                 return {
-                sku: variantSku || productSku,
-                name: item.variant
-                    ? `${item.product.name} - ${(variantSku || item.variant.slug || item.variant.id)}`
-                    : item.product.name,
-                quantity: item.quantity,
-                unitPrice: item.unit_price,
-            };
+                    sku: variantSku || productSku,
+                    name: productName,
+                    quantity: item.quantity,
+                    unitPrice: item.unit_price,
+                };
             }) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
+            shippingAmount: order.shipping_cost || 0,
             requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
         };
-        // console.log("shipStationOrder>>>>>>", shipStationOrder);
+        console.log("<<<<<< shipStationOrder >>>>>>", shipStationOrder);
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
-        // console.log("orderResponse>>>>>>", orderResponse);
+        console.log("<<<<<< orderResponse >>>>>>", orderResponse);
         
         // Extract orderId from response
         const orderId = orderResponse.orderId;
