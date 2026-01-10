@@ -619,41 +619,14 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         attributes: ['id', 'first_name', 'last_name', 'email']
                     },
                     {
-                        model: Order.sequelize.models.OrderItem,
+                        model: OrderItem,
                         as: 'orderItems',
-                        attributes: ['id', 'quantity', 'unit_price'],
+                        attributes: ['id', 'quantity'],
                         include: [
                             {
-                                model: Order.sequelize.models.Product,
-                                as: 'product',
-                                attributes: ['id', 'name', 'slug']
-                            },
-                            {
-                                model: Order.sequelize.models.ProductVariant,
+                                model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['id', 'slug', 'sku', 'price', 'weight'],
-                                include: [
-                                    {
-                                        model: Order.sequelize.models.ProductVariantAttribute,
-                                        as: 'variantAttributes',
-                                        paranoid: false,
-                                        attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
-                                        include: [
-                                            {
-                                                model: Order.sequelize.models.Attribute,
-                                                as: 'attribute',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            },
-                                            {
-                                                model: Order.sequelize.models.AttributeTerm,
-                                                as: 'term',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            }
-                                        ]
-                                    }
-                                ]
+                                attributes: ['id', 'stock']
                             }
                         ]
                     },
@@ -663,14 +636,14 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
                     },
                     {
-                        model: Order.sequelize.models.OrderAddress,
+                        model: OrderAddress,
                         as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     },
                     {
-                        model: Order.sequelize.models.OrderAddress,
+                        model: OrderAddress,
                         as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     }
                 ],
                 transaction
@@ -731,10 +704,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     if (status === orderStatus.PACKED) {
                         try {
                             shipStationResponse = await createShipStationOrder(order);
-                            
-                            // Reload order to get updated shipstation_order_id
-                            // Reload without transaction to see committed changes from createShipStationOrder
-                            await order.reload();
                         } catch (shipStationError) {
                             console.error(`ShipStation order creation failed for order ${order.id}:`, shipStationError);
                             // Don't fail the entire request, just log the error
