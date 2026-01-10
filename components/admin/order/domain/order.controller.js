@@ -621,12 +621,39 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: OrderItem,
                         as: 'orderItems',
-                        attributes: ['id', 'quantity'],
+                        attributes: ['id', 'quantity', 'unit_price'],
                         include: [
+                            {
+                                model: Product,
+                                as: 'product',
+                                attributes: ['id', 'name', 'sku', 'slug']
+                            },
                             {
                                 model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['id', 'stock']
+                                attributes: ['id', 'stock', 'sku', 'slug', 'weight'],
+                                include: [
+                                    {
+                                        model: ProductVariantAttribute,
+                                        as: 'variantAttributes',
+                                        paranoid: false,
+                                        attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                        include: [
+                                            {
+                                                model: Attribute,
+                                                as: 'attribute',
+                                                paranoid: false,
+                                                attributes: ['id', 'name']
+                                            },
+                                            {
+                                                model: AttributeTerm,
+                                                as: 'term',
+                                                paranoid: false,
+                                                attributes: ['id', 'attribute_id', 'name']
+                                            }
+                                        ]
+                                    }
+                                ]
                             }
                         ]
                     },
@@ -701,12 +728,20 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
 
                     // Handle ShipStation order creation when status is packed
                     let shipStationResponse = null;
+                    let shipStationError = null;
                     if (status === orderStatus.PACKED) {
-                        try {
-                            shipStationResponse = await createShipStationOrder(order);
-                        } catch (shipStationError) {
-                            console.error(`ShipStation order creation failed for order ${order.id}:`, shipStationError);
-                            // Don't fail the entire request, just log the error
+                        // Only create ShipStation order if it doesn't already exist
+                        if (!order.shipstation_order_id) {
+                            try {
+                                shipStationResponse = await createShipStationOrder(order);
+                            } catch (err) {
+                                shipStationError = err.message || err.toString();
+                                console.error(`ShipStation order creation failed for order ${order.id}:`, err);
+                                // Don't fail the entire request, just log the error and track it
+                            }
+                        } else {
+                            // Order already has a ShipStation order ID, skip creation
+                            shipStationError = 'Order already has a ShipStation order ID';
                         }
                     }
 
@@ -722,7 +757,8 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                                 tracking_number: shipStationResponse.labelResponse.trackingNumber,
                                 shipment_cost: shipStationResponse.labelResponse.shipmentCost
                             } : null
-                        } : null
+                        } : null,
+                        shipstation_error: shipStationError || null
                     });
                 } catch (orderError) {
                     console.error(`Error updating order ${order.id}:`, orderError);
