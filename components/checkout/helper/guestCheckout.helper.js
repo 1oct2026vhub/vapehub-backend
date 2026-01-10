@@ -3,12 +3,23 @@ const { createTemporaryUser } = require('../../auth/helper/temporaryUser.helper'
 
 /**
  * Migrate cart items from localStorage to database for guest user
+ * Clears existing cart items first to ensure database matches request exactly,
+ * preventing removed items from being added to orders
  * @param {number} userId - Temporary user ID
  * @param {Array} cartItems - Cart items from localStorage
  * @param {Object} transaction - Sequelize transaction
  * @returns {Promise<void>}
  */
 const migrateGuestCartToDatabase = async (userId, cartItems, transaction) => {
+    // Clear existing cart items first to ensure database matches request exactly
+    // This prevents removed items from being included in orders
+    await Cart.destroy({
+        where: { user_id: userId },
+        transaction,
+        force: true // Hard delete to completely remove records
+    });
+
+    // Now add only the items from the request
     for (const item of cartItems) {
         const { product_id, variant_id, quantity } = item;
         
@@ -16,28 +27,13 @@ const migrateGuestCartToDatabase = async (userId, cartItems, transaction) => {
             continue; // Skip invalid items
         }
 
-        // Check if item already exists in cart
-        const existingCartItem = await Cart.findOne({
-            where: {
-                user_id: userId,
-                product_id,
-                variant_id: variant_id || null
-            },
-            transaction
-        });
-
-        if (existingCartItem) {
-            // Update quantity
-            await existingCartItem.update({ quantity }, { transaction });
-        } else {
-            // Create new cart item
-            await Cart.create({
-                user_id: userId,
-                product_id,
-                variant_id: variant_id || null,
-                quantity
-            }, { transaction });
-        }
+        // Create new cart item (no need to check for existing since we cleared them)
+        await Cart.create({
+            user_id: userId,
+            product_id,
+            variant_id: variant_id || null,
+            quantity
+        }, { transaction });
     }
 };
 
