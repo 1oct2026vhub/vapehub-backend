@@ -492,10 +492,6 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Store previous status before update
-        const previousStatus = order.status;
-        const existingShipstationOrderId = order.shipstation_order_id;
-
         // Update order with admin flag and user ID
         await order.update({
             status: status,
@@ -536,36 +532,19 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             }
         }
 
-        // Handle ShipStation order creation when status changes to packed
-        // Only create if: status is changing TO packed AND ShipStation order doesn't exist
+        // Handle ShipStation order creation when status is packed
         let shipStationResponse = null;
-        let shipStationError = null;
-        let shipStationSkipped = null;
-        
-        if (status === orderStatus.PACKED && previousStatus !== orderStatus.PACKED) {
-            // Check if ShipStation order already exists
-            if (!existingShipstationOrderId) {
-                try {
-                    shipStationResponse = await createShipStationOrder(order);
-                    
-                    // Reload order to get updated shipstation_order_id
-                    await order.reload();
-                } catch (error) {
-                    console.error("ShipStation order creation failed:", error);
-                    shipStationError = {
-                        message: error.message,
-                        order_id: order.id,
-                        order_unique_id: order.order_unique_id
-                    };
-                    // Don't fail the entire request, just track the error
-                }
-            } else {
-                shipStationSkipped = 'Order already has ShipStation order ID';
-                console.log(`Order ${order.id} already has ShipStation order ID: ${existingShipstationOrderId}. Skipping creation.`);
+        if (status === orderStatus.PACKED) {
+            try {
+                shipStationResponse = await createShipStationOrder(order);
+                
+                // Reload order to get updated shipstation_order_id
+                await order.reload();
+            } catch (shipStationError) {
+                console.error("ShipStation order creation failed:", shipStationError);
+                // Don't fail the entire request, just log the error
+                // You might want to add a notification or flag for failed ShipStation creation
             }
-        } else if (status === orderStatus.PACKED && previousStatus === orderStatus.PACKED) {
-            // Status already was packed, skip ShipStation creation
-            shipStationSkipped = 'Order status already was packed';
         }
 
         // Prepare response data
@@ -581,9 +560,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                     label_data: shipStationResponse.labelResponse.labelData,
                     form_data: shipStationResponse.labelResponse.formData
                 } : null
-            } : null,
-            shipstation_error: shipStationError || null,
-            shipstation_skipped: shipStationSkipped || null
+            } : null
         };
 
         successResponse(res, responseData, 'Order status updated successfully');
@@ -626,24 +603,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Define valid transitions (same as Order model for non-admin users)
-        const validTransitions = {
-            'draft': ['pending', 'cancel'],
-            'pending': ['processing', 'fail', 'cancel'],
-            'processing': ['packed', 'fail', 'cancel'],
-            'packed': ['shipped', 'fail', 'cancel'],
-            'shipped': ['out_for_delivery', 'fail', 'cancel'],
-            'out_for_delivery': ['delivered', 'fail', 'cancel'],
-            'delivered': ['completed', 'return_requested', 'fail'],
-            'completed': ['return_requested'],
-            'return_requested': ['return_approved', 'cancel'],
-            'return_approved': ['return_received'],
-            'return_received': ['refunded'],
-            'fail': [], // Terminal status - no transitions allowed
-            'cancel': [], // Terminal status - no transitions allowed
-            'refunded': [] // Terminal status - no transitions allowed
-        };
-
         // Use transaction for bulk update
         const transaction = await sequelize.transaction();
 
@@ -660,41 +619,14 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         attributes: ['id', 'first_name', 'last_name', 'email']
                     },
                     {
-                        model: Order.sequelize.models.OrderItem,
+                        model: OrderItem,
                         as: 'orderItems',
-                        attributes: ['id', 'quantity', 'unit_price'],
+                        attributes: ['id', 'quantity'],
                         include: [
                             {
-                                model: Order.sequelize.models.Product,
-                                as: 'product',
-                                attributes: ['id', 'name', 'slug']
-                            },
-                            {
-                                model: Order.sequelize.models.ProductVariant,
+                                model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['id', 'slug', 'sku', 'price', 'weight'],
-                                include: [
-                                    {
-                                        model: Order.sequelize.models.ProductVariantAttribute,
-                                        as: 'variantAttributes',
-                                        paranoid: false,
-                                        attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
-                                        include: [
-                                            {
-                                                model: Order.sequelize.models.Attribute,
-                                                as: 'attribute',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            },
-                                            {
-                                                model: Order.sequelize.models.AttributeTerm,
-                                                as: 'term',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            }
-                                        ]
-                                    }
-                                ]
+                                attributes: ['id', 'stock']
                             }
                         ]
                     },
@@ -704,14 +636,14 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
                     },
                     {
-                        model: Order.sequelize.models.OrderAddress,
+                        model: OrderAddress,
                         as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     },
                     {
-                        model: Order.sequelize.models.OrderAddress,
+                        model: OrderAddress,
                         as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     }
                 ],
                 transaction
@@ -734,59 +666,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             // Process each order
             for (const order of orders) {
                 try {
-                    // Store previous status and ShipStation order ID before update
-                    const previousStatus = order.status;
-                    const existingShipstationOrderId = order.shipstation_order_id;
-
-                    // Validate status transition BEFORE updating
-                    let skipReason = null;
-                    
-                    // Check if status transition is valid
-                    if (validTransitions.hasOwnProperty(previousStatus)) {
-                        if (validTransitions[previousStatus].length === 0) {
-                            // Terminal status - cannot be changed
-                            skipReason = `Invalid status transition: Status '${previousStatus}' is a terminal status and cannot be changed`;
-                            errors.push({
-                                order_id: order.id,
-                                order_unique_id: order.order_unique_id,
-                                previous_status: previousStatus,
-                                attempted_status: status,
-                                skip_reason: skipReason,
-                                error: skipReason
-                            });
-                            continue; // Skip to next order
-                        }
-                        
-                        if (!validTransitions[previousStatus].includes(status)) {
-                            // Invalid transition
-                            const validOptions = validTransitions[previousStatus].join(', ');
-                            skipReason = `Invalid status transition: Cannot change status from '${previousStatus}' to '${status}'. Valid transitions from '${previousStatus}' are: ${validOptions}`;
-                            errors.push({
-                                order_id: order.id,
-                                order_unique_id: order.order_unique_id,
-                                previous_status: previousStatus,
-                                attempted_status: status,
-                                skip_reason: skipReason,
-                                error: skipReason,
-                                valid_transitions: validTransitions[previousStatus]
-                            });
-                            continue; // Skip to next order
-                        }
-                    } else {
-                        // Unknown previous status
-                        skipReason = `Invalid status transition: Previous status '${previousStatus}' is unknown or invalid`;
-                        errors.push({
-                            order_id: order.id,
-                            order_unique_id: order.order_unique_id,
-                            previous_status: previousStatus,
-                            attempted_status: status,
-                            skip_reason: skipReason,
-                            error: skipReason
-                        });
-                        continue; // Skip to next order
-                    }
-
-                    // If we reach here, transition is valid - proceed with update
                     // Update order status
                     await order.update({
                         status: status,
@@ -820,46 +699,22 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         }
                     }
 
-                    // Handle ShipStation order creation when status changes to packed
-                    // Only create if: status is changing TO packed AND ShipStation order doesn't exist
+                    // Handle ShipStation order creation when status is packed
                     let shipStationResponse = null;
-                    let shipStationError = null;
-                    let shipStationSkipped = null;
-
-                    if (status === orderStatus.PACKED && previousStatus !== orderStatus.PACKED) {
-                        // Check if ShipStation order already exists
-                        if (!existingShipstationOrderId) {
-                            try {
-                                shipStationResponse = await createShipStationOrder(order);
-                                
-                                // Reload order to get updated shipstation_order_id
-                                // Reload without transaction to see committed changes from createShipStationOrder
-                                await order.reload();
-                            } catch (error) {
-                                console.error(`ShipStation order creation failed for order ${order.id}:`, error);
-                                shipStationError = {
-                                    message: error.message,
-                                    order_id: order.id,
-                                    order_unique_id: order.order_unique_id
-                                };
-                                // Don't fail the entire request, just track the error
-                            }
-                        } else {
-                            shipStationSkipped = 'Order already has ShipStation order ID';
-                            console.log(`Order ${order.id} already has ShipStation order ID: ${existingShipstationOrderId}. Skipping creation.`);
+                    if (status === orderStatus.PACKED) {
+                        try {
+                            shipStationResponse = await createShipStationOrder(order);
+                        } catch (shipStationError) {
+                            console.error(`ShipStation order creation failed for order ${order.id}:`, shipStationError);
+                            // Don't fail the entire request, just log the error
                         }
-                    } else if (status === orderStatus.PACKED && previousStatus === orderStatus.PACKED) {
-                        // Status already was packed, skip ShipStation creation
-                        shipStationSkipped = 'Order status already was packed';
                     }
 
                     results.push({
                         order_id: order.id,
                         order_unique_id: order.order_unique_id,
                         status: status,
-                        previous_status: previousStatus,
                         success: true,
-                        skip_reason: null, // No skip reason for successful updates
                         shipstation_data: shipStationResponse ? {
                             order_id: shipStationResponse.orderResponse?.orderId,
                             label_data: shipStationResponse.labelResponse ? {
@@ -867,16 +722,13 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                                 tracking_number: shipStationResponse.labelResponse.trackingNumber,
                                 shipment_cost: shipStationResponse.labelResponse.shipmentCost
                             } : null
-                        } : null,
-                        shipstation_error: shipStationError || null,
-                        shipstation_skipped: shipStationSkipped || null
+                        } : null
                     });
                 } catch (orderError) {
                     console.error(`Error updating order ${order.id}:`, orderError);
                     errors.push({
                         order_id: order.id,
                         order_unique_id: order.order_unique_id,
-                        skip_reason: `Unexpected error during order update: ${orderError.message}`,
                         error: orderError.message
                     });
                 }
