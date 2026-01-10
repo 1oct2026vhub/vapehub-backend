@@ -6,8 +6,7 @@ async function sendOrderToShipStation(shipStationOrder) {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-        console.log("apiKey>>>>", apiKey);
-        console.log("apiSecret>>>>", apiSecret);
+        
         const response = await axios.post(
             'https://ssapi.shipstation.com/orders/createorder',
             shipStationOrder,
@@ -15,14 +14,36 @@ async function sendOrderToShipStation(shipStationOrder) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 30000 // 30 second timeout
             }
         );
         return response.data;
     } catch (error) {
-        // console.log("error>>>>", error);
-        console.error("Details:", JSON.stringify(error.response.data.ModelState, null, 2));
-        throw new Error(`Failed to send order to ShipStation: ${error.message}`);
+        // Handle network errors properly
+        if (error.response) {
+            // API returned an error response
+            console.error("ShipStation API Error:", {
+                status: error.response.status,
+                statusText: error.response.statusText,
+                data: error.response.data
+            });
+            const errorDetails = error.response.data?.ModelState 
+                ? JSON.stringify(error.response.data.ModelState, null, 2)
+                : JSON.stringify(error.response.data, null, 2);
+            throw new Error(`Failed to send order to ShipStation: ${error.response.status} - ${errorDetails}`);
+        } else if (error.request) {
+            // Request was made but no response received (timeout, network error)
+            logger.error('ShipStation network error:', {
+                message: error.message,
+                code: error.code,
+                config: { url: error.config?.url, timeout: error.config?.timeout }
+            });
+            throw new Error(`Network error connecting to ShipStation: ${error.message}`);
+        } else {
+            // Something else happened
+            throw new Error(`Failed to send order to ShipStation: ${error.message}`);
+        }
     }
 }
 
@@ -52,20 +73,35 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 30000 // 30 second timeout
             }
         );
         return response.data;
     } catch (error) {
-        logger.error('Error creating label for order:', {
-            error: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            orderId,
-            carrierCode,
-            serviceCode
-        });
-        throw new Error(`Failed to create label for order ${orderId}: ${error.message}`);
+        // Handle errors properly
+        if (error.response) {
+            // API returned an error response
+            logger.error('Error creating label for order:', {
+                error: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                orderId,
+                carrierCode,
+                serviceCode
+            });
+            throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+            // Request was made but no response received (timeout, network error)
+            logger.error('Network error creating label:', {
+                message: error.message,
+                code: error.code,
+                orderId
+            });
+            throw new Error(`Network error creating label for order ${orderId}: ${error.message}`);
+        } else {
+            throw new Error(`Failed to create label for order ${orderId}: ${error.message}`);
+        }
     }
 }
 
