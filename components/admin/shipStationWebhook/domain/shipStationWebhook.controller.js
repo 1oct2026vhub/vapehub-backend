@@ -1,8 +1,10 @@
 const axios = require('axios');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const logger = require("../../../../library/logger");
-const { Order } = require('../../../../models');
+const { Order, User, OrderItem, Product, ProductVariant, OrderAddress, ShippingMethod } = require('../../../../models');
 const utilsLogger = require('../../../../utils/logger');
+const { createNotification } = require('../../../notification/helper/notification.helper');
+const sendEmail = require('../../../../library/sendEmail');
 
 /**
  * Get ShipStation webhooks
@@ -407,17 +409,55 @@ async function handleItemOrderNotify(orderData) {
 
 /**
  * Handle SHIP_NOTIFY webhook event
- * @param {Object} webhookData - Webhook payload
+ * This is triggered when a shipping label is printed in ShipStation
+ * Updates order status to 'completed' and sends customer notification/email
+ * @param {Object} orderData - Webhook payload
  */
 async function handleShipNotify(orderData) {
     try {
-        // const { resource_url } = webhookData;
-        
-        // Extract order ID from resource URL
-
-        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
+        // Find order with all necessary relationships for email
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData.orderId },
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'first_name', 'last_name', 'email']
+                },
+                {
+                    model: OrderItem,
+                    as: 'orderItems',
+                    attributes: ['id', 'quantity', 'unit_price', 'total'],
+                    include: [
+                        {
+                            model: Product,
+                            as: 'product',
+                            attributes: ['id', 'name', 'price']
+                        },
+                        {
+                            model: ProductVariant,
+                            as: 'variant',
+                            attributes: ['id', 'slug', 'price'],
+                            required: false
+                        }
+                    ]
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderShippingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: OrderAddress,
+                    as: 'orderBillingAddress',
+                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                },
+                {
+                    model: ShippingMethod,
+                    as: 'shippingMethod',
+                    attributes: ['id', 'shipping_method', 'shipping_cost']
+                }
+            ]
         });
 
         if (!order) {
@@ -425,15 +465,102 @@ async function handleShipNotify(orderData) {
             return;
         }
 
-        // Update order status to shipped
+        // Update order status to completed (matching WooCommerce behavior when label is printed)
         await order.update({ 
-            status: 'shipped' 
+            status: 'completed' 
         }, { 
             isAdmin: true,
             userId: null // System update
         });
 
-        logger.info('Order status updated to shipped via webhook', {
+        // Create notification for customer
+        try {
+            await createNotification({
+                userId: order.user_id,
+                type: 'order',
+                action: 'completed',
+                data: {
+                    orderUniqueId: order.order_unique_id,
+                    message: `Your order #${order.order_unique_id} has been completed and is ready for shipping`
+                },
+                title: 'Order Completed',
+                url: `/my-account/orders/${order.id}`
+            });
+        } catch (notificationError) {
+            logger.error('Error creating notification for shipped order:', notificationError);
+            // Don't fail the entire operation if notification fails
+        }
+
+        // Send email to customer
+        if (order.user && order.user.email) {
+            try {
+                const emailData = {
+                    emailTypes: 'ORDER_SHIPPED',
+                    to: order.user.email,
+                    context: {
+                        userName: order.user.first_name || order.user.email.split('@')[0],
+                        orderId: order.id,
+                        orderUniqueId: order.order_unique_id,
+                        orderCode: order.order_code,
+                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
+                        status: 'completed',
+                        shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
+                        shippingCost: order.shipping_cost || 0,
+                        totalAmount: order.total || 0,
+                        discountPrice: order.discount_price || 0,
+                        loyaltyDiscount: order.loyalty_discount || 0,
+                        mailSubscriptionDiscount: order.mailSubscription_discount || 0,
+                        items: order.orderItems ? order.orderItems.map(item => ({
+                            name: item.variant 
+                                ? `${item.product?.name || 'Product'} - ${item.variant?.slug || 'Variant'}` 
+                                : (item.product?.name || 'Product'),
+                            quantity: item.quantity || 0,
+                            price: item.unit_price || 0,
+                            total: item.total || 0
+                        })) : [],
+                        shippingAddress: order.orderShippingAddress ? {
+                            name: order.orderShippingAddress.name || '',
+                            last_name: order.orderShippingAddress.last_name || '',
+                            street: order.orderShippingAddress.street || '',
+                            town: order.orderShippingAddress.town || '',
+                            region: order.orderShippingAddress.region || '',
+                            post_code: order.orderShippingAddress.post_code || '',
+                            country: order.orderShippingAddress.country || '',
+                            phone: order.orderShippingAddress.phone || ''
+                        } : {},
+                        billingAddress: order.orderBillingAddress ? {
+                            name: order.orderBillingAddress.name || '',
+                            last_name: order.orderBillingAddress.last_name || '',
+                            street: order.orderBillingAddress.street || '',
+                            town: order.orderBillingAddress.town || '',
+                            region: order.orderBillingAddress.region || '',
+                            post_code: order.orderBillingAddress.post_code || '',
+                            country: order.orderBillingAddress.country || '',
+                            phone: order.orderBillingAddress.phone || ''
+                        } : {},
+                        paymentMethod: 'VivaWallet' // You may want to fetch this from order.paymentMethod
+                    }
+                };
+
+                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                
+                logger.info('Order completion email sent successfully', {
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    user_email: order.user.email
+                });
+            } catch (emailError) {
+                logger.error('Error sending order completion email:', {
+                    error: emailError.message,
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    user_email: order.user?.email
+                });
+                // Don't fail the entire operation if email fails
+            }
+        }
+
+        logger.info('Order status updated to completed via webhook', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             shipstation_order_id: order.shipstation_order_id || orderData.orderId

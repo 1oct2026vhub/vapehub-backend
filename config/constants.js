@@ -5,6 +5,7 @@ module.exports = {
         REFER_A_FRIEND: 'REFER_A_FRIEND',
         REFERRER_REWARD: 'REFERRER_REWARD',
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
+        ORDER_SHIPPED: 'ORDER_SHIPPED',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
@@ -37,6 +38,11 @@ module.exports = {
         ORDER_CONFIRMATION:{
             folderName: 'order_confirmation',
             subject: "Order Confirmation",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_SHIPPED: {
+            folderName: 'order_shipped',
+            subject: "Your Order Has Been Completed | VapeHub",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ORDER_CANCELLATION: {

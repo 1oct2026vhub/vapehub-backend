@@ -492,7 +492,31 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Update order with admin flag and user ID
+        // For "packed" status, create ShipStation order FIRST before updating status
+        let shipStationResponse = null;
+        if (status === orderStatus.PACKED) {
+            // Only create ShipStation order if it doesn't already exist
+            if (!order.shipstation_order_id) {
+                try {
+                    // Create ShipStation order BEFORE updating status
+                    shipStationResponse = await createShipStationOrder(order);
+                    
+                    // Reload order to get updated shipstation_order_id
+                    await order.reload();
+                } catch (shipStationError) {
+                    console.error("ShipStation order creation failed:", shipStationError);
+                    const error = new Error(`Failed to create ShipStation order: ${shipStationError.message || shipStationError.toString()}`);
+                    error.statusCode = 500;
+                    error.shipStationError = shipStationError.message || shipStationError.toString();
+                    throw error; // Don't update status if ShipStation creation fails
+                }
+            } else {
+                // Order already has a ShipStation order ID, proceed with status update
+                shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
+            }
+        }
+
+        // Update order status (only reached if ShipStation creation succeeded or not needed)
         await order.update({
             status: status,
             updated_by: user_id
@@ -529,21 +553,6 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 if (item.variant) {
                     await item.variant.increment('stock', { by: item.quantity });
                 }
-            }
-        }
-
-        // Handle ShipStation order creation when status is packed
-        let shipStationResponse = null;
-        if (status === orderStatus.PACKED) {
-            try {
-                shipStationResponse = await createShipStationOrder(order);
-                
-                // Reload order to get updated shipstation_order_id
-                await order.reload();
-            } catch (shipStationError) {
-                console.error("ShipStation order creation failed:", shipStationError);
-                // Don't fail the entire request, just log the error
-                // You might want to add a notification or flag for failed ShipStation creation
             }
         }
 
@@ -621,12 +630,39 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: OrderItem,
                         as: 'orderItems',
-                        attributes: ['id', 'quantity'],
+                        attributes: ['id', 'quantity', 'unit_price'],
                         include: [
+                            {
+                                model: Product,
+                                as: 'product',
+                                attributes: ['id', 'name', 'sku', 'slug']
+                            },
                             {
                                 model: ProductVariant,
                                 as: 'variant',
-                                attributes: ['id', 'stock']
+                                attributes: ['id', 'stock', 'sku', 'slug', 'weight'],
+                                include: [
+                                    {
+                                        model: ProductVariantAttribute,
+                                        as: 'variantAttributes',
+                                        paranoid: false,
+                                        attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                        include: [
+                                            {
+                                                model: Attribute,
+                                                as: 'attribute',
+                                                paranoid: false,
+                                                attributes: ['id', 'name']
+                                            },
+                                            {
+                                                model: AttributeTerm,
+                                                as: 'term',
+                                                paranoid: false,
+                                                attributes: ['id', 'attribute_id', 'name']
+                                            }
+                                        ]
+                                    }
+                                ]
                             }
                         ]
                     },
@@ -663,10 +699,73 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             const results = [];
             const errors = [];
 
-            // Process each order
+            // Step 1: For "packed" status, create ShipStation orders first (in parallel for efficiency)
+            // This happens outside transaction to avoid holding it during API calls
+            const shipStationPromises = [];
+            const shipStationMap = new Map(); // Map order.id -> shipStationPromise index
+            
+            if (status === orderStatus.PACKED) {
+                for (let i = 0; i < orders.length; i++) {
+                    const order = orders[i];
+                    
+                    // Only create ShipStation order if it doesn't already exist
+                    if (!order.shipstation_order_id) {
+                        const promise = createShipStationOrder(order)
+                            .then(response => ({ success: true, response, order }))
+                            .catch(error => ({ success: false, error, order }));
+                        
+                        shipStationPromises.push(promise);
+                        shipStationMap.set(order.id, shipStationPromises.length - 1);
+                    }
+                }
+            }
+
+            // Wait for all ShipStation creations to complete (non-blocking for transaction)
+            const shipStationResults = await Promise.allSettled(shipStationPromises);
+
+            // Step 2: Process each order - only update status if ShipStation creation succeeded (if required)
             for (const order of orders) {
                 try {
-                    // Update order status
+                    // Check ShipStation creation result if status is "packed"
+                    let shipStationResponse = null;
+                    let shipStationError = null;
+                    
+                    if (status === orderStatus.PACKED) {
+                        if (order.shipstation_order_id) {
+                            // Order already has ShipStation ID, proceed with status update
+                            shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
+                        } else {
+                            // Check if ShipStation creation was attempted and succeeded
+                            const promiseIndex = shipStationMap.get(order.id);
+                            if (promiseIndex !== undefined) {
+                                const result = shipStationResults[promiseIndex];
+                                
+                                if (result.status === 'fulfilled' && result.value.success) {
+                                    shipStationResponse = result.value.response;
+                                    // Reload order to get updated shipstation_order_id
+                                    await order.reload();
+                                } else {
+                                    // ShipStation creation failed - don't update order status
+                                    const errorMsg = result.status === 'fulfilled' 
+                                        ? (result.value.error?.message || result.value.error?.toString() || 'Unknown error')
+                                        : result.reason?.message || result.reason?.toString() || 'Unknown error';
+                                    
+                                    shipStationError = errorMsg;
+                                    console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
+                                    
+                                    errors.push({
+                                        order_id: order.id,
+                                        order_unique_id: order.order_unique_id,
+                                        error: `Failed to create ShipStation order: ${errorMsg}`,
+                                        status: order.status // Keep original status
+                                    });
+                                    continue; // Skip to next order without updating status
+                                }
+                            }
+                        }
+                    }
+
+                    // Update order status (only reached if ShipStation creation succeeded or not needed)
                     await order.update({
                         status: status,
                         updated_by: user_id
@@ -699,17 +798,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         }
                     }
 
-                    // Handle ShipStation order creation when status is packed
-                    let shipStationResponse = null;
-                    if (status === orderStatus.PACKED) {
-                        try {
-                            shipStationResponse = await createShipStationOrder(order);
-                        } catch (shipStationError) {
-                            console.error(`ShipStation order creation failed for order ${order.id}:`, shipStationError);
-                            // Don't fail the entire request, just log the error
-                        }
-                    }
-
                     results.push({
                         order_id: order.id,
                         order_unique_id: order.order_unique_id,
@@ -729,7 +817,8 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     errors.push({
                         order_id: order.id,
                         order_unique_id: order.order_unique_id,
-                        error: orderError.message
+                        error: orderError.message,
+                        status: order.status // Keep original status
                     });
                 }
             }
