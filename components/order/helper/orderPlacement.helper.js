@@ -44,7 +44,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         payment_method, 
         loyalty, 
         total, 
-        shipping_method_id: initialShippingMethodId 
+        shipping_method_id: initialShippingMethodId,
+        cartItems: providedCartItems // New: accept cart items directly for guest checkout
     } = orderData;
 
     // Use a mutable copy of shipping method id so we don't reassign a destructured const
@@ -99,39 +100,46 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         throw new Error(`Payment method ${payMethod} not found`);
     }
 
-    // Fetch Cart Items
-    const cartItems = await Cart.findAll({
-        where: { user_id },
-        include: [
-            { model: User, attributes: ["id", "first_name", "last_name", "email", "phone"], as: "user" },
-            { 
-                model: Product, 
-                where: { deletedAt: null },
-                include: [
-                    { 
-                        model: ProductVariant, 
-                        as: "variants",
-                        where: { deleted_at: null },
-                        required: false
-                    },
-                    {
-                        model: Brand,
-                        as: "Brands",
-                        attributes: ["id", "name", "slug"],
-                        through: { attributes: [] }
-                    },
-                    {
-                        model: Category,
-                        as: "Categories",
-                        attributes: ["id", "name", "slug"],
-                        through: { attributes: [] }
-                    }
-                ], 
-                as: "product" 
-            },
-        ],
-        transaction
-    });
+    // Fetch Cart Items - use provided items for guest checkout, otherwise query Cart table
+    let cartItems;
+    if (providedCartItems && providedCartItems.length > 0) {
+        // Guest checkout: use provided cart items directly
+        cartItems = providedCartItems;
+    } else {
+        // Regular checkout: query Cart table
+        cartItems = await Cart.findAll({
+            where: { user_id },
+            include: [
+                { model: User, attributes: ["id", "first_name", "last_name", "email", "phone"], as: "user" },
+                { 
+                    model: Product, 
+                    where: { deletedAt: null },
+                    include: [
+                        { 
+                            model: ProductVariant, 
+                            as: "variants",
+                            where: { deleted_at: null },
+                            required: false
+                        },
+                        {
+                            model: Brand,
+                            as: "Brands",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        },
+                        {
+                            model: Category,
+                            as: "Categories",
+                            attributes: ["id", "name", "slug"],
+                            through: { attributes: [] }
+                        }
+                    ], 
+                    as: "product" 
+                },
+            ],
+            transaction
+        });
+    }
     
     if (!cartItems.length) throw new Error("Cart is empty");
     
@@ -141,9 +149,18 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     // Transform cart items for deals service
     const transformedCartItems = cartItems.map(item => {
-        const variant = item.product.variants.find(v => v.id === item.variant_id);
+        // Handle both Cart model instances and plain objects from guest checkout
+        let variant;
+        if (item.variant && item.variant.id) {
+            // Guest checkout: variant is already attached
+            variant = item.variant;
+        } else if (item.product?.variants) {
+            // Regular checkout: find variant from product.variants array
+            variant = item.product.variants.find(v => v.id === item.variant_id);
+        }
+        
         return {
-            ...item.toJSON(),
+            ...(item.toJSON ? item.toJSON() : item),
             variant: variant || null
         };
     });
@@ -155,21 +172,43 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     const applicableDeals = dealResult.appliedDeals;
 
     for (const item of cartItems) {
-        const { product, variant_id, quantity } = item;
+        // Handle both Cart model instances and plain objects
+        const product = item.product;
+        const variant_id = item.variant_id;
+        const quantity = item.quantity;
+        
         if (!product) throw new Error(`Product not found.`);
-        const variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
-        if (variant == null) throw new Error(`Product ${product.name} with variant not found.`);
+        
+        // Get variant - handle both Cart model and plain object structures
+        let variant;
+        if (item.variant && item.variant.id) {
+            // Guest checkout: variant is already attached
+            variant = item.variant;
+        } else if (product.variants) {
+            // Regular checkout: find from variants array
+            variant = variant_id ? product.variants.find(v => v.id === variant_id) : null;
+        }
+        
+        // If variant_id is provided, variant must exist
+        if (variant_id && variant == null) {
+            throw new Error(`Product ${product.name} with variant not found.`);
+        }
         
         // Validate Stock
-        if (variant && variant.stock < quantity) throw new Error(`Not enough stock for variant ${variant.slug}.`);
-        if (!variant && product.stock_quantity < quantity) throw new Error(`Not enough stock for ${product.name}.`);
+        if (variant && variant.stock < quantity) {
+            throw new Error(`Not enough stock for variant ${variant.slug || variant_id}.`);
+        }
+        if (!variant && product.stock_quantity < quantity) {
+            throw new Error(`Not enough stock for ${product.name}.`);
+        }
         
         const unitPrice = variant ? variant.price : product.price;
         const itemTotal = unitPrice * quantity;
         subTotal += itemTotal;
 
-        // Get item-level deal discount
-        const itemDealDiscount = dealResult.itemDiscounts[item.id] || 0;
+        // Get item-level deal discount - handle both Cart model and plain object
+        const itemId = item.id || item.product_id; // Use product_id as fallback for guest items
+        const itemDealDiscount = dealResult.itemDiscounts?.[itemId] || 0;
         const finalItemTotal = itemTotal - itemDealDiscount;
 
         orderItems.push({
@@ -184,7 +223,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
         orderDetails.push({
             product_name: product.name,
-            variant_name: variant ? variant.name : null,
+            variant_name: variant ? (variant.slug || variant.name) : null,
             quantity,
             total: finalItemTotal,
             discount: itemDealDiscount,
