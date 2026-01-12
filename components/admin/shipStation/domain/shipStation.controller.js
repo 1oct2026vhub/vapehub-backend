@@ -86,7 +86,7 @@ async function createShipStationOrder(order) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
-            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
+            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method,
         };
         console.log("<<<<<< shipStationOrder >>>>>>", shipStationOrder);
         // Create order in ShipStation
@@ -116,47 +116,59 @@ async function createShipStationOrder(order) {
             shipstation_order_id: orderId
         });
 
-        // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
-        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
-        const packageCode = 'package'; // Example default
-        const confirmation = null;
-        const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-        
-        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
-        let totalWeight = 1;
-        if (order.orderItems && order.orderItems.length > 0) {
-            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
-        }
-        
-        const weight = { value: totalWeight, units: 'pounds' };
-        const dimensions = null;
-        const insuranceOptions = null;
-        const internationalOptions = null;
-        const advancedOptions = null;
-        const testLabel = true;
-
-        // Create label for the order
+        // Map order data to label creation params
+        // Only create label if carrier_code and service_code are available
         let labelResponse = null;
-        try {
-            labelResponse = await createLabelForOrder({
-                orderId,
-                carrierCode,
-                serviceCode,
-                packageCode,
-                confirmation,
-                shipDate,
-                weight,
-                dimensions,
-                insuranceOptions,
-                internationalOptions,
-                advancedOptions,
-                testLabel
+        
+        if (order.shippingMethod?.carrier_code && order.shippingMethod?.service_code) {
+            const carrierCode = order.shippingMethod.carrier_code;
+            const serviceCode = order.shippingMethod.service_code;
+            const packageCode = 'package';
+            const confirmation = null;
+            const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+            
+            // Calculate total weight (sum of item weights, fallback to 1 pound)
+            let totalWeight = 1;
+            if (order.orderItems && order.orderItems.length > 0) {
+                totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+            }
+            
+            const weight = { value: totalWeight, units: 'pounds' };
+            const dimensions = null;
+            const insuranceOptions = null;
+            const internationalOptions = null;
+            const advancedOptions = null;
+            const testLabel = true;
+
+            // Create label for the order
+            try {
+                labelResponse = await createLabelForOrder({
+                    orderId,
+                    carrierCode,
+                    serviceCode,
+                    packageCode,
+                    confirmation,
+                    shipDate,
+                    weight,
+                    dimensions,
+                    insuranceOptions,
+                    internationalOptions,
+                    advancedOptions,
+                    testLabel
+                });
+            } catch (labelError) {
+                console.log("labelError>>>>>>", labelError);
+                // Don't fail the entire operation, just log the error
+                // The order was created successfully, so we can still return the order response
+            }
+        } else {
+            logger.warn('Skipping label creation - missing carrier_code or service_code', {
+                order_id: order.id,
+                order_unique_id: order.order_unique_id,
+                shipping_method_id: order.shippingMethod?.id,
+                has_carrier_code: !!order.shippingMethod?.carrier_code,
+                has_service_code: !!order.shippingMethod?.service_code
             });
-        } catch (labelError) {
-            console.log("labelError>>>>>>", labelError);
-            // Don't fail the entire operation, just log the error
-            // The order was created successfully, so we can still return the order response
         }
 
         return { orderResponse, labelResponse };
