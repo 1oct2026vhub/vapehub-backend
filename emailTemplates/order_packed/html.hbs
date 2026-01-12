@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f6fb;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.10);
+            overflow: hidden;
+        }
+
+        .header {
+            border-radius: 14px;
+            border: 1px solid var(--Natural-10, #FFF);
+            background: linear-gradient(90deg, #083122 0%, #035335 50%, #083122 100%);
+            box-shadow: -1px 4px 24px 0 rgba(0, 0, 0, 0.24);
+            padding: 32px 0 16px 0;
+            text-align: center;
+        }
+
+        .logo {
+            max-width: 160px;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 32px 24px 24px 24px;
+        }
+
+        h2 {
+            color: #2e8b57;
+            margin-bottom: 8px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .order-details {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            box-shadow: 0 2px 8px rgba(44, 62, 80, 0.04);
+        }
+
+        .order-details h3 {
+            margin-top: 0;
+            color: #222;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .order-details p {
+            margin: 6px 0;
+            color: #444;
+            font-size: 15px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 18px;
+            background: #3498db;
+            color: #fff;
+            border-radius: 20px;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-left: 10px;
+            text-transform: capitalize;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 24px 0 0 0;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(44, 62, 80, 0.06);
+        }
+
+        .items-table th,
+        .items-table td {
+            padding: 14px 12px;
+            text-align: left;
+        }
+
+        .items-table th {
+            background: #f2f6f9;
+            color: #2e8b57;
+            font-size: 15px;
+            font-weight: 700;
+            border-bottom: 2px solid #e0e6ed;
+        }
+
+        .items-table td {
+            font-size: 15px;
+            color: #333;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .items-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .item-name {
+            font-weight: 600;
+        }
+
+        .item-quantity,
+        .item-price {
+            text-align: center;
+        }
+
+        .total-row td {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #222;
+        }
+
+        .total-label {
+            text-align: right;
+            padding-right: 16px;
+        }
+
+        .total-price {
+            color: #2e8b57;
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .tracking-info {
+            margin: 32px 0 0 0;
+            padding: 20px;
+            background: #e8f4fd;
+            border-radius: 10px;
+            color: #2980b9;
+            font-size: 15px;
+        }
+
+        .footer {
+            background: #f2f6f9;
+            text-align: center;
+            padding: 24px 10px;
+            color: #888;
+            font-size: 13px;
+            border-top: 1px solid #e0e6ed;
+        }
+
+        @media (max-width: 650px) {
+            .email-container {
+                margin: 10px;
+            }
+
+            .content,
+            .order-details {
+                padding: 16px;
+            }
+
+            .items-table th,
+            .items-table td {
+                padding: 10px 6px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+        <div class="content">
+            <h2>Your Order Has Been Packed! 📦</h2>
+            <p style="font-size:16px; color:#222;">Hello {{userName}},</p>
+            <p style="font-size:15px; color:#444;">Great news! Your order has been packed and is ready to be shipped. Our team has carefully prepared all your items and they're now waiting to be dispatched.</p>
+            <div class="order-details">
+                <h3>Order Summary</h3>
+                <p><strong>Order Number:</strong> #{{orderCode}}</p>
+                <p><strong>Order ID:</strong> {{orderUniqueId}}</p>
+                <p><strong>Order Date:</strong> {{orderDate}}</p>
+                <p><strong>Order Status:</strong> <span class="status-badge">{{status}}</span></p>
+                <h3 style="margin-top:24px;">Your Items</h3>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="item-quantity">Quantity</th>
+                            <th class="item-price">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#items}}
+                        <tr>
+                            <td class="item-name">{{name}}</td>
+                            <td class="item-quantity">{{quantity}}</td>
+                            <td class="item-price">£{{price}}</td>
+                        </tr>
+                        {{/items}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Shipping Method</td>
+                            <td class="shipping-method">{{shippingMethod}}</td>
+                        </tr>
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Shipping Cost</td>
+                            <td class="shipping-cost">£{{shippingCost}}</td>
+                        </tr>
+                        {{#if discountPrice}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Coupon Discount</td>
+                            <td class="discount-price" style="color:#e74c3c;">-£{{discountPrice}}</td>
+                        </tr>
+                        {{/if}}
+                        {{#if loyaltyDiscount}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Loyalty Points Discount</td>
+                            <td class="loyalty-discount" style="color:#e74c3c;">-£{{loyaltyDiscount}}</td>
+                        </tr>
+                        {{/if}}
+                        {{#if mailSubscriptionDiscount}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Mail Subscription Discount</td>
+                            <td class="mail-subscription-discount" style="color:#e67e22;">-£{{mailSubscriptionDiscount}}</td>
+                        </tr>
+                        {{/if}}
+                        <tr class="total-row">
+                            <td colspan="2" class="total-label">Total Amount</td>
+                            <td class="total-price">£{{totalAmount}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="tracking-info">
+                <h3 style="margin-top:0;">What's Next?</h3>
+                <p>Your order has been carefully packed and is now ready for shipment. You'll receive another email with tracking information once your package is dispatched.</p>
+                <p>You can check your order status anytime by visiting your <a href="{{FRONTEND_URL}}/my-account/orders" style="color: #2980b9; text-decoration: underline;">account dashboard</a>.</p>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Need help with your order? Our customer service team is here to assist you.</p>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                <p style="font-weight: bold; margin-bottom: 10px;">Customer Services</p>
+                <p>Email us: <a href="mailto:customerservices@vapehub.co.uk" style="color: #2e8b57;">customerservices@vapehub.co.uk</a></p>
+                <p>Call us: <a href="tel:07508373773" style="color: #2e8b57;">07508 373773</a></p>
+            </div>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>
+
