@@ -5,7 +5,7 @@ const logger = require("../../../library/logger");
 const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser, findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
-const { migrateGuestCartToDatabase, createGuestUser } = require('../helper/guestCheckout.helper');
+const { createGuestUser } = require('../helper/guestCheckout.helper');
 const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
@@ -1629,8 +1629,12 @@ module.exports.guestCheckout = async (req, res, next) => {
  * Combined guest checkout and order placement
  * Creates temporary user, calculates checkout, and places order in one API call
  */
+/**
+ * Combined guest checkout and order placement
+ * Creates temporary user, calculates checkout, and places order in one API call
+ * Processes cartItems directly from request without using Cart table
+ */
 module.exports.guestCheckoutAndOrder = async (req, res, next) => {
-    const transaction = await sequelize.transaction();
     try {
         const { 
             email, 
@@ -1692,12 +1696,99 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             phone
         });
 
-        // Step 2: Migrate cart items
-        await migrateGuestCartToDatabase(tempUser.id, cartItems, transaction);
-        
-        await transaction.commit();
+        // Step 2: Enrich cart items from request (no Cart table needed)
+        const enrichedCartItems = [];
+        for (const item of cartItems) {
+            const { product_id, variant_id, quantity } = item;
+            
+            if (!product_id || !quantity) {
+                continue; // Skip invalid items
+            }
 
-        // Step 3: Calculate checkout summary (reuse guestCheckout logic)
+            const product = await Product.findOne({
+                where: { id: product_id },
+                attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                include: [
+                    {
+                        model: Brand,
+                        as: "Brands",
+                        attributes: ["id", "name", "slug"],
+                        through: { attributes: [] }
+                    },
+                    {
+                        model: Category,
+                        as: "Categories",
+                        attributes: ["id", "name", "slug"],
+                        through: { attributes: [] }
+                    }
+                ],
+                paranoid: false
+            });
+
+            if (!product) {
+                throw {
+                    statusCode: 404,
+                    message: `Product with ID ${product_id} not found`
+                };
+            }
+
+            let variant = null;
+            if (variant_id) {
+                variant = await ProductVariant.findOne({
+                    where: { id: variant_id },
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
+                    paranoid: false
+                });
+
+                if (!variant) {
+                    throw {
+                        statusCode: 404,
+                        message: `Variant for product ${product.name} is not found`
+                    };
+                }
+
+                if (variant.deleted_at) {
+                    throw {
+                        statusCode: 404,
+                        message: `The selected variant for product ${product.name} is no longer available.`
+                    };
+                }
+            }
+
+            // Validate stock
+            if (variant && variant.stock < quantity) {
+                throw {
+                    statusCode: 409,
+                    message: `Not enough stock for ${product.name}. Available: ${variant.stock}, Requested: ${quantity}`
+                };
+            }
+
+            // Create cart-like structure for compatibility with existing logic
+            enrichedCartItems.push({
+                product_id,
+                variant_id: variant_id || null,
+                quantity,
+                product,
+                variant: variant || { price: product.price, id: null },
+                // Add user for compatibility
+                user: {
+                    id: tempUser.id,
+                    first_name: tempUser.first_name,
+                    last_name: tempUser.last_name,
+                    email: tempUser.email,
+                    phone: tempUser.phone
+                }
+            });
+        }
+
+        if (enrichedCartItems.length === 0) {
+            throw {
+                statusCode: 404,
+                message: 'Cart is empty'
+            };
+        }
+
+        // Step 3: Calculate checkout summary using enriched items
         const userId = tempUser.id;
         let checkoutTotal = 0;
         let subTotal = 0;
@@ -1705,53 +1796,18 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         let dealsDiscount = 0;
         let applicableDeals = [];
 
-        const cart = await Cart.findAll({
-            where: { user_id: userId },
-            include: [
-                {
-                    model: User,
-                    attributes: ["id", "first_name", "last_name", "email", "phone"],
-                    as: "user"
-                },
-                {
-                    model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
-                    as: "product",
-                    paranoid: false
-                },
-                {
-                    model: ProductVariant,
-                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
-                    as: "variant",
-                    paranoid: false
-                }
-            ]
-        });
-
-        if (cart.length === 0) {
-            throw {
-                statusCode: 404,
-                message: 'Cart is empty'
-            };
-        }
-
         // Calculate subtotal
-        for (const item of cart) {
-            if (!item.variant || item.variant.deleted_at) {
-                throw {
-                    statusCode: 404,
-                    message: `The selected variant for product ${item.product?.name} is no longer available.`
-                };
-            }
-            subTotal += item.quantity * item.variant.price;
+        for (const item of enrichedCartItems) {
+            const price = item.variant?.price || item.product.price;
+            subTotal += item.quantity * price;
             totalItems += item.quantity;
         }
 
         // Calculate deals
-        const deals = await dealService.getApplicableDeals(cart);
-        const dealResult = dealService.calculateDealDiscounts(cart, deals);
+        const deals = await dealService.getApplicableDeals(enrichedCartItems);
+        const dealResult = dealService.calculateDealDiscounts(enrichedCartItems, deals);
         dealsDiscount = dealResult.totalDiscount;
-        applicableDeals = dealResult.appliedDeals;
+        applicableDeals = dealResult.applicableDeals;
 
         checkoutTotal = subTotal - dealsDiscount;
 
@@ -1844,7 +1900,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             loyalty_redemption_info: loyaltyRedemptionInfo
         };
 
-        // Step 4: Place order using helper
+        // Step 4: Place order using helper with enriched cart items
         const orderTransaction = await sequelize.transaction();
         try {
             const orderResult = await placeOrderLogic(tempUser.id, {
@@ -1859,7 +1915,9 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                 payment_method,
                 loyalty,
                 total,
-                shipping_method_id
+                shipping_method_id,
+                // Pass enriched cart items directly - no Cart table query needed
+                cartItems: enrichedCartItems
             }, orderTransaction);
 
             await orderTransaction.commit();
@@ -1881,11 +1939,6 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         }
 
     } catch (error) {
-        // Only rollback if transaction hasn't been finished (committed or rolled back)
-        if (transaction && !transaction.finished) {
-            await transaction.rollback();
-        }
-
         // Log full error details to diagnose 500s like "Assignment to constant variable."
         console.error('guestCheckoutAndOrder error:', error);
         if (error && error.stack) {
