@@ -1,0 +1,58 @@
+{{#*inline "orderShippedText"}}
+Hello {{userName}},
+
+Great news! Your order has been completed and is now ready for shipping. We've prepared your items and they'll be on their way to you soon.
+
+Order Number: #{{orderCode}}
+Order ID: {{orderUniqueId}}
+Order Date: {{orderDate}}
+Order Status: {{status}}
+
+Items Ordered:
+{{#items}}
+- {{name}}
+  Quantity: {{quantity}}
+  Price: £{{price}}
+{{/items}}
+
+Shipping Method: {{shippingMethod}}
+Shipping Cost: £{{shippingCost}}
+
+{{#if discountPrice}}
+Coupon Discount: -£{{discountPrice}}
+{{/if}}
+{{#if loyaltyDiscount}}
+Loyalty Points Discount: -£{{loyaltyDiscount}}
+{{/if}}
+{{#if mailSubscriptionDiscount}}
+Mail Subscription Discount: -£{{mailSubscriptionDiscount}}
+{{/if}}
+
+Total Amount: £{{totalAmount}}
+
+Shipping Address:
+{{shippingAddress.name}} {{shippingAddress.last_name}}
+{{shippingAddress.street}}
+{{shippingAddress.town}}, {{shippingAddress.region}} {{shippingAddress.post_code}}
+{{shippingAddress.country}}
+Phone: {{shippingAddress.phone}}
+
+What's Next?
+Your order has been completed and prepared for shipping. You'll receive tracking information once your package is dispatched.
+
+You can check your order status anytime by visiting your account dashboard.
+
+If you have any questions about your order, please contact our customer service.
+
+Customer Services
+Email us: customerservices@vapehub.co.uk
+Call us: 07508 373773
+
+Best regards,
+The VapeHub Team
+
+© {{currentYear}} VapeHub. All rights reserved.
+{{/inline}}
+
+{{> orderShippedText}}
+
