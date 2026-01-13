@@ -548,7 +548,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderId: order.id,
                             relatedId: order.id
                         },
-                        url: '/my-account/orders'
+                        url: '/order-details'
                     });
 
                     // Create success notification
@@ -719,7 +719,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: '/my-account/orders'
+                        url: '/order-details'
                     });
 
                     // Create admin notification for failed payment
@@ -946,7 +946,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: '/my-account/orders'
+                        url: '/order-details'
                     });
 
                     // Create admin notification for failed payment
@@ -1140,7 +1140,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             reason: 'Cancelled via Viva Wallet'
                         },
                         title: 'Order Cancelled',
-                        url: '/my-account/orders'
+                        url: '/order-details'
                     });
 
                     // Create admin notification for order cancellation
@@ -1417,7 +1417,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             reason: `Refund processed via Viva Wallet. Reason: ${ReversalReason || 'Not specified'}`
                         },
                         title: 'Payment Refunded',
-                        url: '/my-account/orders'
+                        url: '/order-details'
                     });
 
                     // Create admin notification for refund

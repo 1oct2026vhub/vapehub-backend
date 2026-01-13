@@ -696,7 +696,7 @@ module.exports.cancelOrder = async (req, res) => {
                 orderCode: order.order_code,
                 reason: 'Viva Wallet Order Cancelled'
             },
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Send cancellation email
@@ -952,7 +952,7 @@ module.exports.checkOrderStock = async (req, res) => {
                     //         orderCode: order.order_code,
                     //         reason: 'Viva Wallet Order Not Found'
                     //     },
-                    //     url: '/my-account/orders'
+                    //     url: '/order-details'
                     // });
 
                     // Send cancellation email
