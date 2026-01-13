@@ -162,20 +162,29 @@ const fetchProductsOptimized = async (query, status = 'published') => {
 
     // Add category and brand filters
     if (categories) {
-      baseFilterConditions.push(`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))`);
+      const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+      if (categoryIds.length > 0) {
+        baseFilterConditions.push(`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))`);
+      }
     }
 
     if (brand) {
-      if (categories) {
-        baseFilterConditions.push(`EXISTS (
-          SELECT 1 FROM product_categories pc
-          INNER JOIN product_brands pb ON pc.product_id = pb.product_id
-          WHERE pc.product_id = p.id
-          AND pc.category_id IN (${categories.split(',').map(Number).join(',')})
-          AND pb.brand_id IN (${brand.split(',').map(Number).join(',')})
-        )`);
-      } else {
-        baseFilterConditions.push(`EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))`);
+      const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+      if (brandIds.length > 0) {
+        if (categories) {
+          const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+          if (categoryIds.length > 0) {
+            baseFilterConditions.push(`EXISTS (
+              SELECT 1 FROM product_categories pc
+              INNER JOIN product_brands pb ON pc.product_id = pb.product_id
+              WHERE pc.product_id = p.id
+              AND pc.category_id IN (${categoryIds.join(',')})
+              AND pb.brand_id IN (${brandIds.join(',')})
+            )`);
+          }
+        } else {
+          baseFilterConditions.push(`EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))`);
+        }
       }
     }
 

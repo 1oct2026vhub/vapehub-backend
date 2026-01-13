@@ -346,37 +346,44 @@ const fetchProducts = async (query, status = 'published') => {
 
     // Add category and brand filtering using many-to-many relationships
     if (categories) {
-      const categoryIds = categories.split(',').map(Number);
-      productWhereClause.id = {
-        [Op.in]: Sequelize.literal(`(
-          SELECT DISTINCT product_id 
-          FROM product_categories 
-          WHERE category_id IN (${categoryIds.join(',')})
-        )`)
-      };
-    }
-
-    if (brand) {
-      const brandIds = brand.split(',').map(Number);
-      if (categories) {
-        // If both categories and brands are specified, use EXISTS logic to avoid subquery issues
-        productWhereClause.id = {
-          [Op.in]: Sequelize.literal(`(
-            SELECT DISTINCT pc.product_id 
-            FROM product_categories pc
-            INNER JOIN product_brands pb ON pc.product_id = pb.product_id
-            WHERE pc.category_id IN (${categories.split(',').map(Number).join(',')})
-            AND pb.brand_id IN (${brandIds.join(',')})
-          )`)
-        };
-      } else {
+      const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+      if (categoryIds.length > 0) {
         productWhereClause.id = {
           [Op.in]: Sequelize.literal(`(
             SELECT DISTINCT product_id 
-            FROM product_brands 
-            WHERE brand_id IN (${brandIds.join(',')})
+            FROM product_categories 
+            WHERE category_id IN (${categoryIds.join(',')})
           )`)
         };
+      }
+    }
+
+    if (brand) {
+      const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+      if (brandIds.length > 0) {
+        if (categories) {
+          const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+          if (categoryIds.length > 0) {
+            // If both categories and brands are specified, use EXISTS logic to avoid subquery issues
+            productWhereClause.id = {
+              [Op.in]: Sequelize.literal(`(
+                SELECT DISTINCT pc.product_id 
+                FROM product_categories pc
+                INNER JOIN product_brands pb ON pc.product_id = pb.product_id
+                WHERE pc.category_id IN (${categoryIds.join(',')})
+                AND pb.brand_id IN (${brandIds.join(',')})
+              )`)
+            };
+          }
+        } else {
+          productWhereClause.id = {
+            [Op.in]: Sequelize.literal(`(
+              SELECT DISTINCT product_id 
+              FROM product_brands 
+              WHERE brand_id IN (${brandIds.join(',')})
+            )`)
+          };
+        }
       }
   }
 
@@ -567,8 +574,14 @@ const fetchProducts = async (query, status = 'published') => {
         WHERE p.deletedAt IS NULL
         AND p.status = :status
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
-        ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
-        ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+        ${categories ? (() => {
+          const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+          return categoryIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))` : '';
+        })() : ''}
+        ${brand ? (() => {
+          const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+          return brandIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))` : '';
+        })() : ''}
         ${priceRange ? `AND EXISTS (
           SELECT 1
           FROM (
@@ -635,8 +648,14 @@ const fetchProducts = async (query, status = 'published') => {
         WHERE p.deletedAt IS NULL
         AND p.status = :status
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
-        ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
-        ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+        ${categories ? (() => {
+          const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+          return categoryIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))` : '';
+        })() : ''}
+        ${brand ? (() => {
+          const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+          return brandIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))` : '';
+        })() : ''}
         ${priceRange ? `AND EXISTS (
           SELECT 1
           FROM (
@@ -1311,7 +1330,10 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
+          ${brand ? (() => {
+            const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+            return brandIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))` : '';
+          })() : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
             ${Object.entries(selectedAttributes)
               .map(([attrId, termIds]) => 
@@ -1368,10 +1390,13 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${categories ? (() => {
+            const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+            return categoryIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))` : '';
+          })() : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
             ${Object.entries(selectedAttributes)
-              .map(([attrId, termIds]) => 
+              .map(([attrId, termIds]) =>
                 `AND EXISTS (
                   SELECT 1
                   FROM product_attribute_terms pat2
@@ -1408,13 +1433,19 @@ const fetchProducts = async (query, status = 'published') => {
     
     // Add brand and category filtering for attributes
     if (brand) {
-      attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (:brandIds))");
-      attributeFilterParams.brandIds = brand.split(',').map(Number);
+      const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+      if (brandIds.length > 0) {
+        attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (:brandIds))");
+        attributeFilterParams.brandIds = brandIds;
+      }
     }
     
     if (categories) {
-      attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (:categoryIds))");
-      attributeFilterParams.categoryIds = categories.split(',').map(Number);
+      const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+      if (categoryIds.length > 0) {
+        attributeFilterConditions.push("EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (:categoryIds))");
+        attributeFilterParams.categoryIds = categoryIds;
+      }
     }
 
     const attributeResults = await sequelize.query(`
@@ -1579,8 +1610,14 @@ const fetchProducts = async (query, status = 'published') => {
           p.deletedAt IS NULL
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
-          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
-          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${brand ? (() => {
+            const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+            return brandIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))` : '';
+          })() : ''}
+          ${categories ? (() => {
+            const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+            return categoryIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))` : '';
+          })() : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
             ${Object.entries(selectedAttributes)
               .map(([attrId, termIds]) => 
@@ -1657,8 +1694,14 @@ const fetchProducts = async (query, status = 'published') => {
           AND p.status = 'published'
           ${priceRangeWhereClause ? `AND ${priceRangeWhereClause.replace('WHERE ', '')}` : ''}
           ${variantFilters.id ? `AND EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)` : ''}
-          ${brand ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brand.split(',').map(Number).join(',')}))` : ''}
-          ${categories ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categories.split(',').map(Number).join(',')}))` : ''}
+          ${brand ? (() => {
+            const brandIds = brand.split(',').map(Number).filter(id => !isNaN(id));
+            return brandIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id IN (${brandIds.join(',')}))` : '';
+          })() : ''}
+          ${categories ? (() => {
+            const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
+            return categoryIds.length > 0 ? `AND EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${categoryIds.join(',')}))` : '';
+          })() : ''}
           ${Object.keys(selectedAttributes).length > 0 ? `
             ${Object.entries(selectedAttributes)
               .map(([attrId, termIds]) => 
