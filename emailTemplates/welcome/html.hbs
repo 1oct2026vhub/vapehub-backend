@@ -229,9 +229,18 @@
             
             <div class="welcome-message">
                 <p>Hi {{userName}},</p>
-                <p>Welcome to the VapeHub family! 🚀 We're thrilled to have you on board. Your email has been successfully verified, and your account is now fully activated.</p>
+                <p>Welcome to the VapeHub family! 🚀 We're thrilled to have you on board. To complete your registration and activate your account, please verify your email address by clicking the button below.</p>
                 
                 <p>At VapeHub, we're committed to providing you with the best vaping experience, from premium products to exceptional customer service.</p>
+            </div>
+
+            {{!-- Email Verification Section --}}
+            <div class="cta-section" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 30px; margin: 30px 0; border-radius: 10px; text-align: center; border: 2px solid #2e8b57;">
+                <h3 style="color: #2e8b57; margin-bottom: 15px;">Verify Your Email Address</h3>
+                <p style="color: #666; margin-bottom: 20px;">Click the button below to verify your email and activate your account:</p>
+                <a href="{{verificationLink}}" class="cta-button" style="display: inline-block; padding: 15px 40px; background: linear-gradient(135deg, #2e8b57 0%, #3cb371 100%); color: white; text-decoration: none; border-radius: 25px; font-weight: 600; font-size: 16px; margin: 20px 0; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(46, 139, 87, 0.3);">Verify Email Address</a>
+                <p style="color: #666; font-size: 14px; margin-top: 15px;">This verification link will expire on {{expiryTime}}.</p>
+                <p style="color: #999; font-size: 12px; margin-top: 10px;">If you're having trouble clicking the button, copy and paste this URL into your browser:<br><a href="{{verificationLink}}" style="color: #2e8b57; word-break: break-all;">{{verificationLink}}</a></p>
             </div>
 
             <div class="features-grid">
@@ -282,10 +291,6 @@
                         <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
                             <div style="font-size: 20px; font-weight: bold;">{{discountValue}}</div>
                             <div style="font-size: 12px; opacity: 0.8;">Discount</div>
-                        </div>
-                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
-                            <div style="font-size: 20px; font-weight: bold;">{{minimumPurchase}}</div>
-                            <div style="font-size: 12px; opacity: 0.8;">Min. Purchase</div>
                         </div>
                         {{!-- <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 8px;">
                             <div style="font-size: 20px; font-weight: bold;">{{maximumDiscount}}</div>
