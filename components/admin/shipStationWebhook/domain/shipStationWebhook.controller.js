@@ -484,7 +484,7 @@ async function handleShipNotify(orderData) {
                     message: `Your order #${order.order_unique_id} has been completed and is ready for shipping`
                 },
                 title: 'Order Completed',
-                url: `/my-account/orders/${order.id}`
+                url: `/order-details/${order.id}`
             });
         } catch (notificationError) {
             logger.error('Error creating notification for shipped order:', notificationError);
