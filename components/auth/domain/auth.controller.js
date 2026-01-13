@@ -302,7 +302,6 @@ module.exports.register = async (req, res, next) => {
                             userName: username,
                             couponCode: referral_coupon,
                             discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                            minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
                         },
                         attachments: ""
                     };
@@ -379,7 +378,6 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: couponCode,
                         discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                        minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
                     },
                     attachments: ""
                 };
@@ -608,7 +606,6 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: referral_coupon,
                         discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                        minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
                     },
                     attachments: ""
                 };
@@ -692,7 +689,6 @@ module.exports.register = async (req, res, next) => {
                     userName: username,
                     couponCode: couponCode,
                     discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                    minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
                     // maximumDiscount: '$25'
                 },
                 attachments: ""
