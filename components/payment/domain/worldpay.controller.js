@@ -314,7 +314,7 @@ const handleCancelledPayment = async (order, webhookData) => {
         //         reason: 'Cancelled via Worldpay'
         //     },
         //     title: 'Payment Cancelled',
-        //     url: '/my-account/orders'
+        //     url: '/order-details'
         // });
 
         // Create admin notification for cancelled payment
@@ -462,7 +462,7 @@ const handleExpiredPayment = async (order, webhookData) => {
                 reason: 'Expired via Worldpay'
             },
             title: 'Payment Expired',
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Create admin notification for expired payment
@@ -990,7 +990,7 @@ const handleSentForSettlement = async (order, webhookData) => {
         //         orderId: order.id,
         //         relatedId: order.id,
         //     },
-        //     url: '/my-account/orders'
+        //     url: '/order-details'
         // });
 
         // // Create success notification
@@ -1315,7 +1315,7 @@ const handlePaymentError = async (order, webhookData) => {
                 reason: 'Failed via Worldpay'
             },
             title: 'Payment Failed',
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Create admin notification for failed payment
@@ -1610,7 +1610,7 @@ const handleSentForRefund = async (order, webhookData) => {
                 refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization
             },
             title: 'Payment Refunded',
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Create admin notification for refund
@@ -2342,7 +2342,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 orderId: order.id,
                 relatedId: order.id,
             },
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Create success notification
@@ -2678,7 +2678,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                 reason: 'Cancelled via Worldpay'
             },
             title: 'Payment Cancelled',
-            url: '/my-account/orders'
+            url: '/order-details'
         });
 
         // Create admin notification for cancelled payment

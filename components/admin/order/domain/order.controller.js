@@ -659,7 +659,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 message: `Your order #${order.order_unique_id} status has been updated to ${status}`
             },
             title: 'Order Status Updated',
-            url: `/my-account/orders/${order.id}`
+            url: `/order-details/${order.id}`
         });
 
         // Send email notification for packed, shipped, or completed statuses
@@ -983,7 +983,7 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                             message: `Your order #${order.order_unique_id} status has been updated to ${status}`
                         },
                         title: 'Order Status Updated',
-                        url: `/my-account/orders/${order.id}`
+                        url: `/order-details/${order.id}`
                     });
 
                     // Send email notification for packed, shipped, or completed statuses
