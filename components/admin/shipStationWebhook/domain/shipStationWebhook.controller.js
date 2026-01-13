@@ -411,59 +411,150 @@ async function handleItemOrderNotify(orderData) {
  * Handle SHIP_NOTIFY webhook event
  * This is triggered when a shipping label is printed in ShipStation
  * Updates order status to 'completed' and sends customer notification/email
- * @param {Object} orderData - Webhook payload
+ * @param {Object} orderData - Webhook payload containing:
+ *   - orderId: ShipStation's order ID (matches our shipstation_order_id)
+ *   - order_unique_id: Our order_unique_id (matches order.orderNumber from ShipStation)
+ *   - email: Customer email
  */
 async function handleShipNotify(orderData) {
     try {
-        // Find order with all necessary relationships for email
-        let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderBillingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+        // Enhanced logging for order lookup
+        logger.info('Processing SHIP_NOTIFY webhook', {
+            shipstation_order_id: orderData.orderId,
+            order_unique_id: orderData.order_unique_id,
+            customerEmail: orderData.email,
+            timestamp: new Date().toISOString()
         });
 
+        // Try lookup strategies:
+        // 1. Primary: Lookup by shipstation_order_id (ShipStation's order ID)
+        // 2. Fallback: Lookup by order_unique_id (our order unique ID)
+        let order = null;
+        let lookupMethod = null;
+
+        // Strategy 1: Lookup by shipstation_order_id (primary - most reliable)
+        if (orderData.orderId) {
+            order = await Order.findOne({
+                where: { shipstation_order_id: orderData.orderId },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'first_name', 'last_name', 'email']
+                    },
+                    {
+                        model: OrderItem,
+                        as: 'orderItems',
+                        attributes: ['id', 'quantity', 'unit_price', 'total'],
+                        include: [
+                            {
+                                model: Product,
+                                as: 'product',
+                                attributes: ['id', 'name', 'price']
+                            },
+                            {
+                                model: ProductVariant,
+                                as: 'variant',
+                                attributes: ['id', 'slug', 'price'],
+                                required: false
+                            }
+                        ]
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderShippingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderBillingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
+                        model: ShippingMethod,
+                        as: 'shippingMethod',
+                        attributes: ['id', 'shipping_method', 'shipping_cost']
+                    }
+                ]
+            });
+            if (order) {
+                lookupMethod = 'shipstation_order_id';
+            }
+        }
+
+        // Strategy 2: Fallback to order_unique_id
+        if (!order && orderData.order_unique_id) {
+            logger.info('Order not found by shipstation_order_id, trying order_unique_id', {
+                order_unique_id: orderData.order_unique_id
+            });
+            order = await Order.findOne({
+                where: { order_unique_id: orderData.order_unique_id },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'first_name', 'last_name', 'email']
+                    },
+                    {
+                        model: OrderItem,
+                        as: 'orderItems',
+                        attributes: ['id', 'quantity', 'unit_price', 'total'],
+                        include: [
+                            {
+                                model: Product,
+                                as: 'product',
+                                attributes: ['id', 'name', 'price']
+                            },
+                            {
+                                model: ProductVariant,
+                                as: 'variant',
+                                attributes: ['id', 'slug', 'price'],
+                                required: false
+                            }
+                        ]
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderShippingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
+                        model: OrderAddress,
+                        as: 'orderBillingAddress',
+                        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
+                    },
+                    {
+                        model: ShippingMethod,
+                        as: 'shippingMethod',
+                        attributes: ['id', 'shipping_method', 'shipping_cost']
+                    }
+                ]
+            });
+            if (order) {
+                lookupMethod = 'order_unique_id';
+            }
+        }
+
         if (!order) {
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.error('Order not found for SHIP_NOTIFY webhook', {
+                shipstation_order_id: orderData.orderId,
+                order_unique_id: orderData.order_unique_id,
+                customerEmail: orderData.email,
+                attempted_lookups: ['shipstation_order_id', 'order_unique_id']
+            });
             return;
         }
+
+        logger.info('Order found successfully', {
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            shipstation_order_id: order.shipstation_order_id,
+            lookup_method: lookupMethod,
+            current_status: order.status
+        });
+
+        // Store previous status for logging
+        const previousStatus = order.status;
 
         // Update order status to completed (matching WooCommerce behavior when label is printed)
         await order.update({ 
@@ -471,6 +562,13 @@ async function handleShipNotify(orderData) {
         }, { 
             isAdmin: true,
             userId: null // System update
+        });
+
+        logger.info('Order status updated successfully', {
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            previous_status: previousStatus,
+            new_status: 'completed'
         });
 
         // Create notification for customer
@@ -486,8 +584,17 @@ async function handleShipNotify(orderData) {
                 title: 'Order Completed',
                 url: `/my-account/orders/${order.id}`
             });
+            logger.info('Notification created successfully', {
+                order_id: order.id,
+                user_id: order.user_id
+            });
         } catch (notificationError) {
-            logger.error('Error creating notification for shipped order:', notificationError);
+            logger.error('Error creating notification for shipped order', {
+                error: notificationError.message,
+                stack: notificationError.stack,
+                order_id: order.id,
+                user_id: order.user_id
+            });
             // Don't fail the entire operation if notification fails
         }
 
@@ -542,6 +649,13 @@ async function handleShipNotify(orderData) {
                     }
                 };
 
+                logger.info('Attempting to send order completion email', {
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    user_email: order.user.email,
+                    email_type: 'ORDER_SHIPPED'
+                });
+
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
                 logger.info('Order completion email sent successfully', {
@@ -550,23 +664,43 @@ async function handleShipNotify(orderData) {
                     user_email: order.user.email
                 });
             } catch (emailError) {
-                logger.error('Error sending order completion email:', {
+                logger.error('Error sending order completion email', {
                     error: emailError.message,
+                    stack: emailError.stack,
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
-                    user_email: order.user?.email
+                    user_email: order.user?.email,
+                    email_context: {
+                        emailTypes: 'ORDER_SHIPPED',
+                        to: order.user?.email,
+                        has_context: true
+                    }
                 });
                 // Don't fail the entire operation if email fails
             }
+        } else {
+            logger.warn('Cannot send email - user or email missing', {
+                order_id: order.id,
+                order_unique_id: order.order_unique_id,
+                has_user: !!order.user,
+                user_email: order.user?.email
+            });
         }
 
-        logger.info('Order status updated to completed via webhook', {
+        logger.info('SHIP_NOTIFY webhook processed successfully', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            shipstation_order_id: order.shipstation_order_id,
+            status_updated: true,
+            notification_created: true,
+            email_sent: !!(order.user && order.user.email)
         });
     } catch (error) {
-        logger.error('Error handling SHIP_NOTIFY webhook:', error);
+        logger.error('Error handling SHIP_NOTIFY webhook', {
+            error: error.message,
+            stack: error.stack,
+            orderData: orderData
+        });
         throw error;
     }
 }
