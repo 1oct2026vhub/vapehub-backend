@@ -364,7 +364,7 @@ module.exports.register = async (req, res, next) => {
                     description: `Welcome coupon for ${username}`,
                     discount_type: 'percentage',
                     discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                    minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
+                    minimum_purchase: 0, // No minimum purchase for welcome coupons
                     usage_limit: 1,
                     usage_count: 0,
                     is_single_use: true,
@@ -664,7 +664,7 @@ module.exports.register = async (req, res, next) => {
                 description: `Welcome coupon for ${username}`,
                 discount_type: 'percentage',
                 discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
+                minimum_purchase: 0, // No minimum purchase for welcome coupons
                 // maximum_discount: 25.00, // Maximum discount of $25
                 usage_limit: 1, // Single use coupon
                 usage_count: 0,
