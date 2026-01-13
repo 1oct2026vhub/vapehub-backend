@@ -1351,10 +1351,21 @@ module.exports.getSlugRelations = async (req, res, next) => {
 
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
-            const seoData = await seoService.getSeoMeta(
-                getEntityType(slugRelations[0].entity_type),
-                slugRelations[0].slug
-            );
+            // Try querying by entityId first (more reliable since it's the unique constraint)
+            let seoData = await SeoMeta.findOne({
+                where: {
+                    entityType: getEntityType(slugRelations[0].entity_type),
+                    entityId: slugRelations[0].entity_id
+                }
+            });
+            
+            // Fallback to slug query if entityId doesn't work (with normalized slug)
+            if (!seoData) {
+                seoData = await seoService.getSeoMeta(
+                    getEntityType(slugRelations[0].entity_type),
+                    slugRelations[0].slug
+                );
+            }
 
             const response = {
                 slug: slugRelations[0].slug,
@@ -1717,10 +1728,21 @@ module.exports.getSlugRelationsOriginal = async (req, res, next) => {
 
         // Handle single slug query - no validation needed
         if (slugArray.length === 1) {
-            const seoData = await seoService.getSeoMeta(
-                getEntityType(slugRelations[0].entity_type),
-                slugRelations[0].slug
-            );
+            // Try querying by entityId first (more reliable since it's the unique constraint)
+            let seoData = await SeoMeta.findOne({
+                where: {
+                    entityType: getEntityType(slugRelations[0].entity_type),
+                    entityId: slugRelations[0].entity_id
+                }
+            });
+            
+            // Fallback to slug query if entityId doesn't work (with normalized slug)
+            if (!seoData) {
+                seoData = await seoService.getSeoMeta(
+                    getEntityType(slugRelations[0].entity_type),
+                    slugRelations[0].slug
+                );
+            }
 
             const response = {
                 slug: slugRelations[0].slug,

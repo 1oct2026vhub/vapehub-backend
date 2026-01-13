@@ -34,18 +34,21 @@ class SeoService {
    */
   async getSeoMeta(entityType, slug) {
     try {
-      this.logger.info({ entityType, slug }, 'Getting SEO metadata');
+      // Normalize slug to ensure exact match (trim whitespace and convert to lowercase)
+      const normalizedSlug = slug ? slug.trim().toLowerCase() : slug;
+      
+      this.logger.info({ entityType, slug: normalizedSlug, originalSlug: slug }, 'Getting SEO metadata');
       
       const seoMeta = await this.models.SeoMeta.findOne({
-        where: { entityType, slug }
+        where: { entityType, slug: normalizedSlug }
       });
 
       if (!seoMeta) {
-        this.logger.warn({ entityType, slug }, 'SEO metadata not found');
+        this.logger.warn({ entityType, slug: normalizedSlug, originalSlug: slug }, 'SEO metadata not found');
         return null;
       }
 
-      this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
+      this.logger.info({ entityType, slug: normalizedSlug }, 'Successfully retrieved SEO metadata');
       return seoMeta;
     } catch (error) {
       this.logger.error({ error, entityType, slug }, 'Error getting SEO metadata');
