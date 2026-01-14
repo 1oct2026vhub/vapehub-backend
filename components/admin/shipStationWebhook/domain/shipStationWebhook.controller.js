@@ -1,7 +1,7 @@
 const axios = require('axios');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const logger = require("../../../../library/logger");
-const { Order, User, OrderItem, Product, ProductVariant, OrderAddress, ShippingMethod } = require('../../../../models');
+const { Order, User, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, ShippingMethod } = require('../../../../models');
 const utilsLogger = require('../../../../utils/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 const { createNotification } = require('../../../notification/helper/notification.helper');
@@ -777,7 +777,29 @@ async function handleShipNotify(orderData) {
                             model: ProductVariant,
                             as: 'variant',
                             attributes: ['id', 'slug', 'price'],
-                            required: false
+                            required: false,
+                            include: [
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                    include: [
+                                        {
+                                            model: Attribute,
+                                            as: 'attribute',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        },
+                                        {
+                                            model: AttributeTerm,
+                                            as: 'term',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 },
@@ -884,14 +906,28 @@ async function handleShipNotify(orderData) {
                         discountPrice: order.discount_price || 0,
                         loyaltyDiscount: order.loyalty_discount || 0,
                         mailSubscriptionDiscount: order.mailSubscription_discount || 0,
-                        items: order.orderItems ? order.orderItems.map(item => ({
-                            name: item.variant 
-                                ? `${item.product?.name || 'Product'} - ${item.variant?.slug || 'Variant'}` 
-                                : (item.product?.name || 'Product'),
-                            quantity: item.quantity || 0,
-                            price: item.unit_price || 0,
-                            total: item.total || 0
-                        })) : [],
+                        items: order.orderItems ? order.orderItems.map(item => {
+                            let productName = item.product?.name || 'Product';
+                            
+                            // Append variant attribute values in format: "Product Name - Value1, Value2"
+                            if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
+                                const attributeTerms = item.variant.variantAttributes
+                                    .filter(va => va.term) // Ensure term exists
+                                    .map(va => va.term.name)
+                                    .filter(Boolean); // Remove any empty strings
+                                
+                                if (attributeTerms.length > 0) {
+                                    productName = `${productName} - ${attributeTerms.join(', ')}`;
+                                }
+                            }
+                            
+                            return {
+                                name: productName,
+                                quantity: item.quantity || 0,
+                                price: item.unit_price || 0,
+                                total: item.total || 0
+                            };
+                        }) : [],
                         shippingAddress: order.orderShippingAddress ? {
                             name: order.orderShippingAddress.name || '',
                             last_name: order.orderShippingAddress.last_name || '',

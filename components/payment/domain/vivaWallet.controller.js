@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -64,7 +64,30 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 {
                                     model: ProductVariant,
                                     as: 'variant',
-                                    attributes: ['id', 'slug', 'price', 'stock']
+                                    attributes: ['id', 'slug', 'price', 'stock'],
+                                    required: false,
+                                    include: [
+                                        {
+                                            model: ProductVariantAttribute,
+                                            as: 'variantAttributes',
+                                            paranoid: false,
+                                            attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                            include: [
+                                                {
+                                                    model: Attribute,
+                                                    as: 'attribute',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                },
+                                                {
+                                                    model: AttributeTerm,
+                                                    as: 'term',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ]
                         },
@@ -599,12 +622,28 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             totalAmount: order.total || 0,
                             discountPrice: order.discount_price || 0,
                             loyaltyDiscount: order.loyalty_discount || 0,
-                            items: order.orderItems ? order.orderItems.map(item => ({
-                                name: item.variant ? `${item.product?.name || 'Product'} - ${item.variant?.slug || 'Variant'}` : (item.product?.name || 'Product'),
-                                quantity: item.quantity || 0,
-                                price: item.unit_price || 0,
-                                total: item.total || 0
-                            })) : [],
+                            items: order.orderItems ? order.orderItems.map(item => {
+                                let productName = item.product?.name || 'Product';
+                                
+                                // Append variant attribute values in format: "Product Name - Value1, Value2"
+                                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
+                                    const attributeTerms = item.variant.variantAttributes
+                                        .filter(va => va.term) // Ensure term exists
+                                        .map(va => va.term.name)
+                                        .filter(Boolean); // Remove any empty strings
+                                    
+                                    if (attributeTerms.length > 0) {
+                                        productName = `${productName} - ${attributeTerms.join(', ')}`;
+                                    }
+                                }
+                                
+                                return {
+                                    name: productName,
+                                    quantity: item.quantity || 0,
+                                    price: item.unit_price || 0,
+                                    total: item.total || 0
+                                };
+                            }) : [],
                             shippingAddress: order.orderShippingAddress || {},
                             billingAddress: order.orderBillingAddress || {},
                             paymentMethod: 'VivaWallet',
@@ -840,7 +879,30 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 {
                                     model: ProductVariant,
                                     as: 'variant',
-                                    attributes: ['id', 'slug', 'price', 'stock']
+                                    attributes: ['id', 'slug', 'price', 'stock'],
+                                    required: false,
+                                    include: [
+                                        {
+                                            model: ProductVariantAttribute,
+                                            as: 'variantAttributes',
+                                            paranoid: false,
+                                            attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                            include: [
+                                                {
+                                                    model: Attribute,
+                                                    as: 'attribute',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                },
+                                                {
+                                                    model: AttributeTerm,
+                                                    as: 'term',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ]
                         },
@@ -1020,7 +1082,30 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 {
                                     model: ProductVariant,
                                     as: 'variant',
-                                    attributes: ['id', 'slug', 'price', 'stock']
+                                    attributes: ['id', 'slug', 'price', 'stock'],
+                                    required: false,
+                                    include: [
+                                        {
+                                            model: ProductVariantAttribute,
+                                            as: 'variantAttributes',
+                                            paranoid: false,
+                                            attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                            include: [
+                                                {
+                                                    model: Attribute,
+                                                    as: 'attribute',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                },
+                                                {
+                                                    model: AttributeTerm,
+                                                    as: 'term',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ]
                         }
@@ -1242,7 +1327,30 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 {
                                     model: ProductVariant,
                                     as: 'variant',
-                                    attributes: ['id', 'slug', 'price', 'stock']
+                                    attributes: ['id', 'slug', 'price', 'stock'],
+                                    required: false,
+                                    include: [
+                                        {
+                                            model: ProductVariantAttribute,
+                                            as: 'variantAttributes',
+                                            paranoid: false,
+                                            attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                            include: [
+                                                {
+                                                    model: Attribute,
+                                                    as: 'attribute',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                },
+                                                {
+                                                    model: AttributeTerm,
+                                                    as: 'term',
+                                                    paranoid: false,
+                                                    attributes: ['id', 'name']
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ]
                         },
