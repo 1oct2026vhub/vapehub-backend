@@ -5,9 +5,7 @@ const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
-// Always use a fixed weight of 500g (~1.1 lb) everywhere (no calculations)
-const FIXED_WEIGHT_LBS = 1.1; // 500 grams (~1.1 lb)
-const FIXED_WEIGHT_OZ = FIXED_WEIGHT_LBS * 16; // ~17.6 oz
+const DEFAULT_ITEM_WEIGHT_LBS = 1.1; // 500 grams per item (~1.1 lb)
 
 /**
  * Capitalize first letter of each word in a string
@@ -125,10 +123,15 @@ async function createShipStationOrder(order) {
                     }
                 }
                 
-                // Fixed item weight: always 500g (~17.6oz), no calculations based on quantity or variant weight
+                // Calculate item weight (always default to 500g per item, convert to ounces)
                 const quantity = item.quantity || 1;
-                // NOTE: We completely ignore any stored variant.weight and quantity for weight purposes
-                const itemWeightInOunces = FIXED_WEIGHT_OZ;
+                // NOTE: We ignore any stored variant.weight and always use DEFAULT_ITEM_WEIGHT_LBS (500g)
+                // const variantWeightLbs =
+                //     (item.variant?.weight && item.variant.weight > 0)
+                //         ? item.variant.weight
+                //         : DEFAULT_ITEM_WEIGHT_LBS;
+
+                const itemWeightInOunces = DEFAULT_ITEM_WEIGHT_LBS * 16 * quantity; // Convert pounds to ounces
 
                 return {
                     sku: variantSku || productSku,
@@ -201,35 +204,30 @@ async function createShipStationOrder(order) {
         const packageCode = 'package';
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-        /**
-         * Previous dynamic shipment weight calculation (now disabled by requirement):
-         *
-         * let totalWeight = 1; // Default to 1 pound
-         * if (order.orderItems && order.orderItems.length > 0) {
-         *     totalWeight = order.orderItems.reduce((sum, item) => {
-         *         const quantity = item.quantity || 1;
-         *         const variantWeightLbs =
-         *             (item.variant?.weight && item.variant.weight > 0)
-         *                 ? item.variant.weight
-         *                 : DEFAULT_ITEM_WEIGHT_LBS; // 500g default per item
-         *
-         *         return sum + (variantWeightLbs * quantity);
-         *     }, 0);
-         *     
-         *     // Ensure minimum weight
-         *     if (totalWeight <= 0) {
-         *         totalWeight = 1; // Default to 1 pound
-         *     } else if (totalWeight < 0.1) {
-         *         totalWeight = 0.1; // Minimum 0.1 pounds
-         *     }
-         * }
-         *
-         * const weight = { value: totalWeight, units: 'pounds' };
-         */
         
-        // Current behaviour: fixed shipment weight, always 500g (~1.1lb), no per-item/quantity calculations
-        const weight = { value: FIXED_WEIGHT_LBS, units: 'pounds' };
+        // Calculate total weight (always default 500g per item)
+        let totalWeight = 1; // Default to 1 pound
+        if (order.orderItems && order.orderItems.length > 0) {
+            totalWeight = order.orderItems.reduce((sum, item) => {
+                const quantity = item.quantity || 1;
+                // NOTE: We ignore any stored variant.weight and always use DEFAULT_ITEM_WEIGHT_LBS (500g)
+                // const variantWeightLbs =
+                //     (item.variant?.weight && item.variant.weight > 0)
+                //         ? item.variant.weight
+                //         : DEFAULT_ITEM_WEIGHT_LBS; // 500g default per item
+
+                return sum + (DEFAULT_ITEM_WEIGHT_LBS * quantity);
+            }, 0);
+            
+            // Ensure minimum weight
+            if (totalWeight <= 0) {
+                totalWeight = 1; // Default to 1 pound
+            } else if (totalWeight < 0.1) {
+                totalWeight = 0.1; // Minimum 0.1 pounds
+            }
+        }
+        
+        const weight = { value: totalWeight, units: 'pounds' };
         const dimensions = null;
         const insuranceOptions = null;
         const internationalOptions = null;
