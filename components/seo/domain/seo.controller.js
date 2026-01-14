@@ -50,7 +50,13 @@ const seoController = {
 
       // Add each URL to the sitemap
       seoEntries.forEach(entry => {
-        const url = `/${entry.slug}`;
+        // Default URL
+        let url = `/${entry.slug}`;
+
+        // If this SEO entry is for a brand, prefix with /brand
+        if (entry.entityType === 'brand') {
+          url = `/brand/${entry.slug}`;
+        }
 
         smStream.write({
           url,
