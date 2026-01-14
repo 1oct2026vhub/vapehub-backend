@@ -261,6 +261,8 @@ module.exports.register = async (req, res, next) => {
                         context: {
                             userName: username,
                             couponCode: null,
+                            verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                            expiryTime: moment(token_expiry).format('LLLL'),
                         },
                         attachments: ""
                     };
@@ -302,7 +304,8 @@ module.exports.register = async (req, res, next) => {
                             userName: username,
                             couponCode: referral_coupon,
                             discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                            minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
+                            verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                            expiryTime: moment(token_expiry).format('LLLL'),
                         },
                         attachments: ""
                     };
@@ -328,26 +331,7 @@ module.exports.register = async (req, res, next) => {
                     is_admin: true
                 });
             } else {
-                // Create welcome coupon for converted user (if no referral)
-                const generateCouponCode = () => {
-                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
-                    let result = '';
-                    for (let i = 0; i < 8; i++) {
-                        result += chars.charAt(Math.floor(Math.random() * chars.length));
-                    }
-                    return result;
-                };
-
-                let couponCode;
-                let isUnique = false;
-                while (!isUnique) {
-                    couponCode = generateCouponCode();
-                    const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
-                    if (!existingCoupon) {
-                        isUnique = true;
-                    }
-                }
-                
+                // Create welcome coupon for converted user (if no referral and active referral method exists)
                 const activeReferrersMethod = await ReferralMethod.findOne({
                     where: { 
                         status: 'active',
@@ -356,21 +340,47 @@ module.exports.register = async (req, res, next) => {
                     attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
                 });
                 
-                await Coupon.create({
-                    code: couponCode,
-                    description: `Welcome coupon for ${username}`,
-                    discount_type: 'percentage',
-                    discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                    minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
-                    usage_limit: 1,
-                    usage_count: 0,
-                    is_single_use: true,
-                    start_date: new Date(),
-                    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                    status: 'active',
-                    coupon_user: userExists.id,
-                    created_by: null
-                });
+                let couponCode = null;
+                let discountValue = null;
+                
+                // Only create coupon if active referral method exists
+                if (activeReferrersMethod) {
+                    const generateCouponCode = () => {
+                        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
+                        let result = '';
+                        for (let i = 0; i < 8; i++) {
+                            result += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        return result;
+                    };
+
+                    let isUnique = false;
+                    while (!isUnique) {
+                        couponCode = generateCouponCode();
+                        const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
+                        if (!existingCoupon) {
+                            isUnique = true;
+                        }
+                    }
+                    
+                    await Coupon.create({
+                        code: couponCode,
+                        description: `Welcome coupon for ${username}`,
+                        discount_type: 'percentage',
+                        discount_value: parseFloat(activeReferrersMethod.referral_value),
+                        minimum_purchase: 0, // No minimum purchase for welcome coupons
+                        usage_limit: 1,
+                        usage_count: 0,
+                        is_single_use: true,
+                        start_date: new Date(),
+                        end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                        status: 'active',
+                        coupon_user: userExists.id,
+                        created_by: null
+                    });
+                    
+                    discountValue = `${activeReferrersMethod.referral_value}%`;
+                }
 
                 const welcomeEmailData = {
                     emailTypes: constants.emailTypes.WELCOME,
@@ -379,30 +389,17 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: couponCode,
                         discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                        minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
+                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                        expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
                 };
                 await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
             }
 
-            // Send verification email
-            const data = {
-                emailTypes: constants.emailTypes.REGISTER,
-                to: userExists.email,
-                context: {
-                    userName: username,
-                    verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                    expiryTime: moment(token_expiry).format('LLLL'),
-                },
-                attachments: ""
-            };
-            
-            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-
             return successResponse(
                 res, 
-                { message: "Your temporary account has been converted to a permanent account. Verification email has been sent to your email address." }, 
+                { message: "Welcome email with verification link has been sent to your email address." }, 
                 "Account converted successfully! Please verify your email to log in.", 
                 201
             );
@@ -565,7 +562,8 @@ module.exports.register = async (req, res, next) => {
                     context: {
                         userName: username,
                         couponCode: null,
-                        
+                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                        expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
                 };
@@ -608,7 +606,8 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: referral_coupon,
                         discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                        minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
+                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                        expiryTime: moment(token_expiry).format('LLLL'),
                     },
                     attachments: ""
                 };
@@ -638,51 +637,59 @@ module.exports.register = async (req, res, next) => {
            
         }
         else{
-            // Create a random coupon code for the new user
-            const generateCouponCode = () => {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
-                let result = '';
-                for (let i = 0; i < 8; i++) {
-                    result += chars.charAt(Math.floor(Math.random() * chars.length));
-                }
-                return result;
-            };
-
-            // Generate unique coupon code
-            let couponCode;
-            let isUnique = false;
-            while (!isUnique) {
-                couponCode = generateCouponCode();
-                const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
-                if (!existingCoupon) {
-                    isUnique = true;
-                }
-            }
+            // Create welcome coupon for new user (only if active referral method exists)
             const activeReferrersMethod = await ReferralMethod.findOne({
                 where: { 
                     status: 'active',
-                    // primary: true,
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
             });
-            // Create coupon for the new user
-            await Coupon.create({
-                code: couponCode,
-                description: `Welcome coupon for ${username}`,
-                discount_type: 'percentage',
-                discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
-                // maximum_discount: 25.00, // Maximum discount of $25
-                usage_limit: 1, // Single use coupon
-                usage_count: 0,
-                is_single_use: true,
-                start_date: new Date(),
-                end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Valid for 30 days
-                status: 'active',
-                coupon_user: user.id, // Assign to the specific user
-                created_by: null // System created
-            });
+            
+            let couponCode = null;
+            let discountValue = null;
+            
+            // Only create coupon if active referral method exists
+            if (activeReferrersMethod) {
+                const generateCouponCode = () => {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$&';
+                    let result = '';
+                    for (let i = 0; i < 8; i++) {
+                        result += chars.charAt(Math.floor(Math.random() * chars.length));
+                    }
+                    return result;
+                };
+
+                // Generate unique coupon code
+                let isUnique = false;
+                while (!isUnique) {
+                    couponCode = generateCouponCode();
+                    const existingCoupon = await Coupon.findOne({ where: { code: couponCode } });
+                    if (!existingCoupon) {
+                        isUnique = true;
+                    }
+                }
+                
+                // Create coupon for the new user
+                await Coupon.create({
+                    code: couponCode,
+                    description: `Welcome coupon for ${username}`,
+                    discount_type: 'percentage',
+                    discount_value: parseFloat(activeReferrersMethod.referral_value),
+                    minimum_purchase: 0, // No minimum purchase for welcome coupons
+                    // maximum_discount: 25.00, // Maximum discount of $25
+                    usage_limit: 1, // Single use coupon
+                    usage_count: 0,
+                    is_single_use: true,
+                    start_date: new Date(),
+                    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Valid for 30 days
+                    status: 'active',
+                    coupon_user: user.id, // Assign to the specific user
+                    created_by: null // System created
+                });
+                
+                discountValue = `${activeReferrersMethod.referral_value}%`;
+            }
 
             // Send welcome email after successful verification
             const welcomeEmailData = {
@@ -691,8 +698,9 @@ module.exports.register = async (req, res, next) => {
                 context: {
                     userName: username,
                     couponCode: couponCode,
-                    discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                    minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
+                    discountValue: discountValue,
+                    verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                    expiryTime: moment(token_expiry).format('LLLL'),
                     // maximumDiscount: '$25'
                 },
                 attachments: ""
@@ -701,21 +709,7 @@ module.exports.register = async (req, res, next) => {
         
         }
 
-
-        const data = {
-            emailTypes: constants.emailTypes.REGISTER,
-            to: user.email,
-            context: {
-                userName: username,
-                verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                expiryTime: moment(token_expiry).format('LLLL'),
-            },
-            attachments: ""
-        }
-        
-        await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
-
-        return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
+        return successResponse(res, { message: "Welcome email with verification link has been sent to your email address." }, "Welcome email sent! Please verify your email to log in.", 201);
     } catch (error) {
         return errorResponse(res, error);
     }
