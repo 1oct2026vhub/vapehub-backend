@@ -145,25 +145,32 @@ async function createShipStationOrder(order) {
             shipstation_order_id: orderId
         });
 
-        // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
-        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
-        const packageCode = 'package'; // Example default
-        const confirmation = null;
+        // Map order data to label creation params
+        const carrierCode = order.shippingMethod?.carrier_code || 'fedex';
+        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day';
+        const packageCode = 'package';
+        
+        // Determine confirmation type
+        // Default to 'none' - can be customized based on shipping method if needed
+        // Options: 'none', 'delivery', 'signature', 'adult_signature', 'direct_signature' (FedEx only)
+        const confirmation = order.shippingMethod?.confirmation || 'none';
+        
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-        
-        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
-        let totalWeight = 1;
-        if (order.orderItems && order.orderItems.length > 0) {
-            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
-        }
-        
-        const weight = { value: totalWeight, units: 'pounds' };
-        const dimensions = null;
-        const insuranceOptions = null;
-        const internationalOptions = null;
-        const advancedOptions = null;
         const testLabel = true;
+
+        // Log before creating label
+        shipstationLogger.logInfo({
+            type: 'create_label_start',
+            order_id: order.id,
+            order_unique_id: order.order_unique_id,
+            shipstation_order_id: orderId,
+            carrierCode,
+            serviceCode,
+            packageCode,
+            confirmation,
+            shipDate,
+            testLabel
+        });
 
         // Create label for the order
         let labelResponse = null;
@@ -175,19 +182,17 @@ async function createShipStationOrder(order) {
                 packageCode,
                 confirmation,
                 shipDate,
-                weight,
-                dimensions,
-                insuranceOptions,
-                internationalOptions,
-                advancedOptions,
                 testLabel
             });
+            
             shipstationLogger.logInfo({
                 type: 'create_label_success',
                 order_id: order.id,
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
-                shipment_id: labelResponse?.shipmentId
+                shipment_id: labelResponse?.shipmentId,
+                tracking_number: labelResponse?.trackingNumber,
+                shipment_cost: labelResponse?.shipmentCost
             });
         } catch (labelError) {
             shipstationLogger.logError({
@@ -196,7 +201,13 @@ async function createShipStationOrder(order) {
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
                 error: labelError.message,
-                stack: labelError.stack
+                stack: labelError.stack,
+                carrierCode,
+                serviceCode,
+                packageCode,
+                confirmation,
+                shipDate,
+                testLabel
             });
             // Don't fail the entire operation, just log the error
             // The order was created successfully, so we can still return the order response

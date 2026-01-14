@@ -47,28 +47,36 @@ async function sendOrderToShipStation(shipStationOrder) {
     }
 }
 
-async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageCode, confirmation, shipDate, weight, dimensions, insuranceOptions, internationalOptions, advancedOptions, testLabel }) {
+async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageCode, confirmation, shipDate, testLabel }) {
     try {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
+        const requestPayload = {
+            orderId,
+            carrierCode,
+            serviceCode,
+            packageCode,
+            confirmation,
+            shipDate,
+            testLabel
+        };
+
+        // Log request payload before sending
+        logger.info('ShipStation createLabelForOrder - Request Payload:', {
+            orderId,
+            carrierCode,
+            serviceCode,
+            packageCode,
+            confirmation,
+            shipDate,
+            testLabel
+        });
+
         const response = await axios.post(
             'https://ssapi.shipstation.com/orders/createlabelfororder',
-            {
-                orderId,
-                carrierCode,
-                serviceCode,
-                packageCode,
-                confirmation,
-                shipDate,
-                weight,
-                dimensions,
-                insuranceOptions,
-                internationalOptions,
-                advancedOptions,
-                testLabel
-            },
+            requestPayload,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
@@ -77,29 +85,64 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                 timeout: 30000 // 30 second timeout
             }
         );
+        
+        // Log successful response
+        logger.info('ShipStation createLabelForOrder - Success Response:', {
+            orderId,
+            shipmentId: response.data?.shipmentId,
+            trackingNumber: response.data?.trackingNumber,
+            shipmentCost: response.data?.shipmentCost,
+            responseStatus: response.status
+        });
+        
         return response.data;
     } catch (error) {
-        // Handle errors properly
+        const errorDetails = {
+            orderId,
+            carrierCode,
+            serviceCode,
+            packageCode,
+            confirmation,
+            shipDate,
+            testLabel
+        };
+
         if (error.response) {
             // API returned an error response
-            logger.error('Error creating label for order:', {
+            const apiErrorDetails = {
+                ...errorDetails,
                 error: error.message,
                 response: error.response?.data,
                 status: error.response?.status,
-                orderId,
-                carrierCode,
-                serviceCode
+                statusText: error.response?.statusText
+            };
+            
+            logger.error('ShipStation createLabelForOrder - API Error:', apiErrorDetails);
+            
+            const shipstationLogger = require('../../../../utils/shipstationLogger');
+            shipstationLogger.logError({
+                type: 'create_label_api_error',
+                ...apiErrorDetails
             });
-            throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText}`);
+            
+            throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText} - ${JSON.stringify(error.response?.data || {})}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
-            logger.error('Network error creating label:', {
+            logger.error('ShipStation createLabelForOrder - Network Error:', {
+                ...errorDetails,
                 message: error.message,
-                code: error.code,
-                orderId
+                code: error.code
             });
+            
             throw new Error(`Network error creating label for order ${orderId}: ${error.message}`);
         } else {
+            // Something else happened
+            logger.error('ShipStation createLabelForOrder - Unexpected Error:', {
+                ...errorDetails,
+                error: error.message,
+                stack: error.stack
+            });
+            
             throw new Error(`Failed to create label for order ${orderId}: ${error.message}`);
         }
     }
