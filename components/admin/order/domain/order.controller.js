@@ -7,6 +7,7 @@ const { orderStatusEnums, orderStatus} = require('../../../../config/constants')
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
+const shipstationLogger = require('../../../../utils/shipstationLogger');
 
 /**
  * List all orders with filtering and pagination
