@@ -340,21 +340,6 @@ module.exports.register = async (req, res, next) => {
                     attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
                 });
                 
-                await Coupon.create({
-                    code: couponCode,
-                    description: `Welcome coupon for ${username}`,
-                    discount_type: 'percentage',
-                    discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                    minimum_purchase: 0, // No minimum purchase for welcome coupons
-                    usage_limit: 1,
-                    usage_count: 0,
-                    is_single_use: true,
-                    start_date: new Date(),
-                    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                    status: 'active',
-                    coupon_user: userExists.id,
-                    created_by: null
-                });
                 let couponCode = null;
                 let discountValue = null;
                 
@@ -659,23 +644,6 @@ module.exports.register = async (req, res, next) => {
                     refer_type: 'referrer'
                 },
                 attributes: ['id', 'referral_value_type', 'referral_value', 'minimum_purchase', 'maximum_purchase', 'refer_type']
-            });
-            // Create coupon for the new user
-            await Coupon.create({
-                code: couponCode,
-                description: `Welcome coupon for ${username}`,
-                discount_type: 'percentage',
-                discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                minimum_purchase: 0, // No minimum purchase for welcome coupons
-                // maximum_discount: 25.00, // Maximum discount of $25
-                usage_limit: 1, // Single use coupon
-                usage_count: 0,
-                is_single_use: true,
-                start_date: new Date(),
-                end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Valid for 30 days
-                status: 'active',
-                coupon_user: user.id, // Assign to the specific user
-                created_by: null // System created
             });
             
             let couponCode = null;
