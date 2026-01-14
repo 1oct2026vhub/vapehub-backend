@@ -82,25 +82,15 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
         // Handle errors properly
         if (error.response) {
             // API returned an error response
-            const errorData = {
+            logger.error('Error creating label for order:', {
                 error: error.message,
                 response: error.response?.data,
                 status: error.response?.status,
-                statusText: error.response?.statusText,
                 orderId,
                 carrierCode,
-                serviceCode,
-                weight: weight?.value,
-                testLabel
-            };
-            
-            logger.error('Error creating label for order:', errorData);
-            
-            // Re-throw with detailed error message
-            const errorMessage = error.response?.data 
-                ? `Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText}. ${JSON.stringify(error.response.data)}`
-                : `Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText}`;
-            throw new Error(errorMessage);
+                serviceCode
+            });
+            throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
             logger.error('Network error creating label:', {

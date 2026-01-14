@@ -5,10 +5,6 @@ const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
-// Always use a fixed weight of 500g (~1.1 lb) everywhere (no calculations)
-const FIXED_WEIGHT_LBS = 1.1; // 500 grams (~1.1 lb)
-const FIXED_WEIGHT_OZ = FIXED_WEIGHT_LBS * 16; // ~17.6 oz
-
 /**
  * Capitalize first letter of each word in a string
  * @param {string} str - String to capitalize
@@ -21,43 +17,6 @@ function capitalizeName(str) {
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
-}
-
-/**
- * Map requestedShippingService to proper carrier/service codes
- * @param {string} requestedShippingService - Shipping service name
- * @returns {Object} Object with carrierCode and serviceCode
- */
-function getCarrierAndServiceCode(requestedShippingService) {
-    if (!requestedShippingService) {
-        return { carrierCode: null, serviceCode: null };
-    }
-    
-    const service = String(requestedShippingService).toLowerCase();
-    
-    // Royal Mail mappings
-    if (service.includes('royal mail') || service.includes('royal_mail')) {
-        if (service.includes('tracked 24') || service.includes('tracked24') || service.includes('24')) {
-            return { carrierCode: 'royal_mail', serviceCode: 'rm_tracked_24' };
-        } else if (service.includes('tracked 48') || service.includes('tracked48') || service.includes('48')) {
-            return { carrierCode: 'royal_mail', serviceCode: 'rm_tracked_48_high_volume' };
-        }
-        // Default to tracked 48
-        return { carrierCode: 'royal_mail', serviceCode: 'rm_tracked_48_high_volume' };
-    }
-    
-    // FedEx mappings
-    if (service.includes('fedex') || service === 'fedex_2day') {
-        return { carrierCode: 'fedex', serviceCode: 'fedex_2day' };
-    }
-    
-    // Free Delivery typically uses Royal Mail
-    if (service.includes('free delivery') || service.includes('free_delivery')) {
-        return { carrierCode: 'royal_mail', serviceCode: 'rm_tracked_48_high_volume' };
-    }
-    
-    // Default fallback
-    return { carrierCode: null, serviceCode: null };
 }
 
 async function createShipStationOrder(order) {
@@ -125,23 +84,17 @@ async function createShipStationOrder(order) {
                     }
                 }
                 
-                // Fixed item weight: always 500g (~17.6oz), no calculations based on quantity or variant weight
-                const quantity = item.quantity || 1;
-                // NOTE: We completely ignore any stored variant.weight and quantity for weight purposes
-                const itemWeightInOunces = FIXED_WEIGHT_OZ;
-
                 return {
                     sku: variantSku || productSku,
                     name: productName,
-                    quantity,
+                    quantity: item.quantity,
                     unitPrice: item.unit_price,
-                    weight: itemWeightInOunces, // Always > 0 now
                 };
             }) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
-            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Royal Mail Tracked 48',
+            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
         };
         
         shipstationLogger.logApiCall({
@@ -192,64 +145,29 @@ async function createShipStationOrder(order) {
             shipstation_order_id: orderId
         });
 
-        // Map shipping service to carrier/service codes
-        const { carrierCode: mappedCarrierCode, serviceCode: mappedServiceCode } = 
-            getCarrierAndServiceCode(order.shippingMethod?.requestedShippingService);
-
-        const carrierCode = order.shippingMethod?.carrier_code || mappedCarrierCode || 'royal_mail';
-        const serviceCode = order.shippingMethod?.service_code || mappedServiceCode || 'rm_tracked_48_high_volume';
-        const packageCode = 'package';
+        // Map order data to label creation params (customize as needed)
+        const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
+        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
+        const packageCode = 'package'; // Example default
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-        /**
-         * Previous dynamic shipment weight calculation (now disabled by requirement):
-         *
-         * let totalWeight = 1; // Default to 1 pound
-         * if (order.orderItems && order.orderItems.length > 0) {
-         *     totalWeight = order.orderItems.reduce((sum, item) => {
-         *         const quantity = item.quantity || 1;
-         *         const variantWeightLbs =
-         *             (item.variant?.weight && item.variant.weight > 0)
-         *                 ? item.variant.weight
-         *                 : DEFAULT_ITEM_WEIGHT_LBS; // 500g default per item
-         *
-         *         return sum + (variantWeightLbs * quantity);
-         *     }, 0);
-         *     
-         *     // Ensure minimum weight
-         *     if (totalWeight <= 0) {
-         *         totalWeight = 1; // Default to 1 pound
-         *     } else if (totalWeight < 0.1) {
-         *         totalWeight = 0.1; // Minimum 0.1 pounds
-         *     }
-         * }
-         *
-         * const weight = { value: totalWeight, units: 'pounds' };
-         */
         
-        // Current behaviour: fixed shipment weight, always 500g (~1.1lb), no per-item/quantity calculations
-        const weight = { value: FIXED_WEIGHT_LBS, units: 'pounds' };
+        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
+        let totalWeight = 1;
+        if (order.orderItems && order.orderItems.length > 0) {
+            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+        }
+        
+        const weight = { value: totalWeight, units: 'pounds' };
         const dimensions = null;
         const insuranceOptions = null;
         const internationalOptions = null;
         const advancedOptions = null;
-        const testLabel = process.env.SHIPSTATION_TEST_LABEL === 'true' || false;
+        const testLabel = true;
 
         // Create label for the order
         let labelResponse = null;
         try {
-            shipstationLogger.logInfo({
-                type: 'create_label_start',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                shipstation_order_id: orderId,
-                carrierCode,
-                serviceCode,
-                weight: weight.value,
-                testLabel
-            });
-
             labelResponse = await createLabelForOrder({
                 orderId,
                 carrierCode,
@@ -264,15 +182,12 @@ async function createShipStationOrder(order) {
                 advancedOptions,
                 testLabel
             });
-
             shipstationLogger.logInfo({
                 type: 'create_label_success',
                 order_id: order.id,
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
-                shipment_id: labelResponse?.shipmentId,
-                tracking_number: labelResponse?.trackingNumber,
-                shipment_cost: labelResponse?.shipmentCost
+                shipment_id: labelResponse?.shipmentId
             });
         } catch (labelError) {
             shipstationLogger.logError({
@@ -281,17 +196,6 @@ async function createShipStationOrder(order) {
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
                 error: labelError.message,
-                status: labelError.response?.status,
-                statusText: labelError.response?.statusText,
-                response_data: labelError.response?.data, // Full error response
-                request_payload: { // Log what we sent
-                    carrierCode,
-                    serviceCode,
-                    packageCode,
-                    weight: weight.value,
-                    shipDate,
-                    testLabel
-                },
                 stack: labelError.stack
             });
             // Don't fail the entire operation, just log the error

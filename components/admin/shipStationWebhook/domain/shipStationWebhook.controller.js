@@ -468,44 +468,9 @@ async function handleOrderNotify(orderData) {
             customer_email: orderData.email
         });
        
-        // Find order with all necessary relationships for email
+        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
@@ -519,7 +484,7 @@ async function handleOrderNotify(orderData) {
             return;
         }
 
-        // Update order status to packed
+        // Update order status to processing
         await order.update({ 
             status: 'packed' 
         }, { 
@@ -534,51 +499,6 @@ async function handleOrderNotify(orderData) {
             shipstation_order_id: order.shipstation_order_id || orderData.orderId,
             status_updated: 'packed'
         });
-
-        // Send email to customer
-        if (order.user && order.user.email) {
-            try {
-                const emailData = {
-                    emailTypes: 'ORDER_PACKED',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-                        status: 'packed'
-                    }
-                };
-
-                shipstationLogger.logInfo({
-                    type: 'handle_order_notify_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_PACKED'
-                });
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-                shipstationLogger.logInfo({
-                    type: 'handle_order_notify_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
-                });
-            } catch (emailError) {
-                shipstationLogger.logError({
-                    type: 'handle_order_notify_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    user_email: order.user?.email
-                });
-                logger.error('Error sending order packed email:', emailError);
-                // Don't fail the entire operation if email fails
-            }
-        }
 
         logger.info('Order status updated to processing via webhook', {
             order_id: order.id,
@@ -609,45 +529,9 @@ async function handleItemOrderNotify(orderData) {
             order_unique_id: orderData.order_unique_id,
             customer_email: orderData.email
         });
-        
-        // Find order with all necessary relationships for email
+        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
@@ -676,51 +560,6 @@ async function handleItemOrderNotify(orderData) {
             shipstation_order_id: order.shipstation_order_id || orderData.orderId,
             status_updated: 'packed'
         });
-
-        // Send email to customer
-        if (order.user && order.user.email) {
-            try {
-                const emailData = {
-                    emailTypes: 'ORDER_PACKED',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-                        status: 'packed'
-                    }
-                };
-
-                shipstationLogger.logInfo({
-                    type: 'handle_item_order_notify_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_PACKED'
-                });
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-                shipstationLogger.logInfo({
-                    type: 'handle_item_order_notify_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
-                });
-            } catch (emailError) {
-                shipstationLogger.logError({
-                    type: 'handle_item_order_notify_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    user_email: order.user?.email
-                });
-                logger.error('Error sending order packed email:', emailError);
-                // Don't fail the entire operation if email fails
-            }
-        }
 
         logger.info('Order status updated to packed via webhook', {
             order_id: order.id,
@@ -1003,44 +842,9 @@ async function handleItemShipNotify(orderData) {
             customer_email: orderData.email
         });
 
-        // Find order with all necessary relationships for email
+        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
@@ -1069,51 +873,6 @@ async function handleItemShipNotify(orderData) {
             shipstation_order_id: order.shipstation_order_id || orderData.orderId,
             status_updated: 'out_for_delivery'
         });
-
-        // Send email to customer
-        if (order.user && order.user.email) {
-            try {
-                const emailData = {
-                    emailTypes: 'ORDER_OUT_FOR_DELIVERY',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-                        status: 'out_for_delivery'
-                    }
-                };
-
-                shipstationLogger.logInfo({
-                    type: 'handle_item_ship_notify_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_OUT_FOR_DELIVERY'
-                });
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-                shipstationLogger.logInfo({
-                    type: 'handle_item_ship_notify_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
-                });
-            } catch (emailError) {
-                shipstationLogger.logError({
-                    type: 'handle_item_ship_notify_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    user_email: order.user?.email
-                });
-                logger.error('Error sending order out for delivery email:', emailError);
-                // Don't fail the entire operation if email fails
-            }
-        }
 
         logger.info('Order status updated to out_for_delivery via webhook', {
             order_id: order.id,
@@ -1145,44 +904,9 @@ async function handleFulfillmentShipped(orderData) {
             customer_email: orderData.email
         });
 
-        // Find order with all necessary relationships for email
+        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
@@ -1211,51 +935,6 @@ async function handleFulfillmentShipped(orderData) {
             shipstation_order_id: order.shipstation_order_id || orderData.orderId,
             status_updated: 'delivered'
         });
-
-        // Send email to customer
-        if (order.user && order.user.email) {
-            try {
-                const emailData = {
-                    emailTypes: 'ORDER_DELIVERED',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-                        status: 'delivered'
-                    }
-                };
-
-                shipstationLogger.logInfo({
-                    type: 'handle_fulfillment_shipped_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_DELIVERED'
-                });
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-                shipstationLogger.logInfo({
-                    type: 'handle_fulfillment_shipped_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
-                });
-            } catch (emailError) {
-                shipstationLogger.logError({
-                    type: 'handle_fulfillment_shipped_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    user_email: order.user?.email
-                });
-                logger.error('Error sending order delivered email:', emailError);
-                // Don't fail the entire operation if email fails
-            }
-        }
 
         logger.info('Order status updated to delivered via webhook', {
             order_id: order.id,
@@ -1287,44 +966,9 @@ async function handleFulfillmentRejected(orderData) {
             customer_email: orderData.email
         });
 
-        // Find order with all necessary relationships for email
+        // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'price']
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'slug', 'price'],
-                            required: false
-                        }
-                    ]
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country']
-                },
-                {
-                    model: ShippingMethod,
-                    as: 'shippingMethod',
-                    attributes: ['id', 'shipping_method', 'shipping_cost']
-                }
-            ]
+            where: { shipstation_order_id: orderData.orderId }
         });
 
         if (!order) {
@@ -1353,51 +997,6 @@ async function handleFulfillmentRejected(orderData) {
             shipstation_order_id: order.shipstation_order_id || orderData.orderId,
             status_updated: 'fail'
         });
-
-        // Send email to customer
-        if (order.user && order.user.email) {
-            try {
-                const emailData = {
-                    emailTypes: 'ORDER_FAILED',
-                    to: order.user.email,
-                    context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-                        status: 'fail'
-                    }
-                };
-
-                shipstationLogger.logInfo({
-                    type: 'handle_fulfillment_rejected_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_FAILED'
-                });
-
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                
-                shipstationLogger.logInfo({
-                    type: 'handle_fulfillment_rejected_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
-                });
-            } catch (emailError) {
-                shipstationLogger.logError({
-                    type: 'handle_fulfillment_rejected_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    user_email: order.user?.email
-                });
-                logger.error('Error sending order failed email:', emailError);
-                // Don't fail the entire operation if email fails
-            }
-        }
 
         logger.info('Order status updated to fail via webhook', {
             order_id: order.id,
