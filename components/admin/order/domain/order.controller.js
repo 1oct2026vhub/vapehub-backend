@@ -674,12 +674,12 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: OrderAddress,
                         as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     },
                     {
                         model: OrderAddress,
                         as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
                     }
                 ],
                 transaction
