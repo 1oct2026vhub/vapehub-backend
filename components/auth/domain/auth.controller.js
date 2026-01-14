@@ -261,8 +261,6 @@ module.exports.register = async (req, res, next) => {
                         context: {
                             userName: username,
                             couponCode: null,
-                            verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                            expiryTime: moment(token_expiry).format('LLLL'),
                         },
                         attachments: ""
                     };
@@ -304,8 +302,7 @@ module.exports.register = async (req, res, next) => {
                             userName: username,
                             couponCode: referral_coupon,
                             discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                            verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                            expiryTime: moment(token_expiry).format('LLLL'),
+                            minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
                         },
                         attachments: ""
                     };
@@ -364,7 +361,7 @@ module.exports.register = async (req, res, next) => {
                     description: `Welcome coupon for ${username}`,
                     discount_type: 'percentage',
                     discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                    minimum_purchase: 0, // No minimum purchase for welcome coupons
+                    minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
                     usage_limit: 1,
                     usage_count: 0,
                     is_single_use: true,
@@ -382,17 +379,30 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: couponCode,
                         discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                        expiryTime: moment(token_expiry).format('LLLL'),
+                        minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
                     },
                     attachments: ""
                 };
                 await sendEmail(welcomeEmailData.to, welcomeEmailData.emailTypes, welcomeEmailData.context, welcomeEmailData.attachments);
             }
 
+            // Send verification email
+            const data = {
+                emailTypes: constants.emailTypes.REGISTER,
+                to: userExists.email,
+                context: {
+                    userName: username,
+                    verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                    expiryTime: moment(token_expiry).format('LLLL'),
+                },
+                attachments: ""
+            };
+            
+            await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
             return successResponse(
                 res, 
-                { message: "Welcome email with verification link has been sent to your email address." }, 
+                { message: "Your temporary account has been converted to a permanent account. Verification email has been sent to your email address." }, 
                 "Account converted successfully! Please verify your email to log in.", 
                 201
             );
@@ -555,8 +565,7 @@ module.exports.register = async (req, res, next) => {
                     context: {
                         userName: username,
                         couponCode: null,
-                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                        expiryTime: moment(token_expiry).format('LLLL'),
+                        
                     },
                     attachments: ""
                 };
@@ -599,8 +608,7 @@ module.exports.register = async (req, res, next) => {
                         userName: username,
                         couponCode: referral_coupon,
                         discountValue: activeReferralMethod ? `${activeReferralMethod.referral_value}%` : '0%',
-                        verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                        expiryTime: moment(token_expiry).format('LLLL'),
+                        minimumPurchase: activeReferralMethod ? `$${activeReferralMethod.minimum_purchase}` : '$0',
                     },
                     attachments: ""
                 };
@@ -664,7 +672,7 @@ module.exports.register = async (req, res, next) => {
                 description: `Welcome coupon for ${username}`,
                 discount_type: 'percentage',
                 discount_value: activeReferrersMethod ? parseFloat(activeReferrersMethod.referral_value) : 10.00,
-                minimum_purchase: 0, // No minimum purchase for welcome coupons
+                minimum_purchase: activeReferrersMethod ? parseFloat(activeReferrersMethod.minimum_purchase) : 50.00,
                 // maximum_discount: 25.00, // Maximum discount of $25
                 usage_limit: 1, // Single use coupon
                 usage_count: 0,
@@ -684,8 +692,7 @@ module.exports.register = async (req, res, next) => {
                     userName: username,
                     couponCode: couponCode,
                     discountValue: activeReferrersMethod ? `${activeReferrersMethod.referral_value}%` : '10%',
-                    verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
-                    expiryTime: moment(token_expiry).format('LLLL'),
+                    minimumPurchase: activeReferrersMethod ? `$${activeReferrersMethod.minimum_purchase}` : '$50',
                     // maximumDiscount: '$25'
                 },
                 attachments: ""
@@ -694,7 +701,21 @@ module.exports.register = async (req, res, next) => {
         
         }
 
-        return successResponse(res, { message: "Welcome email with verification link has been sent to your email address." }, "Welcome email sent! Please verify your email to log in.", 201);
+
+        const data = {
+            emailTypes: constants.emailTypes.REGISTER,
+            to: user.email,
+            context: {
+                userName: username,
+                verificationLink: `${process.env.FRONTEND_URL}/my-account/verify-email?token=${token}`,
+                expiryTime: moment(token_expiry).format('LLLL'),
+            },
+            attachments: ""
+        }
+        
+        await sendEmail(data.to, data.emailTypes, data.context, data.attachments);
+
+        return successResponse(res, { message: "Verification email has been sent to your email address." }, "Verification email has been sent! Please verify your email to log in.", 201);
     } catch (error) {
         return errorResponse(res, error);
     }

@@ -1,20 +1,4 @@
 const { body, checkSchema, param } = require("express-validator");
-const { ShippingMethod } = require("../../../models");
-
-// Custom validator to ensure the shipping_method_id exists in the shipping_methods table
-const validateShippingMethodId = async (value) => {
-  if (!value) {
-    throw new Error("Shipping method ID is required");
-  }
-
-  const shippingMethod = await ShippingMethod.findByPk(value);
-
-  if (!shippingMethod) {
-    throw new Error(`Shipping method with ID ${value} does not exist`);
-  }
-
-  return true;
-};
 
 exports.validatePlaceOrder = [
   body("email")
@@ -36,8 +20,7 @@ exports.validatePlaceOrder = [
     .isInt({ min: 1 })
     .withMessage("Shipping method ID must be a positive number")
     .notEmpty()
-    .withMessage("Shipping method ID is required")
-    .custom(validateShippingMethodId),
+    .withMessage("Shipping method ID is required"),
 
   body("shipping_address").isObject().withMessage("Shipping address is required"),
   body("shipping_address.first_name")
@@ -189,8 +172,7 @@ exports.validateGuestPlaceOrder = [
     .isInt({ min: 1 })
     .withMessage("Shipping method ID must be a positive number")
     .notEmpty()
-    .withMessage("Shipping method ID is required")
-    .custom(validateShippingMethodId),
+    .withMessage("Shipping method ID is required"),
 
   body("shipping_address").isObject().withMessage("Shipping address is required"),
   body("shipping_address.first_name")

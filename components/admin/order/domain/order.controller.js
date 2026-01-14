@@ -7,8 +7,6 @@ const { orderStatusEnums, orderStatus} = require('../../../../config/constants')
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
-const sendEmail = require('../../../../library/sendEmail');
-const logger = require('../../../../library/logger');
 
 /**
  * List all orders with filtering and pagination
@@ -412,129 +410,6 @@ module.exports.getOrderById = async (req, res, next) => {
     }
 };
 
-/**
- * Send email notification to customer when order status changes
- * @param {Object} order - Order instance with all relationships loaded
- * @param {string} status - New order status (packed, shipped, completed)
- */
-async function sendOrderStatusEmail(order, status) {
-    try {
-        // Map status to email type
-        const emailTypeMap = {
-            'packed': 'ORDER_PACKED',
-            'shipped': 'ORDER_SHIPPED',
-            'completed': 'ORDER_COMPLETED'
-        };
-
-        const emailType = emailTypeMap[status];
-        if (!emailType) {
-            // Status doesn't require email
-            return;
-        }
-
-        // Check if order has user and email
-        if (!order.user || !order.user.email) {
-            logger.warn('Cannot send order status email: missing user or email', {
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                status: status
-            });
-            return;
-        }
-
-        // Prepare email context
-        const emailContext = {
-            userName: order.user.first_name || order.user.email.split('@')[0],
-            orderId: order.id,
-            orderUniqueId: order.order_unique_id,
-            orderCode: order.order_code || order.order_unique_id,
-            orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
-            status: status,
-            shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
-            shippingCost: order.shipping_cost || 0,
-            totalAmount: order.total || 0,
-            discountPrice: order.discount_price || 0,
-            loyaltyDiscount: order.loyalty_discount || 0,
-            mailSubscriptionDiscount: order.mailSubscription_discount || 0,
-            items: order.orderItems ? order.orderItems.map(item => {
-                // Build product name with variant info if available
-                let productName = item.product?.name || 'Product';
-                if (item.variant) {
-                    // Check if variant has attributes
-                    if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
-                        const attributeParts = item.variant.variantAttributes
-                            .filter(va => va.attribute && va.term)
-                            .map(va => `${va.attribute.name}: ${va.term.name}`)
-                            .filter(Boolean);
-                        if (attributeParts.length > 0) {
-                            productName = `${productName}, ${attributeParts.join(', ')}`;
-                        } else {
-                            productName = `${productName} - ${item.variant.slug || 'Variant'}`;
-                        }
-                    } else {
-                        productName = `${productName} - ${item.variant.slug || 'Variant'}`;
-                    }
-                }
-                
-                return {
-                    name: productName,
-                    quantity: item.quantity || 0,
-                    price: item.unit_price || 0,
-                    total: item.total || (item.unit_price * item.quantity) || 0
-                };
-            }) : [],
-            shippingAddress: order.orderShippingAddress ? {
-                name: order.orderShippingAddress.name || '',
-                last_name: order.orderShippingAddress.last_name || '',
-                street: order.orderShippingAddress.street || '',
-                town: order.orderShippingAddress.town || '',
-                region: order.orderShippingAddress.region || '',
-                post_code: order.orderShippingAddress.post_code || '',
-                country: order.orderShippingAddress.country || 'GB',
-                phone: order.orderShippingAddress.phone || ''
-            } : {},
-            billingAddress: order.orderBillingAddress ? {
-                name: order.orderBillingAddress.name || '',
-                last_name: order.orderBillingAddress.last_name || '',
-                street: order.orderBillingAddress.street || '',
-                town: order.orderBillingAddress.town || '',
-                region: order.orderBillingAddress.region || '',
-                post_code: order.orderBillingAddress.post_code || '',
-                country: order.orderBillingAddress.country || 'GB',
-                phone: order.orderBillingAddress.phone || ''
-            } : {},
-            paymentMethod: order.paymentMethod ? order.paymentMethod.payment_method : 'Online Payment'
-        };
-
-        // Add tracking number for shipped and completed statuses if available
-        if ((status === 'shipped' || status === 'completed') && order.shipstation_order_id) {
-            // You might want to fetch tracking info from ShipStation here
-            // For now, just include shipstation_order_id if needed
-            emailContext.trackingNumber = order.shipstation_order_id;
-        }
-
-        // Send email
-        await sendEmail(order.user.email, emailType, emailContext);
-
-        logger.info('Order status email sent successfully', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            status: status,
-            email_type: emailType,
-            user_email: order.user.email
-        });
-    } catch (emailError) {
-        logger.error('Error sending order status email:', {
-            error: emailError.message,
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            status: status,
-            user_email: order.user?.email
-        });
-        // Don't throw error - email failure shouldn't fail the status update
-    }
-}
-
 module.exports.updateOrderStatus = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -566,7 +441,7 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 {
                     model: Order.sequelize.models.OrderItem,
                     as: 'orderItems',
-                    attributes: ['id', 'quantity', 'unit_price', 'total'],
+                    attributes: ['id', 'quantity', 'unit_price'],
                     include: [
                         {
                             model: Order.sequelize.models.Product,
@@ -662,80 +537,6 @@ module.exports.updateOrderStatus = async (req, res, next) => {
             url: `/order-details/${order.id}`
         });
 
-        // Send email notification for packed, shipped, or completed statuses
-        if (['packed', 'shipped', 'completed'].includes(status)) {
-            // Reload order with all necessary relationships for email
-            await order.reload({
-                include: [
-                    {
-                        model: User,
-                        as: 'user',
-                        attributes: ['id', 'first_name', 'last_name', 'email']
-                    },
-                    {
-                        model: OrderItem,
-                        as: 'orderItems',
-                        attributes: ['id', 'quantity', 'unit_price', 'total'],
-                        include: [
-                            {
-                                model: Product,
-                                as: 'product',
-                                attributes: ['id', 'name', 'slug']
-                            },
-                            {
-                                model: ProductVariant,
-                                as: 'variant',
-                                attributes: ['id', 'slug', 'sku'],
-                                include: [
-                                    {
-                                        model: ProductVariantAttribute,
-                                        as: 'variantAttributes',
-                                        paranoid: false,
-                                        include: [
-                                            {
-                                                model: Attribute,
-                                                as: 'attribute',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            },
-                                            {
-                                                model: AttributeTerm,
-                                                as: 'term',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone', 'country']
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone', 'country']
-                    },
-                    {
-                        model: ShippingMethod,
-                        as: 'shippingMethod',
-                        attributes: ['id', 'shipping_method', 'shipping_cost']
-                    },
-                    {
-                        model: PaymentMethod,
-                        as: 'paymentMethod',
-                        attributes: ['id', 'payment_method']
-                    }
-                ]
-            });
-            
-            await sendOrderStatusEmail(order, status);
-        }
-
         // Handle stock updates for cancelled orders
         if (status === orderStatus.CANCEL) {
             const orderItems = await OrderItem.findAll({
@@ -829,7 +630,7 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: OrderItem,
                         as: 'orderItems',
-                        attributes: ['id', 'quantity', 'unit_price', 'total'],
+                        attributes: ['id', 'quantity', 'unit_price'],
                         include: [
                             {
                                 model: Product,
@@ -985,27 +786,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                         title: 'Order Status Updated',
                         url: `/order-details/${order.id}`
                     });
-
-                    // Send email notification for packed, shipped, or completed statuses
-                    if (['packed', 'shipped', 'completed'].includes(status)) {
-                        try {
-                            // Order already has all relationships loaded, just need to reload with payment method
-                            await order.reload({
-                                include: [
-                                    {
-                                        model: PaymentMethod,
-                                        as: 'paymentMethod',
-                                        attributes: ['id', 'payment_method']
-                                    }
-                                ]
-                            });
-                            
-                            await sendOrderStatusEmail(order, status);
-                        } catch (emailError) {
-                            // Log but don't fail the order update
-                            logger.error(`Error sending email for order ${order.id}:`, emailError);
-                        }
-                    }
 
                     // Handle stock updates for cancelled orders
                     if (status === orderStatus.CANCEL) {
