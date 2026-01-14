@@ -3,23 +3,7 @@ const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const checkoutController = require("../domain/checkout.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
-const { checkoutValidator, applyCouponValidate } = require("../helper/checkout.validator");
-const { ShippingMethod } = require("../../../models");
-
-// Custom validator to ensure the shipping_method_id exists in the shipping_methods table
-const validateShippingMethodId = async (value) => {
-    if (!value) {
-        throw new Error("Shipping method ID is required");
-    }
-
-    const shippingMethod = await ShippingMethod.findByPk(value);
-
-    if (!shippingMethod) {
-        throw new Error(`Shipping method with ID ${value} does not exist`);
-    }
-
-    return true;
-};
+const {checkoutValidator,applyCouponValidate} = require("../helper/checkout.validator")
 
 /**
  * @swagger
@@ -1165,12 +1149,7 @@ router.post("/guest/checkout-and-order",
         check('cartItems.*.variant_id').optional().isInt({ min: 1 }),
         check('cartItems.*.quantity').isInt({ min: 1 }).withMessage('Each item must have quantity >= 1'),
         // Order validation
-        check('shipping_method_id')
-            .isInt({ min: 1 })
-            .withMessage('Shipping method ID must be a positive number')
-            .notEmpty()
-            .withMessage('Shipping method ID is required')
-            .custom(validateShippingMethodId),
+        check('shipping_method_id').isInt({ min: 1 }).withMessage('Shipping method ID is required'),
         check('shipping_address').isObject().withMessage('Shipping address is required'),
         check('shipping_address.first_name').notEmpty().withMessage('Shipping first name is required'),
         check('shipping_address.last_name').notEmpty().withMessage('Shipping last name is required'),

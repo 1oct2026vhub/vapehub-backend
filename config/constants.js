@@ -5,9 +5,11 @@ module.exports = {
         REFER_A_FRIEND: 'REFER_A_FRIEND',
         REFERRER_REWARD: 'REFERRER_REWARD',
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
-        ORDER_PACKED: 'ORDER_PACKED',
         ORDER_SHIPPED: 'ORDER_SHIPPED',
-        ORDER_COMPLETED: 'ORDER_COMPLETED',
+        ORDER_PACKED: 'ORDER_PACKED',
+        ORDER_OUT_FOR_DELIVERY: 'ORDER_OUT_FOR_DELIVERY',
+        ORDER_DELIVERED: 'ORDER_DELIVERED',
+        ORDER_FAILED: 'ORDER_FAILED',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
@@ -42,19 +44,29 @@ module.exports = {
             subject: "Order Confirmation",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
+        ORDER_SHIPPED: {
+            folderName: 'shipstation_emails/order_shipped',
+            subject: "Your Order Has Been Completed | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
         ORDER_PACKED: {
-            folderName: 'order_packed',
+            folderName: 'shipstation_emails/order_packed',
             subject: "Your Order Has Been Packed | VapeHub",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
-        ORDER_SHIPPED: {
-            folderName: 'order_shipped',
-            subject: "Your Order Has Been Shipped | VapeHub",
+        ORDER_OUT_FOR_DELIVERY: {
+            folderName: 'shipstation_emails/order_out_for_delivery',
+            subject: "Your Order Is Out For Delivery | VapeHub",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
-        ORDER_COMPLETED: {
-            folderName: 'order_completed',
-            subject: "Your Order Has Been Completed | VapeHub",
+        ORDER_DELIVERED: {
+            folderName: 'shipstation_emails/order_delivered',
+            subject: "Your Order Has Been Delivered | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_FAILED: {
+            folderName: 'shipstation_emails/order_failed',
+            subject: "Order Fulfillment Issue | VapeHub",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ORDER_CANCELLATION: {
