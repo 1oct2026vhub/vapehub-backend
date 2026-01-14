@@ -3,7 +3,7 @@ const router = express.Router();
 const { getShipStationProductById, listShipStationProducts, updateShipStationProduct, 
     getShipStationOrderById, deleteShipStationOrderById, holdShipStationOrderUntil, 
     restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
-    testCreateShipStationOrder, getOrderDataById } = require('../domain/shipStation.controller');
+    testCreateShipStationOrder, getOrderDataById, downloadLogs } = require('../domain/shipStation.controller');
 const { authMiddleware } = require("../../../../library/middleware");
 
 /**
@@ -2314,5 +2314,78 @@ router.get("/orders/:orderId/data", authMiddleware(true), getOrderDataById);
  *         description: Internal server error or ShipStation API error
  */
 router.post("/orders/:orderId/test-create", authMiddleware(true), testCreateShipStationOrder);
+
+/**
+ * @swagger
+ * /api/admin/shipStation/logs/download:
+ *   get:
+ *     summary: Download logs from server filtered by date and type
+ *     description: Downloads logs from the server. If type is shipping_station, includes error, API, webhook, and info logs. Otherwise includes other application logs.
+ *     tags: [Admin - ShipStation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *           pattern: '^\d{4}-\d{2}-\d{2}$'
+ *         description: Date in YYYY-MM-DD format
+ *         example: "2025-01-23"
+ *       - in: query
+ *         name: type
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [shipping_station, other]
+ *         description: Type of logs to download. 'shipping_station' for ShipStation logs (error, api, webhook, info), 'other' for other application logs
+ *         example: "shipping_station"
+ *     responses:
+ *       200:
+ *         description: Logs downloaded successfully
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *         headers:
+ *           Content-Disposition:
+ *             schema:
+ *               type: string
+ *               example: 'attachment; filename="shipstation_logs_2025-01-23.txt"'
+ *       400:
+ *         description: Bad request - Missing or invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Date parameter is required (format: YYYY-MM-DD)"
+ *       401:
+ *         description: Unauthorized - Admin authentication required
+ *       404:
+ *         description: No logs found for the specified date and type
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "No logs found for date 2025-01-23 and type shipping_station"
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/logs/download", authMiddleware(true), downloadLogs);
 
 module.exports = router; 

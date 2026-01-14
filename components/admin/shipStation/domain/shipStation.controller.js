@@ -1097,8 +1097,141 @@ async function getOrderDataById(req, res, next) {
     }
 }
 
+/**
+ * Download logs from server filtered by date and type
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+async function downloadLogs(req, res) {
+    try {
+        const { date, type } = req.query;
+        
+        // Validate required parameters
+        if (!date) {
+            return errorResponse(res, {}, 'Date parameter is required (format: YYYY-MM-DD)', 400);
+        }
+        
+        if (!type) {
+            return errorResponse(res, {}, 'Type parameter is required (shipping_station or other)', 400);
+        }
+        
+        // Validate date format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            return errorResponse(res, {}, 'Invalid date format. Use YYYY-MM-DD', 400);
+        }
+        
+        // Validate type
+        if (type !== 'shipping_station' && type !== 'other') {
+            return errorResponse(res, {}, 'Invalid type. Must be "shipping_station" or "other"', 400);
+        }
+        
+        const fs = require('fs');
+        const path = require('path');
+        const logsDir = path.join(__dirname, '../../../../public/logs');
+        
+        // Check if logs directory exists
+        if (!fs.existsSync(logsDir)) {
+            return errorResponse(res, {}, 'Logs directory not found', 404);
+        }
+        
+        let logFiles = [];
+        let combinedContent = '';
+        let fileName = '';
+        
+        if (type === 'shipping_station') {
+            // ShipStation logs: error, api, webhook, info
+            const logTypes = ['error', 'api', 'webhook', 'info'];
+            fileName = `shipstation_logs_${date}.txt`;
+            
+            logTypes.forEach(logType => {
+                const logFileName = `shipstation_${logType}_${date}.log`;
+                const logFilePath = path.join(logsDir, logFileName);
+                
+                if (fs.existsSync(logFilePath)) {
+                    logFiles.push(logFileName);
+                    const content = fs.readFileSync(logFilePath, 'utf8');
+                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
+                    combinedContent += content;
+                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
+                }
+            });
+        } else {
+            // Other logs: error, info, verification, and any other non-shipstation logs
+            const logTypes = ['error', 'info', 'verification'];
+            fileName = `application_logs_${date}.txt`;
+            
+            // First, add standard log types
+            logTypes.forEach(logType => {
+                const logFileName = `${logType}_${date}.log`;
+                const logFilePath = path.join(logsDir, logFileName);
+                
+                if (fs.existsSync(logFilePath)) {
+                    logFiles.push(logFileName);
+                    const content = fs.readFileSync(logFilePath, 'utf8');
+                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
+                    combinedContent += content;
+                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
+                }
+            });
+            
+            // Also check for any other log files for that date (excluding shipstation logs)
+            const allFiles = fs.readdirSync(logsDir);
+            allFiles.forEach(file => {
+                if (file.includes(date) && 
+                    !file.startsWith('shipstation_') && 
+                    !logTypes.some(logType => file === `${logType}_${date}.log`)) {
+                    const logFilePath = path.join(logsDir, file);
+                    if (fs.statSync(logFilePath).isFile()) {
+                        logFiles.push(file);
+                        const content = fs.readFileSync(logFilePath, 'utf8');
+                        combinedContent += `\n========== ${file} ==========\n\n`;
+                        combinedContent += content;
+                        combinedContent += `\n\n========== End of ${file} ==========\n\n`;
+                    }
+                }
+            });
+        }
+        
+        // Check if any logs were found
+        if (logFiles.length === 0) {
+            return errorResponse(res, {}, `No logs found for date ${date} and type ${type}`, 404);
+        }
+        
+        // Add header information
+        const header = `Log Download Report\n` +
+                      `Date: ${date}\n` +
+                      `Type: ${type}\n` +
+                      `Files Included: ${logFiles.join(', ')}\n` +
+                      `Total Files: ${logFiles.length}\n` +
+                      `Generated: ${new Date().toISOString()}\n` +
+                      `${'='.repeat(80)}\n\n`;
+        
+        combinedContent = header + combinedContent;
+        
+        // Set response headers for file download
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', Buffer.byteLength(combinedContent, 'utf8'));
+        
+        // Send the file
+        res.send(combinedContent);
+        
+    } catch (error) {
+        shipstationLogger.logError({
+            type: 'download_logs_error',
+            error: error.message,
+            stack: error.stack,
+            query_params: req.query
+        });
+        
+        return errorResponse(res, error, 'Failed to download logs');
+    }
+}
+
 module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, 
     deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
     testCreateShipStationOrder,
-    getOrderDataById
+    getOrderDataById,
+    downloadLogs
  }; 
