@@ -504,7 +504,15 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                     // Reload order to get updated shipstation_order_id
                     await order.reload();
                 } catch (shipStationError) {
-                    console.error("ShipStation order creation failed:", shipStationError);
+                    shipstationLogger.logError({
+                        type: 'admin_update_order_shipstation_error',
+                        order_id: order.id,
+                        order_unique_id: order.order_unique_id,
+                        target_status: status,
+                        error: shipStationError.message || shipStationError.toString(),
+                        stack: shipStationError.stack
+                    });
+
                     const error = new Error(`Failed to create ShipStation order: ${shipStationError.message || shipStationError.toString()}`);
                     error.statusCode = 500;
                     error.shipStationError = shipStationError.message || shipStationError.toString();
@@ -674,12 +682,12 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: OrderAddress,
                         as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
                     },
                     {
                         model: OrderAddress,
                         as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'street', 'town', 'region', 'post_code', 'phone']
+                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
                     }
                 ],
                 transaction
@@ -751,7 +759,13 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                                         : result.reason?.message || result.reason?.toString() || 'Unknown error';
                                     
                                     shipStationError = errorMsg;
-                                    console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
+                                    shipstationLogger.logError({
+                                        type: 'admin_bulk_update_order_shipstation_error',
+                                        order_id: order.id,
+                                        order_unique_id: order.order_unique_id,
+                                        target_status: status,
+                                        error: errorMsg
+                                    });
                                     
                                     errors.push({
                                         order_id: order.id,
