@@ -1112,7 +1112,7 @@ async function downloadLogs(req, res) {
         }
         
         if (!type) {
-            return errorResponse(res, {}, 'Type parameter is required (shipping_station or other)', 400);
+            return errorResponse(res, {}, 'Type parameter is required (shipping_station, shipping_method, or other)', 400);
         }
         
         // Validate date format
@@ -1122,8 +1122,8 @@ async function downloadLogs(req, res) {
         }
         
         // Validate type
-        if (type !== 'shipping_station' && type !== 'other') {
-            return errorResponse(res, {}, 'Invalid type. Must be "shipping_station" or "other"', 400);
+        if (type !== 'shipping_station' && type !== 'shipping_method' && type !== 'other') {
+            return errorResponse(res, {}, 'Invalid type. Must be "shipping_station", "shipping_method", or "other"', 400);
         }
         
         const fs = require('fs');
@@ -1156,8 +1156,25 @@ async function downloadLogs(req, res) {
                     combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
                 }
             });
+        } else if (type === 'shipping_method') {
+            // Shipping Method logs: error, info, debug, calculation
+            const logTypes = ['error', 'info', 'debug', 'calculation'];
+            fileName = `shipping_method_logs_${date}.txt`;
+            
+            logTypes.forEach(logType => {
+                const logFileName = `shipping_method_${logType}_${date}.log`;
+                const logFilePath = path.join(logsDir, logFileName);
+                
+                if (fs.existsSync(logFilePath)) {
+                    logFiles.push(logFileName);
+                    const content = fs.readFileSync(logFilePath, 'utf8');
+                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
+                    combinedContent += content;
+                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
+                }
+            });
         } else {
-            // Other logs: error, info, verification, and any other non-shipstation logs
+            // Other logs: error, info, verification, and any other non-shipstation and non-shipping_method logs
             const logTypes = ['error', 'info', 'verification'];
             fileName = `application_logs_${date}.txt`;
             
@@ -1175,11 +1192,12 @@ async function downloadLogs(req, res) {
                 }
             });
             
-            // Also check for any other log files for that date (excluding shipstation logs)
+            // Also check for any other log files for that date (excluding shipstation and shipping_method logs)
             const allFiles = fs.readdirSync(logsDir);
             allFiles.forEach(file => {
                 if (file.includes(date) && 
                     !file.startsWith('shipstation_') && 
+                    !file.startsWith('shipping_method_') && 
                     !logTypes.some(logType => file === `${logType}_${date}.log`)) {
                     const logFilePath = path.join(logsDir, file);
                     if (fs.statSync(logFilePath).isFile()) {

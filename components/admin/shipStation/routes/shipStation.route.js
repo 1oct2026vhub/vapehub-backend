@@ -2320,7 +2320,7 @@ router.post("/orders/:orderId/test-create", authMiddleware(true), testCreateShip
  * /api/admin/shipStation/logs/download:
  *   get:
  *     summary: Download logs from server filtered by date and type
- *     description: Downloads logs from the server. If type is shipping_station, includes error, API, webhook, and info logs. Otherwise includes other application logs.
+ *     description: Downloads logs from the server. If type is shipping_station, includes error, API, webhook, and info logs. If type is shipping_method, includes error, info, debug, and calculation logs. Otherwise includes other application logs.
  *     tags: [Admin - ShipStation]
  *     security:
  *       - bearerAuth: []
@@ -2339,8 +2339,8 @@ router.post("/orders/:orderId/test-create", authMiddleware(true), testCreateShip
  *         required: true
  *         schema:
  *           type: string
- *           enum: [shipping_station, other]
- *         description: Type of logs to download. 'shipping_station' for ShipStation logs (error, api, webhook, info), 'other' for other application logs
+ *           enum: [shipping_station, shipping_method, other]
+ *         description: Type of logs to download. 'shipping_station' for ShipStation logs (error, api, webhook, info), 'shipping_method' for Shipping Method logs (error, info, debug, calculation), 'other' for other application logs
  *         example: "shipping_station"
  *     responses:
  *       200:
