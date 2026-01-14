@@ -6,6 +6,10 @@ module.exports = {
         REFERRER_REWARD: 'REFERRER_REWARD',
         ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
         ORDER_SHIPPED: 'ORDER_SHIPPED',
+        ORDER_PACKED: 'ORDER_PACKED',
+        ORDER_OUT_FOR_DELIVERY: 'ORDER_OUT_FOR_DELIVERY',
+        ORDER_DELIVERED: 'ORDER_DELIVERED',
+        ORDER_FAILED: 'ORDER_FAILED',
         ORDER_CANCELLATION: 'ORDER_CANCELLATION',
         ACCOUNT_DELETION: 'ACCOUNT_DELETION',
         REFUND_CONFIRMATION: 'REFUND_CONFIRMATION',
@@ -41,8 +45,28 @@ module.exports = {
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ORDER_SHIPPED: {
-            folderName: 'order_shipped',
+            folderName: 'shipstation_emails/order_shipped',
             subject: "Your Order Has Been Completed | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_PACKED: {
+            folderName: 'shipstation_emails/order_packed',
+            subject: "Your Order Has Been Packed | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_OUT_FOR_DELIVERY: {
+            folderName: 'shipstation_emails/order_out_for_delivery',
+            subject: "Your Order Is Out For Delivery | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_DELIVERED: {
+            folderName: 'shipstation_emails/order_delivered',
+            subject: "Your Order Has Been Delivered | VapeHub",
+            from: process.env.EMAIL_NO_REPLY_SENDER
+        },
+        ORDER_FAILED: {
+            folderName: 'shipstation_emails/order_failed',
+            subject: "Order Fulfillment Issue | VapeHub",
             from: process.env.EMAIL_NO_REPLY_SENDER
         },
         ORDER_CANCELLATION: {
