@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
+const { User, UserAddress, Order, OrderAddress, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, ShippingMethod, Coupon, CouponUsage, Referral, Cart, LoyaltyPointsSettings, ReferralMethod, Transaction, OrderLog, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const logger = require('../../../library/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -1799,7 +1799,30 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'slug', 'price', 'stock']
+                            attributes: ['id', 'slug', 'price', 'stock'],
+                            required: false,
+                            include: [
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                    include: [
+                                        {
+                                            model: Attribute,
+                                            as: 'attribute',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        },
+                                        {
+                                            model: AttributeTerm,
+                                            as: 'term',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 },
@@ -2397,12 +2420,28 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 totalAmount: order.total || 0,
                 discountPrice: order.discount_price || 0,
                 loyaltyDiscount: order.loyalty_discount || 0,
-                items: order.orderItems ? order.orderItems.map(item => ({
-                    name: item.variant ? `${item.product?.name || 'Product'} - ${item.variant?.slug || 'Variant'}` : (item.product?.name || 'Product'),
-                    quantity: item.quantity || 0,
-                    price: item.unit_price || 0,
-                    total: item.total || 0
-                })) : [],
+                items: order.orderItems ? order.orderItems.map(item => {
+                    let productName = item.product?.name || 'Product';
+                    
+                    // Append variant attribute values in format: "Product Name - Value1, Value2"
+                    if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
+                        const attributeTerms = item.variant.variantAttributes
+                            .filter(va => va.term) // Ensure term exists
+                            .map(va => va.term.name)
+                            .filter(Boolean); // Remove any empty strings
+                        
+                        if (attributeTerms.length > 0) {
+                            productName = `${productName} - ${attributeTerms.join(', ')}`;
+                        }
+                    }
+                    
+                    return {
+                        name: productName,
+                        quantity: item.quantity || 0,
+                        price: item.unit_price || 0,
+                        total: item.total || 0
+                    };
+                }) : [],
                 shippingAddress: order.orderShippingAddress ? {
                     name: order.orderShippingAddress.name || '',
                     last_name: order.orderShippingAddress.last_name || '',
@@ -2522,7 +2561,30 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                         {
                             model: ProductVariant,
                             as: 'variant',
-                            attributes: ['id', 'slug', 'price', 'stock']
+                            attributes: ['id', 'slug', 'price', 'stock'],
+                            required: false,
+                            include: [
+                                {
+                                    model: ProductVariantAttribute,
+                                    as: 'variantAttributes',
+                                    paranoid: false,
+                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
+                                    include: [
+                                        {
+                                            model: Attribute,
+                                            as: 'attribute',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        },
+                                        {
+                                            model: AttributeTerm,
+                                            as: 'term',
+                                            paranoid: false,
+                                            attributes: ['id', 'name']
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ]
                 },
