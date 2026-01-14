@@ -184,11 +184,18 @@ module.exports = (sequelize, DataTypes) => {
     };
 
     // Add method to generate referral code
-    User.prototype.generateReferralCode = async function() {
+    User.prototype.generateReferralCode = async function(options = {}) {
+        if (!this.id) {
+            throw new Error('User ID is required to generate referral code');
+        }
+
         let isUnique = false;
         let referralCode;
+        let attempts = 0;
+        const maxAttempts = 10; // Prevent infinite loop
         
-        while (!isUnique) {
+        while (!isUnique && attempts < maxAttempts) {
+            attempts++;
             // Generate a random string of 6 characters
             const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
             // Combine user ID with random string
@@ -196,12 +203,17 @@ module.exports = (sequelize, DataTypes) => {
             
             // Check if the code already exists
             const existingUser = await User.findOne({
-                where: { referral_code: referralCode }
+                where: { referral_code: referralCode },
+                transaction: options.transaction
             });
             
             if (!existingUser) {
                 isUnique = true;
             }
+        }
+        
+        if (!isUnique) {
+            throw new Error(`Failed to generate unique referral code after ${maxAttempts} attempts for user ${this.id}`);
         }
         
         return referralCode;
@@ -221,8 +233,20 @@ module.exports = (sequelize, DataTypes) => {
 
     // Add afterCreate hook to generate referral code
     User.afterCreate(async (user, options) => {
-        const referralCode = await user.generateReferralCode();
-        await user.update({ referral_code: referralCode });
+        try {
+            // Generate referral code with transaction support
+            const referralCode = await user.generateReferralCode(options);
+            
+            // Update user with referral code, preserving transaction context
+            await user.update(
+                { referral_code: referralCode },
+                { transaction: options.transaction }
+            );
+        } catch (error) {
+            console.error(`Error generating referral code for user ID ${user?.id}:`, error);
+            // Log error but don't throw - user creation should still succeed
+            // The referral code can be generated later if needed
+        }
     });
 
     return User;
