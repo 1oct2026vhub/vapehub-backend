@@ -1,5 +1,5 @@
 const axios = require('axios');
-const logger = require('../../../../library/logger');
+const shipstationLogger = require('../../../../utils/shipstationLogger');
 
 async function sendOrderToShipStation(shipStationOrder) {
     try {
@@ -23,18 +23,23 @@ async function sendOrderToShipStation(shipStationOrder) {
         // Handle network errors properly
         if (error.response) {
             // API returned an error response
-            console.error("ShipStation API Error:", {
-                status: error.response.status,
-                statusText: error.response.statusText,
-                data: error.response.data
-            });
             const errorDetails = error.response.data?.ModelState 
                 ? JSON.stringify(error.response.data.ModelState, null, 2)
                 : JSON.stringify(error.response.data, null, 2);
+            
+            shipstationLogger.logError({
+                type: 'send_order_api_error',
+                status: error.response.status,
+                statusText: error.response.statusText,
+                data: error.response.data,
+                errorDetails
+            });
+            
             throw new Error(`Failed to send order to ShipStation: ${error.response.status} - ${errorDetails}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
-            logger.error('ShipStation network error:', {
+            shipstationLogger.logError({
+                type: 'send_order_network_error',
                 message: error.message,
                 code: error.code,
                 config: { url: error.config?.url, timeout: error.config?.timeout }
@@ -42,6 +47,11 @@ async function sendOrderToShipStation(shipStationOrder) {
             throw new Error(`Network error connecting to ShipStation: ${error.message}`);
         } else {
             // Something else happened
+            shipstationLogger.logError({
+                type: 'send_order_unexpected_error',
+                message: error.message,
+                stack: error.stack
+            });
             throw new Error(`Failed to send order to ShipStation: ${error.message}`);
         }
     }
@@ -64,7 +74,8 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
         };
 
         // Log request payload before sending
-        logger.info('ShipStation createLabelForOrder - Request Payload:', {
+        shipstationLogger.logInfo({
+            type: 'create_label_request',
             orderId,
             carrierCode,
             serviceCode,
@@ -87,7 +98,8 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
         );
         
         // Log successful response
-        logger.info('ShipStation createLabelForOrder - Success Response:', {
+        shipstationLogger.logInfo({
+            type: 'create_label_success',
             orderId,
             shipmentId: response.data?.shipmentId,
             trackingNumber: response.data?.trackingNumber,
@@ -117,9 +129,6 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                 statusText: error.response?.statusText
             };
             
-            logger.error('ShipStation createLabelForOrder - API Error:', apiErrorDetails);
-            
-            const shipstationLogger = require('../../../../utils/shipstationLogger');
             shipstationLogger.logError({
                 type: 'create_label_api_error',
                 ...apiErrorDetails
@@ -128,7 +137,8 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText} - ${JSON.stringify(error.response?.data || {})}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
-            logger.error('ShipStation createLabelForOrder - Network Error:', {
+            shipstationLogger.logError({
+                type: 'create_label_network_error',
                 ...errorDetails,
                 message: error.message,
                 code: error.code
@@ -137,7 +147,8 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             throw new Error(`Network error creating label for order ${orderId}: ${error.message}`);
         } else {
             // Something else happened
-            logger.error('ShipStation createLabelForOrder - Unexpected Error:', {
+            shipstationLogger.logError({
+                type: 'create_label_unexpected_error',
                 ...errorDetails,
                 error: error.message,
                 stack: error.stack
@@ -165,7 +176,8 @@ async function getProductById(productId) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error getting product by ID from ShipStation:', {
+        shipstationLogger.logError({
+            type: 'get_product_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -203,7 +215,8 @@ async function listProducts(queryParams = {}) {
         });
         return response.data;
     } catch (error) {
-        logger.error('Error listing products from ShipStation:', {
+        shipstationLogger.logError({
+            type: 'list_products_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -231,7 +244,8 @@ async function updateProduct(productId, productData) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error updating product in ShipStation:', {
+        shipstationLogger.logError({
+            type: 'update_product_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -259,7 +273,8 @@ async function getOrderById(orderId) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error getting order by ID from ShipStation:', {
+        shipstationLogger.logError({
+            type: 'get_order_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -311,7 +326,8 @@ async function holdOrderUntil(orderId, holdUntilDate) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error holding order until date in ShipStation:', {
+        shipstationLogger.logError({
+            type: 'hold_order_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -342,7 +358,8 @@ async function restoreOrderFromHold(orderId) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error restoring order from hold in ShipStation:', {
+        shipstationLogger.logError({
+            type: 'restore_order_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -370,7 +387,8 @@ async function markOrderAsShipped(orderData) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error marking order as shipped in ShipStation:', {
+        shipstationLogger.logError({
+            type: 'mark_shipped_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -386,7 +404,10 @@ async function voidShipmentLabel(shipmentData) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
         
-        logger.info('Voiding shipment label with API key:', apiKey ? 'API key present' : 'API key missing');
+        shipstationLogger.logInfo({
+            type: 'void_label_request',
+            has_api_key: !!apiKey
+        });
         
         const response = await axios.post(
             'https://ssapi.shipstation.com/shipments/voidlabel',
@@ -400,7 +421,8 @@ async function voidShipmentLabel(shipmentData) {
         );
         return response.data;
     } catch (error) {
-        logger.error('Error voiding shipment label in ShipStation:', {
+        shipstationLogger.logError({
+            type: 'void_label_error',
             error: error.message,
             response: error.response?.data,
             status: error.response?.status,

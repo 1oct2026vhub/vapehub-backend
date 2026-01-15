@@ -2,7 +2,6 @@ const axios = require('axios');
 const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
-const logger = require('../../../../library/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
 /**
@@ -139,7 +138,8 @@ async function createShipStationOrder(order) {
             shipstation_order_id: orderId
         });
 
-        logger.info('Updated order with ShipStation order ID', {
+        shipstationLogger.logInfo({
+            type: 'order_updated_with_shipstation_id',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             shipstation_order_id: orderId
@@ -762,7 +762,10 @@ async function getShipStationWebhooks(req, res){
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         
         if (!apiKey || !apiSecret) {
-            logger.error('ShipStation API credentials not configured');
+            shipstationLogger.logError({
+                type: 'get_webhooks_credentials_not_configured',
+                message: 'ShipStation API credentials not configured'
+            });
             return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
         }
 
@@ -818,7 +821,13 @@ async function getShipStationCarriers(req, res, next) {
         });
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
-        logger.error('Error getting ShipStation carriers:', error);
+        shipstationLogger.logError({
+            type: 'get_carriers_error',
+            error: error.message,
+            stack: error.stack,
+            response: error.response?.data,
+            status: error.response?.status
+        });
         return errorResponse(res, error, 'Failed to retrieve carriers from ShipStation');
     }
 }
@@ -855,7 +864,14 @@ async function getShipStationCarrierServices(req, res) {
         });
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
-        logger.error('Error getting ShipStation carrier services:', error);
+        shipstationLogger.logError({
+            type: 'get_carrier_services_error',
+            error: error.message,
+            stack: error.stack,
+            response: error.response?.data,
+            status: error.response?.status,
+            carrierCode: req.query.carrierCode
+        });
         return errorResponse(res, error, 'Failed to retrieve carrier services from ShipStation');
     }
 }
@@ -923,7 +939,8 @@ async function testCreateShipStationOrder(req, res, next) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
 
-        logger.info('Creating ShipStation order for testing', {
+        shipstationLogger.logInfo({
+            type: 'create_order_testing',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             user_email: order.user?.email
@@ -932,7 +949,8 @@ async function testCreateShipStationOrder(req, res, next) {
         // Create ShipStation order
         const shipStationResult = await createShipStationOrder(order);
 
-        logger.info('ShipStation order created successfully', {
+        shipstationLogger.logInfo({
+            type: 'create_order_testing_success',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             shipstation_response: shipStationResult
@@ -964,7 +982,8 @@ async function testCreateShipStationOrder(req, res, next) {
         }, 'ShipStation order and label created successfully for testing');
 
     } catch (error) {
-        logger.error('Error creating ShipStation order for testing:', {
+        shipstationLogger.logError({
+            type: 'create_order_testing_error',
             error: error.message,
             stack: error.stack,
             order_id: req.params.orderId
@@ -1087,7 +1106,8 @@ async function getOrderDataById(req, res, next) {
         return successResponse(res, formattedOrder, 'Order data retrieved successfully');
 
     } catch (error) {
-        logger.error('Error getting order data by ID:', {
+        shipstationLogger.logError({
+            type: 'get_order_data_error',
             error: error.message,
             stack: error.stack,
             order_id: req.params.orderId
