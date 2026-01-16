@@ -94,7 +94,7 @@ async function createShipStationOrder(order) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
-            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
+            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Standard Delivery',
         };
         
         shipstationLogger.logApiCall({
@@ -146,8 +146,8 @@ async function createShipStationOrder(order) {
         });
 
         // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'fedex'; // Example default
-        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day'; // Example default
+        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail'; // Example default
+        const serviceCode = order.shippingMethod?.service_code || 'standard_delivery'; // Example default
         const packageCode = 'package'; // Example default
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
