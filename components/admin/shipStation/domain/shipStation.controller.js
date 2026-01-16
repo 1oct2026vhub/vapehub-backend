@@ -2,6 +2,7 @@ const axios = require('axios');
 const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
+const logger = require('../../../../library/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
 /**
@@ -93,7 +94,7 @@ async function createShipStationOrder(order) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
-            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'fedex_2day',
+            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Standard Delivery',
         };
         
         shipstationLogger.logApiCall({
@@ -138,39 +139,31 @@ async function createShipStationOrder(order) {
             shipstation_order_id: orderId
         });
 
-        shipstationLogger.logInfo({
-            type: 'order_updated_with_shipstation_id',
+        logger.info('Updated order with ShipStation order ID', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             shipstation_order_id: orderId
         });
 
-        // Map order data to label creation params
-        const carrierCode = order.shippingMethod?.carrier_code || 'fedex';
-        const serviceCode = order.shippingMethod?.service_code || 'fedex_2day';
-        const packageCode = 'package';
-        
-        // Determine confirmation type
-        // Default to 'none' - can be customized based on shipping method if needed
-        // Options: 'none', 'delivery', 'signature', 'adult_signature', 'direct_signature' (FedEx only)
-        const confirmation = order.shippingMethod?.confirmation || 'none';
-        
+        // Map order data to label creation params (customize as needed)
+        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail'; // Example default
+        const serviceCode = order.shippingMethod?.service_code || 'standard_delivery'; // Example default
+        const packageCode = 'package'; // Example default
+        const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        
+        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
+        let totalWeight = 1;
+        if (order.orderItems && order.orderItems.length > 0) {
+            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+        }
+        
+        const weight = { value: totalWeight, units: 'pounds' };
+        const dimensions = null;
+        const insuranceOptions = null;
+        const internationalOptions = null;
+        const advancedOptions = null;
         const testLabel = true;
-
-        // Log before creating label
-        shipstationLogger.logInfo({
-            type: 'create_label_start',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: orderId,
-            carrierCode,
-            serviceCode,
-            packageCode,
-            confirmation,
-            shipDate,
-            testLabel
-        });
 
         // Create label for the order
         let labelResponse = null;
@@ -182,17 +175,19 @@ async function createShipStationOrder(order) {
                 packageCode,
                 confirmation,
                 shipDate,
+                weight,
+                dimensions,
+                insuranceOptions,
+                internationalOptions,
+                advancedOptions,
                 testLabel
             });
-            
             shipstationLogger.logInfo({
                 type: 'create_label_success',
                 order_id: order.id,
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
-                shipment_id: labelResponse?.shipmentId,
-                tracking_number: labelResponse?.trackingNumber,
-                shipment_cost: labelResponse?.shipmentCost
+                shipment_id: labelResponse?.shipmentId
             });
         } catch (labelError) {
             shipstationLogger.logError({
@@ -201,13 +196,7 @@ async function createShipStationOrder(order) {
                 order_unique_id: order.order_unique_id,
                 shipstation_order_id: orderId,
                 error: labelError.message,
-                stack: labelError.stack,
-                carrierCode,
-                serviceCode,
-                packageCode,
-                confirmation,
-                shipDate,
-                testLabel
+                stack: labelError.stack
             });
             // Don't fail the entire operation, just log the error
             // The order was created successfully, so we can still return the order response
@@ -762,10 +751,7 @@ async function getShipStationWebhooks(req, res){
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         
         if (!apiKey || !apiSecret) {
-            shipstationLogger.logError({
-                type: 'get_webhooks_credentials_not_configured',
-                message: 'ShipStation API credentials not configured'
-            });
+            logger.error('ShipStation API credentials not configured');
             return errorResponse(res, {}, 'ShipStation API credentials not configured', 500);
         }
 
@@ -821,13 +807,7 @@ async function getShipStationCarriers(req, res, next) {
         });
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
-        shipstationLogger.logError({
-            type: 'get_carriers_error',
-            error: error.message,
-            stack: error.stack,
-            response: error.response?.data,
-            status: error.response?.status
-        });
+        logger.error('Error getting ShipStation carriers:', error);
         return errorResponse(res, error, 'Failed to retrieve carriers from ShipStation');
     }
 }
@@ -864,14 +844,7 @@ async function getShipStationCarrierServices(req, res) {
         });
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
-        shipstationLogger.logError({
-            type: 'get_carrier_services_error',
-            error: error.message,
-            stack: error.stack,
-            response: error.response?.data,
-            status: error.response?.status,
-            carrierCode: req.query.carrierCode
-        });
+        logger.error('Error getting ShipStation carrier services:', error);
         return errorResponse(res, error, 'Failed to retrieve carrier services from ShipStation');
     }
 }
@@ -939,8 +912,7 @@ async function testCreateShipStationOrder(req, res, next) {
             return errorResponse(res, {}, 'Order not found', 404);
         }
 
-        shipstationLogger.logInfo({
-            type: 'create_order_testing',
+        logger.info('Creating ShipStation order for testing', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             user_email: order.user?.email
@@ -949,8 +921,7 @@ async function testCreateShipStationOrder(req, res, next) {
         // Create ShipStation order
         const shipStationResult = await createShipStationOrder(order);
 
-        shipstationLogger.logInfo({
-            type: 'create_order_testing_success',
+        logger.info('ShipStation order created successfully', {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             shipstation_response: shipStationResult
@@ -982,8 +953,7 @@ async function testCreateShipStationOrder(req, res, next) {
         }, 'ShipStation order and label created successfully for testing');
 
     } catch (error) {
-        shipstationLogger.logError({
-            type: 'create_order_testing_error',
+        logger.error('Error creating ShipStation order for testing:', {
             error: error.message,
             stack: error.stack,
             order_id: req.params.orderId
@@ -1106,8 +1076,7 @@ async function getOrderDataById(req, res, next) {
         return successResponse(res, formattedOrder, 'Order data retrieved successfully');
 
     } catch (error) {
-        shipstationLogger.logError({
-            type: 'get_order_data_error',
+        logger.error('Error getting order data by ID:', {
             error: error.message,
             stack: error.stack,
             order_id: req.params.orderId
@@ -1117,159 +1086,8 @@ async function getOrderDataById(req, res, next) {
     }
 }
 
-/**
- * Download logs from server filtered by date and type
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-async function downloadLogs(req, res) {
-    try {
-        const { date, type } = req.query;
-        
-        // Validate required parameters
-        if (!date) {
-            return errorResponse(res, {}, 'Date parameter is required (format: YYYY-MM-DD)', 400);
-        }
-        
-        if (!type) {
-            return errorResponse(res, {}, 'Type parameter is required (shipping_station, shipping_method, or other)', 400);
-        }
-        
-        // Validate date format
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(date)) {
-            return errorResponse(res, {}, 'Invalid date format. Use YYYY-MM-DD', 400);
-        }
-        
-        // Validate type
-        if (type !== 'shipping_station' && type !== 'shipping_method' && type !== 'other') {
-            return errorResponse(res, {}, 'Invalid type. Must be "shipping_station", "shipping_method", or "other"', 400);
-        }
-        
-        const fs = require('fs');
-        const path = require('path');
-        const logsDir = path.join(__dirname, '../../../../public/logs');
-        
-        // Check if logs directory exists
-        if (!fs.existsSync(logsDir)) {
-            return errorResponse(res, {}, 'Logs directory not found', 404);
-        }
-        
-        let logFiles = [];
-        let combinedContent = '';
-        let fileName = '';
-        
-        if (type === 'shipping_station') {
-            // ShipStation logs: error, api, webhook, info
-            const logTypes = ['error', 'api', 'webhook', 'info'];
-            fileName = `shipstation_logs_${date}.txt`;
-            
-            logTypes.forEach(logType => {
-                const logFileName = `shipstation_${logType}_${date}.log`;
-                const logFilePath = path.join(logsDir, logFileName);
-                
-                if (fs.existsSync(logFilePath)) {
-                    logFiles.push(logFileName);
-                    const content = fs.readFileSync(logFilePath, 'utf8');
-                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
-                    combinedContent += content;
-                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
-                }
-            });
-        } else if (type === 'shipping_method') {
-            // Shipping Method logs: error, info, debug, calculation
-            const logTypes = ['error', 'info', 'debug', 'calculation'];
-            fileName = `shipping_method_logs_${date}.txt`;
-            
-            logTypes.forEach(logType => {
-                const logFileName = `shipping_method_${logType}_${date}.log`;
-                const logFilePath = path.join(logsDir, logFileName);
-                
-                if (fs.existsSync(logFilePath)) {
-                    logFiles.push(logFileName);
-                    const content = fs.readFileSync(logFilePath, 'utf8');
-                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
-                    combinedContent += content;
-                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
-                }
-            });
-        } else {
-            // Other logs: error, info, verification, and any other non-shipstation and non-shipping_method logs
-            const logTypes = ['error', 'info', 'verification'];
-            fileName = `application_logs_${date}.txt`;
-            
-            // First, add standard log types
-            logTypes.forEach(logType => {
-                const logFileName = `${logType}_${date}.log`;
-                const logFilePath = path.join(logsDir, logFileName);
-                
-                if (fs.existsSync(logFilePath)) {
-                    logFiles.push(logFileName);
-                    const content = fs.readFileSync(logFilePath, 'utf8');
-                    combinedContent += `\n========== ${logFileName} ==========\n\n`;
-                    combinedContent += content;
-                    combinedContent += `\n\n========== End of ${logFileName} ==========\n\n`;
-                }
-            });
-            
-            // Also check for any other log files for that date (excluding shipstation and shipping_method logs)
-            const allFiles = fs.readdirSync(logsDir);
-            allFiles.forEach(file => {
-                if (file.includes(date) && 
-                    !file.startsWith('shipstation_') && 
-                    !file.startsWith('shipping_method_') && 
-                    !logTypes.some(logType => file === `${logType}_${date}.log`)) {
-                    const logFilePath = path.join(logsDir, file);
-                    if (fs.statSync(logFilePath).isFile()) {
-                        logFiles.push(file);
-                        const content = fs.readFileSync(logFilePath, 'utf8');
-                        combinedContent += `\n========== ${file} ==========\n\n`;
-                        combinedContent += content;
-                        combinedContent += `\n\n========== End of ${file} ==========\n\n`;
-                    }
-                }
-            });
-        }
-        
-        // Check if any logs were found
-        if (logFiles.length === 0) {
-            return errorResponse(res, {}, `No logs found for date ${date} and type ${type}`, 404);
-        }
-        
-        // Add header information
-        const header = `Log Download Report\n` +
-                      `Date: ${date}\n` +
-                      `Type: ${type}\n` +
-                      `Files Included: ${logFiles.join(', ')}\n` +
-                      `Total Files: ${logFiles.length}\n` +
-                      `Generated: ${new Date().toISOString()}\n` +
-                      `${'='.repeat(80)}\n\n`;
-        
-        combinedContent = header + combinedContent;
-        
-        // Set response headers for file download
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Length', Buffer.byteLength(combinedContent, 'utf8'));
-        
-        // Send the file
-        res.send(combinedContent);
-        
-    } catch (error) {
-        shipstationLogger.logError({
-            type: 'download_logs_error',
-            error: error.message,
-            stack: error.stack,
-            query_params: req.query
-        });
-        
-        return errorResponse(res, error, 'Failed to download logs');
-    }
-}
-
 module.exports = { createShipStationOrder, getShipStationProductById, listShipStationProducts, updateShipStationProduct, getShipStationOrderById, 
     deleteShipStationOrderById, holdShipStationOrderUntil, restoreShipStationOrderFromHold, markShipStationOrderAsShipped, voidShipStationLabel, getShipStationWebhooks, getShipStationCarriers, getShipStationCarrierServices,
     testCreateShipStationOrder,
-    getOrderDataById,
-    downloadLogs
+    getOrderDataById
  }; 

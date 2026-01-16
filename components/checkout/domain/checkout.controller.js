@@ -394,13 +394,8 @@ module.exports.applyCoupon = async (req, res, next) => {
                     message: "Selected shipping method is not available for this order"
                 };
             }
-        } else {
-            throw {
-                statusCode: 404,
-                message: "Shipping method not found or disabled"
-            };
         }
-        
+         
         // Calculate deals
         const deals = await dealService.getApplicableDeals(cart);
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
