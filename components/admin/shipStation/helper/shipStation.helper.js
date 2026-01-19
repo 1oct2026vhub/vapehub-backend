@@ -97,14 +97,16 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             }
         );
         
-        // Log successful response
+        // Log successful response - include tracking URL if available
         shipstationLogger.logInfo({
             type: 'create_label_success',
             orderId,
             shipmentId: response.data?.shipmentId,
             trackingNumber: response.data?.trackingNumber,
+            trackingUrl: response.data?.trackingUrl || response.data?.tracking_url || null,
             shipmentCost: response.data?.shipmentCost,
-            responseStatus: response.status
+            responseStatus: response.status,
+            response_keys: Object.keys(response.data || {}) // Log all available keys to see what ShipStation provides
         });
         
         return response.data;

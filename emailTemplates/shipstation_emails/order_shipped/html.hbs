@@ -246,11 +246,22 @@
                     </tbody>
                 </table>
             </div>
+            {{#if trackingNumber}}
             <div class="tracking-info">
-                <h3 style="margin-top:0;">What's Next?</h3>
-                <p>Your order has been completed and prepared for shipping. You'll receive tracking information once your package is dispatched.</p>
-                <p>You can check your order status anytime by visiting your account.</p>
+                <h3 style="margin-top:0;">Tracking Information</h3>
+                <p><strong>Tracking Number:</strong> {{trackingNumber}}</p>
+                {{#if trackingLink}}
+                <p style="margin-top: 10px;">
+                    <a href="{{trackingLink}}" style="background:#2e8b57;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;font-weight:600;">
+                        Track Your Package
+                    </a>
+                </p>
+                {{/if}}
+                <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                    You can use the tracking number above to monitor your package's journey. {{#if trackingLink}}Click the button above to track your shipment directly with the carrier.{{/if}}
+                </p>
             </div>
+            {{/if}}
         </div>
         <div class="footer">
             <p>Need help with your order? Our customer service team is here to assist you.</p>

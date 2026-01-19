@@ -334,7 +334,11 @@ async function handleWebhook(req, res, next) {
                         orders: (orders || []).map(o => ({
                             orderId: o?.orderId || null,
                             orderNumber: o?.orderNumber || null,
-                            customerEmail: o?.customerEmail || null
+                            customerEmail: o?.customerEmail || null,
+                            trackingNumber: o?.trackingNumber || null,
+                            carrierCode: o?.carrierCode || null,
+                            shipmentId: o?.shipmentId || null,
+                            trackingUrl: o?.trackingUrl || null
                         }))
                     });
                     
@@ -355,14 +359,21 @@ async function handleWebhook(req, res, next) {
                             total_orders: orders?.length || 0,
                             shipstation_order_id: order?.orderId || null,
                             order_unique_id: order?.orderNumber || null,
-                            customer_email: order?.customerEmail || null
+                            customer_email: order?.customerEmail || null,
+                            tracking_number: order?.trackingNumber || null,
+                            carrier_code: order?.carrierCode || null,
+                            tracking_url: order?.trackingUrl || null
                         });
                         
                         try {
                             await handleShipNotify({ 
                                 orderId: order?.orderId || null, 
                                 order_unique_id: order?.orderNumber || null, 
-                                email: order?.customerEmail || null
+                                email: order?.customerEmail || null,
+                                trackingNumber: order?.trackingNumber || null,
+                                carrierCode: order?.carrierCode || null,
+                                shipmentId: order?.shipmentId || null,
+                                trackingUrl: order?.trackingUrl || null
                             });
                             
                             shipstationLogger.logInfo({
@@ -653,7 +664,11 @@ async function handleShipNotify(orderData) {
             type: 'handle_ship_notify_start',
             shipstation_order_id: orderData?.orderId || null,
             order_unique_id: orderData?.order_unique_id || null,
-            customer_email: orderData?.email || null
+            customer_email: orderData?.email || null,
+            tracking_number: orderData?.trackingNumber || null,
+            carrier_code: orderData?.carrierCode || null,
+            shipment_id: orderData?.shipmentId || null,
+            tracking_url: orderData?.trackingUrl || null
         });
         
         // Find order with all necessary relationships for email
@@ -743,10 +758,23 @@ async function handleShipNotify(orderData) {
             current_status: order?.status || null
         });
 
-        // Update order status to completed (matching WooCommerce behavior when label is printed)
-        await order.update({ 
-            status: 'completed' 
-        }, { 
+        // Prepare update data - include tracking number if available
+        const updateData = {
+            status: 'completed'
+        };
+        
+        if (orderData?.trackingNumber) {
+            updateData.tracking_number = orderData.trackingNumber;
+            shipstationLogger.logInfo({
+                type: 'handle_ship_notify_tracking_number_found',
+                order_id: order?.id || null,
+                tracking_number: orderData.trackingNumber,
+                carrier_code: orderData?.carrierCode || null
+            });
+        }
+
+        // Update order status and tracking number
+        await order.update(updateData, { 
             isAdmin: true,
             userId: null // System update
         });
@@ -756,7 +784,8 @@ async function handleShipNotify(orderData) {
             order_id: order?.id || null,
             order_unique_id: order?.order_unique_id || null,
             previous_status: order?.status || null,
-            new_status: 'completed'
+            new_status: 'completed',
+            tracking_number: orderData?.trackingNumber || null
         });
 
         // Create notification for customer
@@ -789,6 +818,19 @@ async function handleShipNotify(orderData) {
             // Don't fail the entire operation if notification fails
         }
 
+        // Get tracking link - only use if ShipStation provides it
+        const trackingNumber = orderData?.trackingNumber || order?.tracking_number || null;
+        const trackingLink = orderData?.trackingUrl || null; // Only use ShipStation's URL, don't generate
+
+        // Log for validation
+        shipstationLogger.logInfo({
+            type: 'handle_ship_notify_tracking_info',
+            tracking_number: trackingNumber,
+            tracking_link: trackingLink,
+            has_tracking_link: !!trackingLink,
+            carrier_code: orderData?.carrierCode || null
+        });
+
         // Send email to customer
         if (order?.user && order?.user?.email) {
             try {
@@ -808,6 +850,8 @@ async function handleShipNotify(orderData) {
                         discountPrice: order?.discount_price || 0,
                         loyaltyDiscount: order?.loyalty_discount || 0,
                         mailSubscriptionDiscount: order?.mailSubscription_discount || 0,
+                        trackingNumber: trackingNumber,
+                        trackingLink: trackingLink,
                         items: order?.orderItems ? order.orderItems.map(item => {
                             let productName = item.product?.name || 'Product';
                             
@@ -859,7 +903,9 @@ async function handleShipNotify(orderData) {
                     order_id: order?.id || null,
                     order_unique_id: order?.order_unique_id || null,
                     user_email: order?.user?.email || null,
-                    email_type: 'ORDER_SHIPPED'
+                    email_type: 'ORDER_SHIPPED',
+                    has_tracking: !!trackingNumber,
+                    tracking_number: trackingNumber || null
                 });
 
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
@@ -908,7 +954,8 @@ async function handleShipNotify(orderData) {
             type: 'handle_ship_notify_success',
             order_id: order?.id || null,
             order_unique_id: order?.order_unique_id || null,
-            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
+            tracking_number: orderData?.trackingNumber || null
         });
 
         logger.info('Order status updated to completed via webhook', {
@@ -1226,19 +1273,36 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
             });
             
             orders = (shipments || []).map((shipment, index) => {
+                // Log to see what ShipStation provides
+                shipstationLogger.logInfo({
+                    type: 'fetch_orders_shipment_raw',
+                    shipment_index: index,
+                    shipment_keys: Object.keys(shipment || {}),
+                    has_tracking_url: !!(shipment?.trackingUrl || shipment?.tracking_url),
+                    tracking_url: shipment?.trackingUrl || shipment?.tracking_url || null
+                });
+                
                 const orderData = {
                     orderId: shipment?.orderId || shipment?.order?.orderId || null,
                     orderNumber: shipment?.orderNumber || shipment?.order?.orderNumber || null,
-                    customerEmail: shipment?.customerEmail || shipment?.order?.customerEmail || null
+                    customerEmail: shipment?.customerEmail || shipment?.order?.customerEmail || null,
+                    trackingNumber: shipment?.trackingNumber || null,
+                    carrierCode: shipment?.carrierCode || null,
+                    shipmentId: shipment?.shipmentId || null,
+                    // Extract ShipStation-provided tracking URL if available
+                    trackingUrl: shipment?.trackingUrl || shipment?.tracking_url || null
                 };
                 
                 shipstationLogger.logInfo({
                     type: 'fetch_orders_shipment_mapped',
                     shipment_index: index,
-                    shipment_id: shipment?.shipmentId || null,
+                    shipment_id: orderData?.shipmentId || null,
                     order_id: orderData?.orderId || null,
                     order_number: orderData?.orderNumber || null,
-                    customer_email: orderData?.customerEmail || null
+                    customer_email: orderData?.customerEmail || null,
+                    tracking_number: orderData?.trackingNumber || null,
+                    carrier_code: orderData?.carrierCode || null,
+                    tracking_url: orderData?.trackingUrl || null
                 });
                 
                 return orderData;
@@ -1263,7 +1327,11 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
             orders: (orders || []).map(o => ({
                 orderId: o?.orderId || null,
                 orderNumber: o?.orderNumber || null,
-                customerEmail: o?.customerEmail || null
+                customerEmail: o?.customerEmail || null,
+                trackingNumber: o?.trackingNumber || null,
+                carrierCode: o?.carrierCode || null,
+                shipmentId: o?.shipmentId || null,
+                trackingUrl: o?.trackingUrl || null
             }))
         });
         
