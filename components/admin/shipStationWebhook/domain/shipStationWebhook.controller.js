@@ -173,25 +173,29 @@ async function unsubscribeFromWebhook(req, res, next) {
  * @param {Function} next - Express next middleware function
  */
 async function handleWebhook(req, res, next) {
+    // Add webhook log start separator
+    shipstationLogger.logWebhookStart();
+    
     try {
-        const webhookData = req.body;
+        const webhookData = req?.body || {};
         // Use resource_type as event if event is missing
-        const event = webhookData.event || webhookData.resource_type;
-        const { resource_type, resource_url } = webhookData;
+        const event = webhookData?.event || webhookData?.resource_type || null;
+        const resource_type = webhookData?.resource_type || null;
+        const resource_url = webhookData?.resource_url || null;
 
         // Log webhook receipt
         shipstationLogger.logWebhook({
             type: 'webhook_received',
-            event,
-            resource_type,
-            resource_url,
+            event: event,
+            resource_type: resource_type,
+            resource_url: resource_url,
             timestamp: new Date().toISOString(),
-            ip_address: req.ip,
-            user_agent: req.get('User-Agent'),
+            ip_address: req?.ip || null,
+            user_agent: req?.get?.('User-Agent') || null,
             headers: {
-                'content-type': req.get('Content-Type'),
-                'x-forwarded-for': req.get('X-Forwarded-For'),
-                'x-real-ip': req.get('X-Real-IP')
+                'content-type': req?.get?.('Content-Type') || null,
+                'x-forwarded-for': req?.get?.('X-Forwarded-For') || null,
+                'x-real-ip': req?.get?.('X-Real-IP') || null
             }
         });
 
@@ -231,6 +235,7 @@ async function handleWebhook(req, res, next) {
                 error: 'Resource URL is required',
                 webhook_data: webhookData
             });
+            shipstationLogger.logWebhookEnd();
             return res.status(200).json({ success: false, message: 'Resource URL is required' });
         }
 
@@ -259,19 +264,19 @@ async function handleWebhook(req, res, next) {
                         const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                         shipstationLogger.logInfo({
                             type: 'order_notify_orders_fetched',
-                            order_count: orders.length,
-                            resource_url
+                            order_count: orders?.length || 0,
+                            resource_url: resource_url
                         });
-                        for (const order of orders) {
-                            await handleOrderNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail });
+                        for (const order of orders || []) {
+                            await handleOrderNotify({ orderId: order?.orderId || null, order_unique_id: order?.orderNumber || null, email: order?.customerEmail || null });
                         }
                     } catch (err) {
                         shipstationLogger.logError({ 
                             type: 'order_notify_error', 
-                            error: err.message,
-                            stack: err.stack,
-                            resource_url,
-                            resource_type
+                            error: err?.message || null,
+                            stack: err?.stack || null,
+                            resource_url: resource_url,
+                            resource_type: resource_type
                         });
                         utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                     }
@@ -288,19 +293,19 @@ async function handleWebhook(req, res, next) {
                     const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                     shipstationLogger.logInfo({
                         type: 'item_order_notify_orders_fetched',
-                        order_count: orders.length,
-                        resource_url
+                        order_count: orders?.length || 0,
+                        resource_url: resource_url
                     });
-                    for (const order of orders) {
-                        await handleItemOrderNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    for (const order of orders || []) {
+                        await handleItemOrderNotify({ orderId: order?.orderId || null, order_unique_id: order?.orderNumber || null, email: order?.customerEmail || null});
                     }
                 } catch (err) {
                     shipstationLogger.logError({ 
                         type: 'item_order_notify_error', 
-                        error: err.message,
-                        stack: err.stack,
-                        resource_url,
-                        resource_type
+                        error: err?.message || null,
+                        stack: err?.stack || null,
+                        resource_url: resource_url,
+                        resource_type: resource_type
                     });
                     utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                 }
@@ -309,38 +314,99 @@ async function handleWebhook(req, res, next) {
                 try {
                     shipstationLogger.logWebhook({
                         type: 'ship_notify_received',
+                        event,
                         resource_url,
                         resource_type
                     });
+                    
+                    shipstationLogger.logInfo({
+                        type: 'ship_notify_fetching_shipments',
+                        resource_url,
+                        resource_type
+                    });
+                    
                     const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                     
                     shipstationLogger.logInfo({
                         type: 'ship_notify_orders_fetched',
-                        order_count: orders.length,
-                        resource_url,
-                        orders: orders.map(o => ({
-                            orderId: o.orderId,
-                            orderNumber: o.orderNumber,
-                            customerEmail: o.customerEmail
+                        order_count: orders?.length || 0,
+                        resource_url: resource_url,
+                        orders: (orders || []).map(o => ({
+                            orderId: o?.orderId || null,
+                            orderNumber: o?.orderNumber || null,
+                            customerEmail: o?.customerEmail || null,
+                            trackingNumber: o?.trackingNumber || null,
+                            carrierCode: o?.carrierCode || null,
+                            shipmentId: o?.shipmentId || null,
+                            trackingUrl: o?.trackingUrl || null
                         }))
                     });
                     
-                    for (const order of orders) {
+                    if ((orders?.length || 0) === 0) {
+                        shipstationLogger.logInfo({
+                            type: 'ship_notify_no_orders',
+                            resource_url: resource_url,
+                            resource_type: resource_type,
+                            message: 'No orders found in shipments - label may not be created yet or webhook received before label creation'
+                        });
+                    }
+                    
+                    for (let i = 0; i < (orders?.length || 0); i++) {
+                        const order = orders?.[i];
                         shipstationLogger.logInfo({
                             type: 'ship_notify_processing_order',
-                            shipstation_order_id: order.orderId,
-                            order_unique_id: order.orderNumber,
-                            customer_email: order.customerEmail
+                            order_index: i + 1,
+                            total_orders: orders?.length || 0,
+                            shipstation_order_id: order?.orderId || null,
+                            order_unique_id: order?.orderNumber || null,
+                            customer_email: order?.customerEmail || null,
+                            tracking_number: order?.trackingNumber || null,
+                            carrier_code: order?.carrierCode || null,
+                            tracking_url: order?.trackingUrl || null
                         });
-                        await handleShipNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                        
+                        try {
+                            await handleShipNotify({ 
+                                orderId: order?.orderId || null, 
+                                order_unique_id: order?.orderNumber || null, 
+                                email: order?.customerEmail || null,
+                                trackingNumber: order?.trackingNumber || null,
+                                carrierCode: order?.carrierCode || null,
+                                shipmentId: order?.shipmentId || null,
+                                trackingUrl: order?.trackingUrl || null
+                            });
+                            
+                            shipstationLogger.logInfo({
+                                type: 'ship_notify_order_processed',
+                                shipstation_order_id: order?.orderId || null,
+                                order_unique_id: order?.orderNumber || null,
+                                status: 'success'
+                            });
+                        } catch (orderError) {
+                            shipstationLogger.logError({
+                                type: 'ship_notify_order_processing_error',
+                                shipstation_order_id: order?.orderId || null,
+                                order_unique_id: order?.orderNumber || null,
+                                error: orderError?.message || null,
+                                stack: orderError?.stack || null
+                            });
+                            // Continue processing other orders even if one fails
+                        }
                     }
+                    
+                    shipstationLogger.logInfo({
+                        type: 'ship_notify_completed',
+                        resource_url: resource_url,
+                        resource_type: resource_type,
+                        total_orders_processed: orders?.length || 0
+                    });
                 } catch (err) {
                     shipstationLogger.logError({ 
                         type: 'ship_notify_error', 
-                        error: err.message,
-                        stack: err.stack,
-                        resource_url,
-                        resource_type
+                        error: err?.message || null,
+                        stack: err?.stack || null,
+                        resource_url: resource_url,
+                        resource_type: resource_type
                     });
                     utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                 }
@@ -355,19 +421,19 @@ async function handleWebhook(req, res, next) {
                     const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                     shipstationLogger.logInfo({
                         type: 'item_ship_notify_orders_fetched',
-                        order_count: orders.length,
-                        resource_url
+                        order_count: orders?.length || 0,
+                        resource_url: resource_url
                     });
-                    for (const order of orders) {
-                        await handleItemShipNotify({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    for (const order of orders || []) {
+                        await handleItemShipNotify({ orderId: order?.orderId || null, order_unique_id: order?.orderNumber || null, email: order?.customerEmail || null});
                     }
                 } catch (err) {
                     shipstationLogger.logError({ 
                         type: 'item_ship_notify_error', 
-                        error: err.message,
-                        stack: err.stack,
-                        resource_url,
-                        resource_type
+                        error: err?.message || null,
+                        stack: err?.stack || null,
+                        resource_url: resource_url,
+                        resource_type: resource_type
                     });
                     utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                 }
@@ -382,19 +448,19 @@ async function handleWebhook(req, res, next) {
                     const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                     shipstationLogger.logInfo({
                         type: 'fulfillment_shipped_orders_fetched',
-                        order_count: orders.length,
-                        resource_url
+                        order_count: orders?.length || 0,
+                        resource_url: resource_url
                     });
-                    for (const order of orders) {
-                        await handleFulfillmentShipped({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    for (const order of orders || []) {
+                        await handleFulfillmentShipped({ orderId: order?.orderId || null, order_unique_id: order?.orderNumber || null, email: order?.customerEmail || null});
                     }
                 } catch (err) {
                     shipstationLogger.logError({ 
                         type: 'fulfillment_shipped_error', 
-                        error: err.message,
-                        stack: err.stack,
-                        resource_url,
-                        resource_type
+                        error: err?.message || null,
+                        stack: err?.stack || null,
+                        resource_url: resource_url,
+                        resource_type: resource_type
                     });
                     utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                 }
@@ -409,19 +475,19 @@ async function handleWebhook(req, res, next) {
                     const orders = await fetchOrdersByImportBatch(resource_url, resource_type);
                     shipstationLogger.logInfo({
                         type: 'fulfillment_rejected_orders_fetched',
-                        order_count: orders.length,
-                        resource_url
+                        order_count: orders?.length || 0,
+                        resource_url: resource_url
                     });
-                    for (const order of orders) {
-                        await handleFulfillmentRejected({ orderId: order.orderId, order_unique_id: order.orderNumber, email: order.customerEmail});
+                    for (const order of orders || []) {
+                        await handleFulfillmentRejected({ orderId: order?.orderId || null, order_unique_id: order?.orderNumber || null, email: order?.customerEmail || null});
                     }
                 } catch (err) {
                     shipstationLogger.logError({ 
                         type: 'fulfillment_rejected_error', 
-                        error: err.message,
-                        stack: err.stack,
-                        resource_url,
-                        resource_type
+                        error: err?.message || null,
+                        stack: err?.stack || null,
+                        resource_url: resource_url,
+                        resource_type: resource_type
                     });
                     utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
                 }
@@ -429,26 +495,34 @@ async function handleWebhook(req, res, next) {
             default:
                 shipstationLogger.logInfo({
                     type: 'unhandled_webhook_event',
-                    event,
-                    resource_url
+                    event: event,
+                    resource_url: resource_url
                 });
                 logger.warn('Unhandled webhook event type', { event, resource_url });
         }
 
         // Always return 200 to acknowledge receipt
-        return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+        const result = res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+        
+        // Add webhook log end separator
+        shipstationLogger.logWebhookEnd();
+        
+        return result;
     } catch (error) {
         shipstationLogger.logError({
             type: 'webhook_processing_error',
-            error: error.message,
-            stack: error.stack,
-            webhook_data: req.body
+            error: error?.message || null,
+            stack: error?.stack || null,
+            webhook_data: req?.body || null
         });
         logger.error('Error processing ShipStation webhook:', {
-            error: error.message,
-            stack: error.stack,
-            webhook_data: req.body
+            error: error?.message || null,
+            stack: error?.stack || null,
+            webhook_data: req?.body || null
         });
+        
+        // Add webhook log end separator even on error
+        shipstationLogger.logWebhookEnd();
         
         // Still return 200 to prevent webhook retries
         return res.status(200).json({ success: false, message: 'Webhook processed with errors' });
@@ -463,24 +537,24 @@ async function handleOrderNotify(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_order_notify_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null
         });
        
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData?.orderId || null }
         });
 
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_order_notify_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId );
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null );
             return;
         }
 
@@ -494,23 +568,23 @@ async function handleOrderNotify(orderData) {
 
         shipstationLogger.logInfo({
             type: 'handle_order_notify_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId,
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
             status_updated: 'packed'
         });
 
         logger.info('Order status updated to processing via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_order_notify_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling ORDER_NOTIFY webhook:', error);
         throw error;
@@ -525,23 +599,23 @@ async function handleItemOrderNotify(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_item_order_notify_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null
         });
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData?.orderId || null }
         });
 
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_item_order_notify_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null);
             return;
         }
 
@@ -555,23 +629,23 @@ async function handleItemOrderNotify(orderData) {
 
         shipstationLogger.logInfo({
             type: 'handle_item_order_notify_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId,
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
             status_updated: 'packed'
         });
 
         logger.info('Order status updated to packed via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_item_order_notify_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling ITEM_ORDER_NOTIFY webhook:', error);
         throw error;
@@ -588,14 +662,18 @@ async function handleShipNotify(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_ship_notify_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null,
+            tracking_number: orderData?.trackingNumber || null,
+            carrier_code: orderData?.carrierCode || null,
+            shipment_id: orderData?.shipmentId || null,
+            tracking_url: orderData?.trackingUrl || null
         });
         
         // Find order with all necessary relationships for email
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId },
+            where: { shipstation_order_id: orderData?.orderId || null },
             include: [
                 {
                     model: User,
@@ -663,89 +741,118 @@ async function handleShipNotify(orderData) {
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_ship_notify_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email,
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null,
                 lookup_method: 'shipstation_order_id'
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null);
             return;
         }
 
         shipstationLogger.logInfo({
             type: 'handle_ship_notify_order_found',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id,
-            current_status: order.status
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || null,
+            current_status: order?.status || null
         });
 
-        // Update order status to completed (matching WooCommerce behavior when label is printed)
-        await order.update({ 
-            status: 'completed' 
-        }, { 
+        // Prepare update data - include tracking number if available
+        const updateData = {
+            status: 'completed'
+        };
+        
+        if (orderData?.trackingNumber) {
+            updateData.tracking_number = orderData.trackingNumber;
+            shipstationLogger.logInfo({
+                type: 'handle_ship_notify_tracking_number_found',
+                order_id: order?.id || null,
+                tracking_number: orderData.trackingNumber,
+                carrier_code: orderData?.carrierCode || null
+            });
+        }
+
+        // Update order status and tracking number
+        await order.update(updateData, { 
             isAdmin: true,
             userId: null // System update
         });
 
         shipstationLogger.logInfo({
             type: 'handle_ship_notify_status_updated',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            previous_status: order.status,
-            new_status: 'completed'
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            previous_status: order?.status || null,
+            new_status: 'completed',
+            tracking_number: orderData?.trackingNumber || null
         });
 
         // Create notification for customer
         try {
             await createNotification({
-                userId: order.user_id,
+                userId: order?.user_id || null,
                 type: 'order',
                 action: 'completed',
                 data: {
-                    orderUniqueId: order.order_unique_id,
-                    message: `Your order #${order.order_unique_id} has been completed and is ready for shipping`
+                    orderUniqueId: order?.order_unique_id || null,
+                    message: `Your order #${order?.order_unique_id || 'N/A'} has been completed and is ready for shipping`
                 },
                 title: 'Order Completed',
-                url: `/order-details/${order.id}`
+                url: `/order-details/${order?.id || ''}`
             });
             shipstationLogger.logInfo({
                 type: 'handle_ship_notify_notification_created',
-                order_id: order.id,
-                user_id: order.user_id
+                order_id: order?.id || null,
+                user_id: order?.user_id || null
             });
         } catch (notificationError) {
             shipstationLogger.logError({
                 type: 'handle_ship_notify_notification_error',
-                error: notificationError.message,
-                stack: notificationError.stack,
-                order_id: order.id,
-                user_id: order.user_id
+                error: notificationError?.message || null,
+                stack: notificationError?.stack || null,
+                order_id: order?.id || null,
+                user_id: order?.user_id || null
             });
             logger.error('Error creating notification for shipped order:', notificationError);
             // Don't fail the entire operation if notification fails
         }
 
+        // Get tracking link - only use if ShipStation provides it
+        const trackingNumber = orderData?.trackingNumber || order?.tracking_number || null;
+        const trackingLink = orderData?.trackingUrl || null; // Only use ShipStation's URL, don't generate
+
+        // Log for validation
+        shipstationLogger.logInfo({
+            type: 'handle_ship_notify_tracking_info',
+            tracking_number: trackingNumber,
+            tracking_link: trackingLink,
+            has_tracking_link: !!trackingLink,
+            carrier_code: orderData?.carrierCode || null
+        });
+
         // Send email to customer
-        if (order.user && order.user.email) {
+        if (order?.user && order?.user?.email) {
             try {
                 const emailData = {
                     emailTypes: 'ORDER_SHIPPED',
-                    to: order.user.email,
+                    to: order?.user?.email || null,
                     context: {
-                        userName: order.user.first_name || order.user.email.split('@')[0],
-                        orderId: order.id,
-                        orderUniqueId: order.order_unique_id,
-                        orderCode: order.order_code,
-                        orderDate: order.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
+                        userName: order?.user?.first_name || order?.user?.email?.split('@')[0] || null,
+                        orderId: order?.id || null,
+                        orderUniqueId: order?.order_unique_id || null,
+                        orderCode: order?.order_code || null,
+                        orderDate: order?.createdAt ? order.createdAt.toLocaleDateString() : new Date().toLocaleDateString(),
                         status: 'completed',
-                        shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
-                        shippingCost: order.shipping_cost || 0,
-                        totalAmount: order.total || 0,
-                        discountPrice: order.discount_price || 0,
-                        loyaltyDiscount: order.loyalty_discount || 0,
-                        mailSubscriptionDiscount: order.mailSubscription_discount || 0,
-                        items: order.orderItems ? order.orderItems.map(item => {
+                        shippingMethod: order?.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
+                        shippingCost: order?.shipping_cost || 0,
+                        totalAmount: order?.total || 0,
+                        discountPrice: order?.discount_price || 0,
+                        loyaltyDiscount: order?.loyalty_discount || 0,
+                        mailSubscriptionDiscount: order?.mailSubscription_discount || 0,
+                        trackingNumber: trackingNumber,
+                        trackingLink: trackingLink,
+                        items: order?.orderItems ? order.orderItems.map(item => {
                             let productName = item.product?.name || 'Product';
                             
                             // Append variant attribute values in format: "Product Name - Value1, Value2"
@@ -793,72 +900,75 @@ async function handleShipNotify(orderData) {
 
                 shipstationLogger.logInfo({
                     type: 'handle_ship_notify_email_sending',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email,
-                    email_type: 'ORDER_SHIPPED'
+                    order_id: order?.id || null,
+                    order_unique_id: order?.order_unique_id || null,
+                    user_email: order?.user?.email || null,
+                    email_type: 'ORDER_SHIPPED',
+                    has_tracking: !!trackingNumber,
+                    tracking_number: trackingNumber || null
                 });
 
                 await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
                 
                 shipstationLogger.logInfo({
                     type: 'handle_ship_notify_email_sent',
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
+                    order_id: order?.id || null,
+                    order_unique_id: order?.order_unique_id || null,
+                    user_email: order?.user?.email || null
                 });
                 
                 logger.info('Order completion email sent successfully', {
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user.email
+                    order_id: order?.id || null,
+                    order_unique_id: order?.order_unique_id || null,
+                    user_email: order?.user?.email || null
                 });
             } catch (emailError) {
                 shipstationLogger.logError({
                     type: 'handle_ship_notify_email_error',
-                    error: emailError.message,
-                    stack: emailError.stack,
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user?.email
+                    error: emailError?.message || null,
+                    stack: emailError?.stack || null,
+                    order_id: order?.id || null,
+                    order_unique_id: order?.order_unique_id || null,
+                    user_email: order?.user?.email || null
                 });
                 logger.error('Error sending order completion email:', {
-                    error: emailError.message,
-                    order_id: order.id,
-                    order_unique_id: order.order_unique_id,
-                    user_email: order.user?.email
+                    error: emailError?.message || null,
+                    order_id: order?.id || null,
+                    order_unique_id: order?.order_unique_id || null,
+                    user_email: order?.user?.email || null
                 });
                 // Don't fail the entire operation if email fails
             }
         } else {
             shipstationLogger.logInfo({
                 type: 'handle_ship_notify_email_skipped',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
+                order_id: order?.id || null,
+                order_unique_id: order?.order_unique_id || null,
                 reason: 'user_or_email_missing',
-                has_user: !!order.user,
-                user_email: order.user?.email
+                has_user: !!order?.user,
+                user_email: order?.user?.email || null
             });
         }
 
         shipstationLogger.logInfo({
             type: 'handle_ship_notify_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
+            tracking_number: orderData?.trackingNumber || null
         });
 
         logger.info('Order status updated to completed via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_ship_notify_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling SHIP_NOTIFY webhook:', error);
         throw error;
@@ -873,24 +983,24 @@ async function handleItemShipNotify(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_item_ship_notify_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null
         });
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData?.orderId || null }
         });
 
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_item_ship_notify_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null);
             return;
         }
 
@@ -904,23 +1014,23 @@ async function handleItemShipNotify(orderData) {
 
         shipstationLogger.logInfo({
             type: 'handle_item_ship_notify_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId,
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
             status_updated: 'out_for_delivery'
         });
 
         logger.info('Order status updated to out_for_delivery via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_item_ship_notify_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling ITEM_SHIP_NOTIFY webhook:', error);
         throw error;
@@ -935,24 +1045,24 @@ async function handleFulfillmentShipped(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_fulfillment_shipped_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null
         });
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData?.orderId || null }
         });
 
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_fulfillment_shipped_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null);
             return;
         }
 
@@ -966,23 +1076,23 @@ async function handleFulfillmentShipped(orderData) {
 
         shipstationLogger.logInfo({
             type: 'handle_fulfillment_shipped_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId,
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
             status_updated: 'delivered'
         });
 
         logger.info('Order status updated to delivered via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_fulfillment_shipped_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling FULFILLMENT_SHIPPED webhook:', error);
         throw error;
@@ -997,24 +1107,24 @@ async function handleFulfillmentRejected(orderData) {
     try {
         shipstationLogger.logInfo({
             type: 'handle_fulfillment_rejected_start',
-            shipstation_order_id: orderData.orderId,
-            order_unique_id: orderData.order_unique_id,
-            customer_email: orderData.email
+            shipstation_order_id: orderData?.orderId || null,
+            order_unique_id: orderData?.order_unique_id || null,
+            customer_email: orderData?.email || null
         });
 
         // Find order by ShipStation order ID (preferred) or order_unique_id (fallback)
         let order = await Order.findOne({
-            where: { shipstation_order_id: orderData.orderId }
+            where: { shipstation_order_id: orderData?.orderId || null }
         });
 
         if (!order) {
             shipstationLogger.logError({
                 type: 'handle_fulfillment_rejected_order_not_found',
-                shipstation_order_id: orderData.orderId,
-                order_unique_id: orderData.order_unique_id,
-                customer_email: orderData.email
+                shipstation_order_id: orderData?.orderId || null,
+                order_unique_id: orderData?.order_unique_id || null,
+                customer_email: orderData?.email || null
             });
-            logger.warn('Order not found for ShipStation order ID', orderData.orderId);
+            logger.warn('Order not found for ShipStation order ID', orderData?.orderId || null);
             return;
         }
 
@@ -1028,23 +1138,23 @@ async function handleFulfillmentRejected(orderData) {
 
         shipstationLogger.logInfo({
             type: 'handle_fulfillment_rejected_success',
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId,
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null,
             status_updated: 'fail'
         });
 
         logger.info('Order status updated to fail via webhook', {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            shipstation_order_id: order.shipstation_order_id || orderData.orderId
+            order_id: order?.id || null,
+            order_unique_id: order?.order_unique_id || null,
+            shipstation_order_id: order?.shipstation_order_id || orderData?.orderId || null
         });
     } catch (error) {
         shipstationLogger.logError({
             type: 'handle_fulfillment_rejected_error',
-            error: error.message,
-            stack: error.stack,
-            orderData
+            error: error?.message || null,
+            stack: error?.stack || null,
+            orderData: orderData || null
         });
         logger.error('Error handling FULFILLMENT_REJECTED webhook:', error);
         throw error;
@@ -1066,32 +1176,32 @@ function extractOrderIdFromUrl(resourceUrl) {
         // https://ssapi.shipstation.com/orders/{orderId}/shipments
         
         // Remove query parameters if present
-        const urlWithoutQuery = resourceUrl.split('?')[0];
+        const urlWithoutQuery = resourceUrl?.split?.('?')?.[0] || resourceUrl || '';
         
         // Split by '/' and get the last part
-        const urlParts = urlWithoutQuery.split('/');
+        const urlParts = urlWithoutQuery?.split?.('/') || [];
         
         // Find the order ID (should be after 'orders' in the path)
-        const ordersIndex = urlParts.findIndex(part => part === 'orders');
-        if (ordersIndex !== -1 && ordersIndex + 1 < urlParts.length) {
-            const orderId = urlParts[ordersIndex + 1];
+        const ordersIndex = urlParts?.findIndex?.(part => part === 'orders') ?? -1;
+        if (ordersIndex !== -1 && ordersIndex + 1 < (urlParts?.length || 0)) {
+            const orderId = urlParts?.[ordersIndex + 1];
             
             // Validate that it looks like an order ID (not empty and not another path segment)
-            if (orderId && !orderId.includes('.')) {
+            if (orderId && !orderId?.includes?.('.')) {
                 return orderId;
             }
         }
         
         // Fallback: try to get the last part of the URL
-        const lastPart = urlParts[urlParts.length - 1];
-        if (lastPart && !lastPart.includes('.')) {
+        const lastPart = urlParts?.[(urlParts?.length || 0) - 1];
+        if (lastPart && !lastPart?.includes?.('.')) {
             return lastPart;
         }
         
-        logger.warn('Could not extract order ID from URL', { resourceUrl });
+        logger.warn('Could not extract order ID from URL', { resourceUrl: resourceUrl || null });
         return null;
     } catch (error) {
-        logger.error('Error extracting order ID from URL:', { resourceUrl, error: error.message });
+        logger.error('Error extracting order ID from URL:', { resourceUrl: resourceUrl || null, error: error?.message || null });
         return null;
     }
 }
@@ -1099,8 +1209,9 @@ function extractOrderIdFromUrl(resourceUrl) {
 // Helper: Extract importBatch from resource_url
 function extractImportBatchFromUrl(resourceUrl) {
     try {
+        if (!resourceUrl) return null;
         const url = new URL(resourceUrl);
-        return url.searchParams.get('importBatch');
+        return url?.searchParams?.get?.('importBatch') || null;
     } catch (e) {
         return null;
     }
@@ -1111,15 +1222,22 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
     try {
         shipstationLogger.logInfo({
             type: 'fetch_orders_start',
-            resource_url,
-            resource_type
+            resource_url: resource_url || null,
+            resource_type: resource_type || null
         });
 
-        const shipstationApiKey = process.env.SHIPSTATION_API_KEY;
-        const shipstationApiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        const shipstationApiKey = process.env?.SHIPSTATION_API_KEY;
+        const shipstationApiSecret = process.env?.SHIPSTATION_SECRET_KEY;
         if (!shipstationApiKey || !shipstationApiSecret) {
             throw new Error('ShipStation API credentials not configured');
         }
+        
+        shipstationLogger.logInfo({
+            type: 'fetch_orders_api_call',
+            resource_url: resource_url || null,
+            resource_type: resource_type || null,
+            has_credentials: !!(shipstationApiKey && shipstationApiSecret)
+        });
         
         const response = await axios.get(resource_url, {
             auth: {
@@ -1128,18 +1246,92 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
             },
         });
         
-        const orders = response.data.orders || [];
+        // Log response structure for debugging
+        shipstationLogger.logInfo({
+            type: 'fetch_orders_api_response',
+            resource_url: resource_url || null,
+            resource_type: resource_type || null,
+            response_status: response?.status || null,
+            response_keys: Object.keys(response?.data || {}),
+            has_orders: !!response?.data?.orders,
+            has_shipments: !!response?.data?.shipments,
+            orders_count: response?.data?.orders?.length || 0,
+            shipments_count: response?.data?.shipments?.length || 0
+        });
+        
+        // Handle different response structures based on resource_type
+        let orders = [];
+        
+        if (resource_type === 'SHIP_NOTIFY' || resource_type === 'ITEM_SHIP_NOTIFY' || resource_url?.includes?.('/shipments')) {
+            // For SHIP_NOTIFY webhooks, extract order information from shipments
+            const shipments = response?.data?.shipments || [];
+            
+            shipstationLogger.logInfo({
+                type: 'fetch_orders_processing_shipments',
+                resource_type: resource_type || null,
+                shipments_count: shipments?.length || 0
+            });
+            
+            orders = (shipments || []).map((shipment, index) => {
+                // Log to see what ShipStation provides
+                shipstationLogger.logInfo({
+                    type: 'fetch_orders_shipment_raw',
+                    shipment_index: index,
+                    shipment_keys: Object.keys(shipment || {}),
+                    has_tracking_url: !!(shipment?.trackingUrl || shipment?.tracking_url),
+                    tracking_url: shipment?.trackingUrl || shipment?.tracking_url || null
+                });
+                
+                const orderData = {
+                    orderId: shipment?.orderId || shipment?.order?.orderId || null,
+                    orderNumber: shipment?.orderNumber || shipment?.order?.orderNumber || null,
+                    customerEmail: shipment?.customerEmail || shipment?.order?.customerEmail || null,
+                    trackingNumber: shipment?.trackingNumber || null,
+                    carrierCode: shipment?.carrierCode || null,
+                    shipmentId: shipment?.shipmentId || null,
+                    // Extract ShipStation-provided tracking URL if available
+                    trackingUrl: shipment?.trackingUrl || shipment?.tracking_url || null
+                };
+                
+                shipstationLogger.logInfo({
+                    type: 'fetch_orders_shipment_mapped',
+                    shipment_index: index,
+                    shipment_id: orderData?.shipmentId || null,
+                    order_id: orderData?.orderId || null,
+                    order_number: orderData?.orderNumber || null,
+                    customer_email: orderData?.customerEmail || null,
+                    tracking_number: orderData?.trackingNumber || null,
+                    carrier_code: orderData?.carrierCode || null,
+                    tracking_url: orderData?.trackingUrl || null
+                });
+                
+                return orderData;
+            });
+        } else {
+            // For other webhook types (ORDER_NOTIFY, ITEM_ORDER_NOTIFY), use orders directly
+            orders = response?.data?.orders || [];
+            
+            shipstationLogger.logInfo({
+                type: 'fetch_orders_processing_orders',
+                resource_type: resource_type || null,
+                orders_count: orders?.length || 0
+            });
+        }
         
         shipstationLogger.logInfo({
             type: 'fetch_orders_success',
-            resource_url,
-            resource_type,
-            order_count: orders.length,
-            response_keys: Object.keys(response.data || {}),
-            orders: orders.map(o => ({
-                orderId: o.orderId,
-                orderNumber: o.orderNumber,
-                customerEmail: o.customerEmail
+            resource_url: resource_url || null,
+            resource_type: resource_type || null,
+            order_count: orders?.length || 0,
+            response_keys: Object.keys(response?.data || {}),
+            orders: (orders || []).map(o => ({
+                orderId: o?.orderId || null,
+                orderNumber: o?.orderNumber || null,
+                customerEmail: o?.customerEmail || null,
+                trackingNumber: o?.trackingNumber || null,
+                carrierCode: o?.carrierCode || null,
+                shipmentId: o?.shipmentId || null,
+                trackingUrl: o?.trackingUrl || null
             }))
         });
         
@@ -1147,10 +1339,12 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
     } catch (error) {
         shipstationLogger.logError({
             type: 'fetch_orders_error',
-            resource_url,
-            resource_type,
-            error: error.message,
-            stack: error.stack
+            resource_url: resource_url || null,
+            resource_type: resource_type || null,
+            error: error?.message || null,
+            stack: error?.stack || null,
+            response_status: error?.response?.status || null,
+            response_data: error?.response?.data || null
         });
         throw error;
     }

@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 
 // Ensure logs directory exists
@@ -14,24 +15,86 @@ if (!fs.existsSync(logsDir)) {
  */
 const getLogFileName = (type) => {
     const date = new Date().toISOString().split('T')[0];
-    return `shipstation_${type}_${date}.log`;
+    const safeType = type || 'unknown';
+    return `shipstation_${safeType}_${date}.log`;
 };
 
 /**
- * Write log entry to file
+ * Safely stringify data, replacing undefined with null
+ * @param {*} data - Data to stringify
+ * @returns {string} Stringified data
+ */
+const safeStringify = (data) => {
+    try {
+        return JSON.stringify(data, (key, value) => {
+            return value === undefined ? null : value;
+        }, 2);
+    } catch (error) {
+        // Handle circular references
+        try {
+            const seen = new WeakSet();
+            return JSON.stringify(data, (key, value) => {
+                if (typeof value === 'object' && value !== null) {
+                    if (seen.has(value)) {
+                        return '[Circular]';
+                    }
+                    seen.add(value);
+                }
+                return value === undefined ? null : value;
+            }, 2);
+        } catch (e) {
+            return `{ "error": "Failed to stringify: ${error.message}" }`;
+        }
+    }
+};
+
+/**
+ * Write log entry to file (non-blocking)
  * @param {string} type - Log type (info, error, debug, webhook, api)
  * @param {Object} data - Data to log
  */
 const writeLog = (type, data) => {
     try {
-        const logFile = path.join(logsDir, getLogFileName(type));
-        const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] ${JSON.stringify(data, null, 2)}\n`;
+        const safeType = type || 'unknown';
+        const safeData = data || {};
         
-        fs.appendFileSync(logFile, logEntry);
+        const logFile = path.join(logsDir, getLogFileName(safeType));
+        const timestamp = new Date().toISOString();
+        const logEntry = `[${timestamp}] ${safeStringify(safeData)}\n`;
+        
+        // Use fire-and-forget pattern - don't await to avoid blocking
+        fsPromises.appendFile(logFile, logEntry).catch(error => {
+            // Fallback to console if file write fails - won't block execution
+            console.error('Error writing to ShipStation log file:', error);
+        });
     } catch (error) {
-        // Fallback to console if file write fails
-        console.error('Error writing to ShipStation log file:', error);
+        // Catch any synchronous errors during preparation
+        console.error('Error preparing log entry:', error);
+    }
+};
+
+/**
+ * Write separator line to log file (non-blocking)
+ * @param {string} type - Log type
+ * @param {string} message - Separator message
+ */
+const writeSeparator = (type, message) => {
+    try {
+        const safeType = type || 'unknown';
+        const safeMessage = message || 'Webhook log';
+        
+        const logFile = path.join(logsDir, getLogFileName(safeType));
+        const timestamp = new Date().toISOString();
+        const separator = `\n[${timestamp}] =========== ${safeMessage} ===========\n`;
+        
+        // Use fire-and-forget pattern - don't await to avoid blocking
+        fsPromises.appendFile(logFile, separator).catch(error => {
+            // Fallback to console if file write fails - won't block execution
+            console.error('Error writing separator to ShipStation log file:', error);
+        });
+    } catch (error) {
+        // Catch any synchronous errors during preparation
+        console.error('Error preparing separator entry:', error);
     }
 };
 
@@ -45,7 +108,8 @@ const shipstationLogger = {
      * @param {Object} data - Data to log
      */
     logInfo: (data) => {
-        writeLog('info', { level: 'INFO', ...data });
+        const safeData = data || {};
+        writeLog('info', { level: 'INFO', ...safeData });
     },
 
     /**
@@ -53,7 +117,8 @@ const shipstationLogger = {
      * @param {Object} data - Data to log
      */
     logError: (data) => {
-        writeLog('error', { level: 'ERROR', ...data });
+        const safeData = data || {};
+        writeLog('error', { level: 'ERROR', ...safeData });
     },
 
     /**
@@ -61,7 +126,8 @@ const shipstationLogger = {
      * @param {Object} data - Data to log
      */
     logDebug: (data) => {
-        writeLog('debug', { level: 'DEBUG', ...data });
+        const safeData = data || {};
+        writeLog('debug', { level: 'DEBUG', ...safeData });
     },
 
     /**
@@ -69,7 +135,22 @@ const shipstationLogger = {
      * @param {Object} data - Webhook data to log
      */
     logWebhook: (data) => {
-        writeLog('webhook', { level: 'WEBHOOK', ...data });
+        const safeData = data || {};
+        writeLog('webhook', { level: 'WEBHOOK', ...safeData });
+    },
+
+    /**
+     * Log webhook start separator
+     */
+    logWebhookStart: () => {
+        writeSeparator('webhook', 'Webhook log started');
+    },
+
+    /**
+     * Log webhook end separator
+     */
+    logWebhookEnd: () => {
+        writeSeparator('webhook', 'Webhook log ended');
     },
 
     /**
@@ -77,7 +158,8 @@ const shipstationLogger = {
      * @param {Object} data - API call data to log
      */
     logApiCall: (data) => {
-        writeLog('api', { level: 'API', ...data });
+        const safeData = data || {};
+        writeLog('api', { level: 'API', ...safeData });
     }
 };
 
