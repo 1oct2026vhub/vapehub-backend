@@ -526,18 +526,26 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                 where: { id: user_id },
                 transaction
             });
-            if (user.loyalty_points >= parseFloat(settings.minimum_points_redemption)) {
+            if (user.loyalty_points >= parseFloat(settings.minimum_points_redemption) && calculatedTotal >= parseFloat(settings.minimum_purchase_amount)) {
                 const points = user.loyalty_points;
                 const loyaltyAmount = parseFloat(settings.loyalty_amount);
                 const loyaltyAmountType = settings.loyalty_amount_type;
                 if (loyaltyAmountType === 'percentage') {
                     loyaltyDiscount = (parseFloat(loyaltyAmount) / 100) * calculatedTotal;
                     totalDiscount += parseFloat(loyaltyDiscount);
+                    loyalty_flag = true;
                 } else {
-                    if (calculatedTotal > loyaltyAmount) {
+                    if (calculatedTotal > parseFloat(loyaltyAmount)) {
                         loyaltyDiscount = parseFloat(loyaltyAmount);
                         totalDiscount += parseFloat(loyaltyDiscount);
                         loyalty_flag = true;
+                    } else {
+                        // If total is less than or equal to loyalty amount, apply only the total
+                        loyaltyDiscount = calculatedTotal;
+                        throw {
+                            statusCode: 400,
+                            message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${calculatedTotal}).`
+                        };
                     }
                 }
             }
