@@ -653,6 +653,55 @@ async function handleItemOrderNotify(orderData) {
 }
 
 /**
+ * Construct tracking URL based on carrier code and tracking number
+ * Supports: Royal Mail and DPD (the carriers configured in your system)
+ * @param {string} carrierCode - Carrier code (e.g., 'royal_mail', 'dpd')
+ * @param {string} trackingNumber - Tracking number
+ * @returns {string|null} Constructed tracking URL or null if carrier not supported
+ */
+function constructTrackingUrl(carrierCode, trackingNumber) {
+    if (!carrierCode || !trackingNumber) return null;
+    
+    // Remove spaces and normalize tracking number
+    const cleanTracking = trackingNumber.replace(/\s+/g, '').trim();
+    
+    if (!cleanTracking) return null;
+    
+    // Map carrier codes to their tracking URL patterns
+    // Based on your shipping methods seeder - only Royal Mail and DPD
+    const trackingUrls = {
+        // Royal Mail (primary carrier - 3 services)
+        'royal_mail': `https://www.royalmail.com/track-your-item#/tracking-results/${cleanTracking}`,
+        'royal-mail': `https://www.royalmail.com/track-your-item#/tracking-results/${cleanTracking}`,
+        
+        // DPD (secondary carrier) - Corrected URL based on actual DPD tracking page
+        'dpd': `https://track.dpd.co.uk/parcels/${cleanTracking}`,
+    };
+    
+    const trackingUrl = trackingUrls[carrierCode];
+    
+    // Log for debugging
+    if (trackingUrl) {
+        shipstationLogger.logInfo({
+            type: 'tracking_url_constructed',
+            carrier_code: carrierCode,
+            tracking_number: cleanTracking,
+            tracking_url: trackingUrl
+        });
+    } else {
+        shipstationLogger.logInfo({
+            type: 'tracking_url_construction_failed',
+            carrier_code: carrierCode,
+            tracking_number: cleanTracking,
+            reason: 'carrier_not_supported',
+            supported_carriers: ['royal_mail', 'dpd']
+        });
+    }
+    
+    return trackingUrl || null;
+}
+
+/**
  * Handle SHIP_NOTIFY webhook event
  * This is triggered when a shipping label is printed in ShipStation
  * Updates order status to 'completed' and sends customer notification/email
@@ -818,9 +867,22 @@ async function handleShipNotify(orderData) {
             // Don't fail the entire operation if notification fails
         }
 
-        // Get tracking link - only use if ShipStation provides it
+        // Get tracking link - use ShipStation's URL if available, otherwise construct it
         const trackingNumber = orderData?.trackingNumber || order?.tracking_number || null;
-        const trackingLink = orderData?.trackingUrl || null; // Only use ShipStation's URL, don't generate
+        let trackingLink = orderData?.trackingUrl || null; // Use ShipStation's URL if available
+        
+        // If ShipStation doesn't provide tracking URL, construct it based on carrier
+        if (!trackingLink && trackingNumber && orderData?.carrierCode) {
+            trackingLink = constructTrackingUrl(orderData.carrierCode, trackingNumber);
+            
+            shipstationLogger.logInfo({
+                type: 'handle_ship_notify_tracking_url_constructed',
+                carrier_code: orderData.carrierCode,
+                tracking_number: trackingNumber,
+                tracking_url: trackingLink || null,
+                constructed: !!trackingLink
+            });
+        }
 
         // Log for validation
         shipstationLogger.logInfo({
@@ -828,7 +890,8 @@ async function handleShipNotify(orderData) {
             tracking_number: trackingNumber,
             tracking_link: trackingLink,
             has_tracking_link: !!trackingLink,
-            carrier_code: orderData?.carrierCode || null
+            carrier_code: orderData?.carrierCode || null,
+            tracking_url_source: trackingLink ? (orderData?.trackingUrl ? 'shipstation' : 'constructed') : 'none'
         });
 
         // Send email to customer
