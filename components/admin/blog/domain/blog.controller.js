@@ -32,9 +32,9 @@ module.exports.listAllBlogs = async (req, res) => {
 
         // Parse category_id and tag_id for filtering blogs
         const categoryIds = category_id ? 
-            category_id.split(',').map(id => parseInt(id.trim())) : [];
+            category_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
         const tagIds = tag_id ? 
-            tag_id.split(',').map(id => parseInt(id.trim())) : [];
+            tag_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
 
         // Base include conditions - always include all relations
         let includeConditions = [
@@ -48,13 +48,23 @@ module.exports.listAllBlogs = async (req, res) => {
                 model: BlogCategory,
                 as: 'categories',
                 through: { attributes: [] },
-                required: false
+                required: categoryIds.length > 0, // Required when filtering by category
+                ...(categoryIds.length > 0 && {
+                    where: {
+                        id: { [Op.in]: categoryIds }
+                    }
+                })
             },
             {
                 model: BlogTag,
                 as: 'tags',
                 through: { attributes: [] },
-                required: false
+                required: tagIds.length > 0, // Required when filtering by tag
+                ...(tagIds.length > 0 && {
+                    where: {
+                        id: { [Op.in]: tagIds }
+                    }
+                })
             }
         ];
 
@@ -95,25 +105,8 @@ module.exports.listAllBlogs = async (req, res) => {
             return blogData;
         });
 
-        // Filter blogs by category_id and tag_id if provided
-        let filteredBlogs = processedBlogs;
-        // if (categoryIds.length > 0 || tagIds.length > 0) {
-        //     filteredBlogs = processedBlogs.filter(blog => {
-        //         // Check if blog has any of the requested categories
-        //         const hasMatchingCategory = categoryIds.length === 0 || 
-        //             blog.categories.some(category => categoryIds.includes(category.id));
-                
-        //         // Check if blog has any of the requested tags
-        //         const hasMatchingTag = tagIds.length === 0 || 
-        //             blog.tags.some(tag => tagIds.includes(tag.id));
-                
-        //         // Return true if blog matches both category and tag filters
-        //         return hasMatchingCategory && hasMatchingTag;
-        //     });
-        // }
-
         successResponse(res, {
-            blogs: filteredBlogs,
+            blogs: processedBlogs,
             pagination: {
                 total: totalCount,
                 page: parseInt(page),
