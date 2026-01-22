@@ -462,7 +462,7 @@ const handleExpiredPayment = async (order, webhookData) => {
                 reason: 'Expired via Worldpay'
             },
             title: 'Payment Expired',
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Create admin notification for expired payment
@@ -1315,7 +1315,7 @@ const handlePaymentError = async (order, webhookData) => {
                 reason: 'Failed via Worldpay'
             },
             title: 'Payment Failed',
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Create admin notification for failed payment
@@ -1610,7 +1610,7 @@ const handleSentForRefund = async (order, webhookData) => {
                 refundAuthorization: webhookData.eventDetails.refund.onlineRefundAuthorization
             },
             title: 'Payment Refunded',
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Create admin notification for refund
@@ -2365,7 +2365,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 orderId: order.id,
                 relatedId: order.id,
             },
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Create success notification
@@ -2740,7 +2740,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                 reason: 'Cancelled via Worldpay'
             },
             title: 'Payment Cancelled',
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Create admin notification for cancelled payment

@@ -696,7 +696,7 @@ module.exports.cancelOrder = async (req, res) => {
                 orderCode: order.order_code,
                 reason: 'Viva Wallet Order Cancelled'
             },
-            url: '/order-details'
+            url: `/order-details/${order.id}`
         });
 
         // Send cancellation email
