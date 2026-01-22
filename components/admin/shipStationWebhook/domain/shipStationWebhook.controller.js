@@ -278,7 +278,12 @@ async function handleWebhook(req, res, next) {
                             resource_url: resource_url,
                             resource_type: resource_type
                         });
-                        utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                        utilsLogger.logError({ 
+                            type: 'shipstation_import_batch_fetch_error', 
+                            error: err.message,
+                            resource_url: resource_url,
+                            resource_type: resource_type
+                        });
                     }
                 
                 break;
@@ -307,7 +312,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'SHIP_NOTIFY':
@@ -408,7 +418,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'ITEM_SHIP_NOTIFY':
@@ -435,7 +450,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'FULFILLMENT_SHIPPED':
@@ -462,7 +482,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'FULFILLMENT_REJECTED':
@@ -489,7 +514,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             default:
@@ -898,7 +928,7 @@ async function handleShipNotify(orderData) {
         if (order?.user && order?.user?.email) {
             try {
                 const emailData = {
-                    emailTypes: 'ORDER_SHIPPED',
+                    emailType: 'ORDER_SHIPPED',
                     to: order?.user?.email || null,
                     context: {
                         userName: order?.user?.first_name || order?.user?.email?.split('@')[0] || null,
@@ -971,7 +1001,7 @@ async function handleShipNotify(orderData) {
                     tracking_number: trackingNumber || null
                 });
 
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                await sendEmail(emailData.to, emailData.emailType, emailData.context);
                 
                 shipstationLogger.logInfo({
                     type: 'handle_ship_notify_email_sent',
