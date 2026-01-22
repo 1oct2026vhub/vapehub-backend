@@ -47,13 +47,33 @@ module.exports.listShopByCategories = async (req, res, next) => {
 
         const whereCondition = {};
         
-        if (search) {
-            whereCondition[Op.or] = [
-                { image_url: { [Op.like]: `%${search}%` } }
-            ];
+        // Handle deleted filter
+        if (deleted === "true") {
+            whereCondition.deletedAt = { [Op.ne]: null };
+        } else {
+            whereCondition.deletedAt = null;
         }
 
-        whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
+        // Handle search - combine with deletedAt using Op.and if both exist
+        if (search) {
+            // Escape single quotes to prevent SQL injection
+            const escapedSearch = search.replace(/'/g, "''");
+            const searchConditions = [
+                { image_url: { [Op.like]: `%${search}%` } },
+                Sequelize.literal(`category_id IN (SELECT id FROM categories WHERE name LIKE '%${escapedSearch}%' AND deleted_at IS NULL)`)
+            ];
+            
+            // If we already have deletedAt condition, combine it with search using Op.and
+            if (whereCondition.deletedAt !== undefined) {
+                whereCondition[Op.and] = [
+                    { deletedAt: whereCondition.deletedAt },
+                    { [Op.or]: searchConditions }
+                ];
+                delete whereCondition.deletedAt; // Remove the old deletedAt condition
+            } else {
+                whereCondition[Op.or] = searchConditions;
+            }
+        }
 
         const { count, rows: shopByCategories } = await ShopByCategory.findAndCountAll({
             where: whereCondition,

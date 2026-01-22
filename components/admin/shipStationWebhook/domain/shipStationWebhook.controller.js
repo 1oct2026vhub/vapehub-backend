@@ -278,7 +278,12 @@ async function handleWebhook(req, res, next) {
                             resource_url: resource_url,
                             resource_type: resource_type
                         });
-                        utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                        utilsLogger.logError({ 
+                            type: 'shipstation_import_batch_fetch_error', 
+                            error: err.message,
+                            resource_url: resource_url,
+                            resource_type: resource_type
+                        });
                     }
                 
                 break;
@@ -307,7 +312,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'SHIP_NOTIFY':
@@ -408,7 +418,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'ITEM_SHIP_NOTIFY':
@@ -435,7 +450,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'FULFILLMENT_SHIPPED':
@@ -462,7 +482,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             case 'FULFILLMENT_REJECTED':
@@ -489,7 +514,12 @@ async function handleWebhook(req, res, next) {
                         resource_url: resource_url,
                         resource_type: resource_type
                     });
-                    utilsLogger.logError({ type: 'shipstation_import_batch_fetch_error', importBatch, error: err.message });
+                    utilsLogger.logError({ 
+                        type: 'shipstation_import_batch_fetch_error', 
+                        error: err.message,
+                        resource_url: resource_url,
+                        resource_type: resource_type
+                    });
                 }
                 break;
             default:
@@ -650,6 +680,55 @@ async function handleItemOrderNotify(orderData) {
         logger.error('Error handling ITEM_ORDER_NOTIFY webhook:', error);
         throw error;
     }
+}
+
+/**
+ * Construct tracking URL based on carrier code and tracking number
+ * Supports: Royal Mail and DPD (the carriers configured in your system)
+ * @param {string} carrierCode - Carrier code (e.g., 'royal_mail', 'dpd')
+ * @param {string} trackingNumber - Tracking number
+ * @returns {string|null} Constructed tracking URL or null if carrier not supported
+ */
+function constructTrackingUrl(carrierCode, trackingNumber) {
+    if (!carrierCode || !trackingNumber) return null;
+    
+    // Remove spaces and normalize tracking number
+    const cleanTracking = trackingNumber.replace(/\s+/g, '').trim();
+    
+    if (!cleanTracking) return null;
+    
+    // Map carrier codes to their tracking URL patterns
+    // Based on your shipping methods seeder - only Royal Mail and DPD
+    const trackingUrls = {
+        // Royal Mail (primary carrier - 3 services)
+        'royal_mail': `https://www.royalmail.com/track-your-item#/tracking-results/${cleanTracking}`,
+        'royal-mail': `https://www.royalmail.com/track-your-item#/tracking-results/${cleanTracking}`,
+        
+        // DPD (secondary carrier) - Corrected URL based on actual DPD tracking page
+        'dpd': `https://track.dpd.co.uk/parcels/${cleanTracking}`,
+    };
+    
+    const trackingUrl = trackingUrls[carrierCode];
+    
+    // Log for debugging
+    if (trackingUrl) {
+        shipstationLogger.logInfo({
+            type: 'tracking_url_constructed',
+            carrier_code: carrierCode,
+            tracking_number: cleanTracking,
+            tracking_url: trackingUrl
+        });
+    } else {
+        shipstationLogger.logInfo({
+            type: 'tracking_url_construction_failed',
+            carrier_code: carrierCode,
+            tracking_number: cleanTracking,
+            reason: 'carrier_not_supported',
+            supported_carriers: ['royal_mail', 'dpd']
+        });
+    }
+    
+    return trackingUrl || null;
 }
 
 /**
@@ -818,9 +897,22 @@ async function handleShipNotify(orderData) {
             // Don't fail the entire operation if notification fails
         }
 
-        // Get tracking link - only use if ShipStation provides it
+        // Get tracking link - use ShipStation's URL if available, otherwise construct it
         const trackingNumber = orderData?.trackingNumber || order?.tracking_number || null;
-        const trackingLink = orderData?.trackingUrl || null; // Only use ShipStation's URL, don't generate
+        let trackingLink = orderData?.trackingUrl || null; // Use ShipStation's URL if available
+        
+        // If ShipStation doesn't provide tracking URL, construct it based on carrier
+        if (!trackingLink && trackingNumber && orderData?.carrierCode) {
+            trackingLink = constructTrackingUrl(orderData.carrierCode, trackingNumber);
+            
+            shipstationLogger.logInfo({
+                type: 'handle_ship_notify_tracking_url_constructed',
+                carrier_code: orderData.carrierCode,
+                tracking_number: trackingNumber,
+                tracking_url: trackingLink || null,
+                constructed: !!trackingLink
+            });
+        }
 
         // Log for validation
         shipstationLogger.logInfo({
@@ -828,14 +920,15 @@ async function handleShipNotify(orderData) {
             tracking_number: trackingNumber,
             tracking_link: trackingLink,
             has_tracking_link: !!trackingLink,
-            carrier_code: orderData?.carrierCode || null
+            carrier_code: orderData?.carrierCode || null,
+            tracking_url_source: trackingLink ? (orderData?.trackingUrl ? 'shipstation' : 'constructed') : 'none'
         });
 
         // Send email to customer
         if (order?.user && order?.user?.email) {
             try {
                 const emailData = {
-                    emailTypes: 'ORDER_SHIPPED',
+                    emailType: 'ORDER_SHIPPED',
                     to: order?.user?.email || null,
                     context: {
                         userName: order?.user?.first_name || order?.user?.email?.split('@')[0] || null,
@@ -908,7 +1001,7 @@ async function handleShipNotify(orderData) {
                     tracking_number: trackingNumber || null
                 });
 
-                await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
+                await sendEmail(emailData.to, emailData.emailType, emailData.context);
                 
                 shipstationLogger.logInfo({
                     type: 'handle_ship_notify_email_sent',

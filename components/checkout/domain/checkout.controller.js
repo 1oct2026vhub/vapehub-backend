@@ -401,6 +401,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
         dealsDiscount = dealResult.totalDiscount;
         applicableDeals = dealResult.appliedDeals;
+        const itemDiscounts = dealResult.itemDiscounts || {}; // Store item-level deal discounts
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
         let coupon = null;
@@ -678,9 +679,12 @@ module.exports.applyCoupon = async (req, res, next) => {
                         }
                     }
 
-                    // Calculate subtotal for applicable items only
+                    // Calculate subtotal for applicable items only (after deal discounts)
                     const applicableSubtotal = applicableItems.reduce((sum, item) => {
-                        return sum + (item.quantity * item.variant.price);
+                        const originalPrice = item.quantity * item.variant.price;
+                        const dealDiscount = itemDiscounts[item.id] || 0; // Get deal discount for this item
+                        const priceAfterDeal = originalPrice - dealDiscount;
+                        return sum + priceAfterDeal;
                     }, 0);
                     // Calculate discount based on applicable items subtotal
                     if (coupon.discount_type === "percentage") {
@@ -1033,16 +1037,25 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
         }
 
         // Calculate deals
-        const mockCart = enrichedCartItems.map(item => ({
-            product: item.product,
-            variant: item.variant,
-            quantity: item.quantity
-        }));
+        // Create mapping between enrichedCartItems and temporary IDs for deal discount tracking
+        const itemIdMap = new Map(); // Maps enrichedCartItems index to temporary ID
+        const mockCart = enrichedCartItems.map((item, index) => {
+            const tempId = `guest_${index}`;
+            itemIdMap.set(index, tempId);
+            return {
+                id: tempId, // Temporary ID for mapping
+                product: item.product,
+                variant: item.variant,
+                product_id: item.product.id,
+                variant_id: item.variant ? item.variant.id : null,
+                quantity: item.quantity
+            };
+        });
         const deals = await dealService.getApplicableDeals(mockCart);
         const dealResult = dealService.calculateDealDiscounts(mockCart, deals);
         dealsDiscount = dealResult.totalDiscount;
         applicableDeals = dealResult.appliedDeals;
-
+        const itemDiscounts = dealResult.itemDiscounts || {}; // Store item-level deal discounts
         // Apply deal discounts to total
         total = subTotal - dealsDiscount;
 
@@ -1210,9 +1223,10 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                     let applicableSubtotal = total;
 
                     if (coupon.entity_type && coupon.entity_id) {
-                        // Calculate subtotal for applicable items only
+                        // Calculate subtotal for applicable items only (after deal discounts)
                         applicableSubtotal = enrichedCartItems
-                            .filter(item => {
+                            .map((item, index) => ({ item, index })) // Keep track of original index
+                            .filter(({ item }) => {
                                 if (!item.product) return false;
                                 switch (coupon.entity_type) {
                                     case 'product':
@@ -1225,7 +1239,13 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                                         return false;
                                 }
                             })
-                            .reduce((sum, item) => sum + (item.quantity * item.variant.price), 0);
+                            .reduce((sum, { item, index }) => {
+                                const originalPrice = item.quantity * item.variant.price;
+                                const tempId = itemIdMap.get(index); // Get temporary ID for this item
+                                const dealDiscount = itemDiscounts[tempId] || 0; // Get deal discount using mapped ID
+                                const priceAfterDeal = originalPrice - dealDiscount;
+                                return sum + priceAfterDeal;
+                            }, 0);
                     }
 
                     if (coupon.discount_type === "percentage") {

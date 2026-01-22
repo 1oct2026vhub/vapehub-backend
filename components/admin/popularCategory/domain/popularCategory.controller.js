@@ -45,14 +45,31 @@ module.exports.listPopularCategories = async (req, res, next) => {
 
         const whereCondition = {};
         
+        // Handle deleted filter
+        if (deleted === "true") {
+            whereCondition.deletedAt = { [Op.ne]: null };
+        } else {
+            whereCondition.deletedAt = null;
+        }
+
+        // Handle search - combine with deletedAt using Op.and if both exist
         if (search) {
-            whereCondition[Op.or] = [
+            const searchConditions = [
                 { title: { [Op.like]: `%${search}%` } },
                 { description: { [Op.like]: `%${search}%` } }
             ];
+            
+            // If we already have deletedAt condition, combine it with search using Op.and
+            if (whereCondition.deletedAt !== undefined) {
+                whereCondition[Op.and] = [
+                    { deletedAt: whereCondition.deletedAt },
+                    { [Op.or]: searchConditions }
+                ];
+                delete whereCondition.deletedAt; // Remove the old deletedAt condition
+            } else {
+                whereCondition[Op.or] = searchConditions;
+            }
         }
-
-        whereCondition.deletedAt = deleted === "true" ? { [Op.ne]: null } : null;
 
         const { count, rows: popularCategories } = await PopularCategory.findAndCountAll({
             where: whereCondition,
