@@ -1576,7 +1576,7 @@ module.exports = {
             COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue
           FROM product_variants pv
           INNER JOIN products p ON pv.product_id = p.id
-          LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1
+          LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id 
             AND o.status != 'canceled'

@@ -142,6 +142,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 (SELECT pvi.image_url FROM product_variant_images pvi 
                  JOIN product_variants pv2 ON pvi.variant_id = pv2.id 
                  WHERE pv2.product_id = p.id AND pv2.status = 'active' 
+                 AND pvi.deleted_at IS NULL
                  ORDER BY pvi.is_primary DESC LIMIT 1) as variant_image,
                 -- Get primary product image
                 (SELECT pi.image_url FROM product_images pi 

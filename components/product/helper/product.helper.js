@@ -843,6 +843,7 @@ const fetchProducts = async (query, status = 'published') => {
           SELECT pv.id FROM product_variants pv 
           WHERE pv.product_id IN (${productIds.join(',')})
         )
+        AND pvi.deleted_at IS NULL
       `, { type: sequelize.QueryTypes.SELECT }) : [],
 
       // 9. Fetch deals (always fetch, filter by deal_id if specified)
