@@ -74,7 +74,7 @@ router.get(
  *           format: date
  *           description: Date of birth of the user
  */
-
+ 
 /**
  * @swagger
  * components:
@@ -399,6 +399,162 @@ router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.
  *       - bearerAuth: []
  */
 router.put("/:id/unblock", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], userController.unblockUser);
+
+/**
+ * @swagger
+ * /api/admin/user/export/initiate:
+ *   get:
+ *     summary: Initiate user export job (background processing for large datasets)
+ *     tags: 
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [csv, excel]
+ *         description: Export format (default - excel)
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Include soft-deleted users (default - false, excludes deleted)
+ *       - in: query
+ *         name: roleId
+ *         schema:
+ *           type: integer
+ *         description: Filter by role ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by name, email, or phone
+ *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Filter by blocked status
+ *       - in: query
+ *         name: verified
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Filter by email verification
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for registration filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for registration filter (YYYY-MM-DD)
+ *     responses:
+ *       202:
+ *         description: Export job initiated successfully
+ *       404:
+ *         description: No users found to export
+ */
+router.get(
+    "/export/initiate",
+    [authMiddleware(true)],
+    userController.initiateUserExport
+);
+
+/**
+ * @swagger
+ * /api/admin/user/export/stream:
+ *   get:
+ *     summary: Direct streaming export (for datasets < 100k records)
+ *     tags: 
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [csv]
+ *         description: Export format (only CSV supported for streaming)
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Include soft-deleted users
+ *       - in: query
+ *         name: roleId
+ *         schema:
+ *           type: integer
+ *         description: Filter by role ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by name, email, or phone
+ *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Filter by blocked status
+ *       - in: query
+ *         name: verified
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *         description: Filter by email verification
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for registration filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for registration filter (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: CSV file stream
+ *       400:
+ *         description: Dataset too large or invalid format
+ */
+router.get(
+    "/export/stream",
+    [authMiddleware(true)],
+    userController.exportUsersStream
+);
+
+/**
+ * @swagger
+ * /api/admin/user/export/status/{jobId}:
+ *   get:
+ *     summary: Check export job status
+ *     tags: 
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Export job ID
+ *     responses:
+ *       200:
+ *         description: Export job status
+ */
+router.get(
+    "/export/status/:jobId",
+    [authMiddleware(true)],
+    userController.checkExportStatus
+);
 
 module.exports = router;
 
