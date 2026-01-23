@@ -9,17 +9,44 @@ const fileName = () => {
     return d.getFullYear()+'-'+(d.getMonth()+1+'').padStart(2,'0')+'-'+(d.getDate()+'').padStart(2,'0')+'.log'
 }
 // helper function to check if a file is actual log file and should be deleted
+// Supports multiple patterns:
+// - YYYY-MM-DD.log (main logger)
+// - shipstation_*_YYYY-MM-DD.log (ShipStation logs)
+// - *_YYYY-MM-DD.log (utils logger files like error_YYYY-MM-DD.log, info_YYYY-MM-DD.log)
 const shouldDeleteFile = name => {
-    const res = /^(?<date>\d\d\d\d-\d\d-\d\d)\.log$/.exec(name)
-    return res && new Date(res.groups.date).getTime() < Date.now() - 2 * 24 * 3600000;
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 3600000;
+    
+    // Pattern 1: YYYY-MM-DD.log (main logger)
+    let res = /^(?<date>\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+    if (res) {
+        const fileDate = new Date(res.groups.date).getTime();
+        return fileDate < sevenDaysAgo;
+    }
+    
+    // Pattern 2: shipstation_*_YYYY-MM-DD.log (ShipStation logs)
+    res = /^shipstation_\w+_(?<date>\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+    if (res) {
+        const fileDate = new Date(res.groups.date).getTime();
+        return fileDate < sevenDaysAgo;
+    }
+    
+    // Pattern 3: *_YYYY-MM-DD.log (utils logger files like error_YYYY-MM-DD.log, info_YYYY-MM-DD.log, verification_YYYY-MM-DD.log)
+    res = /^\w+_(?<date>\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+    if (res) {
+        const fileDate = new Date(res.groups.date).getTime();
+        return fileDate < sevenDaysAgo;
+    }
+    
+    return false;
 };
+
 // Helper function to get number of millis left in this day
 const msLeft = () => {
     const d = new Date();
     const ms = d.getTime() - d.getTimezoneOffset()*60000;
     return 24*3600000 - (ms % (24*3600000));
 }
-
 
 // function to delete old log files in the dir
 const deleteOld = (dir) => {
@@ -37,6 +64,19 @@ const deleteOld = (dir) => {
                 })
         }
     })
+}
+
+// function to delete old log files from multiple directories
+const deleteOldFromAllDirs = () => {
+    const logsDir = path.join(__dirname, '../../logs');
+    const publicLogsDir = path.join(__dirname, '../../public/logs');
+    
+    deleteOld(logsDir);
+    
+    // Check if public/logs directory exists before trying to delete from it
+    if (fs.existsSync(publicLogsDir)) {
+        deleteOld(publicLogsDir);
+    }
 }
 
 
@@ -64,13 +104,13 @@ module.exports = function (opts) {
                 destination.on('close', () => {
                     destination = newDest;
                     nextTime();
-                    deleteOld(opts.destination)
+                    deleteOldFromAllDirs()
                 })
             }, msLeft())
         }
 
         nextTime();
-        deleteOld(opts.destination)
+        deleteOldFromAllDirs()
     }, {
         close (err, cb) {
             destination.end()
