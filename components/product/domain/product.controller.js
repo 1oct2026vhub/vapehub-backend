@@ -332,6 +332,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                     variant_id, image_url, is_primary
                 FROM product_variant_images
                 WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (${productIds.join(',')}) AND status = 'active')
+                AND deleted_at IS NULL
                 LIMIT 50
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1488,6 +1489,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     id, variant_id, image_url, is_primary
                 FROM product_variant_images
                 WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active')
+                AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2023,6 +2025,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     SELECT id FROM product_variants 
                     WHERE product_id = :product_id AND status = 'active'
                 )
+                AND deleted_at IS NULL
             `, {
                 replacements: variantsReplacements,
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2843,6 +2846,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 SELECT id FROM product_variants 
                 WHERE product_id = :product_id AND status = 'active'
             )
+            AND deleted_at IS NULL
         `, {
             replacements: { product_id },
             type: Product.sequelize.QueryTypes.SELECT
@@ -5256,6 +5260,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pvi.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),

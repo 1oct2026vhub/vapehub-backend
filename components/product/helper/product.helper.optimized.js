@@ -302,7 +302,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         LEFT JOIN product_variant_attributes pva ON pva.variant_id = pv.id
         LEFT JOIN attributes a ON a.id = pva.attribute_id
         LEFT JOIN attribute_terms at ON at.id = pva.term_id
-        LEFT JOIN product_variant_images pvi ON pvi.variant_id = pv.id
+        LEFT JOIN product_variant_images pvi ON pvi.variant_id = pv.id AND pvi.deleted_at IS NULL
         WHERE pv.product_id IN (${productIds.join(',')})
         AND pv.status = 'active'
         AND pv.deleted_at IS NULL
