@@ -571,7 +571,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             orderId: order.id,
                             relatedId: order.id
                         },
-                        url: '/order-details'
+                        url: `/order-details/${order.id}`
                     });
 
                     // Create success notification
@@ -758,7 +758,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: '/order-details'
+                        url: `/order-details/${order.id}`
                     });
 
                     // Create admin notification for failed payment
@@ -1008,7 +1008,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             relatedId: order.id,
                             reason: 'Payment failed via Viva Wallet'
                         },
-                        url: '/order-details'
+                        url: `/order-details/${order.id}`
                     });
 
                     // Create admin notification for failed payment
@@ -1225,7 +1225,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             reason: 'Cancelled via Viva Wallet'
                         },
                         title: 'Order Cancelled',
-                        url: '/order-details'
+                        url: `/order-details/${order.id}`
                     });
 
                     // Create admin notification for order cancellation
@@ -1525,7 +1525,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             reason: `Refund processed via Viva Wallet. Reason: ${ReversalReason || 'Not specified'}`
                         },
                         title: 'Payment Refunded',
-                        url: '/order-details'
+                        url: `/order-details/${order.id}`
                     });
 
                     // Create admin notification for refund
