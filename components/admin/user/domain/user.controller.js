@@ -435,9 +435,25 @@ function buildExportWhereCondition(requestingUser, filters) {
     // Exclude guest users (temporary users)
     whereCondition.is_temporary = false;
 
-    // Filter by roleId if provided
+    // Always exclude admin users (roleId = 1)
+    whereCondition.roleId = { [Op.ne]: 1 };
+
+    // Filter by roleId if provided (but still exclude roleId 1)
     if (roleId) {
-        whereCondition.roleId = roleId;
+        if (Array.isArray(roleId)) {
+            // Ensure roleId 1 is not in the array
+            const filteredRoleIds = roleId.filter(id => id !== 1);
+            if (filteredRoleIds.length > 0) {
+                whereCondition.roleId = { [Op.in]: filteredRoleIds };
+            }
+            // If all roleIds were 1 or array is empty, keep the exclusion (already set above)
+        } else {
+            // If single roleId is not 1, use it directly
+            if (roleId !== 1) {
+                whereCondition.roleId = roleId;
+            }
+            // If roleId is 1, keep the exclusion (already set above)
+        }
     }
 
     // Search filter
@@ -511,7 +527,6 @@ module.exports.initiateUserExport = async (req, res) => {
 
         const { 
             format = 'excel',
-            roleId = '2', 
             search, 
             deleted = "false",
             blocked = "all",
@@ -527,9 +542,9 @@ module.exports.initiateUserExport = async (req, res) => {
             }, "Bad Request", 400);
         }
 
-        // Build where condition
+        // Build where condition - excludes admin users (roleId = 1) by default
         const whereCondition = buildExportWhereCondition(req.user, {
-            roleId, search, deleted, blocked, verified, start_date, end_date
+            search, deleted, blocked, verified, start_date, end_date
         });
 
         // Get total count with timeout
