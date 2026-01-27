@@ -511,7 +511,7 @@ module.exports.initiateUserExport = async (req, res) => {
 
         const { 
             format = 'excel',
-            roleId, 
+            roleId = '2', 
             search, 
             deleted = "false",
             blocked = "all",
