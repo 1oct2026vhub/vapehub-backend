@@ -431,13 +431,21 @@ async function buildExportWhereCondition(requestingUser, filters) {
     if (!requestingUser.super_user) {
         whereCondition.super_user = false;
     }
-     // Fetch admin roles and exclude them (similar to customer controller)
-     const adminRoles = await Role.findAll({
-        where: { deleted: false, is_admin_panel: true },
-    });
-    const adminRoleIds = adminRoles.map(role => role.id);
-    if (adminRoleIds.length > 0) {
-        whereCondition.roleId = { [Op.notIn]: adminRoleIds };
+    
+    // Fetch admin roles and exclude them (similar to customer controller)
+    try {
+        const adminRoles = await Role.findAll({
+            where: { deleted: false, is_admin_panel: true },
+            timeout: EXPORT_CONFIG.DB_QUERY_TIMEOUT
+        });
+        const adminRoleIds = adminRoles.map(role => role.id);
+        if (adminRoleIds.length > 0) {
+            whereCondition.roleId = { [Op.notIn]: adminRoleIds };
+        }
+    } catch (roleError) {
+        console.error("Error fetching admin roles for export:", roleError);
+        // Continue without admin role exclusion if query fails (fail-safe)
+        // This ensures export can still proceed even if role query fails
     }
 
     // Search filter
@@ -472,13 +480,30 @@ async function buildExportWhereCondition(requestingUser, filters) {
             { [Op.ne]: null } : null;
     }
 
-    // Date range filter
+    // Date range filter with validation
     if (start_date && end_date) {
-        const startMoment = moment(start_date).startOf('day');
-        const endMoment = moment(end_date).endOf('day');
+        const startMoment = moment(start_date);
+        const endMoment = moment(end_date);
+        
+        // Validate dates
+        if (!startMoment.isValid()) {
+            throw new Error(`Invalid start_date format: ${start_date}. Please use a valid date format (e.g., YYYY-MM-DD)`);
+        }
+        if (!endMoment.isValid()) {
+            throw new Error(`Invalid end_date format: ${end_date}. Please use a valid date format (e.g., YYYY-MM-DD)`);
+        }
+        
+        // Ensure end date is after start date
+        if (endMoment.isBefore(startMoment)) {
+            throw new Error('end_date must be after or equal to start_date');
+        }
+        
         whereCondition.createdAt = {
-            [Op.between]: [startMoment.toDate(), endMoment.toDate()]
+            [Op.between]: [startMoment.startOf('day').toDate(), endMoment.endOf('day').toDate()]
         };
+    } else if (start_date || end_date) {
+        // If only one date is provided, throw error
+        throw new Error('Both start_date and end_date must be provided together');
     }
 
     return whereCondition;
@@ -527,9 +552,17 @@ module.exports.initiateUserExport = async (req, res) => {
         }
 
         // Build where condition - excludes admin users (roleId = 1) by default
-        const whereCondition = await buildExportWhereCondition(req.user, {
-            search, deleted, blocked, verified, start_date, end_date
-        });
+        let whereCondition;
+        try {
+            whereCondition = await buildExportWhereCondition(req.user, {
+                search, deleted, blocked, verified, start_date, end_date
+            });
+        } catch (filterError) {
+            console.error("Error building export filters:", filterError);
+            return errorResponse(res, { 
+                message: filterError.message || "Failed to build export filters. Please check your filter parameters."
+            }, "Bad Request", 400);
+        }
 
         // Get total count with timeout
         let totalCount;
