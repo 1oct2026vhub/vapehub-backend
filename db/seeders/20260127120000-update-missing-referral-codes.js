@@ -8,7 +8,7 @@ module.exports = {
       
       // Find all users without referral codes
       const usersWithoutCodes = await queryInterface.sequelize.query(
-        `SELECT id FROM users WHERE (referral_code IS NULL OR referral_code = '') AND deleted_at IS NULL`,
+        `SELECT id FROM users WHERE referral_code IS NULL OR referral_code = ''`,
         { type: Sequelize.QueryTypes.SELECT }
       );
 
