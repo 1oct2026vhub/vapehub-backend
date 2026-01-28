@@ -418,8 +418,8 @@ module.exports.unblockUser = async (req, res) => {
 };
 
 // Helper function to build where condition for exports
-function buildExportWhereCondition(requestingUser, filters) {
-    const { roleId, search, deleted, blocked, verified, start_date, end_date } = filters;
+async function buildExportWhereCondition(requestingUser, filters) {
+    const { search, deleted, blocked, verified, start_date, end_date } = filters;
     const whereCondition = {};
 
     // Validate requestingUser
@@ -431,29 +431,13 @@ function buildExportWhereCondition(requestingUser, filters) {
     if (!requestingUser.super_user) {
         whereCondition.super_user = false;
     }
-
-    // Exclude guest users (temporary users)
-    whereCondition.is_temporary = false;
-
-    // Always exclude admin users (roleId = 1)
-    whereCondition.roleId = { [Op.ne]: 1 };
-
-    // Filter by roleId if provided (but still exclude roleId 1)
-    if (roleId) {
-        if (Array.isArray(roleId)) {
-            // Ensure roleId 1 is not in the array
-            const filteredRoleIds = roleId.filter(id => id !== 1);
-            if (filteredRoleIds.length > 0) {
-                whereCondition.roleId = { [Op.in]: filteredRoleIds };
-            }
-            // If all roleIds were 1 or array is empty, keep the exclusion (already set above)
-        } else {
-            // If single roleId is not 1, use it directly
-            if (roleId !== 1) {
-                whereCondition.roleId = roleId;
-            }
-            // If roleId is 1, keep the exclusion (already set above)
-        }
+     // Fetch admin roles and exclude them (similar to customer controller)
+     const adminRoles = await Role.findAll({
+        where: { deleted: false, is_admin_panel: true },
+    });
+    const adminRoleIds = adminRoles.map(role => role.id);
+    if (adminRoleIds.length > 0) {
+        whereCondition.roleId = { [Op.notIn]: adminRoleIds };
     }
 
     // Search filter
