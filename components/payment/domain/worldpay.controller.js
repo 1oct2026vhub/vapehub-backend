@@ -2418,8 +2418,6 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
                 shippingCost: order.shipping_cost || 0,
                 totalAmount: order.total || 0,
-                discountPrice: order.discount_price || 0,
-                loyaltyDiscount: order.loyalty_discount || 0,
                 items: order.orderItems ? order.orderItems.map(item => {
                     let productName = item.product?.name || 'Product';
                     
@@ -2466,6 +2464,8 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                 transactionId: orderCode || 'N/A',
                 amount: amount || 0,
                 currency: currency || 'GBP',
+                ...(order.discount_price > 0 && { discountPrice: order.discount_price }),
+                ...(order.loyalty_discount > 0 && { loyaltyDiscount: order.loyalty_discount }),
                 ...(order.mailSubscription_discount > 0 && { mailSubscriptionDiscount: order.mailSubscription_discount })
             }
         };

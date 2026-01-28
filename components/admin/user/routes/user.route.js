@@ -74,7 +74,7 @@ router.get(
  *           format: date
  *           description: Date of birth of the user
  */
-
+ 
 /**
  * @swagger
  * components:
@@ -399,6 +399,413 @@ router.put("/:id/block", [authMiddleware(true), validateRequest(validationRules.
  *       - bearerAuth: []
  */
 router.put("/:id/unblock", [authMiddleware(true), validateRequest(validationRules.userIDValidation)], userController.unblockUser);
+
+/**
+ * @swagger
+ * /api/admin/user/export/initiate:
+ *   get:
+ *     summary: Initiate user export job (background processing for large datasets)
+ *     description: |
+ *       Creates a background job to export user data. The job processes data in chunks
+ *       and uploads the file to S3. Returns a job ID that can be used to check status.
+ *       
+ *       **Exported Fields:** First Name, Last Name, Email, Phone
+ *       
+ *       **File Retention:** Files are automatically deleted after 24 hours
+ *       
+ *       **Concurrent Limit:** Maximum 3 export jobs can run simultaneously
+ *     tags: 
+ *       - ADMIN - User
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [csv, excel]
+ *           default: excel
+ *         description: Export format (default - excel)
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: false
+ *         description: Include soft-deleted users (default - false, excludes deleted)
+ *       - in: query
+ *         name: roleId
+ *         schema:
+ *           type: integer
+ *         description: Filter by role ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by name, email, or phone
+ *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: all
+ *         description: Filter by blocked status
+ *       - in: query
+ *         name: verified
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: all
+ *         description: Filter by email verification
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for registration filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for registration filter (YYYY-MM-DD)
+ *     responses:
+ *       202:
+ *         description: Export job initiated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     jobId:
+ *                       type: string
+ *                       example: user-export-1704067200000-a3f9k2m
+ *                       description: Unique job identifier for tracking export status
+ *                     status:
+ *                       type: string
+ *                       example: processing
+ *                       description: Current job status
+ *                     totalRecords:
+ *                       type: integer
+ *                       example: 50000
+ *                       description: Total number of users to export
+ *                     format:
+ *                       type: string
+ *                       example: excel
+ *                       description: Export format (csv or excel)
+ *                     message:
+ *                       type: string
+ *                       example: Export job initiated. File will be available for download when ready.
+ *       400:
+ *         description: Bad request (invalid parameters or format)
+ *       401:
+ *         description: Unauthorized (invalid or missing token)
+ *       403:
+ *         description: Forbidden (no admin permission)
+ *       404:
+ *         description: No users found to export
+ *       429:
+ *         description: Too many concurrent export jobs (max 3)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: error
+ *                 message:
+ *                   type: string
+ *                   example: Too many export jobs running. Please wait and try again.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     activeExports:
+ *                       type: integer
+ *                       example: 3
+ *                     maxConcurrent:
+ *                       type: integer
+ *                       example: 3
+ *       500:
+ *         description: Server error (S3 configuration missing or other errors)
+ */
+router.get(
+    "/export/initiate",
+    [authMiddleware(true)],
+    userController.initiateUserExport
+);
+
+/**
+ * @swagger
+ * /api/admin/user/export/stream:
+ *   get:
+ *     summary: Direct streaming export (for datasets < 100k records)
+ *     description: |
+ *       Streams CSV file directly to the client. Only supports CSV format.
+ *       For datasets larger than 100k records, use the background export endpoint.
+ *       
+ *       **Exported Fields:** First Name, Last Name, Email, Phone
+ *       
+ *       **Note:** Excel format is not supported for streaming. Use background export for Excel.
+ *     tags: 
+ *       - ADMIN - User
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [csv]
+ *           default: csv
+ *         description: Export format (only CSV supported for streaming)
+ *       - in: query
+ *         name: deleted
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: false
+ *         description: Include soft-deleted users
+ *       - in: query
+ *         name: roleId
+ *         schema:
+ *           type: integer
+ *         description: Filter by role ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by name, email, or phone
+ *       - in: query
+ *         name: blocked
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: all
+ *         description: Filter by blocked status
+ *       - in: query
+ *         name: verified
+ *         schema:
+ *           type: string
+ *           enum: [true, false, all]
+ *           default: all
+ *         description: Filter by email verification
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for registration filter (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for registration filter (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: CSV file stream
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *             example: |
+ *               First Name,Last Name,Email,Phone
+ *               John,Doe,john@example.com,+1234567890
+ *               Jane,Smith,jane@example.com,+0987654321
+ *         headers:
+ *           Content-Disposition:
+ *             description: Attachment filename
+ *             schema:
+ *               type: string
+ *               example: attachment; filename=users-export-2024-01-01.csv
+ *       400:
+ *         description: Dataset too large or invalid format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: error
+ *                 message:
+ *                   type: string
+ *                   example: Dataset too large for direct export. Please use the background export endpoint.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalRecords:
+ *                       type: integer
+ *                       example: 150000
+ *                     suggestion:
+ *                       type: string
+ *                       example: Use /api/admin/user/export/initiate endpoint
+ *       401:
+ *         description: Unauthorized (invalid or missing token)
+ *       403:
+ *         description: Forbidden (no admin permission)
+ *       500:
+ *         description: Server error
+ */
+router.get(
+    "/export/stream",
+    [authMiddleware(true)],
+    userController.exportUsersStream
+);
+
+/**
+ * @swagger
+ * /api/admin/user/export/status/{jobId}:
+ *   get:
+ *     summary: Check export job status
+ *     description: |
+ *       Returns the current status of an export job. Use the jobId returned from
+ *       the initiate endpoint to check status and get the download URL when ready.
+ *       
+ *       **Status Values:**
+ *       - `processing`: Job is currently running
+ *       - `completed`: Job finished successfully, download URL available
+ *       - `failed`: Job failed, error message available
+ *     tags: 
+ *       - ADMIN - User
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Export job ID returned from initiate endpoint
+ *         example: user-export-1704067200000-a3f9k2m
+ *     responses:
+ *       200:
+ *         description: Export job status retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     jobId:
+ *                       type: string
+ *                       example: user-export-1704067200000-a3f9k2m
+ *                       description: Unique job identifier
+ *                     status:
+ *                       type: string
+ *                       enum: [processing, completed, failed]
+ *                       example: completed
+ *                       description: Current job status
+ *                     downloadUrl:
+ *                       type: string
+ *                       nullable: true
+ *                       example: https://s3.amazonaws.com/bucket/exports/users/user-export-1704067200000-a3f9k2m.xlsx?signature=...
+ *                       description: Signed URL valid for 7 days (only when status is completed)
+ *                     error:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                       description: Error message (only when status is failed)
+ *                     totalRecords:
+ *                       type: integer
+ *                       example: 50000
+ *                       description: Total number of records in export
+ *                     format:
+ *                       type: string
+ *                       example: excel
+ *                       description: Export format (csv or excel)
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2024-01-01T10:00:00.000Z
+ *                       description: Job creation timestamp
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: 2024-01-01T10:05:00.000Z
+ *                       description: Last status update timestamp
+ *             examples:
+ *               processing:
+ *                 summary: Job is processing
+ *                 value:
+ *                   status: success
+ *                   data:
+ *                     jobId: user-export-1704067200000-a3f9k2m
+ *                     status: processing
+ *                     downloadUrl: null
+ *                     error: null
+ *                     totalRecords: 50000
+ *                     format: excel
+ *                     createdAt: 2024-01-01T10:00:00.000Z
+ *                     updatedAt: 2024-01-01T10:00:00.000Z
+ *               completed:
+ *                 summary: Job completed successfully
+ *                 value:
+ *                   status: success
+ *                   data:
+ *                     jobId: user-export-1704067200000-a3f9k2m
+ *                     status: completed
+ *                     downloadUrl: https://s3.amazonaws.com/bucket/exports/users/user-export-1704067200000-a3f9k2m.xlsx?signature=...
+ *                     error: null
+ *                     totalRecords: 50000
+ *                     format: excel
+ *                     createdAt: 2024-01-01T10:00:00.000Z
+ *                     updatedAt: 2024-01-01T10:05:00.000Z
+ *               failed:
+ *                 summary: Job failed
+ *                 value:
+ *                   status: success
+ *                   data:
+ *                     jobId: user-export-1704067200000-a3f9k2m
+ *                     status: failed
+ *                     downloadUrl: null
+ *                     error: S3 upload failed after 3 attempts: Network error
+ *                     totalRecords: 50000
+ *                     format: excel
+ *                     createdAt: 2024-01-01T10:00:00.000Z
+ *                     updatedAt: 2024-01-01T10:02:00.000Z
+ *       401:
+ *         description: Unauthorized (invalid or missing token)
+ *       404:
+ *         description: Export job not found (may have expired or never existed)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: error
+ *                 message:
+ *                   type: string
+ *                   example: Export job not found. It may have expired or never existed.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     jobId:
+ *                       type: string
+ *                       example: user-export-1704067200000-a3f9k2m
+ *       500:
+ *         description: Server error
+ */
+router.get(
+    "/export/status/:jobId",
+    [authMiddleware(true)],
+    userController.checkExportStatus
+);
 
 module.exports = router;
 

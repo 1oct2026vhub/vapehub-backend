@@ -620,8 +620,6 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
                             shippingCost: order.shipping_cost || 0,
                             totalAmount: order.total || 0,
-                            discountPrice: order.discount_price || 0,
-                            loyaltyDiscount: order.loyalty_discount || 0,
                             items: order.orderItems ? order.orderItems.map(item => {
                                 let productName = item.product?.name || 'Product';
                                 
@@ -650,6 +648,14 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             transactionId: TransactionId || 'N/A'
                         }
                     };
+                    // Add coupon discount if applied
+                    if (order.discount_price && parseFloat(order.discount_price) > 0) {
+                        emailData.context.discountPrice = order.discount_price;
+                    }
+                    // Add loyalty points discount if applied
+                    if (order.loyalty_discount && parseFloat(order.loyalty_discount) > 0) {
+                        emailData.context.loyaltyDiscount = order.loyalty_discount;
+                    }
                     // Add mail subscription discount if applied
                     if (order.mailSubscription_discount && parseFloat(order.mailSubscription_discount) > 0) {
                         emailData.context.mailSubscriptionDiscount = order.mailSubscription_discount;
