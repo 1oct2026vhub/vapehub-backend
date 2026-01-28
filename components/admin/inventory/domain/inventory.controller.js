@@ -4,6 +4,17 @@ const { sequelize } = require('../../../../models');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Parser: Json2csvParser } = require('json2csv');
 
+// "Successful" orders = payment confirmed and in fulfillment/fulfilled flow.
+// (We intentionally exclude: draft, pending, fail, cancel, returns/refunds.)
+const SUCCESSFUL_ORDER_STATUSES = [
+  'processing',
+  'packed',
+  'shipped',
+  'out_for_delivery',
+  'delivered',
+  'completed'
+];
+
 module.exports = {
   // Get inventory overview with summary statistics
   async getInventoryOverview(req, res) {
@@ -1031,7 +1042,7 @@ module.exports = {
       const orderIds = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.ne]: 'canceled' },
+          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
@@ -1243,7 +1254,7 @@ module.exports = {
       const orderIds = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.ne]: 'canceled' },
+          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
@@ -1416,7 +1427,7 @@ module.exports = {
         const orderIds = await Order.findAll({
           attributes: ['id'],
           where: {
-            status: { [Op.ne]: 'canceled' },
+            status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
             updatedAt: { [Op.gte]: last28Days }
           },
           raw: true
@@ -1479,7 +1490,7 @@ module.exports = {
         LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
         LEFT JOIN order_items oi ON p.id = oi.product_id
         LEFT JOIN orders o ON oi.order_id = o.id 
-          AND o.status != 'canceled'
+          AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
           AND o.updatedAt >= :startDate 
           AND o.updatedAt <= :endDate
         GROUP BY p.id, p.name, pi.image_url
@@ -1579,7 +1590,7 @@ module.exports = {
           LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status != 'canceled'
+            AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
             AND o.updatedAt >= :startDate 
             AND o.updatedAt <= :endDate
           WHERE 1=1 ${productWhereClause}
@@ -1602,7 +1613,7 @@ module.exports = {
           LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
           LEFT JOIN order_items oi ON p.id = oi.product_id
           LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status != 'canceled'
+            AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
             AND o.updatedAt >= :startDate 
             AND o.updatedAt <= :endDate
           WHERE 1=1 ${productWhereClause}
@@ -1662,7 +1673,7 @@ module.exports = {
         const prevOrderIds = await Order.findAll({
           attributes: ['id'],
           where: {
-            status: { [Op.ne]: 'canceled' },
+            status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
             updatedAt: {
               [Op.gte]: prevStart,
               [Op.lte]: prevEnd
@@ -1773,7 +1784,7 @@ module.exports = {
       const orderIds28Days = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.ne]: 'canceled' },
+          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
           updatedAt: { [Op.gte]: last28Days }
         },
         raw: true
@@ -1783,7 +1794,7 @@ module.exports = {
       const orderIdsLastMonth = await Order.findAll({
         attributes: ['id'],
         where: {
-          status: { [Op.ne]: 'canceled' },
+          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
           updatedAt: {
             [Op.gte]: startOfLastMonth,
             [Op.lte]: endOfLastMonth
@@ -2046,7 +2057,7 @@ module.exports = {
           // Get all order IDs (excluding canceled) for total sales calculation
           const completedOrderIds = await Order.findAll({
             attributes: ['id'],
-            where: { status: { [Op.ne]: 'canceled' } },
+            where: { status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES } },
             raw: true
           }).then(orders => orders.map(o => o.id));
           // Total sales (all-time)
@@ -2222,7 +2233,7 @@ module.exports = {
           // Get all order IDs (excluding canceled) for total sales calculation
           const completedOrderIds = await Order.findAll({
             attributes: ['id'],
-            where: { status: { [Op.ne]: 'canceled' } },
+            where: { status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES } },
             raw: true
           }).then(orders => orders.map(o => o.id));
           // Total sales (all-time)
@@ -2425,7 +2436,7 @@ module.exports = {
             COALESCE(SUM(oi.quantity), 0) as total_sales
           FROM order_items oi
           INNER JOIN orders o ON oi.order_id = o.id
-          WHERE o.status != 'canceled'
+          WHERE o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
             AND o.updatedAt >= :last28Days
             AND oi.variant_id IS NOT NULL
             AND oi.deletedAt IS NULL
@@ -2510,7 +2521,7 @@ module.exports = {
             INNER JOIN orders o ON oi.order_id = o.id
             INNER JOIN product_variants pv ON oi.variant_id = pv.id
             INNER JOIN products p ON pv.product_id = p.id
-            WHERE o.status != 'canceled'
+            WHERE o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
               AND oi.variant_id IN (:variantIds)
               AND o.updatedAt >= p.createdAt
               AND oi.variant_id IS NOT NULL
