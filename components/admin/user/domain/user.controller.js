@@ -527,7 +527,7 @@ module.exports.initiateUserExport = async (req, res) => {
         }
 
         // Build where condition - excludes admin users (roleId = 1) by default
-        const whereCondition = buildExportWhereCondition(req.user, {
+        const whereCondition = await buildExportWhereCondition(req.user, {
             search, deleted, blocked, verified, start_date, end_date
         });
 
