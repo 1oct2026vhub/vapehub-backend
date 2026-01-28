@@ -103,11 +103,14 @@ const fetchCategoryProducts = async (categoryId, query) => {
     try {
         const {
             sort_by = 'order_count',
-            order = 'ASC',
+            order,
             limit = 10,
             offset = 0,
             is_new
-        } = query; 
+        } = query;
+        // Default order: DESC for popularity/order_count, ASC for others
+        const defaultOrder = (sort_by === 'popularity' || sort_by === 'order_count') ? 'DESC' : 'ASC';
+        const orderValue = order || defaultOrder; 
 
         // Cache removed for production safety
 
@@ -195,12 +198,12 @@ const fetchCategoryProducts = async (categoryId, query) => {
             AND p.deletedAt IS NULL
             ORDER BY ${
               sort_by === 'popularity' || sort_by === 'order_count' 
-                ? `order_count ${order}` 
+                ? `order_count ${orderValue}` 
                 : sort_by === 'price' 
-                ? `min_price ${order}` 
+                ? `min_price ${orderValue}` 
                 : sort_by === 'createdAt' 
-                ? `p.createdAt ${order}` 
-                : `p.${sort_by} ${order}`
+                ? `p.createdAt ${orderValue}` 
+                : `p.${sort_by} ${orderValue}`
             }, p.id ASC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `;
