@@ -1970,7 +1970,7 @@ module.exports = {
           INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
           LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
-          LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('completed', 'delivered')
+          LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
           WHERE pv.deleted_at IS NULL ${productWhereClause}
           GROUP BY pv.id, p.name, pv.slug, pvi.image_url, pv.stock, pv.low_stock_threshold
           ORDER BY salesLast28Days DESC
