@@ -246,7 +246,7 @@ const fetchProducts = async (query, status = 'published') => {
   try {
     const {
       sort_by = 'order_count',
-      order = 'ASC',
+      order,
       limit = 10,
       offset = 0,
       keyword,
@@ -258,6 +258,9 @@ const fetchProducts = async (query, status = 'published') => {
       source,
       deal_id
     } = query;
+    // Default order: DESC for popularity/order_count, ASC for others
+    const defaultOrder = (sort_by === 'popularity' || sort_by === 'order_count') ? 'DESC' : 'ASC';
+    const orderValue = order || defaultOrder;
     // Parse limit and offset as integers
     const parsedLimit = parseInt(limit);
     const parsedOffset = parseInt(offset);
@@ -265,7 +268,7 @@ const fetchProducts = async (query, status = 'published') => {
     const variantSortMap = { id: 'id', price: 'price', slug: 'slug', createdAt: 'created_at', updatedAt: 'updated_at' };
     const categorySortMap = { id: 'id', name: 'name', slug: 'slug' };
     const safeVariantSortBy = variantSortMap[sort_by] || 'id';
-    const safeOrder = (String(order).toUpperCase() === 'ASC') ? 'ASC' : 'DESC';
+    const safeOrder = (String(orderValue).toUpperCase() === 'ASC') ? 'ASC' : 'DESC';
     const safeCategorySortBy = categorySortMap[sort_by] || 'id';
     // Validate price range format
     let priceRange = null;
@@ -696,10 +699,10 @@ const fetchProducts = async (query, status = 'published') => {
         )
         ORDER BY ${
           sort_by === 'popularity' || sort_by === 'order_count' 
-            ? `order_count ${order}` 
+            ? `order_count ${orderValue}` 
             : sort_by === 'price' 
-            ? `min_price ${order}` 
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${order}`
+            ? `min_price ${orderValue}` 
+            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
         }, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
