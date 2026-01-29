@@ -111,7 +111,9 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password, mail_subscription = false, phone } = req.body;
+        // Default mail_subscription to true for new customers (opt-out instead of opt-in)
+        const mail_subscription = req.body.mail_subscription !== false && req.body.mail_subscription !== 'false';
+        const { email, password, phone } = req.body;
         let{ referral_code } = req.query;
         if (!referral_code) {
             referral_code = null;
@@ -169,8 +171,8 @@ module.exports.register = async (req, res, next) => {
 
             const username = userExists?.first_name ?? userExists.email.split('@')[0];
 
-            // Handle mail subscription
-            if (mail_subscription === 'true' || mail_subscription === true) {
+            // Handle mail subscription (default subscribed for new customers)
+            if (mail_subscription) {
                 try {
                     const existingSubscription = await MailSubscription.findOne({
                         where: { email: email }
@@ -179,6 +181,7 @@ module.exports.register = async (req, res, next) => {
                     if (existingSubscription) {
                         await MailSubscription.update({
                             user_id: userExists.id,
+                            subscribed: true
                         }, {
                             where: { id: existingSubscription.id }
                         });
@@ -200,6 +203,7 @@ module.exports.register = async (req, res, next) => {
                     if (existingSubscription) {
                         await MailSubscription.update({
                             user_id: userExists.id,
+                            subscribed: false
                         }, {
                             where: { id: existingSubscription.id }
                         });
@@ -447,24 +451,21 @@ module.exports.register = async (req, res, next) => {
         });
         const username = user?.first_name ?? user.email.split('@')[0];
 
-        // Handle mail subscription
-        if (mail_subscription === 'true' || mail_subscription === true) {
+        // Handle mail subscription (default subscribed for new customers)
+        if (mail_subscription) {
             try {
-                // Check if email already exists in mail subscription table
                 const existingSubscription = await MailSubscription.findOne({
                     where: { email: email }
                 });
 
-                // If not present, insert new subscription
                 if (existingSubscription) {
                     await MailSubscription.update({
                         user_id: user.id,
-                        // email: email
+                        subscribed: true
                     }, {
                         where: { id: existingSubscription.id }
                     });
-                }
-                else{
+                } else {
                     await MailSubscription.create({
                         user_id: user.id,
                         email: email,
@@ -472,26 +473,22 @@ module.exports.register = async (req, res, next) => {
                     });
                 }
             } catch (subscriptionError) {
-                // Log error but don't fail the registration
                 console.error('Error handling mail subscription:', subscriptionError);
             }
-        }
-        else{
+        } else {
             try {
-                // Check if email already exists in mail subscription table
                 const existingSubscription = await MailSubscription.findOne({
                     where: { email: email }
                 });
                 if (existingSubscription) {
                     await MailSubscription.update({
                         user_id: user.id,
-                        // email: email
+                        subscribed: false
                     }, {
                         where: { id: existingSubscription.id }
                     });
                 }
             } catch (subscriptionError) {
-                // Log error but don't fail the registration
                 console.error('Error handling mail subscription:', subscriptionError);
             }
         }
