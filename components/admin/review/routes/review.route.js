@@ -35,6 +35,10 @@ const { check } = require('express-validator');
  *         testimonial:
  *           type: boolean
  *           description: Indicates if the review should be displayed as a testimonial
+ *         review_date:
+ *           type: string
+ *           format: date
+ *           description: Date associated with the review
  *         created_at:
  *           type: string
  *           format: date-time
@@ -364,6 +368,10 @@ router.get('/products', [authMiddleware(true)], reviewController.getProducts);
  *               testimonial:
  *                 type: boolean
  *                 description: Set to true if this review should be displayed as a testimonial
+ *               review_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Date associated with the review (YYYY-MM-DD format)
  *     responses:
  *       201:
  *         description: Review created
@@ -413,6 +421,10 @@ router.post('/', [authMiddleware(true)], reviewController.create);
  *               testimonial:
  *                 type: boolean
  *                 description: Set to true if this review should be displayed as a testimonial
+ *               review_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Date associated with the review (YYYY-MM-DD format)
  *     responses:
  *       200:
  *         description: Review updated

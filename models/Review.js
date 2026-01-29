@@ -106,6 +106,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       comment: 'Indicates if the review should be displayed as a testimonial'
     },
+    review_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: 'Date associated with the review'
+    },
     created_at: {
       allowNull: false,
       type: DataTypes.DATE,
