@@ -19,14 +19,14 @@ module.exports = {
       const dialect = queryInterface.sequelize.getDialect();
       const wrap = (name) => (dialect === 'mysql' ? '`' + name + '`' : '"' + name + '"');
 
-      // Customers: non-temporary users with permission 'user' (exclude admin roles)
+      // Non-temporary, not soft-deleted, exclude admin roles (by is_admin_panel: only no role or non-admin role)
       const users = await queryInterface.sequelize.query(
         `SELECT u.id, u.email
          FROM users u
          LEFT JOIN roles r ON u.roleId = r.id
-         WHERE u.is_temporary = 0
-           AND (u.roleId IS NULL OR r.permission = 'user')
-           AND u.${wrap(userDeletedAtCol)} IS NULL`,
+         WHERE (u.is_temporary IS NULL OR u.is_temporary != 1)
+           AND u.${wrap(userDeletedAtCol)} IS NULL
+           AND (u.roleId IS NULL OR r.is_admin_panel = 0 OR r.is_admin_panel IS NULL)`,
         { transaction, type: Sequelize.QueryTypes.SELECT }
       );
 
