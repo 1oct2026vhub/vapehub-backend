@@ -47,7 +47,7 @@ router.post("/login", authController.login);
  * /api/auth/register:
  *   post:
  *     summary: Registers a new user
- *     description: Registers a new user by accepting email and password, then hashing the password and returning a JWT token.
+ *     description: Registers a new user by accepting email, password, and phone, then hashing the password and returning a JWT token.
  *     tags:
  *      - Authentication
  *     parameters:
@@ -64,6 +64,10 @@ router.post("/login", authController.login);
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - phone
  *             properties:
  *               email:
  *                 type: string
@@ -79,6 +83,10 @@ router.post("/login", authController.login);
  *                 type: boolean
  *                 description: Whether the user wants to subscribe to promotional emails. Defaults to false if not provided.
  *                 example: true
+ *               phone:
+ *                 type: string
+ *                 description: Phone number of the user (required; must be between 10 to 15 digits excluding +, hyphens and spaces)
+ *                 example: "+1234567890"
  *     responses:
  *       201:
  *         description: User successfully registered
@@ -102,6 +110,16 @@ router.post('/register',
   validateRequest([
     check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required").normalizeEmail(),
     check("password").notEmpty().withMessage("Password is required").isLength({ min: 8 }).withMessage("Password must be at least 8 characters").matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/).withMessage("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"),
+    check("phone").notEmpty().withMessage("Phone is required").custom((value) => {
+        if (!value || value.trim() === '') {
+            throw new Error('Phone is required');
+        }
+        const digitCount = value.replace(/[-\+\s]/g, '').length;
+        if (digitCount < 10 || digitCount > 15) {
+            throw new Error('Phone number must be between 10 to 15 digits (excluding +, hyphens and spaces)');
+        }
+        return true;
+    }),
     query("referral_code").optional().isString().withMessage("Referral code must be a string")
   ]),
   authController.register

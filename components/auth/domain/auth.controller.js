@@ -111,7 +111,7 @@ module.exports.login = async (req, res, next) => {
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { email, password, mail_subscription = false } = req.body;
+        const { email, password, mail_subscription = false, phone } = req.body;
         let{ referral_code } = req.query;
         if (!referral_code) {
             referral_code = null;
@@ -129,13 +129,16 @@ module.exports.register = async (req, res, next) => {
             const hashedPassword = await bcrypt.hash(password, 10);
             
             // Update user to permanent with new password
-            await userExists.update({
+            const updateData = {
                 is_temporary: false,
                 password: hashedPassword,
+                phone,
                 email_verified_at: null, // Reset verification status
                 blocked: false,
                 deletedAt: null // Restore if soft-deleted
-            });
+            };
+            
+            await userExists.update(updateData);
 
             // Get role for user if not already set
             const role = await Role.findOne({
@@ -436,6 +439,7 @@ module.exports.register = async (req, res, next) => {
         const user = await User.create({
             email,
             password: password,
+            phone,
             token,
             token_expiry,
             roleId,
