@@ -13,6 +13,12 @@ module.exports = {
       const updatedAtCol = tableDescription.updatedAt ? 'updatedAt' : 'updated_at';
       const deletedAtCol = tableDescription.deletedAt ? 'deletedAt' : 'deleted_at';
 
+      const usersTableDescription = await queryInterface.describeTable('users');
+      const userDeletedAtCol = usersTableDescription.deletedAt ? 'deletedAt' : 'deleted_at';
+
+      const dialect = queryInterface.sequelize.getDialect();
+      const wrap = (name) => (dialect === 'mysql' ? '`' + name + '`' : '"' + name + '"');
+
       // Customers: non-temporary users with permission 'user' (exclude admin roles)
       const users = await queryInterface.sequelize.query(
         `SELECT u.id, u.email
@@ -20,7 +26,7 @@ module.exports = {
          LEFT JOIN roles r ON u.roleId = r.id
          WHERE u.is_temporary = 0
            AND (u.roleId IS NULL OR r.permission = 'user')
-           AND u.deleted_at IS NULL`,
+           AND u.${wrap(userDeletedAtCol)} IS NULL`,
         { transaction, type: Sequelize.QueryTypes.SELECT }
       );
 
@@ -31,9 +37,6 @@ module.exports = {
         await transaction.commit();
         return;
       }
-
-      const dialect = queryInterface.sequelize.getDialect();
-      const wrap = (name) => (dialect === 'mysql' ? '`' + name + '`' : '"' + name + '"');
 
       let created = 0;
       let updated = 0;
