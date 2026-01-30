@@ -16,17 +16,24 @@ module.exports = {
       const usersTableDescription = await queryInterface.describeTable('users');
       const userDeletedAtCol = usersTableDescription.deletedAt ? 'deletedAt' : 'deleted_at';
 
+      const rolesTableDescription = await queryInterface.describeTable('roles');
+      const roleNotDeletedCondition = rolesTableDescription.deletedAt
+        ? 'r.deletedAt IS NULL'
+        : 'r.deleted = 0';
+
       const dialect = queryInterface.sequelize.getDialect();
       const wrap = (name) => (dialect === 'mysql' ? '`' + name + '`' : '"' + name + '"');
 
-      // Non-temporary, not soft-deleted, exclude admin roles (by is_admin_panel: only no role or non-admin role)
+      // Same customer-finding condition as app: Role.findAll({ deleted: false, is_admin_panel: true }), then roleId NOT IN adminRoleIds
+      // Non-temporary, not soft-deleted, exclude admin roles (roleId NOT IN admin role ids)
       const users = await queryInterface.sequelize.query(
         `SELECT u.id, u.email
          FROM users u
-         LEFT JOIN roles r ON u.roleId = r.id
          WHERE (u.is_temporary IS NULL OR u.is_temporary != 1)
            AND u.${wrap(userDeletedAtCol)} IS NULL
-           AND (u.roleId IS NULL OR r.is_admin_panel = 0 OR r.is_admin_panel IS NULL)`,
+           AND (u.roleId IS NULL OR u.roleId NOT IN (
+             SELECT r.id FROM roles r WHERE ${roleNotDeletedCondition} AND r.is_admin_panel = 1
+           ))`,
         { transaction, type: Sequelize.QueryTypes.SELECT }
       );
 
