@@ -348,7 +348,7 @@ const getReviewsByProductId = async (req, res, next) => {
                     attributes: ['id', 'media_url', 'media_type']
                 }
             ],
-            order: [['created_at', 'DESC']],
+            order: [['review_date', 'DESC']],
             limit: parseInt(limit),
             offset: parseInt(offset)
         });
