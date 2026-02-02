@@ -82,7 +82,7 @@ module.exports = {
       }
       
       // Validate sort parameters
-      const validSortFields = ['created_at', 'rating', 'user_name', 'comment', 'testimonial'];
+      const validSortFields = ['created_at', 'rating', 'user_name', 'comment', 'testimonial','review_date'];
       const validSortOrders = ['ASC', 'DESC'];
       
       const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'created_at';
