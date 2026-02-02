@@ -263,6 +263,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 LEFT JOIN orders o ON o.id = r.order_id
                 WHERE r.product_id IN (${productIds.join(',')})
                 AND r.is_visible = true
+                AND r.deleted_at IS NULL
                 ORDER BY r.product_id, r.created_at DESC
             `, { type: Product.sequelize.QueryTypes.SELECT });
         }
@@ -2058,6 +2059,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 LEFT JOIN users u ON u.id = r.user_id
                 LEFT JOIN orders o ON o.id = r.order_id
                 WHERE r.product_id = :product_id
+                AND r.deleted_at IS NULL
                 ORDER BY r.created_at DESC
             `, {
                 replacements: { product_id },
@@ -2887,6 +2889,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             LEFT JOIN users u ON u.id = r.user_id
             LEFT JOIN orders o ON o.id = r.order_id
             WHERE r.product_id = :product_id
+            AND r.deleted_at IS NULL
             ORDER BY r.created_at DESC
         `, {
             replacements: { product_id },
