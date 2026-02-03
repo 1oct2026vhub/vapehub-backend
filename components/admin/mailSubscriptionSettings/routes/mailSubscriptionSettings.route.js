@@ -154,6 +154,18 @@ router.post('/', [
  *         schema:
  *           type: boolean
  *         description: When true lists subscribers; when false lists unsubscribers
+ *       - in: query
+ *         name: dateFrom
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter subscribers created on or after this date (ISO 8601)
+ *       - in: query
+ *         name: dateTo
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter subscribers created on or before this date (ISO 8601)
  *     responses:
  *       200:
  *         description: Subscribers retrieved successfully
@@ -185,8 +197,6 @@ router.post('/', [
  *                             type: boolean
  *                     pagination:
  *                       $ref: '#/components/schemas/Pagination'
- *                     unsubscribersCount:
- *                       type: integer
  *                 message:
  *                   type: string
  *       500:
