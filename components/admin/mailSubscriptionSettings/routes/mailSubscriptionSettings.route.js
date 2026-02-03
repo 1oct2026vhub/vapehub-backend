@@ -422,7 +422,10 @@ router.delete('/:id', [
  *             highlightText: "20% OFF"
  *             ctaText: "Shop Now"
  *             ctaUrl: "https://example.com/sale"
- *             sendToAll: true
+ *             sendToAll: false
+ *             selectedEmails:
+ *               - "subscriber1@example.com"
+ *               - "subscriber2@example.com"
  *             images: [
  *               {
  *                 "url": "https://example.com/image1.jpg",

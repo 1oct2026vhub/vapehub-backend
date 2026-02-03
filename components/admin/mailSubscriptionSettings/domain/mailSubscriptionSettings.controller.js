@@ -443,7 +443,7 @@ module.exports = {
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
                 attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
-                order: [['createdAt', 'DESC']],
+                order: [['createdAt', 'DESC'], ['id', 'ASC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset)
             });
