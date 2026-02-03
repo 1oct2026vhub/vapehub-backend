@@ -259,6 +259,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 LEFT JOIN orders o ON o.id = r.order_id
                 WHERE r.product_id IN (${productIds.join(',')})
                 AND r.is_visible = true
+                AND r.deleted_at IS NULL
                 ORDER BY r.product_id, r.created_at DESC
             `, { type: sequelize.QueryTypes.SELECT });
         }
