@@ -416,8 +416,7 @@ module.exports = {
     // Get all subscribers for admin selection
     async getAllSubscribers(req, res) {
         try {
-            const { Op } = require('sequelize');
-            const { page = 1, limit = 50, search = '', subscribed, dateFrom, dateTo } = req.query;
+            const { page = 1, limit = 50, search = '', subscribed } = req.query;
             const offset = (page - 1) * limit;
             
             const whereClause = {
@@ -427,7 +426,7 @@ module.exports = {
 
             if (search) {
                 whereClause.email = {
-                    [Op.like]: `%${search}%`
+                    [require('sequelize').Op.like]: `%${search}%`
                 };
             }
 
@@ -438,38 +437,6 @@ module.exports = {
                     whereClause.subscribed = false;
                 } else {
                     whereClause.subscribed = true;
-                }
-            }
-
-            // Filter by createdAt date range (dateFrom / dateTo inclusive)
-            if (dateFrom || dateTo) {
-                const parseDate = (value, endOfDay = false) => {
-                    const d = new Date(value);
-                    if (Number.isNaN(d.getTime())) return null;
-                    if (!endOfDay) {
-                        d.setUTCHours(0, 0, 0, 0);
-                    } else {
-                        d.setUTCHours(23, 59, 59, 999);
-                    }
-                    return d;
-                };
-                const from = dateFrom ? parseDate(dateFrom, false) : null;
-                const to = dateTo ? parseDate(dateTo, true) : null;
-                if (dateFrom && !from) {
-                    return errorResponse(res, null, 'Invalid dateFrom format. Use ISO date or date-time.');
-                }
-                if (dateTo && !to) {
-                    return errorResponse(res, null, 'Invalid dateTo format. Use ISO date or date-time.');
-                }
-                if (from && to && from > to) {
-                    return errorResponse(res, null, 'dateFrom must be before or equal to dateTo.');
-                }
-                if (from && to) {
-                    whereClause.createdAt = { [Op.between]: [from, to] };
-                } else if (from) {
-                    whereClause.createdAt = { [Op.gte]: from };
-                } else if (to) {
-                    whereClause.createdAt = { [Op.lte]: to };
                 }
             }
 
