@@ -7,6 +7,16 @@ const productIdValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
 ];
 
+const deleteProductValidation = [
+    ...productIdValidation,
+    body("redirect_url")
+        .optional()
+        .isString()
+        .withMessage("Redirect URL must be a string")
+        .isLength({ max: 500 })
+        .withMessage("Redirect URL must be at most 500 characters"),
+];
+
 const getLinkedProductsValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
     check('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
@@ -254,6 +264,7 @@ const updateProductImageAltTextValidation = [
 
 module.exports = {
     productIdValidation,
+    deleteProductValidation,
     createProductValidation,
     updateProductValidations,
     productImageValidation,

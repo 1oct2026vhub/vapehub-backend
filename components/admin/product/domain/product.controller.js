@@ -1872,6 +1872,7 @@ module.exports.deleteProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
 
         // Find the product by ID
         const product = await Product.findByPk(id);
@@ -1880,6 +1881,11 @@ module.exports.deleteProduct = async (req, res, next) => {
         if (!product) {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Set redirect URL before soft delete (for old product URL to redirect)
+        if (redirect_url != null && redirect_url !== '') {
+            await product.update({ redirect_url: redirect_url.trim() }, { transaction });
         }
 
         // Delete slug relation first
@@ -2007,8 +2013,9 @@ module.exports.restoreProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product is not deleted" }, "Product is not deleted", 400);
         }
 
-        // Restore the product
+        // Restore the product and clear redirect URL
         await product.restore({ transaction });
+        await product.update({ redirect_url: null }, { transaction });
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);

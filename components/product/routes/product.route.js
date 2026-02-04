@@ -1073,7 +1073,8 @@ router.post("/upload/image", upload.array("images"), productController.uploadIma
  * @swagger
  * /api/product/slug/{slug}:
  *   get:
- *     summary: Retrieve a list of products with optional filters
+ *     summary: Get product by slug (single product)
+ *     description: Returns the published product for the given slug. If the product was soft-deleted with a redirect_url, returns 301 redirect to that URL.
  *     tags:
  *       - Product
  *     parameters:
@@ -1082,100 +1083,24 @@ router.post("/upload/image", upload.array("images"), productController.uploadIma
  *         required: true
  *         schema:
  *           type: string
- * 
- *       - in: query
- *         name: keyword
- *         schema:
- *           type: string
- *         description: Keyword to search in product names
- *       - in: query
- *         name: price_range
- *         schema:
- *           type: string
- *       - in: query
- *         name: is_new
- *         schema:
- *           type: boolean
- *         description: Filter by new products
- *       - in: query
- *         name: categories
- *         schema:
- *           type: string
- *         description: Comma-separated category IDs (e.g., 1,2,3)
- *       - in: query
- *         name: brand
- *         schema:
- *           type: integer
- *         description: Brand ID
- *       - in: query
- *         name: flavours
- *         schema:
- *           type: string
- *         description: Comma-separated flavor IDs (e.g., 1,2,3)
- *       - in: query
- *         name: bottle_size
- *         schema:
- *           type: string
- *         description: Bottle size filter
- *       - in: query
- *         name: nicotine_strength
- *         schema:
- *           type: string
- *         description: Nicotine strength filter
- *       - in: query
- *         name: nicotine_type
- *         schema:
- *           type: string
- *         description: Nicotine type filter
- *       - in: query
- *         name: vg_ratio
- *         schema:
- *           type: string
- *         description: VG ratio filter
- *       - in: query
- *         name: vaping_style
- *         schema:
- *           type: string
- *         description: Vaping style filter
- *       - in: query
- *         name: coil_style
- *         schema:
- *           type: string
- *         description: Coil style filter
- *       - in: query
- *         name: sort_by
- *         schema:
- *           type: string
- *           default: id
- *       - in: query
- *         name: order
- *         schema:
- *           type: string
- *           default: ASC
- *         description: Sort by ASC or DESC
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Number of items to return
- *       - in: query
- *         name: offset
- *         schema:
- *           type: integer
- *           default: 0
- *         description: Number of items to skip
+ *         description: Product slug (URL identifier)
  *     responses:
  *       200:
- *         description: A list of products
+ *         description: Product found and returned
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *       400:
- *         description: Invalid request parameters
+ *               type: object
+ *               description: Product with categories, brands, images, variants, etc.
+ *       301:
+ *         description: Product was soft-deleted and has a redirect URL; Location header contains the redirect destination
+ *         headers:
+ *           Location:
+ *             schema:
+ *               type: string
+ *             description: URL to redirect to (e.g. / or /category/slug)
+ *       404:
+ *         description: Product not found
  *       500:
  *         description: Internal server error
  */

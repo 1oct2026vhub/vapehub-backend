@@ -1402,7 +1402,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
     try {
         const slug = req.params.slug;
         
-        // Main product query - OPTIMIZED with raw SQL
+        // Main product query - OPTIMIZED with raw SQL (exclude soft-deleted)
         const productQuery = `
             SELECT 
                 p.id, p.updated_by, p.name, p.slug, p.description, p.price, p.discount_price,
@@ -1411,7 +1411,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 p.power_supply, p.nicotine_strength, p.nicotine_type, p.vg_ratio,
                 p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt
             FROM products p
-            WHERE p.slug = :slug AND p.status = :status
+            WHERE p.slug = :slug AND p.status = :status AND p.deleted_at IS NULL
         `;
         
         // Execute main product query
@@ -1421,6 +1421,14 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         });
         
         if (!productResult) {
+            // Check for soft-deleted product with redirect URL (301 redirect for SEO)
+            const [deletedWithRedirect] = await Product.sequelize.query(
+                `SELECT redirect_url FROM products WHERE slug = :slug AND deleted_at IS NOT NULL AND redirect_url IS NOT NULL AND redirect_url != '' LIMIT 1`,
+                { replacements: { slug }, type: Product.sequelize.QueryTypes.SELECT }
+            );
+            if (deletedWithRedirect && deletedWithRedirect.redirect_url) {
+                return res.redirect(301, deletedWithRedirect.redirect_url);
+            }
             throw new Error('Product not found');
         }
         
