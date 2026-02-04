@@ -1283,7 +1283,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         let redirectMap = new Map();
         if (unmatchedSlugs.length > 0) {
             const redirectRows = await Product.sequelize.query(
-                `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deleted_at IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
+                `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
             redirectMap = new Map(redirectRows.map(r => [r.slug, r.redirect_url]));
