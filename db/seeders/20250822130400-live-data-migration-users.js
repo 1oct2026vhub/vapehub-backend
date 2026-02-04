@@ -107,12 +107,12 @@ module.exports = {
             // Insert or update user with correct roleId
             const [result] = await queryInterface.sequelize.query(`
               INSERT INTO users (
-                id, first_name, last_name, email, phone, password, profile_pic_url, 
+                id, first_name, last_name, email, email_verified_at, phone, password, profile_pic_url, 
                 gender, dob, token, token_expiry, remember_token, int_field, 
                 referral_code, loyalty_points, receive_promotions, blocked, 
                 super_user, roleId, referred_by, referral_points, createdAt, updatedAt, deletedAt
               ) VALUES (
-                ?, ?, ?, ?, NULL, 'temp_password_reset_required', NULL, 
+                ?, ?, ?, ?, NOW(), NULL, 'temp_password_reset_required', NULL, 
                 NULL, NULL, NULL, NULL, NULL, 0, 
                 NULL, 0, 0, ?, 
                 0, ?, NULL, 0, ?, NOW(), 

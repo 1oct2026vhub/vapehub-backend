@@ -245,7 +245,7 @@ module.exports = {
           
           const [insertResult] = await queryInterface.sequelize.query(`
             INSERT INTO users (
-              id, first_name, last_name, email, phone, password, profile_pic_url, 
+              id, first_name, last_name, email, email_verified_at, phone, password, profile_pic_url, 
               gender, dob, token, token_expiry, remember_token, int_field, 
               referral_code, loyalty_points, receive_promotions, blocked, 
               super_user, roleId, referred_by, referral_points, createdAt, updatedAt, deletedAt
@@ -255,6 +255,7 @@ module.exports = {
               MAX(first_name) as first_name,
               MAX(last_name) as last_name,
               email,
+              NOW() as email_verified_at,
               NULL as phone,
               'temp_password_reset_required' as password,
               NULL as profile_pic_url,
