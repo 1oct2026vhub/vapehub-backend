@@ -225,6 +225,7 @@ module.exports.resetPassword = async (req, res, next) => {
         user.password = hashedPassword;
         user.token = null;
         user.token_expiry = null;
+        user.email_verified_at = user.email_verified_at || new Date();
         await user.save();
 
         const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
