@@ -13,10 +13,10 @@
             min-height: 100vh;
         }
 
-        /* Constrain all images in the email */
+        /* Constrain all images in the email - keep promotional images small */
         .email-container img {
-            max-width: 350px;
-            max-height: 200px;
+            max-width: 280px;
+            max-height: 180px;
             height: auto;
             width: 100%;
             display: block;
@@ -37,7 +37,7 @@
 
         .header {
             background: linear-gradient(135deg, #2e8b57 0%, #3cb371 100%);
-            padding: 30px 20px;
+            padding: 16px 20px;
             text-align: center;
             color: white;
             position: relative;
@@ -55,16 +55,17 @@
         }
 
         .logo {
-            max-width: 180px;
+            max-width: 140px;
+            width: 140px;
             height: auto;
-            margin: 10px 0;
+            margin: 0;
             position: relative;
             z-index: 1;
         }
 
         .promo-icon {
-            font-size: 48px;
-            margin: 10px 0;
+            font-size: 28px;
+            margin: 6px 0 0 0;
             position: relative;
             z-index: 1;
         }
@@ -207,16 +208,16 @@
 
         .promo-image-item {
             flex: 1;
-            min-width: 200px;
-            max-width: 280px;
+            min-width: 160px;
+            max-width: 220px;
             margin-bottom: 15px;
         }
 
         .promo-image {
             width: 100%;
-            max-width: 280px;
+            max-width: 220px;
             height: auto;
-            max-height: 300px;
+            max-height: 200px;
             object-fit: contain;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -245,10 +246,10 @@
                 font-size: 20px;
             }
 
-            /* Mobile image adjustments */
+            /* Mobile image adjustments - keep images compact */
             .promo-content img {
                 max-width: 100% !important;
-                max-height: 250px !important;
+                max-height: 180px !important;
                 width: 100% !important;
                 height: auto !important;
             }
@@ -262,7 +263,7 @@
 
         @media (max-width: 480px) {
             .promo-content img {
-                max-height: 200px !important;
+                max-height: 160px !important;
             }
         }
     </style>
@@ -272,7 +273,7 @@
     <div class="email-container">
         <div class="header">
             <a href="{{FRONTEND_URL}}">
-                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" />
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" width="140" style="max-width:140px;height:auto;" />
             </a>
             <div class="promo-icon">🎉</div>
         </div>
@@ -294,7 +295,7 @@
                 <div class="promo-images-container">
                     {{#each images}}
                     <div class="promo-image-item">
-                        <img src="{{url}}" alt="{{alt}}" class="promo-image" />
+                        <img src="{{url}}" alt="{{alt}}" class="promo-image" width="220" height="200" style="max-width:220px;max-height:200px;height:auto;width:100%;" />
                         {{#if alt}}
                         <p style="font-size: 14px; color: #666; font-style: italic; text-align: center; margin: 0;">
                             {{alt}}</p>
