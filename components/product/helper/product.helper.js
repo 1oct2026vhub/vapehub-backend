@@ -26,7 +26,7 @@ async function getTrendingProducts(limit = 10) {
       WHERE 
         o.createdAt BETWEEN :startOfMonth AND :endOfMonth
         AND p.status = 'published'
-        AND o.status IN ('completed', 'delivered')
+        AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
       GROUP BY 
         p.id, p.name, p.slug, p.sku, p.price, p.discount_price
@@ -550,7 +550,7 @@ const fetchProducts = async (query, status = 'published') => {
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id
         WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        AND o.status IN ('completed', 'delivered')
+        AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
         GROUP BY oi.product_id
       ) order_stats ON p.id = order_stats.product_id`;

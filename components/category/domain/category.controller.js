@@ -129,7 +129,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 WHERE o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                AND o.status IN ('completed', 'delivered')
+                AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
                 AND o.deletedAt IS NULL
                 GROUP BY oi.product_id
             ) order_stats ON p.id = order_stats.product_id`;

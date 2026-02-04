@@ -227,7 +227,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         GROUP BY p.id
         ORDER BY ${
           sort_by === 'popularity' || sort_by === 'order_count'
-            ? `(SELECT COUNT(DISTINCT o.id) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status IN ('completed', 'delivered') AND o.deletedAt IS NULL) ${orderValue}`
+            ? `(SELECT COUNT(DISTINCT o.id) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed') AND o.deletedAt IS NULL) ${orderValue}`
             : sort_by === 'price'
             ? `min_variant_price ${orderValue}`
             : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
