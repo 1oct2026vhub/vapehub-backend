@@ -138,6 +138,34 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
     }
 }
 
+/**
+ * One-click unsubscribe by email (no auth).
+ * Used by Gmail List-Unsubscribe POST and by in-email link (GET).
+ * Email is taken from query string for both GET and POST (Gmail one-click POST uses same URL with query).
+ */
+module.exports.unsubscribeByEmail = async (req, res, next) => {
+    try {
+        const email = (req.query && req.query.email) || (req.body && req.body.email);
+        if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ success: false, message: 'Valid email is required' });
+        }
+        const subscription = await MailSubscription.findOne({ where: { email: email.trim() } });
+        if (subscription) {
+            subscription.subscribed = false;
+            await subscription.save();
+        }
+        // Always return 2xx for one-click (Gmail expects success). GET may open in browser.
+        if (req.method === 'GET' && req.get('accept') && req.get('accept').includes('text/html')) {
+            return res.status(200).send(
+                '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Unsubscribed</title></head><body style="font-family:sans-serif;text-align:center;padding:2rem;"><h1>You’re unsubscribed</h1><p>You will no longer receive promotional emails from VapeHub.</p></body></html>'
+            );
+        }
+        return res.status(200).json({ success: true, message: 'Unsubscribed successfully' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to unsubscribe' });
+    }
+};
+
 module.exports.getOneMailSubscriptionSetting = async (req, res, next) => {
     try {
         const setting = await MailSubscriptionSettings.findOne({

@@ -56,6 +56,45 @@ router.post('/',
 
 /**
  * @swagger
+ * /api/mailSubscription/unsubscribe:
+ *   get:
+ *     tags:
+ *       - MailSubscription
+ *     summary: One-click unsubscribe by email (in-email link or Gmail)
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *     responses:
+ *       200:
+ *         description: Unsubscribed successfully
+ *       400:
+ *         description: Valid email required
+ *   post:
+ *     tags:
+ *       - MailSubscription
+ *     summary: One-click unsubscribe by email (Gmail List-Unsubscribe-Post)
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *     responses:
+ *       200:
+ *         description: Unsubscribed successfully
+ *       400:
+ *         description: Valid email required
+ */
+router.get('/unsubscribe', mailSubscriptionController.unsubscribeByEmail);
+router.post('/unsubscribe', mailSubscriptionController.unsubscribeByEmail);
+
+/**
+ * @swagger
  * /api/mailSubscription/{id}:
  *   put:
  *     summary: Update an mailSubscription
