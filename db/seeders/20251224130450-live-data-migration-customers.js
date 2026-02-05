@@ -193,8 +193,8 @@ module.exports = {
                 continue;
               }
 
-              // Set roleId: 1 for super.admin@vapehub.com, 0 for all others
-              const roleId = email === 'super.admin@vapehub.com' ? 1 : 0;
+              // Set roleId: 1 for super.admin@vapehub.com, 2 for all others
+              const roleId = email === 'super.admin@vapehub.com' ? 1 : 2;
 
               // Set blocked to 0 (active) by default for customers
               const blocked = 0;
@@ -387,7 +387,7 @@ module.exports = {
       
       const [updateResult] = await queryInterface.sequelize.query(`
         UPDATE users 
-        SET roleId = 0 
+        SET roleId = 2 
         WHERE roleId IS NULL AND email != 'super.admin@vapehub.com'
       `);
       console.log(`   Update result: ${updateResult.affectedRows} rows affected`);

@@ -98,8 +98,8 @@ module.exports = {
               lastName = user.display_name.substring(user.display_name.indexOf(' ') + 1).trim();
             }
 
-            // Set roleId: 1 for super.admin@vapehub.com, 0 for all others
-            const roleId = user.user_email === 'super.admin@vapehub.com' ? 1 : 0;
+            // Set roleId: 1 for super.admin@vapehub.com, 2 for all others
+            const roleId = user.user_email === 'super.admin@vapehub.com' ? 1 : 2;
 
             // Map user_status to blocked: 0 = active (blocked = 0), non-zero = inactive (blocked = 1)
             const blocked = user.user_status !== 0 ? 1 : 0;
@@ -170,10 +170,10 @@ module.exports = {
       `, { transaction });
       console.log(`   Users with NULL roleId before update: ${nullCountBefore[0].count}`);
       
-      // Update NULL roleId to 0
+      // Update NULL roleId to 2
       const [updateResult] = await queryInterface.sequelize.query(`
         UPDATE users 
-        SET roleId = 0 
+        SET roleId = 2 
         WHERE roleId IS NULL AND email != 'super.admin@vapehub.com'
       `, { transaction });
       console.log(`   Update result: ${updateResult.affectedRows} rows affected`);
@@ -282,13 +282,13 @@ module.exports = {
   async updateExistingUserRoles(queryInterface, transaction) {
     console.log('🔧 Updating existing user roles...');
     
-    // Update all users to roleId = 0 except super admin
+    // Update all users to roleId = 2 except super admin
     const [updateResult] = await queryInterface.sequelize.query(`
       UPDATE users 
-      SET roleId = 0, updatedAt = NOW()
-      WHERE email != 'super.admin@vapehub.com' AND (roleId IS NULL OR roleId != 0)
+      SET roleId = 2, updatedAt = NOW()
+      WHERE email != 'super.admin@vapehub.com' AND (roleId IS NULL OR roleId != 2)
     `, { transaction });
-    console.log(`   Updated ${updateResult.affectedRows} users to roleId = 0`);
+    console.log(`   Updated ${updateResult.affectedRows} users to roleId = 2`);
     
     // Ensure super admin has roleId = 1
     const [superAdminResult] = await queryInterface.sequelize.query(`
@@ -306,7 +306,7 @@ module.exports = {
     console.log('\n📋 Updated Role Distribution:');
     roleDistribution.forEach(row => {
       const roleName = row.roleId === 1 ? 'Super Admin' : 
-                      row.roleId === 0 ? 'Regular Users' : 
+                      row.roleId === 2 ? 'Regular Users' : 
                       `Unknown (${row.roleId})`;
       console.log(`   ${roleName}: ${row.count} users`);
     });
