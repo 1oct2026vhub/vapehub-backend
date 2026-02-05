@@ -1234,6 +1234,7 @@ module.exports.updateProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            redirect_url,
             category_ids,
             brand_ids,
             linked_product_ids
@@ -1458,6 +1459,9 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (bottle_size !== undefined) {
             updatedFields.bottle_size = bottle_size;
+        }
+        if (redirect_url !== undefined) {
+            updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
         }
 
         updatedFields.updated_by = updated_by;

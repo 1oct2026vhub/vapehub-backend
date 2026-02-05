@@ -133,6 +133,14 @@ const updateProductValidations = [
             }
             return true;
         }),
+    check('redirect_url')
+        .optional({ values: 'null' })
+        .custom((value) => {
+            if (value === null || value === undefined || value === '') return true;
+            if (typeof value !== 'string') throw new Error('redirect_url must be a string');
+            if (value.length > 500) throw new Error('redirect_url must be at most 500 characters');
+            return true;
+        }),
 ];
 
 const productImageValidation = [
