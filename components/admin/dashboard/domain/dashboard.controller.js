@@ -259,7 +259,7 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
     try {
         const { Op } = require('sequelize');
         const { getDashboardDateRanges } = require('../../../../utils/dateUtils');
-        const { Transaction, Order, User } = require('../../../../models');
+        const { Transaction, Order, User, ProductVariant } = require('../../../../models');
         const dashboardHelper = require('../helper/dashboard.helper');
         
         // Date ranges
@@ -293,15 +293,21 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
             return ((current - previous) / previous * 100).toFixed(2);
         }
 
-        // --- Today ---
-        const [todaySales, yesterdaySales, todayOrders, yesterdayOrders, todayUsers, yesterdayUsers] = await Promise.all([
+        // --- Today + total retail value of stock (sum of regular_price * stock for in-stock variants) ---
+        const [todaySales, yesterdaySales, todayOrders, yesterdayOrders, todayUsers, yesterdayUsers, totalRetailValueRow] = await Promise.all([
             Transaction.sum('amount', { where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
             Transaction.sum('amount', { where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd }, status: constants.transactionStatus.COMPLETED, transactionType: 'PURCHASE' } }),
             Order.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
             Order.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } }),
             User.count({ where: { createdAt: { [Op.gte]: todayStart, [Op.lt]: todayEnd } } }),
-            User.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } })
+            User.count({ where: { createdAt: { [Op.gte]: yesterdayStart, [Op.lt]: yesterdayEnd } } }),
+            ProductVariant.findOne({
+                attributes: [[ProductVariant.sequelize.literal('SUM(regular_price * stock)'), 'totalRetailValue']],
+                where: { stock: { [Op.gt]: 0 } },
+                raw: true
+            })
         ]);
+        const totalRetailValue = Number(totalRetailValueRow?.totalRetailValue ?? 0);
 
         // --- Week ---
         const [weekSales, prevWeekSales, weekOrders, prevWeekOrders, weekUsers, prevWeekUsers] = await Promise.all([
@@ -324,6 +330,8 @@ module.exports.getSalesStatsOverview = async (req, res, next) => {
         ]);
 
         const response = {
+            totalRetailValue: totalRetailValue,
+            totalRetailValueFormatted: dashboardHelper.formatCurrency(totalRetailValue),
             today: {
                 dateRange: `${todayStart.toISOString()} - ${todayEnd.toISOString()}`,
                 totalSales: dashboardHelper.formatCurrency(todaySales || 0),

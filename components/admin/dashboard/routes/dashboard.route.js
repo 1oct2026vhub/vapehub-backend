@@ -161,7 +161,7 @@ router.get('/stats', [authMiddleware(true)], dashboardController.getDashboardSta
  *   get:
  *     summary: Get sales statistics overview
  *     description: >-
- *       Retrieve sales statistics overview including total sales, total orders, and new users for today, week, and month. Each period includes percentage change compared to the previous equivalent period. Visitor and view metrics are excluded.
+ *       Retrieve sales statistics overview including total sales, total orders, new users, and total retail value of stock (sum of regular_price × stock for all in-stock variants) for today, week, and month. Each period includes percentage change compared to the previous equivalent period. Visitor and view metrics are excluded.
  *     tags:
  *       - ADMIN - Dashboard
  *     security:
@@ -180,6 +180,14 @@ router.get('/stats', [authMiddleware(true)], dashboardController.getDashboardSta
  *                 data:
  *                   type: object
  *                   properties:
+ *                     totalRetailValue:
+ *                       type: number
+ *                       description: Sum of (regular_price × stock) for all product variants with stock > 0
+ *                       example: 125000.5
+ *                     totalRetailValueFormatted:
+ *                       type: string
+ *                       description: Total retail value of stock formatted as currency
+ *                       example: "£125,000.50"
  *                     today:
  *                       type: object
  *                       properties:
