@@ -478,7 +478,7 @@ module.exports.getProductById = async (req, res, next) => {
                     'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
-                    'vg_ratio', 'vaping_style', 'bottle_size', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
                 ]
             }),
             
