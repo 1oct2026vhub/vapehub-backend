@@ -193,8 +193,8 @@ module.exports = {
                 continue;
               }
 
-              // Set roleId: 1 for super.admin@vapehub.com, 0 for all others
-              const roleId = email === 'super.admin@vapehub.com' ? 1 : 0;
+              // Set roleId: 1 for super.admin@vapehub.com, 2 for all others
+              const roleId = email === 'super.admin@vapehub.com' ? 1 : 2;
 
               // Set blocked to 0 (active) by default for customers
               const blocked = 0;
@@ -245,7 +245,7 @@ module.exports = {
           
           const [insertResult] = await queryInterface.sequelize.query(`
             INSERT INTO users (
-              id, first_name, last_name, email, phone, password, profile_pic_url, 
+              id, first_name, last_name, email, email_verified_at, phone, password, profile_pic_url, 
               gender, dob, token, token_expiry, remember_token, int_field, 
               referral_code, loyalty_points, receive_promotions, blocked, 
               super_user, roleId, referred_by, referral_points, createdAt, updatedAt, deletedAt
@@ -255,6 +255,7 @@ module.exports = {
               MAX(first_name) as first_name,
               MAX(last_name) as last_name,
               email,
+              NOW() as email_verified_at,
               NULL as phone,
               'temp_password_reset_required' as password,
               NULL as profile_pic_url,
@@ -386,7 +387,7 @@ module.exports = {
       
       const [updateResult] = await queryInterface.sequelize.query(`
         UPDATE users 
-        SET roleId = 0 
+        SET roleId = 2 
         WHERE roleId IS NULL AND email != 'super.admin@vapehub.com'
       `);
       console.log(`   Update result: ${updateResult.affectedRows} rows affected`);

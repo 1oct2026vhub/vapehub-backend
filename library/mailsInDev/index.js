@@ -9,6 +9,16 @@ const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
 const utilsLogger = require('../../utils/logger');
 
+// Serialize index updates to avoid race conditions when multiple emails
+// are rendered/saved concurrently (e.g. promotional sends in parallel).
+let indexUpdateQueue = Promise.resolve();
+const enqueueIndexUpdate = (work) => {
+    const run = indexUpdateQueue.then(work, work);
+    // Keep the queue alive even if a task fails.
+    indexUpdateQueue = run.catch(() => {});
+    return run;
+};
+
 /**
  * Function to render a new email, save it as file and add it to index file
  */
@@ -34,39 +44,35 @@ exports.newEmail = async(email) => {
         dir: emailsDir,
         id: fileId,
     })
-    let oldIndexText;
-    try {
-        oldIndexText = await fs.readFile(indexFilePath, 'utf8');
-    } catch (error) {
-        if(error.code === 'ENOENT') {
-            await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n`)
-            return;
+
+    // Index updates must be atomic/serialized to prevent lost writes.
+    return enqueueIndexUpdate(async () => {
+        let oldIndexText;
+        try {
+            oldIndexText = await fs.readFile(indexFilePath, 'utf8');
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                await fs.writeFile(indexFilePath, `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n`);
+                return;
+            }
+            throw error;
         }
-        throw error;
-    }
-    const oldIndex = oldIndexText.split('\n').filter(i => i);
-    if(oldIndex.length >= 50) {
-        const toDel = oldIndex.splice(49);
-        try{
-            for(let i of toDel) {
-                await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' '))+'.html'));
+
+        const oldIndex = oldIndexText.split('\n').filter(i => i);
+        if (oldIndex.length >= 50) {
+            const toDel = oldIndex.splice(49);
+            try {
+                for (let i of toDel) {
+                    await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' ')) + '.html'));
+                }
+            } catch (error) {
+                utilsLogger.logError(`Error in newEmail: ${error}`);
             }
         }
-        catch(error){
-            utilsLogger.logError(`Error in newEmail: ${error}`);
-        }
-    }
-    const updatedIndexContent = `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a,i) => a+i+'\n', '')}`;
-    
-    try {
+
+        const updatedIndexContent = `${fileId} ${Date.now()} ${encodeURI(email.subject)} ${encodeURI(email.to)} n\n${oldIndex.reduce((a, i) => a + i + '\n', '')}`;
         await fs.writeFile(indexFilePath, updatedIndexContent);
-        
-        // Verify the file was written
-        const verifyContent = await fs.readFile(indexFilePath, 'utf8');
-    } catch (writeError) {
-        throw writeError;
-    }
-    
+    });
 }
 
 /**

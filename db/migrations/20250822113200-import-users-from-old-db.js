@@ -57,6 +57,7 @@ module.exports = {
             first_name,
             last_name,
             email,
+            email_verified_at,
             phone,
             password,
             profile_pic_url,
@@ -78,7 +79,7 @@ module.exports = {
             updatedAt,
             deletedAt
           )
-          VALUES (?, ?, ?, ?, NULL, 'temp_password_reset_required', NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, 0, ?, 0, NULL, NULL, 0, ?, NOW(), NULL)
+          VALUES (?, ?, ?, ?, NOW(), NULL, 'temp_password_reset_required', NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0, 0, ?, 0, NULL, NULL, 0, ?, NOW(), NULL)
         `, {
           replacements: [
             user.ID,
