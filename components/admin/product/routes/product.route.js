@@ -412,6 +412,11 @@ router.get('/fetch/:id',
  *                   type: integer
  *                 description: Array of linked product IDs
  *                 example: [5, 10, 15]
+ *               redirect_url:
+ *                 type: string
+ *                 maxLength: 500
+ *                 nullable: true
+ *                 description: Optional URL to redirect to (e.g. when product is discontinued)
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -514,7 +519,7 @@ router.put('/bulk-restore', [
  *   put:
  *     tags:
  *       - ADMIN - Products
- *     summary: Update an existing product
+ *     summary: Update an existing product (including soft-deleted). All fields optional (partial update).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -558,9 +563,14 @@ router.put('/bulk-restore', [
  *                   type: integer
  *                 description: Array of linked product IDs (empty array to remove all links)
  *                 example: [5, 10, 15]
+ *               redirect_url:
+ *                 type: string
+ *                 maxLength: 500
+ *                 nullable: true
+ *                 description: URL to redirect to (e.g. when product is discontinued). Pass null or empty to clear.
  *     responses:
  *       200:
- *         description: Product updated successfully
+ *         description: Product updated successfully (returns product with redirect_url and relations)
  *         content:
  *           application/json:
  *             schema:
@@ -574,6 +584,10 @@ router.put('/bulk-restore', [
  *                   type: string
  *                 description:
  *                   type: string
+ *                 redirect_url:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Redirect URL if set
  *                 Categories:
  *                   type: array
  *                   items:

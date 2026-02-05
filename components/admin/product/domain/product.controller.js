@@ -1241,8 +1241,8 @@ module.exports.updateProduct = async (req, res, next) => {
 
         const { id: updated_by } = req.user;
 
-        // Find the existing product
-        const product = await Product.findByPk(id, { transaction });
+        // Find the existing product (include soft-deleted so they can be updated e.g. redirect_url)
+        const product = await Product.findByPk(id, { transaction, paranoid: false });
         if (!product) {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
@@ -1567,6 +1567,7 @@ module.exports.updateProduct = async (req, res, next) => {
         let oldBrandIds = [];
         if (category_ids !== undefined || brand_ids !== undefined) {
             const oldProduct = await Product.findByPk(id, {
+                paranoid: false,
                 include: [
                     {
                         model: Category,
@@ -1790,6 +1791,7 @@ module.exports.updateProduct = async (req, res, next) => {
         let updatedProduct;
         try {
             updatedProduct = await Product.findByPk(id, {
+                paranoid: false,
                 include: [
                     { 
                         model: Category, 
@@ -1822,7 +1824,7 @@ module.exports.updateProduct = async (req, res, next) => {
                 productId: id
             });
             // Fallback: fetch product without relations to ensure we can return something
-            updatedProduct = await Product.findByPk(id, { transaction });
+            updatedProduct = await Product.findByPk(id, { transaction, paranoid: false });
             if (!updatedProduct) {
                 throw new Error('Failed to fetch updated product');
             }
