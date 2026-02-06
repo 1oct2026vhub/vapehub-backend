@@ -13,9 +13,9 @@
             min-height: 100vh;
         }
 
-        /* Constrain all images in the email - keep promotional images small */
+        /* Constrain all images - Gmail often ignores this; inline styles on each img are required */
         .email-container img {
-            max-width: 280px;
+            max-width: 220px;
             max-height: 180px;
             height: auto;
             width: 100%;
@@ -56,7 +56,6 @@
 
         .logo {
             max-width: 140px;
-            width: 140px;
             height: auto;
             margin: 0;
             position: relative;
@@ -64,8 +63,8 @@
         }
 
         .promo-icon {
-            font-size: 28px;
-            margin: 6px 0 0 0;
+            font-size: 48px;
+            margin: 10px 0;
             position: relative;
             z-index: 1;
         }
@@ -198,33 +197,6 @@
             text-align: center;
         }
 
-        .promo-images-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 15px;
-            max-width: 100%;
-        }
-
-        .promo-image-item {
-            flex: 1;
-            min-width: 160px;
-            max-width: 220px;
-            margin-bottom: 15px;
-        }
-
-        .promo-image {
-            width: 100%;
-            max-width: 220px;
-            height: auto;
-            max-height: 200px;
-            object-fit: contain;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            margin-bottom: 10px;
-            display: block;
-        }
-
         @media (max-width: 650px) {
             .email-container {
                 margin: 10px;
@@ -245,26 +217,6 @@
             h2 {
                 font-size: 20px;
             }
-
-            /* Mobile image adjustments - keep images compact */
-            .promo-content img {
-                max-width: 100% !important;
-                max-height: 180px !important;
-                width: 100% !important;
-                height: auto !important;
-            }
-
-            .promo-content>div>div {
-                min-width: 100% !important;
-                max-width: 100% !important;
-                margin-bottom: 20px !important;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .promo-content img {
-                max-height: 160px !important;
-            }
         }
     </style>
 </head>
@@ -273,7 +225,7 @@
     <div class="email-container">
         <div class="header">
             <a href="{{FRONTEND_URL}}">
-                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" width="140" style="max-width:140px;height:auto;" />
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto;" />
             </a>
             <div class="promo-icon">🎉</div>
         </div>
@@ -288,26 +240,8 @@
             </div>
             {{/if}}
 
-            <!-- Promotional Images -->
-            {{#if images}}
-            <div class="promo-content" style="margin-bottom: 30px;">
-                <h3>🖼️ Promotional Images</h3>
-                <div class="promo-images-container">
-                    {{#each images}}
-                    <div class="promo-image-item">
-                        <img src="{{url}}" alt="{{alt}}" class="promo-image" width="220" height="200" style="max-width:220px;max-height:200px;height:auto;width:100%;" />
-                        {{#if alt}}
-                        <p style="font-size: 14px; color: #666; font-style: italic; text-align: center; margin: 0;">
-                            {{alt}}</p>
-                        {{/if}}
-                    </div>
-                    {{/each}}
-                </div>
-            </div>
-            {{/if}}
-
             <div class="promo-content">
-                <h3>📢 Promotional Message</h3>
+                <h3>Promotional Message</h3>
                 <div>{{{content}}}</div>
             </div>
 
@@ -318,7 +252,7 @@
                 {{#if ctaUrl}}
                 <a href="{{ctaUrl}}" class="cta-button">Shop Now</a>
                 {{/if}}
-                <a href="{{FRONTEND_URL}}/shop" class="cta-button secondary-button">Browse All Products</a>
+                <a href="{{FRONTEND_URL}}/new-products/?order=DESC" class="cta-button secondary-button">Browse All Products</a>
             </div>
             {{/if}}
 
@@ -326,7 +260,7 @@
             <div class="cta-section">
                 <h3 style="color: #2e8b57; margin-bottom: 15px;">Ready to Shop?</h3>
                 <p style="color: #666; margin-bottom: 20px;">Explore our amazing collection of vaping products!</p>
-                <a href="{{FRONTEND_URL}}/shop" class="cta-button">Shop Now</a>
+                <a href="{{FRONTEND_URL}}/new-products/?order=DESC" class="cta-button">Shop Now</a>
             </div>
             {{/unless}}
         </div>
@@ -339,12 +273,9 @@
                 <p style="color: #a0aec0;">Email us: <a href="mailto:customerservices@vapehub.co.uk" style="color: #63b3ed;">customerservices@vapehub.co.uk</a></p>
                 <p style="color: #a0aec0;">Call us: <a href="tel:07508373773" style="color: #63b3ed;">07508 373773</a></p>
             </div>
-            {{!--
             <p style="margin-top: 20px;">
-                <a href="{{FRONTEND_URL}}/unsubscribe?email={{email}}" class="unsubscribe-link">Unsubscribe from
-                    promotional emails</a>
+                <a href="{{host}}/api/mailSubscription/unsubscribe?email={{email}}" class="unsubscribe-link">Unsubscribe from promotional emails</a>
             </p>
-            --}}
             <p>&copy; {{currentYear}} Vapehub.All rights reserved.</p>
         </div>
     </div>
