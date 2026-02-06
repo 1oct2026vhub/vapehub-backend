@@ -89,9 +89,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 [sequelize.literal('SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END)'), 'outOfStock'],
                 [sequelize.literal('SUM(CASE WHEN stock_status = \'in_stock\' THEN 1 ELSE 0 END)'), 'inStock'],
                 [sequelize.literal('SUM(CASE WHEN stock_status = \'out_of_stock\' THEN 1 ELSE 0 END)'), 'outOfStockStatus'],
-                [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock'],
-                // Total retail value of stock: sum of (regular_price × stock) for all variants with stock > 0
-                [sequelize.literal('SUM(CASE WHEN stock > 0 THEN regular_price * stock ELSE 0 END)'), 'totalRetailValue']
+                [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock']
             ]
         });
 
@@ -224,14 +222,9 @@ module.exports.getDashboardStats = async (req, res, next) => {
             seo: seoStatistics
         };
 
-        const totalRetailValue = Number(stats.products?.totalRetailValue ?? 0);
-
         // Format the response data
         const formattedStats = {
             ...stats,
-            totalRetailValue,
-            // Abbreviated format (like yearlyAbbreviated): e.g. "£307.15K"
-            totalRetailValueFormatted: "£" + dashboardHelper.formatAbbreviatedNumber(totalRetailValue),
             sales: {
                 // Currency format for precise financial reporting
                 today: dashboardHelper.formatCurrency(stats.sales.today),
