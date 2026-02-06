@@ -228,7 +228,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
         const formattedStats = {
             ...stats,
             totalRetailValue,
-            totalRetailValueFormatted: dashboardHelper.formatCurrency(totalRetailValue),
+            totalRetailValueFormatted: "£" + dashboardHelper.formatAbbreviatedNumber(totalRetailValue),
             sales: {
                 // Currency format for precise financial reporting
                 today: dashboardHelper.formatCurrency(stats.sales.today),
