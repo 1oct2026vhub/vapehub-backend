@@ -81,7 +81,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
             group: [sequelize.col('roles.role')]
         });
 
-        // Product Statistics (including total retail value of stock: sum of regular_price * stock for in-stock variants)
+        // Product Statistics (including total retail value of stock: sum of price * stock for in-stock variants)
         const productStats = await ProductVariant.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'totalProducts'],
@@ -90,7 +90,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 [sequelize.literal('SUM(CASE WHEN stock_status = \'in_stock\' THEN 1 ELSE 0 END)'), 'inStock'],
                 [sequelize.literal('SUM(CASE WHEN stock_status = \'out_of_stock\' THEN 1 ELSE 0 END)'), 'outOfStockStatus'],
                 [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock'],
-                [sequelize.literal('SUM(CASE WHEN stock > 0 THEN regular_price * stock ELSE 0 END)'), 'totalRetailValue']
+                [sequelize.literal('SUM(CASE WHEN stock > 0 THEN price * stock ELSE 0 END)'), 'totalRetailValue']
             ],
             raw: true
         });
