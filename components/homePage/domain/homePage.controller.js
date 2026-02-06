@@ -1278,11 +1278,33 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     .join(',')})`)]
             ]
         });
-        // Handle no matches
+        const matchedSlugSet = new Set(slugRelations.map(r => r.slug));
+        const unmatchedSlugs = slugArray.filter(s => !matchedSlugSet.has(s));
+        let redirectMap = new Map();
+        if (unmatchedSlugs.length > 0) {
+            const redirectRows = await Product.sequelize.query(
+                `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
+                { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
+            );
+            redirectMap = new Map(redirectRows.map(r => [r.slug, r.redirect_url]));
+        }
+        // Handle no slug_relation matches: return redirect if soft-deleted product has redirect_url, else 404
         if (!slugRelations.length) {
+            if (redirectMap.size > 0) {
+                if (slugArray.length === 1 && redirectMap.has(slugArray[0])) {
+                    return successResponse(res, {
+                        slug: slugArray[0],
+                        redirect: true,
+                        redirect_url: redirectMap.get(slugArray[0])
+                    }, 'Redirect');
+                }
+                const data = slugArray
+                    .filter(slug => redirectMap.has(slug))
+                    .map(slug => ({ slug, entity_type: 'redirect', redirect_url: redirectMap.get(slug) }));
+                return successResponse(res, { data }, 'Redirect');
+            }
             return errorResponse(res, { message: "No matching slugs found" }, "No matching slugs found", 404);
         }
-
         // OPTIMIZED: Fetch all categories, brands, and blog categories upfront in one query each (if any exist)
         const categoryIds = slugRelations
             .filter(rel => rel.entity_type === 'category')
@@ -1433,9 +1455,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const allSlugsMatched = slugArray.every(slug => matchedSlugs.has(slug));
 
         if (!allSlugsMatched) {
-            const response = {
-                message: 'Partial matches found, refine your query if needed',
-                data: slugRelations.map(relation => {
+            const relationItems = slugRelations.map(relation => {
                     const item = {
                         slug: relation.slug,
                         entity_type: relation.entity_type,
@@ -1488,7 +1508,15 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     }
                     
                     return item;
-                })
+                });
+            const redirectItems = Array.from(redirectMap.entries()).map(([slug, redirect_url]) => ({
+                slug,
+                entity_type: 'redirect',
+                redirect_url
+            }));
+            const response = {
+                message: 'Partial matches found, refine your query if needed',
+                data: relationItems.concat(redirectItems)
             };
 
             // OPTIMIZED: Batch fetch deals for all matched slugs

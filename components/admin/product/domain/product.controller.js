@@ -478,7 +478,7 @@ module.exports.getProductById = async (req, res, next) => {
                     'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
-                    'vg_ratio', 'vaping_style', 'bottle_size', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
                 ]
             }),
             
@@ -1234,6 +1234,7 @@ module.exports.updateProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            redirect_url,
             category_ids,
             brand_ids,
             linked_product_ids
@@ -1241,8 +1242,8 @@ module.exports.updateProduct = async (req, res, next) => {
 
         const { id: updated_by } = req.user;
 
-        // Find the existing product
-        const product = await Product.findByPk(id, { transaction });
+        // Find the existing product (include soft-deleted so they can be updated e.g. redirect_url)
+        const product = await Product.findByPk(id, { transaction, paranoid: false });
         if (!product) {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
@@ -1459,6 +1460,9 @@ module.exports.updateProduct = async (req, res, next) => {
         if (bottle_size !== undefined) {
             updatedFields.bottle_size = bottle_size;
         }
+        if (redirect_url !== undefined) {
+            updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
+        }
 
         updatedFields.updated_by = updated_by;
 
@@ -1567,6 +1571,7 @@ module.exports.updateProduct = async (req, res, next) => {
         let oldBrandIds = [];
         if (category_ids !== undefined || brand_ids !== undefined) {
             const oldProduct = await Product.findByPk(id, {
+                paranoid: false,
                 include: [
                     {
                         model: Category,
@@ -1790,6 +1795,7 @@ module.exports.updateProduct = async (req, res, next) => {
         let updatedProduct;
         try {
             updatedProduct = await Product.findByPk(id, {
+                paranoid: false,
                 include: [
                     { 
                         model: Category, 
@@ -1822,7 +1828,7 @@ module.exports.updateProduct = async (req, res, next) => {
                 productId: id
             });
             // Fallback: fetch product without relations to ensure we can return something
-            updatedProduct = await Product.findByPk(id, { transaction });
+            updatedProduct = await Product.findByPk(id, { transaction, paranoid: false });
             if (!updatedProduct) {
                 throw new Error('Failed to fetch updated product');
             }
@@ -1872,6 +1878,7 @@ module.exports.deleteProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
 
         // Find the product by ID
         const product = await Product.findByPk(id);
@@ -1880,6 +1887,11 @@ module.exports.deleteProduct = async (req, res, next) => {
         if (!product) {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
+        }
+
+        // Set redirect URL before soft delete (for old product URL to redirect)
+        if (redirect_url != null && redirect_url !== '') {
+            await product.update({ redirect_url: redirect_url.trim() }, { transaction });
         }
 
         // Delete slug relation first
@@ -2007,8 +2019,9 @@ module.exports.restoreProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product is not deleted" }, "Product is not deleted", 400);
         }
 
-        // Restore the product
+        // Restore the product and clear redirect URL
         await product.restore({ transaction });
+        await product.update({ redirect_url: null }, { transaction });
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);

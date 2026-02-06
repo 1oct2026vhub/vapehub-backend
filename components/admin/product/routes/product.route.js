@@ -4,7 +4,7 @@ const productController = require("../domain/product.controller");
 const attributeController = require("../../productAttributes/domain/attribute.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
-const { productIdValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation, updateProductImageAltTextValidation } = require("../helper/product.validator");
+const { productIdValidation, deleteProductValidation, createProductValidation, updateProductValidations, uploadFileValidation, productImageValidation, listAllProductsValidation, uploadXlxFileMiddleware, updateProductStatusValidation, updateProductImageAltTextValidation } = require("../helper/product.validator");
 const { createAttributeValidator, updateAttributeValidator, uploadImageMiddleware } = require("../../productAttributes/helper/attribute.validatior");
 
 /**
@@ -66,6 +66,11 @@ const { createAttributeValidator, updateAttributeValidator, uploadImageMiddlewar
  *           type: string
  *           format: date-time
  *           description: The deletion timestamp (if soft-deleted)
+ *         redirect_url:
+ *           type: string
+ *           maxLength: 500
+ *           nullable: true
+ *           description: URL to redirect to when the product is soft-deleted (e.g. / or /category/slug); used when old product URL is requested
  *         Categories:
  *           type: array
  *           items:
@@ -407,6 +412,11 @@ router.get('/fetch/:id',
  *                   type: integer
  *                 description: Array of linked product IDs
  *                 example: [5, 10, 15]
+ *               redirect_url:
+ *                 type: string
+ *                 maxLength: 500
+ *                 nullable: true
+ *                 description: Optional URL to redirect to (e.g. when product is discontinued)
  *     responses:
  *       200:
  *         description: Product created successfully
@@ -509,7 +519,7 @@ router.put('/bulk-restore', [
  *   put:
  *     tags:
  *       - ADMIN - Products
- *     summary: Update an existing product
+ *     summary: Update an existing product (including soft-deleted). All fields optional (partial update).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -553,9 +563,14 @@ router.put('/bulk-restore', [
  *                   type: integer
  *                 description: Array of linked product IDs (empty array to remove all links)
  *                 example: [5, 10, 15]
+ *               redirect_url:
+ *                 type: string
+ *                 maxLength: 500
+ *                 nullable: true
+ *                 description: URL to redirect to (e.g. when product is discontinued). Pass null or empty to clear.
  *     responses:
  *       200:
- *         description: Product updated successfully
+ *         description: Product updated successfully (returns product with redirect_url and relations)
  *         content:
  *           application/json:
  *             schema:
@@ -569,6 +584,10 @@ router.put('/bulk-restore', [
  *                   type: string
  *                 description:
  *                   type: string
+ *                 redirect_url:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Redirect URL if set
  *                 Categories:
  *                   type: array
  *                   items:
@@ -694,7 +713,7 @@ router.delete('/bulk-delete', [
  *      - ADMIN - Products
  *     security:
  *       - bearerAuth: []
- *     summary: Delete a product by ID
+ *     summary: Soft-delete a product by ID (optional redirect URL for old product URL)
  *     parameters:
  *       - in: path
  *         name: id
@@ -702,9 +721,20 @@ router.delete('/bulk-delete', [
  *         schema:
  *           type: integer
  *         description: ID of the product to delete
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               redirect_url:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: URL to redirect when the old product URL is requested (e.g. / or /category/slug)
  *     responses:
- *       204:
- *         description: Deleted
+ *       200:
+ *         description: Product soft-deleted successfully
  *       404:
  *         description: Product not found
  *       500:
@@ -712,7 +742,7 @@ router.delete('/bulk-delete', [
  */
 router.delete('/:id',
     [authMiddleware(true), 
-    validateRequest(productIdValidation)],
+    validateRequest(deleteProductValidation)],
     productController.deleteProduct
 );
 

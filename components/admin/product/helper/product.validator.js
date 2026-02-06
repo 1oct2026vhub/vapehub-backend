@@ -7,6 +7,16 @@ const productIdValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
 ];
 
+const deleteProductValidation = [
+    ...productIdValidation,
+    body("redirect_url")
+        .optional()
+        .isString()
+        .withMessage("Redirect URL must be a string")
+        .isLength({ max: 500 })
+        .withMessage("Redirect URL must be at most 500 characters"),
+];
+
 const getLinkedProductsValidation = [
     param("id").isInt().withMessage("Product ID must be an integer"),
     check('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
@@ -121,6 +131,14 @@ const updateProductValidations = [
                     throw new Error('All linked product IDs must be positive integers');
                 }
             }
+            return true;
+        }),
+    check('redirect_url')
+        .optional({ values: 'null' })
+        .custom((value) => {
+            if (value === null || value === undefined || value === '') return true;
+            if (typeof value !== 'string') throw new Error('redirect_url must be a string');
+            if (value.length > 500) throw new Error('redirect_url must be at most 500 characters');
             return true;
         }),
 ];
@@ -254,6 +272,7 @@ const updateProductImageAltTextValidation = [
 
 module.exports = {
     productIdValidation,
+    deleteProductValidation,
     createProductValidation,
     updateProductValidations,
     productImageValidation,

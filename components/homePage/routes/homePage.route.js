@@ -222,6 +222,7 @@ router.post("/banner-images",
  *     tags:
  *       - HomePage
  *     summary: Get slug relations based on provided slugs
+ *     description: Returns entity type and data for each slug. If a slug belongs to a soft-deleted product with a redirect_url, returns redirect info (redirect true and redirect_url for single slug, or data items with entity_type redirect) so the client can redirect.
  *     parameters:
  *       - in: query
  *         name: slugs
@@ -231,7 +232,7 @@ router.post("/banner-images",
  *         required: true
  *     responses:
  *       200:
- *         description: Success
+ *         description: Success. Either entity/relation data, or redirect info when slug is a soft-deleted product with redirect_url.
  *         content:
  *           application/json:
  *             schema:
@@ -241,6 +242,15 @@ router.post("/banner-images",
  *                   type: boolean
  *                 message:
  *                   type: string
+ *                 slug:
+ *                   type: string
+ *                   description: Present for single-slug redirect response
+ *                 redirect:
+ *                   type: boolean
+ *                   description: true when slug is soft-deleted product with redirect_url (single slug only)
+ *                 redirect_url:
+ *                   type: string
+ *                   description: URL to redirect to (single-slug redirect response)
  *                 data:
  *                   type: array
  *                   items:
@@ -250,8 +260,12 @@ router.post("/banner-images",
  *                         type: string
  *                       entity_type:
  *                         type: string
+ *                         description: One of category, brand, product, deal, blog_category, or redirect (for soft-deleted product with redirect_url)
  *                       entity_id:
  *                         type: integer
+ *                       redirect_url:
+ *                         type: string
+ *                         description: Present when entity_type is redirect
  *                       description:
  *                         type: string
  *                         description: Description of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
@@ -279,7 +293,7 @@ router.post("/banner-images",
  *       400:
  *         description: Bad request (validation errors)
  *       404:
- *         description: No matching slugs found
+ *         description: No matching slugs found and no redirect for requested slug(s)
  *       500:
  *         description: Internal server error
  */
