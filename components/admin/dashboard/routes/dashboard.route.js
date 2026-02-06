@@ -27,6 +27,14 @@ const chartRoutes = require("./chart.route");
  *                 data:
  *                   type: object
  *                   properties:
+ *                     totalRetailValue:
+ *                       type: number
+ *                       description: Sum of (regular_price × stock) for all product variants with stock > 0
+ *                       example: 307149.99
+ *                     totalRetailValueFormatted:
+ *                       type: string
+ *                       description: Total retail value of stock formatted as abbreviated currency (e.g. £307.15K)
+ *                       example: "£307.15K"
  *                     sales:
  *                       type: object
  *                       properties:
