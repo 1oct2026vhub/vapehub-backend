@@ -91,8 +91,13 @@ module.exports.getDashboardStats = async (req, res, next) => {
                 [sequelize.literal('SUM(CASE WHEN stock_status = \'out_of_stock\' THEN 1 ELSE 0 END)'), 'outOfStockStatus'],
                 [sequelize.literal('SUM(CASE WHEN stock > low_stock_threshold THEN 1 ELSE 0 END)'), 'healthyStock'],
                 [sequelize.literal('SUM(CASE WHEN stock > 0 THEN regular_price * stock ELSE 0 END)'), 'totalRetailValue']
-            ]
+            ],
+            raw: true
         });
+        const productsFallback = { totalProducts: 0, lowStock: 0, outOfStock: 0, inStock: 0, outOfStockStatus: 0, healthyStock: 0, totalRetailValue: 0 };
+        const row = productStats[0] || {};
+        const totalRetailValue = Number(row.totalRetailValue ?? row.totalretailvalue ?? 0) || 0;
+        const products = productStats[0] ? { ...productsFallback, ...productStats[0], totalRetailValue } : productsFallback;
 
         // Marketing Statistics
         const [activeCoupons, newsletterSubscribers, totalBlogPosts, activeCarousels, activeBanners] = await Promise.all([
@@ -206,11 +211,7 @@ module.exports.getDashboardStats = async (req, res, next) => {
             },
             orders: orderStats,
             users: userStats,
-            products: productStats[0] || {
-                totalProducts: 0,
-                lowStock: 0,
-                outOfStock: 0
-            },
+            products,
             marketing: {
                 activeCoupons,
                 newsletterSubscribers,
@@ -222,8 +223,6 @@ module.exports.getDashboardStats = async (req, res, next) => {
             recentOrders,
             seo: seoStatistics
         };
-
-        const totalRetailValue = Number(stats.products?.totalRetailValue ?? 0);
 
         // Format the response data
         const formattedStats = {
