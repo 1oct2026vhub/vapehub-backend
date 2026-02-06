@@ -8,7 +8,7 @@ const chartRoutes = require("./chart.route");
  * /api/admin/dashboard/stats:
  *   get:
  *     summary: Get dashboard statistics
- *     description: Retrieve comprehensive dashboard statistics including sales, orders, users, products, and marketing data
+ *     description: Retrieve comprehensive dashboard statistics including sales, orders, users, products, marketing data, and total retail value of stock (sum of sale price × stock for all in-stock variants)
  *     tags:
  *       - ADMIN - Dashboard
  *     security:
@@ -27,6 +27,14 @@ const chartRoutes = require("./chart.route");
  *                 data:
  *                   type: object
  *                   properties:
+ *                     totalRetailValue:
+ *                       type: number
+ *                       description: Sum of (sale price × stock) for all product variants with stock > 0
+ *                       example: 125000.5
+ *                     totalRetailValueFormatted:
+ *                       type: string
+ *                       description: Total retail value of stock formatted as currency
+ *                       example: "£125,000.50"
  *                     sales:
  *                       type: object
  *                       properties:
