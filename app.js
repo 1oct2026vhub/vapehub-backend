@@ -9,6 +9,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const swaggerUi = require('swagger-ui-express');
 const fs = require('fs');
+const { isProductionEnv } = require('./config/common');
 
 // Response Helper middleware
 const responseHelper = require("./library/responseHelper");
@@ -77,8 +78,12 @@ passportConfig(passport);
 // 5. Response helper middleware (uncomment if needed)
 // app.use(responseHelper);
 
-// Serve Swagger API Docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions'), false, { docExpansion: 'none' }));
+// Serve Swagger API Docs (blocked in production)
+if (isProductionEnv()) {
+    app.use('/api-docs', (req, res) => res.status(404).send('Not Found'));
+} else {
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(require('./config/swaggerOptions'), false, { docExpansion: 'none' }));
+}
 
 // Add raw body parser for Worldpay webhook
 app.use('/api/payment/worldpay/webhook', express.raw({
