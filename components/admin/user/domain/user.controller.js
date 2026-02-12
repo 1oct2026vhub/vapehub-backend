@@ -1,6 +1,6 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role, Order } = require("../../../../models");
+const { User, Role, Order, MailSubscription } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const bcrypt = require('bcrypt');
@@ -321,6 +321,14 @@ module.exports.deleteUser = async (req, res) => {
             return errorResponse(res, { 
                 message: "Cannot delete user. User has active orders that are pending, processing, packed, shipped, out for delivery, or in return process." 
             }, 400);
+        }
+
+        // Soft delete all mail subscriptions associated with this user
+        const mailSubscriptions = await MailSubscription.findAll({
+            where: { user_id: id }
+        });
+        for (const subscription of mailSubscriptions) {
+            await subscription.destroy();
         }
 
         await user.destroy(); // Soft delete enabled because `paranoid: true`
