@@ -249,7 +249,7 @@ module.exports = {
 
             if (sendToAll) {
                 // Get all active subscribers with pagination for large datasets
-                const whereClause = { deletedAt: null };
+                const whereClause = { deletedAt: null, subscribed: true };
                 
                 // If frequency is specified, filter by it
                 if (frequency) {
