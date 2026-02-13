@@ -522,4 +522,45 @@ module.exports = {
         }
     },
 
+    // Unsubscribe a subscriber (admin) - sets subscribed = false
+    async unsubscribeSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            subscription.subscribed = false;
+            await subscription.save();
+            return successResponse(res, {
+                id: subscription.id,
+                email: subscription.email,
+                subscribed: false
+            }, 'Subscriber unsubscribed successfully');
+        } catch (error) {
+            logger.error('Error unsubscribing subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    },
+
+    // Delete a subscriber (admin) - soft-deletes the subscriber record
+    async deleteSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            await subscription.destroy();
+            return successResponse(res, { id: Number(subscriberId) }, 'Subscriber deleted successfully');
+        } catch (error) {
+            logger.error('Error deleting subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    }
+
 }; 
