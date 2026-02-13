@@ -90,8 +90,7 @@ module.exports = {
           if (urlCount > 0) {
             await queryInterface.sequelize.query(`
               UPDATE products
-              SET description = :description,
-                  updated_at = NOW()
+              SET description = :description
               WHERE id = :productId
             `, {
               replacements: {
@@ -206,8 +205,7 @@ module.exports = {
 
             await queryInterface.sequelize.query(`
               UPDATE products
-              SET description = :description,
-                  updated_at = NOW()
+              SET description = :description
               WHERE id = :productId
             `, {
               replacements: {
