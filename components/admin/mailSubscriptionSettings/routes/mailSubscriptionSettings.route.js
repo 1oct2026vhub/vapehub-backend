@@ -11,6 +11,8 @@ const {
     sendPromotionalEmail,
     getAllSubscribers,
     getSubscriberStats,
+    unsubscribeSubscriber,
+    deleteSubscriber,
     testPromotionalEmail
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
@@ -231,6 +233,89 @@ router.get('/subscribers', [
 router.get('/subscribers/stats', [
     authMiddleware(true)
 ], getSubscriberStats);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/unsubscribe:
+ *   patch:
+ *     summary: Unsubscribe a subscriber (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: subscriberId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Mail subscription (subscriber) ID
+ *     responses:
+ *       200:
+ *         description: Subscriber unsubscribed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     email:
+ *                       type: string
+ *                     subscribed:
+ *                       type: boolean
+ *                       example: false
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Subscriber not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/subscribers/:subscriberId/unsubscribe', [
+    authMiddleware(true)
+], unsubscribeSubscriber);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}:
+ *   delete:
+ *     summary: Delete a subscriber from the list (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: subscriberId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Mail subscription (subscriber) ID
+ *     responses:
+ *       200:
+ *         description: Subscriber deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Subscriber not found
+ *       500:
+ *         description: Server error
+ */
+router.delete('/subscribers/:subscriberId', [
+    authMiddleware(true)
+], deleteSubscriber);
 
 /**
  * @swagger
