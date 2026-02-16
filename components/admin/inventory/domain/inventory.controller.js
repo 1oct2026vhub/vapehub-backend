@@ -1354,6 +1354,9 @@ module.exports = {
         formattedVariants = formattedVariants.filter(variant => variant.isLowStock);
       }
 
+      // Sort variants alphabetically by name (case-insensitive)
+      formattedVariants.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+
       return successResponse(res, {
         product: {
           id: product.id,
