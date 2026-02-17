@@ -485,8 +485,6 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
             
             if (stock <= 0) {
                 updateData.stock_status = 'out_of_stock';
-            } else if (stock <= lowStockThreshold) {
-                updateData.stock_status = 'low_stock';
             } else {
                 updateData.stock_status = 'in_stock';
             }
