@@ -183,9 +183,15 @@ module.exports = (sequelize, DataTypes) => {
     hooks: {
       beforeSave: async (variant) => {
         // Auto-update stock_status based on stock level
-        if (variant.changed('stock')) {
-          if (variant.stock <= 0) {
+        // Only update if stock changed AND stock_status wasn't explicitly set
+        if (variant.changed('stock') && !variant.changed('stock_status')) {
+          const stock = parseInt(variant.stock) || 0;
+          const lowStockThreshold = parseInt(variant.low_stock_threshold) || 0;
+          
+          if (stock <= 0) {
             variant.stock_status = 'out_of_stock';
+          } else if (stock <= lowStockThreshold) {
+            variant.stock_status = 'low_stock';
           } else {
             variant.stock_status = 'in_stock';
           }

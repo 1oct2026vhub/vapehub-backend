@@ -462,16 +462,37 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
 };
 
 const updateVariantRecord = async (variantId, updateData, updated_by, transaction) => {
+    // Fetch existing variant to get low_stock_threshold
+    const existingVariant = await ProductVariant.findByPk(variantId, { transaction });
+    if (!existingVariant) {
+        throw new Error('Variant not found');
+    }
+
     // Calculate the price based on regular_price and discount_price
     const price = updateData.discount_price && parseFloat(updateData.discount_price) < parseFloat(updateData.regular_price) 
         ? updateData.discount_price 
         : updateData.regular_price;
+    
     // Handle stock_status based on stock value
-    if (updateData.stock !== undefined && updateData.stock !== null) {
-        if (updateData.stock <= 0) {
-            updateData.stock_status = 'out_of_stock';
+    // Only calculate stock_status if it's not explicitly provided in the request
+    if (updateData.stock_status === undefined || updateData.stock_status === null) {
+        if (updateData.stock !== undefined && updateData.stock !== null) {
+            const stock = parseInt(updateData.stock);
+            // Use low_stock_threshold from updateData if provided, otherwise use existing variant's threshold
+            const lowStockThreshold = updateData.low_stock_threshold !== undefined && updateData.low_stock_threshold !== null
+                ? parseInt(updateData.low_stock_threshold)
+                : parseInt(existingVariant.low_stock_threshold || 0);
+            
+            if (stock <= 0) {
+                updateData.stock_status = 'out_of_stock';
+            } else if (stock <= lowStockThreshold) {
+                updateData.stock_status = 'low_stock';
+            } else {
+                updateData.stock_status = 'in_stock';
+            }
         }
     }
+    
     // MySQL does not return updated rows, only affected count
     await ProductVariant.update({
         ...updateData,
