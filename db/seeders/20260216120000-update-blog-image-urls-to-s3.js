@@ -22,9 +22,15 @@ module.exports = {
         errors: 0
       };
 
-      // Pattern to match WordPress upload URLs
-      const oldPattern = /https:\/\/www\.vapehub\.co\.uk\/wp-content\/uploads\//g;
+      // Patterns to match WordPress upload URLs (multiple variants)
       const newBaseUrl = 'https://vapehub-assets.s3.eu-north-1.amazonaws.com/uploads/';
+      const oldPatterns = [
+        { pattern: /https:\/\/www\.vapehub\.co\.uk\/wp-content\/uploads\//g, name: 'https://www' },
+        { pattern: /http:\/\/www\.vapehub\.co\.uk\/wp-content\/uploads\//g, name: 'http://www' },
+        { pattern: /https:\/\/vapehub\.co\.uk\/wp-content\/uploads\//g, name: 'https (no www)' },
+        { pattern: /http:\/\/vapehub\.co\.uk\/wp-content\/uploads\//g, name: 'http (no www)' },
+        { pattern: /https:\/\/i0\.wp\.com\/www\.vapehub\.co\.uk\/wp-content\/uploads\//g, name: 'i0.wp.com' }
+      ];
 
       // Step 1: Find blogs with WordPress URLs in content
       console.log('\n🔍 Step 1: Finding blogs with WordPress image URLs in content...');
@@ -52,30 +58,38 @@ module.exports = {
 
       for (const blog of blogsWithOldUrls) {
         try {
-          const originalContent = blog.content || '';
-          // Replace WordPress URLs with S3 URLs
-          const updatedContent = originalContent.replace(oldPattern, newBaseUrl);
-          
-          if (originalContent !== updatedContent) {
-            const matches = (originalContent.match(oldPattern) || []).length;
-            stats.urlsReplaced += matches;
-            
-            // Update blog in database
+          let content = blog.content || '';
+          let totalReplaced = 0;
+          const replacedByPattern = [];
+
+          for (const { pattern, name } of oldPatterns) {
+            const before = content;
+            content = content.replace(pattern, newBaseUrl);
+            const count = (before.match(pattern) || []).length;
+            if (count > 0) {
+              totalReplaced += count;
+              replacedByPattern.push(`${name}: ${count}`);
+            }
+          }
+
+          if (totalReplaced > 0) {
+            stats.urlsReplaced += totalReplaced;
+
             await queryInterface.sequelize.query(`
               UPDATE blogs
               SET content = :content
               WHERE id = :blogId
             `, {
               replacements: {
-                content: updatedContent,
+                content,
                 blogId: blog.id
               },
               type: Sequelize.QueryTypes.UPDATE
             });
-            
+
             stats.blogsUpdated++;
             const titlePreview = blog.title ? blog.title.substring(0, 50) + (blog.title.length > 50 ? '...' : '') : 'Untitled';
-            console.log(`✅ Updated blog ID ${blog.id}: ${titlePreview} (${matches} URL(s) replaced)`);
+            console.log(`✅ Updated blog ID ${blog.id}: ${titlePreview} (${totalReplaced} URL(s) replaced: ${replacedByPattern.join(', ')})`);
           }
         } catch (error) {
           stats.errors++;
@@ -92,10 +106,11 @@ module.exports = {
       console.log(`❌ Errors: ${stats.errors}`);
       console.log('');
 
-      // Step 4: Verify replacement
+      // Step 4: Verify replacement and list any remaining blogs
       console.log('🔍 Step 3: Verifying replacement...');
-      const remainingOldUrls = await queryInterface.sequelize.query(`
-        SELECT COUNT(*) as count
+      const remainingBlogs = await queryInterface.sequelize.query(`
+        SELECT id, title,
+          SUBSTRING(content, 1, 500) as content_preview
         FROM blogs
         WHERE content LIKE '%wp-content/uploads%'
         AND deleted_at IS NULL
@@ -103,12 +118,22 @@ module.exports = {
         type: Sequelize.QueryTypes.SELECT
       });
 
-      const remainingCount = remainingOldUrls[0]?.count || 0;
-      
+      const remainingCount = remainingBlogs.length;
+
       if (remainingCount === 0) {
         console.log('✅ Verification passed: No WordPress URLs remaining in blog content');
       } else {
-        console.log(`⚠️  Warning: ${remainingCount} blogs still contain WordPress URLs`);
+        console.log(`⚠️  Warning: ${remainingCount} blog(s) still contain WordPress URLs:`);
+        for (const b of remainingBlogs) {
+          const titlePreview = b.title ? b.title.substring(0, 60) + (b.title.length > 60 ? '...' : '') : 'Untitled';
+          console.log(`   - Blog ID ${b.id}: ${titlePreview}`);
+          // Show a snippet of where wp-content appears so we can add a pattern if needed
+          const idx = (b.content_preview || '').indexOf('wp-content');
+          if (idx !== -1) {
+            const snippet = (b.content_preview || '').substring(Math.max(0, idx - 30), idx + 80);
+            console.log(`     Snippet: ...${snippet}...`);
+          }
+        }
       }
 
       console.log('\n✅ Blog Image URL Update Completed Successfully!');
