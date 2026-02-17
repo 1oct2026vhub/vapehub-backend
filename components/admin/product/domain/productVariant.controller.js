@@ -874,6 +874,169 @@ module.exports.updateProductVariant = async (req, res) => {
     }
 };
 
+// Bulk update multiple variants from multiple products
+module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
+    const transaction = await Product.sequelize.transaction({ timeout: 30000 });
+    try {
+        const { variants } = req.body;
+        const { id: updated_by } = req.user;
+
+        const updatedVariants = [];
+        const errors = [];
+
+        // Process each variant update
+        for (const variantUpdate of variants) {
+            const { product_id, variant_id, ...variantData } = variantUpdate;
+
+            try {
+                // Validate product exists
+                const product = await Product.findByPk(product_id, { transaction });
+                if (!product) {
+                    errors.push({ product_id, variant_id, error: ERROR_MESSAGES.PRODUCT_NOT_FOUND });
+                    continue;
+                }
+
+                // Fetch the existing variant
+                const existingVariant = await ProductVariant.findByPk(variant_id, { transaction });
+                if (!existingVariant) {
+                    errors.push({ product_id, variant_id, error: ERROR_MESSAGES.VARIANT_NOT_FOUND });
+                    continue;
+                }
+
+                // Verify variant belongs to the product
+                if (existingVariant.product_id !== parseInt(product_id)) {
+                    errors.push({ product_id, variant_id, error: 'Variant does not belong to this product' });
+                    continue;
+                }
+
+                // Validate update data
+                await validateUpdateData(variantData, existingVariant, variant_id, transaction);
+
+                // Update slug if provided and changed
+                if (variantData.slug && variantData.slug !== existingVariant.slug) {
+                    await slugManager.createOrUpdateSlug(variantData.slug, 'product_variant', variant_id, transaction);
+                }
+
+                // Handle price defaults
+                if (!variantData.regular_price || variantData.regular_price === 0 || variantData.regular_price === null || variantData.regular_price === undefined) {
+                    variantData.regular_price = existingVariant.regular_price;
+                }
+                if (variantData.discount_price === null || variantData.discount_price === undefined) {
+                    variantData.discount_price = existingVariant.discount_price;
+                    if (existingVariant.discount_price == 0 || existingVariant.discount_price == null || existingVariant.discount_price == undefined) {
+                        variantData.discount_price = null;
+                    }
+                }
+
+                // Check for existing attribute combinations if attributes are being updated
+                if (Array.isArray(variantData.attributes) && variantData.attributes.length > 0) {
+                    const productVariants = await ProductVariant.findAll({
+                        where: {
+                            product_id: product_id,
+                            id: { [Op.ne]: variant_id }
+                        },
+                        include: [{
+                            model: ProductVariantAttribute,
+                            as: 'variantAttributes'
+                        }],
+                        transaction
+                    });
+
+                    for (const variant of productVariants) {
+                        const variantAttributeCount = variant.variantAttributes.length;
+                        const newAttributeCount = variantData.attributes.length;
+
+                        if (variantAttributeCount !== newAttributeCount) continue;
+
+                        const isExactMatch = variantData.attributes.every(newAttr =>
+                            variant.variantAttributes.some(existingAttr =>
+                                existingAttr.attribute_id === newAttr.attribute_id &&
+                                existingAttr.term_id === newAttr.term_id
+                            )
+                        );
+
+                        if (isExactMatch) {
+                            throw new Error("This exact attribute combination already exists for another variant of this product");
+                        }
+                    }
+                }
+
+                // Update basic info
+                await updateVariantRecord(variant_id, variantData, updated_by, transaction);
+
+                // Handle stock update
+                const { stock, ...otherVariantData } = variantData;
+                if (stock !== undefined && stock !== null && stock !== 0) {
+                    await StockMovement.create({
+                        variant_id: variant_id,
+                        change_type: 'adjustment',
+                        quantity: stock,
+                        reference: 'Bulk variant stock update',
+                        updated_by,
+                        stock_update_from: 'overwrite'
+                    }, { transaction });
+                }
+
+                // Update attributes if provided
+                if (Array.isArray(variantData.attributes)) {
+                    await updateVariantAttributes(variant_id, variantData.attributes, existingVariant.product_id, updated_by, transaction);
+                }
+
+                // Fetch updated variant with relations
+                const updatedVariantWithRelations = await ProductVariant.findByPk(variant_id, {
+                    include: [
+                        { model: ProductVariantImage, as: "variantImages" },
+                        {
+                            model: ProductVariantAttribute,
+                            as: "variantAttributes",
+                            include: [
+                                { model: Attribute, as: "attribute" },
+                                { model: AttributeTerm, as: "term" }
+                            ]
+                        }
+                    ],
+                    transaction
+                });
+
+                updatedVariants.push(updatedVariantWithRelations);
+            } catch (error) {
+                errors.push({ product_id, variant_id, error: error.message });
+                logger.error(`Bulk Update Variant Error for product ${product_id}, variant ${variant_id}:`, {
+                    error: error.message,
+                    stack: error.stack,
+                    productId: product_id,
+                    variantId: variant_id,
+                    userId: req.user.id
+                });
+            }
+        }
+
+        if (errors.length > 0 && updatedVariants.length === 0) {
+            await transaction.rollback();
+            return errorResponse(res, { errors }, 'All variant updates failed', 400);
+        }
+
+        await transaction.commit();
+
+        return successResponse(res, {
+            updated: updatedVariants,
+            errors: errors.length > 0 ? errors : undefined
+        }, `Successfully updated ${updatedVariants.length} variant(s)${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
+    } catch (error) {
+        await transaction.rollback();
+        logger.error('Bulk Update Variants Error:', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.user.id
+        });
+
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return errorResponse(res, error, 'Duplicate entry found', 409);
+        }
+        return errorResponse(res, error, error.message);
+    }
+};
+
 // Remove product variant
 module.exports.removeProductVariant = async (req, res) => {
     const transaction = await Product.sequelize.transaction();

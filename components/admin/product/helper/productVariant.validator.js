@@ -666,6 +666,99 @@ const bulkUpdateVariantsDirectValidator = [
         .withMessage('Invalid status')
 ];
 
+const bulkUpdateVariantsMultipleValidator = [
+    body('variants')
+        .isArray()
+        .withMessage('Variants must be an array')
+        .notEmpty()
+        .withMessage('Variants array cannot be empty'),
+    body('variants.*.product_id')
+        .isInt({ min: 1 })
+        .withMessage('Product ID must be a positive integer'),
+    body('variants.*.variant_id')
+        .isInt({ min: 1 })
+        .withMessage('Variant ID must be a positive integer'),
+    body('variants.*.slug')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 100 })
+        .withMessage('Variant slug must be between 3 and 100 characters'),
+    body('variants.*.sku')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Variant SKU must be between 1 and 100 characters'),
+    body('variants.*.regular_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Regular price must be a positive number'),
+    body('variants.*.discount_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Discount price must be a positive number'),
+    body('variants.*.purchase_price')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Purchase price must be a positive number'),
+    body('variants.*.stock')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Stock must be a non-negative integer'),
+    body('variants.*.low_stock_threshold')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Low stock threshold must be a non-negative integer'),
+    body('variants.*.weight')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Weight must be a positive number'),
+    body('variants.*.length')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Length must be a positive number'),
+    body('variants.*.width')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Width must be a positive number'),
+    body('variants.*.height')
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage('Height must be a positive number'),
+    body('variants.*.barcode')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Barcode must be between 3 and 50 characters'),
+    body('variants.*.status')
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage('Status must be either active or inactive'),
+    body('variants.*.stock_status')
+        .optional()
+        .isIn(['in_stock', 'out_of_stock', 'low_stock'])
+        .withMessage('Stock status must be one of: in_stock, out_of_stock, low_stock'),
+    body('variants.*.description')
+        .optional()
+        .isString()
+        .trim()
+        .withMessage('Description must be a string'),
+    body('variants.*.attributes')
+        .optional()
+        .isArray()
+        .withMessage('Attributes must be an array'),
+    body('variants.*.attributes.*.attribute_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Attribute ID must be a positive integer'),
+    body('variants.*.attributes.*.term_id')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Term ID must be a positive integer')
+];
+
 module.exports = {
     addProductAttributesValidator,
     createProductVariantsValidator,
@@ -682,5 +775,6 @@ module.exports = {
     bulkUpdateVariantsValidator,
     uploadExcelMiddleware,
     generateVariantsValidator,
-    bulkUpdateVariantsDirectValidator
+    bulkUpdateVariantsDirectValidator,
+    bulkUpdateVariantsMultipleValidator
 };

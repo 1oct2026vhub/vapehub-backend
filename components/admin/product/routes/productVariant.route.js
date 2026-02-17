@@ -153,7 +153,8 @@ const {
     removeProductAttributeTermValidator,
     bulkUpdateVariantsValidator,
     generateVariantsValidator,
-    bulkUpdateVariantsDirectValidator
+    bulkUpdateVariantsDirectValidator,
+    bulkUpdateVariantsMultipleValidator
 } = require("../helper/productVariant.validator");
 
 
@@ -891,6 +892,151 @@ router.post('/product/:product_id/variants',
 router.put('/product/:product_id/variants/:variant_id',
     [authMiddleware(true), validateRequest(updateProductVariantValidator)],
     productVariantController.updateProductVariant
+);
+
+/**
+ * @swagger
+ * /api/admin/product-variants/bulk-update-multiple:
+ *   put:
+ *     summary: Bulk update multiple product variants from multiple products
+ *     tags:
+ *       - ADMIN - Product Variants
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - variants
+ *             properties:
+ *               variants:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - product_id
+ *                     - variant_id
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                       description: ID of the product
+ *                     variant_id:
+ *                       type: integer
+ *                       description: ID of the variant to update
+ *                     slug:
+ *                       type: string
+ *                       description: Unique identifier for the variant
+ *                     sku:
+ *                       type: string
+ *                       description: Unique SKU for the variant
+ *                     regular_price:
+ *                       type: number
+ *                       format: decimal
+ *                       description: Regular price of the variant (base price)
+ *                     discount_price:
+ *                       type: number
+ *                       example: 89.99
+ *                       description: Discount price (optional, must be less than regular_price if provided)
+ *                     purchase_price:
+ *                       type: number
+ *                       example: 79.99
+ *                       description: Purchase price (must be less than selling price)
+ *                     stock:
+ *                       type: integer
+ *                       example: 100
+ *                     low_stock_threshold:
+ *                       type: integer
+ *                       example: 10
+ *                     weight:
+ *                       type: number
+ *                       example: 0.5
+ *                     length:
+ *                       type: number
+ *                       example: 10
+ *                     width:
+ *                       type: number
+ *                       example: 5
+ *                     height:
+ *                       type: number
+ *                       example: 2
+ *                     barcode:
+ *                       type: string
+ *                       example: "1234567890"
+ *                     description:
+ *                       type: string
+ *                       example: "Black color variant"
+ *                     status:
+ *                       type: string
+ *                       enum: [active, inactive]
+ *                       example: "active"
+ *                     stock_status:
+ *                       type: string
+ *                       enum: [in_stock, out_of_stock, low_stock]
+ *                       example: "in_stock"
+ *                     attributes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           attribute_id:
+ *                             type: integer
+ *                           term_id:
+ *                             type: integer
+ *     responses:
+ *       200:
+ *         description: Variants updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     updated:
+ *                       type: array
+ *                       items:
+ *                         $ref: '#/components/schemas/ProductVariant'
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           product_id:
+ *                             type: integer
+ *                           variant_id:
+ *                             type: integer
+ *                           error:
+ *                             type: string
+ *                 message:
+ *                   type: string
+ *                   example: Successfully updated 5 variant(s), 2 failed
+ *       400:
+ *         description: Validation error or all updates failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                 errors:
+ *                   type: array
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/bulk-update-multiple',
+    [authMiddleware(true), validateRequest(bulkUpdateVariantsMultipleValidator)],
+    productVariantController.bulkUpdateVariantsMultiple
 );
 
 /**
