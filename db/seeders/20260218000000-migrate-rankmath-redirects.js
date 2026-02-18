@@ -12,12 +12,12 @@
  *    - brand/ → brand
  *    - blog/ → blog
  * 4. Extracts slugs from patterns and destination URLs
- * 5. Maps slugs to entity_ids by querying Deal, Category, Brand, Blog tables
+ * 5. Maps slugs to entity_ids by querying slug_relations table (canonical slug source)
  * 6. Inserts into redirects table
  */
 
 const CrossServerMigration = require('../../utils/cross-server-migration');
-const { Deal, Category, Brand, Blog } = require('../../models');
+const { SlugRelation } = require('../../models');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -137,50 +137,50 @@ module.exports = {
         return;
       }
 
-      // Build slug-to-entity_id maps for each entity type
-      console.log('📥 Building entity slug maps...');
+      // Build slug-to-entity_id maps for each entity type using slug_relations (canonical source)
+      console.log('📥 Building entity slug maps from slug_relations...');
       
       const dealSlugMap = new Map();
-      const deals = await Deal.findAll({ 
-        attributes: ['id', 'slug'],
-        paranoid: false,
-        transaction 
+      const dealSlugRelations = await SlugRelation.findAll({
+        where: { entity_type: 'deal' },
+        attributes: ['slug', 'entity_id'],
+        transaction
       });
-      deals.forEach(deal => {
-        if (deal.slug) dealSlugMap.set(deal.slug.toLowerCase(), deal.id);
+      dealSlugRelations.forEach(sr => {
+        if (sr.slug) dealSlugMap.set(sr.slug.toLowerCase(), sr.entity_id);
       });
       console.log(`   Deals: ${dealSlugMap.size} mapped`);
 
       const categorySlugMap = new Map();
-      const categories = await Category.findAll({ 
-        attributes: ['id', 'slug'],
-        paranoid: false,
-        transaction 
+      const categorySlugRelations = await SlugRelation.findAll({
+        where: { entity_type: 'category' },
+        attributes: ['slug', 'entity_id'],
+        transaction
       });
-      categories.forEach(cat => {
-        if (cat.slug) categorySlugMap.set(cat.slug.toLowerCase(), cat.id);
+      categorySlugRelations.forEach(sr => {
+        if (sr.slug) categorySlugMap.set(sr.slug.toLowerCase(), sr.entity_id);
       });
       console.log(`   Categories: ${categorySlugMap.size} mapped`);
 
       const brandSlugMap = new Map();
-      const brands = await Brand.findAll({ 
-        attributes: ['id', 'slug'],
-        paranoid: false,
-        transaction 
+      const brandSlugRelations = await SlugRelation.findAll({
+        where: { entity_type: 'brand' },
+        attributes: ['slug', 'entity_id'],
+        transaction
       });
-      brands.forEach(brand => {
-        if (brand.slug) brandSlugMap.set(brand.slug.toLowerCase(), brand.id);
+      brandSlugRelations.forEach(sr => {
+        if (sr.slug) brandSlugMap.set(sr.slug.toLowerCase(), sr.entity_id);
       });
       console.log(`   Brands: ${brandSlugMap.size} mapped`);
 
       const blogSlugMap = new Map();
-      const blogs = await Blog.findAll({ 
-        attributes: ['id', 'slug'],
-        paranoid: false,
-        transaction 
+      const blogSlugRelations = await SlugRelation.findAll({
+        where: { entity_type: 'blog' },
+        attributes: ['slug', 'entity_id'],
+        transaction
       });
-      blogs.forEach(blog => {
-        if (blog.slug) blogSlugMap.set(blog.slug.toLowerCase(), blog.id);
+      blogSlugRelations.forEach(sr => {
+        if (sr.slug) blogSlugMap.set(sr.slug.toLowerCase(), sr.entity_id);
       });
       console.log(`   Blogs: ${blogSlugMap.size} mapped`);
 
