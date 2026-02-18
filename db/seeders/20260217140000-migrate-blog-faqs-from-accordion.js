@@ -17,6 +17,7 @@
  */
 
 const CrossServerMigration = require('../../utils/cross-server-migration');
+const phpUnserialize = require('phpunserialize');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -287,6 +288,7 @@ module.exports = {
 /**
  * Extract FAQs from PHP serialized data
  * Format: a:5:{s:18:"eap_accordion_type";s:17:"content-accordion";...}
+ * Uses phpunserialize for reliable parsing; falls back to regex for edge cases.
  */
 function extractFAQsFromSerializedData(serializedData) {
   const faqs = [];
@@ -296,11 +298,39 @@ function extractFAQsFromSerializedData(serializedData) {
   }
 
   try {
-    // Method 1: Extract accordion_content_source array and parse items
-    // Pattern: s:24:"accordion_content_source";a:N:{...}
-    const contentSourceMatch = serializedData.match(/s:24:"accordion_content_source";a:(\d+):\{(.*)\}/);
+    // Method 0: Parse with PHP unserialize and read accordion_content_source
+    try {
+      const parsed = phpUnserialize(serializedData);
+      if (parsed && typeof parsed === 'object') {
+        const source = parsed.accordion_content_source;
+        const items = Array.isArray(source) ? source : (source && typeof source === 'object' ? Object.values(source) : null);
+        if (items && items.length > 0) {
+          for (const item of items) {
+            if (!item || typeof item !== 'object') continue;
+            const question = item.accordion_content_title;
+            const answer = item.accordion_content_description;
+            if (question != null && answer != null) {
+              const q = String(question).trim();
+              const a = String(answer).trim();
+              if (q.length > 3 && a.length > 3) {
+                faqs.push({
+                  question: cleanHtmlContent(q, false),
+                  answer: cleanHtmlContent(a, true)
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Unserialize failed; fall through to regex methods
+    }
+
+    // Method 1: Extract accordion_content_source array and parse items (regex fallback)
+    if (faqs.length === 0) {
+      const contentSourceMatch = serializedData.match(/s:24:"accordion_content_source";a:(\d+):\{(.*)\}/);
     
-    if (contentSourceMatch) {
+      if (contentSourceMatch) {
       const itemCount = parseInt(contentSourceMatch[1]);
       const contentSourceData = contentSourceMatch[2];
       
@@ -320,6 +350,7 @@ function extractFAQsFromSerializedData(serializedData) {
           });
         }
       }
+    }
     }
 
     // Method 2: Direct pattern matching in entire serialized string (more flexible)
