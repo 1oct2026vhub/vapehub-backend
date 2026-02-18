@@ -143,7 +143,7 @@ module.exports = {
       const dealSlugMap = new Map();
       const deals = await Deal.findAll({ 
         attributes: ['id', 'slug'],
-        where: { is_deleted: false },
+        paranoid: false,
         transaction 
       });
       deals.forEach(deal => {
@@ -154,6 +154,7 @@ module.exports = {
       const categorySlugMap = new Map();
       const categories = await Category.findAll({ 
         attributes: ['id', 'slug'],
+        paranoid: false,
         transaction 
       });
       categories.forEach(cat => {
@@ -164,6 +165,7 @@ module.exports = {
       const brandSlugMap = new Map();
       const brands = await Brand.findAll({ 
         attributes: ['id', 'slug'],
+        paranoid: false,
         transaction 
       });
       brands.forEach(brand => {
@@ -174,6 +176,7 @@ module.exports = {
       const blogSlugMap = new Map();
       const blogs = await Blog.findAll({ 
         attributes: ['id', 'slug'],
+        paranoid: false,
         transaction 
       });
       blogs.forEach(blog => {
