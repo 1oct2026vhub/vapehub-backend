@@ -81,7 +81,7 @@ module.exports = {
         FROM blogs
         WHERE content LIKE '%sp_easyaccordion%'
         AND content LIKE '%id=%'
-        AND deletedAt IS NULL
+        AND deleted_at IS NULL
         ORDER BY id ASC
       `, {
         type: Sequelize.QueryTypes.SELECT,
