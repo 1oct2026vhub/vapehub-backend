@@ -67,6 +67,16 @@ module.exports = {
         return String(path).trim().replace(/^\/+/, '').replace(/\/+$/, '');
       };
 
+      // Build new url_to path for deals only (required format for new app)
+      // e.g. deal: /product-tag/slug (old) → /product-deals/slug (new)
+      // Other entity types keep the same URL format as old database
+      const buildNewUrlToForDeal = (slug) => {
+        if (!slug) return null;
+        const s = String(slug).trim().replace(/^\/+|\/+$/g, '');
+        if (!s) return null;
+        return `/product-deals/${s}`;
+      };
+
       // Extract patterns from PHP serialized string
       const extractPatterns = (serializedData) => {
         const patterns = [];
@@ -270,9 +280,14 @@ module.exports = {
           }
 
           // Build redirect record
+          // sources: Save the original old database source pattern (the old used slug)
+          // url_to: For deals only, use new format (/product-deals/slug). Others keep old DB format.
+          const finalUrlTo = parsed.entityType === 'deal' 
+            ? (buildNewUrlToForDeal(finalSlug) || urlTo)
+            : urlTo;
           const redirectRecord = {
-            source_url: sourceUrl,
-            url_to: urlTo,
+            sources: sourceUrl, // Original pattern from Rank Math (normalized)
+            url_to: finalUrlTo,  // New format for deals (/product-deals/slug), old format for others
             header_code: oldRedirect.header_code || 301,
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: parsed.entityType,
@@ -282,7 +297,8 @@ module.exports = {
               imported_from: 'vh_rank_math_redirections',
               rank_math_id: oldRedirect.id,
               pattern_slug: parsed.slug,
-              sources_raw: oldRedirect.sources || null,
+              original_pattern: pattern, // Original pattern before normalization
+              sources_raw: oldRedirect.sources || null, // Raw PHP serialized string
               url_to_raw: oldRedirect.url_to || null,
               created: oldRedirect.created || null,
               updated: oldRedirect.updated || null
@@ -317,12 +333,12 @@ module.exports = {
 
       // Check for existing redirects
       const existingRedirects = await queryInterface.sequelize.query(
-        'SELECT source_url FROM redirects WHERE deletedAt IS NULL',
+        'SELECT sources FROM redirects WHERE deletedAt IS NULL',
         { type: Sequelize.QueryTypes.SELECT, transaction }
       );
-      const existingSourceUrls = new Set(existingRedirects.map(r => r.source_url));
+      const existingSourceUrls = new Set(existingRedirects.map(r => r.sources));
 
-      const finalRedirects = redirectsToInsert.filter(r => !existingSourceUrls.has(r.source_url));
+      const finalRedirects = redirectsToInsert.filter(r => !existingSourceUrls.has(r.sources));
 
       if (finalRedirects.length === 0) {
         console.log('✅ All redirects already exist in database.');
