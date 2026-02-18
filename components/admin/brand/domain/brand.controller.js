@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu } = require("../../../../models");
+const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
@@ -264,6 +264,7 @@ module.exports.deleteBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
         const brand = await Brand.findByPk(id);
         if (!brand) {
             await t.rollback();
@@ -291,6 +292,23 @@ module.exports.deleteBrand = async (req, res, next) => {
             );
         }
 
+        // Create redirect record if redirect_url is provided
+        if (redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/brand/${brand.slug}`;
+            await Redirect.create({
+                sources: redirect_url.trim(),
+                url_to: oldUrl,
+                entity_type: 'brand',
+                slug: brand.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction: t });
+        }
+
         // Delete slug relation first
         await slugManager.deleteSlug('brand', id, t);
 
@@ -313,7 +331,7 @@ module.exports.deleteBrand = async (req, res, next) => {
  */
 module.exports.bulkDeleteBrands = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedBrands = [];
         const notDeletedBrands = [];
@@ -346,6 +364,23 @@ module.exports.bulkDeleteBrands = async (req, res, next) => {
                     await t.rollback();
                     notDeletedBrands.push({ id, name: brand.name, reason: `Brand has ${productCount} associated product${productCount > 1 ? 's' : ''}` });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldUrl = `/brand/${brand.slug}`;
+                    await Redirect.create({
+                        sources: redirect_url.trim(),
+                        url_to: oldUrl,
+                        entity_type: 'brand',
+                        slug: brand.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug relation first

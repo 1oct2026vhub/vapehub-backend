@@ -1,6 +1,6 @@
 const { Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize } = require("../../../../models");
+const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);  
@@ -377,9 +377,27 @@ module.exports.deleteBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     
     try {
+        const { redirect_url } = req.body || {};
         const blog = await Blog.findByPk(req.params.id, { transaction });
         if (!blog) {
             throw new Error('Blog post not found');
+        }
+
+        // Create redirect record if redirect_url is provided
+        if (redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/blog/${blog.slug}`;
+            await Redirect.create({
+                sources: redirect_url.trim(),
+                url_to: oldUrl,
+                entity_type: 'blog',
+                slug: blog.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction });
         }
 
         // Delete slug using static method
@@ -433,7 +451,7 @@ module.exports.restoreBlog = async (req, res) => {
 
 module.exports.bulkDeleteBlogs = async (req, res) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedBlogs = [];
         const notDeletedBlogs = [];
@@ -447,6 +465,23 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                     await t.rollback();
                     notDeletedBlogs.push({ id, reason: 'Blog post not found' });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldUrl = `/blog/${blog.slug}`;
+                    await Redirect.create({
+                        sources: redirect_url.trim(),
+                        url_to: oldUrl,
+                        entity_type: 'blog',
+                        slug: blog.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug using static method

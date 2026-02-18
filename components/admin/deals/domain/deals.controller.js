@@ -1,6 +1,6 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant } = require("../../../../models");
+const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant, Redirect } = require("../../../../models");
 const { Op } = require('sequelize');
 const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
@@ -697,19 +697,46 @@ module.exports.getDealsByProduct = async (req, res, next) => {
 };
 
 module.exports.deleteDeal = async (req, res, next) => {
+    const transaction = await Deal.sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
 
-        const deal = await Deal.findByPk(id);
+        const deal = await Deal.findByPk(id, { transaction });
         if (!deal) {
+            await transaction.rollback();
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
         }
 
-        await deal.destroy();
+        // Create redirect record if redirect_url is provided
+        if (redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/product-tag/${deal.slug}`;
+            await Redirect.create({
+                sources: redirect_url.trim(),
+                url_to: oldUrl,
+                entity_type: 'deal',
+                slug: deal.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction });
+        }
+
+        // Delete slug relation first
+        await slugManager.deleteSlug('deal', id, transaction);
+
+        await deal.destroy({ transaction });
+        await transaction.commit();
         successResponse(res, null, 'Deal deleted successfully');
     } catch (error) {
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message);
     }
 };
@@ -743,7 +770,7 @@ module.exports.restoreDeal = async (req, res, next) => {
  */
 module.exports.bulkDeleteDeals = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedDeals = [];
         const notDeletedDeals = [];
@@ -751,10 +778,33 @@ module.exports.bulkDeleteDeals = async (req, res, next) => {
         const dealsToDelete = await Deal.findAll({ where: { id: { [Op.in]: ids } } });
 
         for (const deal of dealsToDelete) {
+            const t = await Deal.sequelize.transaction();
             try {
-                await deal.destroy();
+                // Create redirect record if redirect_url is provided
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldUrl = `/product-tag/${deal.slug}`;
+                    await Redirect.create({
+                        sources: redirect_url.trim(),
+                        url_to: oldUrl,
+                        entity_type: 'deal',
+                        slug: deal.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('deal', deal.id, t);
+
+                await deal.destroy({ transaction: t });
+                await t.commit();
                 deletedDeals.push({ id: deal.id, name: deal.name });
             } catch (error) {
+                await t.rollback();
                 notDeletedDeals.push({ id: deal.id, name: deal.name, reason: error.message || 'Failed to delete deal' });
             }
         }

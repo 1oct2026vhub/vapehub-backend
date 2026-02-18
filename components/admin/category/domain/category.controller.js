@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu } = require("../../../../models");
+const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
@@ -333,6 +333,7 @@ module.exports.deleteCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
         const category = await Category.findByPk(id);
         if (!category) {
             await t.rollback();
@@ -360,6 +361,23 @@ module.exports.deleteCategory = async (req, res, next) => {
                 400
             );
         }
+
+        // Create redirect record if redirect_url is provided
+        if (redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/product-category/${category.slug}`;
+            await Redirect.create({
+                sources: redirect_url.trim(),
+                url_to: oldUrl,
+                entity_type: 'category',
+                slug: category.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction: t });
+        }
         
         // Delete slug relation first
         await slugManager.deleteSlug('category', id, t);
@@ -386,7 +404,7 @@ module.exports.deleteCategory = async (req, res, next) => {
  */
 module.exports.bulkDeleteCategories = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedCategories = [];
         const notDeletedCategories = [];
@@ -425,6 +443,23 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                     await t.rollback();
                     notDeletedCategories.push({ id, name: category.name, reason: `Category has ${childrenCount} active child categor${childrenCount > 1 ? 'ies' : 'y'}` });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldUrl = `/product-category/${category.slug}`;
+                    await Redirect.create({
+                        sources: redirect_url.trim(),
+                        url_to: oldUrl,
+                        entity_type: 'category',
+                        slug: category.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug relation first
