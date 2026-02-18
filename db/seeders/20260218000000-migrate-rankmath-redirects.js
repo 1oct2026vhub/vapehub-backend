@@ -154,7 +154,6 @@ module.exports = {
       const categorySlugMap = new Map();
       const categories = await Category.findAll({ 
         attributes: ['id', 'slug'],
-        where: { deletedAt: null },
         transaction 
       });
       categories.forEach(cat => {
@@ -165,7 +164,6 @@ module.exports = {
       const brandSlugMap = new Map();
       const brands = await Brand.findAll({ 
         attributes: ['id', 'slug'],
-        where: { deletedAt: null },
         transaction 
       });
       brands.forEach(brand => {
@@ -176,7 +174,6 @@ module.exports = {
       const blogSlugMap = new Map();
       const blogs = await Blog.findAll({ 
         attributes: ['id', 'slug'],
-        where: { deletedAt: null },
         transaction 
       });
       blogs.forEach(blog => {
