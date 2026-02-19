@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, ProductLinkedProduct, SeoMeta } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, ProductLinkedProduct, SeoMeta, Redirect } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -1889,9 +1889,21 @@ module.exports.deleteProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
-        // Set redirect URL before soft delete (for old product URL to redirect)
+        // Create redirect record if redirect_url is provided (sources = new path, url_to = old path)
         if (redirect_url != null && redirect_url !== '') {
-            await product.update({ redirect_url: redirect_url.trim() }, { transaction });
+            const oldUrl = `/${product.slug}`;
+            await Redirect.create({
+                sources: redirect_url.trim(),
+                url_to: oldUrl,
+                entity_type: 'product',
+                slug: product.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction });
         }
 
         // Delete slug relation first
@@ -1922,7 +1934,7 @@ module.exports.deleteProduct = async (req, res, next) => {
  */
 module.exports.bulkDeleteProducts = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedProducts = [];
         const notDeletedProducts = [];
@@ -1941,6 +1953,23 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
                         reason: 'Product not found' 
                     });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldUrl = `/${product.slug}`;
+                    await Redirect.create({
+                        sources: redirect_url.trim(),
+                        url_to: oldUrl,
+                        entity_type: 'product',
+                        slug: product.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug relation first
