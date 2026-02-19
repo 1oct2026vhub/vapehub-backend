@@ -280,33 +280,43 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         // Update SEO noIndex based on category status
         await seoService.updateBlogCategoryNoIndex(id, status);
 
-        // If entity is deleted and redirect_url provided, create or update redirect record
-        // sources = old path (for matching incoming requests); url_to = redirect_url from request
-        if (category.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldPath = `/blogs/category/${category.slug}`;
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'blog_category', slug: category.slug },
-                transaction: t
-            });
-            if (redirect) {
-                await redirect.update({ url_to: redirect_url.trim() }, { transaction: t });
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        const categoryIsDeleted = category.deletedAt != null || category.deleted_at != null;
+        if (categoryIsDeleted) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/blogs/category/${category.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'blog_category', slug: category.slug },
+                    paranoid: false,
+                    transaction: t
+                });
+                if (redirect) {
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'blog_category',
+                        slug: category.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction: t });
+                }
             } else {
-                await Redirect.create({
-                    sources: oldPath,
-                    url_to: redirect_url.trim(),
-                    entity_type: 'blog_category',
-                    slug: category.slug,
-                    header_code: 301,
-                    status: 'active',
-                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
-                }, { transaction: t });
+                await Redirect.destroy({
+                    where: { entity_type: 'blog_category', slug: category.slug, deletedAt: null },
+                    transaction: t
+                });
             }
         }
 
         await t.commit();
 
         let responseData = category;
-        if (category.deletedAt) {
+        const categoryIsDeletedForResponse = category.deletedAt != null || category.deleted_at != null;
+        if (categoryIsDeletedForResponse) {
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'blog_category', slug: category.slug, status: 'active' },
                 attributes: ['sources', 'url_to', 'header_code', 'status']
