@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu, Redirect } = require("../../../../models");
-const { Op, Sequelize } = require("sequelize");
+const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
 const SlugManager = require("../../../../utils/slugManager");
@@ -583,17 +583,14 @@ module.exports.restoreCategory = async (req, res, next) => {
         await category.restore({ transaction: t });
 
         // Remove redirect records associated with this category
-        await Redirect.update(
-            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-            {
-                where: {
-                    slug: category.slug,
-                    entity_type: 'category',
-                    deletedAt: null
-                },
-                transaction: t
-            }
-        );
+        await Redirect.destroy({
+            where: {
+                slug: category.slug,
+                entity_type: 'category',
+                deletedAt: null
+            },
+            transaction: t
+        });
 
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
@@ -656,17 +653,14 @@ module.exports.bulkRestoreCategories = async (req, res, next) => {
                 await category.restore({ transaction: t });
 
                 // Remove redirect records associated with this category
-                await Redirect.update(
-                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-                    {
-                        where: {
-                            slug: category.slug,
-                            entity_type: 'category',
-                            deletedAt: null
-                        },
-                        transaction: t
-                    }
-                );
+                await Redirect.destroy({
+                    where: {
+                        slug: category.slug,
+                        entity_type: 'category',
+                        deletedAt: null
+                    },
+                    transaction: t
+                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);

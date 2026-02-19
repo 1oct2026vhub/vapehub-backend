@@ -402,6 +402,16 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
         // Restore the category
         await category.restore({ transaction: t });
 
+        // Remove redirect records associated with this blog category
+        await Redirect.destroy({
+            where: {
+                slug: category.slug,
+                entity_type: 'blog_category',
+                deletedAt: null
+            },
+            transaction: t
+        });
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
 
@@ -541,6 +551,16 @@ module.exports.bulkRestoreBlogCategories = async (req, res, next) => {
 
                 // Restore the category
                 await category.restore({ transaction: t });
+
+                // Remove redirect records associated with this blog category
+                await Redirect.destroy({
+                    where: {
+                        slug: category.slug,
+                        entity_type: 'blog_category',
+                        deletedAt: null
+                    },
+                    transaction: t
+                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
