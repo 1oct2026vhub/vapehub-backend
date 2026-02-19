@@ -711,11 +711,30 @@ module.exports.getProductById = async (req, res, next) => {
         }
 
         // Add puff count to the product response
-        const productResponse = {
+        let productResponse = {
             ...productData,
             puff_count: puffCount
         };
-        
+
+        // When product is deleted, attach redirect details from Redirect table if any
+        if (product.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'product', slug: product.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                productResponse = {
+                    ...productResponse,
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+
         // Return success response with the retrieved product data
         return successResponse(res, productResponse, "Product retrieved successfully");
         
