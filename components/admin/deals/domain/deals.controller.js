@@ -455,26 +455,33 @@ module.exports.updateDeal = async (req, res, next) => {
             }
         }
 
-        // If entity is deleted and redirect_url provided, create or update redirect record
-        // sources = old path (for matching incoming requests); url_to = redirect_url from request
-        if (deal.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldPath = `/product-tag/${deal.slug}`;
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'deal', slug: deal.slug },
-                transaction
-            });
-            if (redirect) {
-                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
+        // If entity is deleted: create/update redirect when redirect_url provided; destroy redirect when empty
+        if (deal.deletedAt) {
+            if (redirect_url != null && redirect_url !== '') {
+                const oldPath = `/product-tag/${deal.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'deal', slug: deal.slug },
+                    transaction,
+                    paranoid: false
+                });
+                if (redirect) {
+                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'deal',
+                        slug: deal.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction });
+                }
             } else {
-                await Redirect.create({
-                    sources: oldPath,
-                    url_to: redirect_url.trim(),
-                    entity_type: 'deal',
-                    slug: deal.slug,
-                    header_code: 301,
-                    status: 'active',
-                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
-                }, { transaction });
+                await Redirect.destroy({
+                    where: { entity_type: 'deal', slug: deal.slug },
+                    transaction
+                });
             }
         }
 
