@@ -170,23 +170,21 @@ module.exports.getBlogById = async (req, res) => {
             blogData.published_at = null;
         }
 
-        // If blog is deleted, add redirect details if available
-        if (blog.deletedAt) {
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'blog', slug: blog.slug, status: 'active' },
-                attributes: ['sources', 'url_to', 'header_code', 'status']
-            });
-            if (redirect) {
-                blogData = {
-                    ...blogData,
-                    redirect: {
-                        redirect_url: redirect.url_to,
-                        old_path: redirect.sources,
-                        header_code: redirect.header_code,
-                        status: redirect.status
-                    }
-                };
-            }
+        // Include redirect details whenever an active redirect exists for this blog (by slug)
+        const redirect = await Redirect.findOne({
+            where: { entity_type: 'blog', slug: blog.slug, status: 'active' },
+            attributes: ['sources', 'url_to', 'header_code', 'status']
+        });
+        if (redirect) {
+            blogData = {
+                ...blogData,
+                redirect: {
+                    redirect_url: redirect.url_to,
+                    old_path: redirect.sources,
+                    header_code: redirect.header_code,
+                    status: redirect.status
+                }
+            };
         }
 
         successResponse(res, blogData);

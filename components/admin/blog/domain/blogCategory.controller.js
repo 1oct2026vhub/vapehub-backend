@@ -275,21 +275,22 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         if (slug && category.slug !== slug) {
             await seoService.updateSeoSlug('blog_category', id, slug);
         }
+        const slugForRedirect = category.slug;
         await category.update(updateData, { transaction: t });
 
         // Update SEO noIndex based on category status
         await seoService.updateBlogCategoryNoIndex(id, status);
 
-        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        // If entity is deleted: create/update redirect when redirect_url has value, or remove when empty (find with paranoid: false to restore soft-deleted)
         const categoryIsDeleted = category.deletedAt != null || category.deleted_at != null;
         if (categoryIsDeleted) {
-            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            const trimmedUrl = redirect_url != null && redirect_url !== '' ? String(redirect_url).trim() : '';
             if (trimmedUrl) {
-                const oldPath = `/blogs/category/${category.slug}`;
+                const oldPath = `/blogs/category/${slugForRedirect}`;
                 const redirect = await Redirect.findOne({
-                    where: { entity_type: 'blog_category', slug: category.slug },
-                    paranoid: false,
-                    transaction: t
+                    where: { entity_type: 'blog_category', slug: slugForRedirect },
+                    transaction: t,
+                    paranoid: false
                 });
                 if (redirect) {
                     await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
@@ -298,7 +299,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
                         sources: oldPath,
                         url_to: trimmedUrl,
                         entity_type: 'blog_category',
-                        slug: category.slug,
+                        slug: slugForRedirect,
                         header_code: 301,
                         status: 'active',
                         meta_data: { source: 'put_api', created_by: req.user?.id || null }
@@ -306,7 +307,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
                 }
             } else {
                 await Redirect.destroy({
-                    where: { entity_type: 'blog_category', slug: category.slug, deletedAt: null },
+                    where: { entity_type: 'blog_category', slug: slugForRedirect },
                     transaction: t
                 });
             }
@@ -315,10 +316,9 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         await t.commit();
 
         let responseData = category;
-        const categoryIsDeletedForResponse = category.deletedAt != null || category.deleted_at != null;
-        if (categoryIsDeletedForResponse) {
+        if (categoryIsDeleted) {
             const redirect = await Redirect.findOne({
-                where: { entity_type: 'blog_category', slug: category.slug, status: 'active' },
+                where: { entity_type: 'blog_category', slug: slugForRedirect, status: 'active' },
                 attributes: ['sources', 'url_to', 'header_code', 'status']
             });
             if (redirect) {
@@ -356,21 +356,30 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
             return errorResponse(res, { message: "Category not found" }, "Not found", 404);
         }
 
-        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+        // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
         if (redirect_url != null && redirect_url !== '') {
             const oldPath = `/blogs/category/${category.slug}`;
-            await Redirect.create({
-                sources: oldPath,
-                url_to: redirect_url.trim(),
-                entity_type: 'blog_category',
-                slug: category.slug,
-                header_code: 301,
-                status: 'active',
-                meta_data: {
-                    source: 'delete_api',
-                    created_by: req.user?.id || null
-                }
-            }, { transaction: t });
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog_category', slug: category.slug },
+                transaction: t,
+                paranoid: false
+            });
+            if (redirect) {
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'blog_category',
+                    slug: category.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: {
+                        source: 'delete_api',
+                        created_by: req.user?.id || null
+                    }
+                }, { transaction: t });
+            }
         }
 
         // Delete slug relation first
@@ -412,13 +421,9 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
         // Restore the category
         await category.restore({ transaction: t });
 
-        // Remove redirect records associated with this blog category
+        // Remove redirect for this category so old URL no longer redirects
         await Redirect.destroy({
-            where: {
-                slug: category.slug,
-                entity_type: 'blog_category',
-                deletedAt: null
-            },
+            where: { entity_type: 'blog_category', slug: category.slug },
             transaction: t
         });
 
@@ -455,21 +460,30 @@ module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
                     continue;
                 }
 
-                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
                 if (redirect_url != null && redirect_url !== '') {
                     const oldPath = `/blogs/category/${category.slug}`;
-                    await Redirect.create({
-                        sources: oldPath,
-                        url_to: redirect_url.trim(),
-                        entity_type: 'blog_category',
-                        slug: category.slug,
-                        header_code: 301,
-                        status: 'active',
-                        meta_data: {
-                            source: 'bulk_delete_api',
-                            created_by: req.user?.id || null
-                        }
-                    }, { transaction: t });
+                    const redirect = await Redirect.findOne({
+                        where: { entity_type: 'blog_category', slug: category.slug },
+                        transaction: t,
+                        paranoid: false
+                    });
+                    if (redirect) {
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                    } else {
+                        await Redirect.create({
+                            sources: oldPath,
+                            url_to: redirect_url.trim(),
+                            entity_type: 'blog_category',
+                            slug: category.slug,
+                            header_code: 301,
+                            status: 'active',
+                            meta_data: {
+                                source: 'bulk_delete_api',
+                                created_by: req.user?.id || null
+                            }
+                        }, { transaction: t });
+                    }
                 }
 
                 // Delete slug relation first
@@ -561,16 +575,6 @@ module.exports.bulkRestoreBlogCategories = async (req, res, next) => {
 
                 // Restore the category
                 await category.restore({ transaction: t });
-
-                // Remove redirect records associated with this blog category
-                await Redirect.destroy({
-                    where: {
-                        slug: category.slug,
-                        entity_type: 'blog_category',
-                        deletedAt: null
-                    },
-                    transaction: t
-                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
