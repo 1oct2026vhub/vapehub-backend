@@ -391,26 +391,36 @@ module.exports.updateBlog = async (req, res) => {
         // Update SEO noIndex based on blog post status and publication date
         await seoService.updateBlogPostNoIndex(id, status, published_at);
 
-        // If entity is deleted and redirect_url provided, create or update redirect record
-        // sources = old path (for matching incoming requests); url_to = redirect_url from request
-        if (blog.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldPath = `/blog/${blog.slug}`;
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'blog', slug: blog.slug },
-                transaction
-            });
-            if (redirect) {
-                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        // Blog model uses column deleted_at; check both property names
+        const blogIsDeleted = blog.deletedAt != null || blog.deleted_at != null;
+        if (blogIsDeleted) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/blog/${blog.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'blog', slug: blog.slug },
+                    paranoid: false,
+                    transaction
+                });
+                if (redirect) {
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'blog',
+                        slug: blog.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction });
+                }
             } else {
-                await Redirect.create({
-                    sources: oldPath,
-                    url_to: redirect_url.trim(),
-                    entity_type: 'blog',
-                    slug: blog.slug,
-                    header_code: 301,
-                    status: 'active',
-                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
-                }, { transaction });
+                await Redirect.destroy({
+                    where: { entity_type: 'blog', slug: blog.slug, deletedAt: null },
+                    transaction
+                });
             }
         }
 
@@ -428,7 +438,8 @@ module.exports.updateBlog = async (req, res) => {
         await transaction.commit();
 
         let responseData = updatedBlog;
-        if (updatedBlog && updatedBlog.deletedAt) {
+        const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
+        if (updatedBlogIsDeleted) {
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'blog', slug: updatedBlog.slug, status: 'active' },
                 attributes: ['sources', 'url_to', 'header_code', 'status']
