@@ -30,13 +30,25 @@ module.exports.listAllBlogs = async (req, res) => {
             whereCondition.status = status;
         }
 
-        // Handle deleted filter
+        // Handle deleted filter - use literal SQL to avoid Sequelize column mapping issues
         let paranoid = true; // Default: exclude soft-deleted records
         if (deleted === 'true') {
             paranoid = false; // Include soft-deleted records
-            whereCondition.deletedAt = { [Op.ne]: null }; // Only deleted records
+            // Add condition using literal SQL to reference the actual database column
+            const deletedCondition = Sequelize.literal('`Blog`.`deleted_at` IS NOT NULL');
+            // Merge with existing conditions
+            const existingConditions = Object.keys(whereCondition).length > 0 ? [whereCondition] : [];
+            whereCondition = {
+                [Op.and]: [...existingConditions, deletedCondition]
+            };
         } else if (deleted === 'false') {
-            whereCondition.deletedAt = null; // Only non-deleted records
+            paranoid = false; // Need to include soft-deleted to filter them out
+            const deletedCondition = Sequelize.literal('`Blog`.`deleted_at` IS NULL');
+            // Merge with existing conditions
+            const existingConditions = Object.keys(whereCondition).length > 0 ? [whereCondition] : [];
+            whereCondition = {
+                [Op.and]: [...existingConditions, deletedCondition]
+            };
         }
 
         // Parse category_id and tag_id for filtering blogs
