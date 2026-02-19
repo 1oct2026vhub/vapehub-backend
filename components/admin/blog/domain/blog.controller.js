@@ -516,7 +516,9 @@ module.exports.restoreBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        if (!blog.deletedAt) {
+        // Blog model maps to column deleted_at; check both possible property names
+        const isDeleted = blog.deletedAt != null || blog.deleted_at != null;
+        if (!isDeleted) {
             throw new Error('Blog post is not deleted');
         }
 
@@ -667,8 +669,9 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                     continue;
                 }
 
-                // Check if blog is already active (not deleted)
-                if (!blog.deletedAt) {
+                // Check if blog is already active (not deleted). Blog model uses column deleted_at.
+                const isDeleted = blog.deletedAt != null || blog.deleted_at != null;
+                if (!isDeleted) {
                     await t.rollback();
                     notRestoredBlogs.push({
                         id,
