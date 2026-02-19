@@ -1,7 +1,7 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant, Redirect } = require("../../../../models");
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
@@ -820,6 +820,19 @@ module.exports.restoreDeal = async (req, res, next) => {
         }
 
         await deal.restore();
+
+        // Remove redirect records associated with this deal
+        await Redirect.update(
+            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+            {
+                where: {
+                    slug: deal.slug,
+                    entity_type: 'deal',
+                    deletedAt: null
+                }
+            }
+        );
+
         successResponse(res, deal, 'Deal restored successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -913,6 +926,19 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
                     continue;
                 }
                 await deal.restore();
+
+                // Remove redirect records associated with this deal
+                await Redirect.update(
+                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+                    {
+                        where: {
+                            slug: deal.slug,
+                            entity_type: 'deal',
+                            deletedAt: null
+                        }
+                    }
+                );
+
                 restoredDeals.push({ id: deal.id, name: deal.name });
             } catch (error) {
                 notRestoredDeals.push({ id, reason: error.message || 'Failed to restore deal' });

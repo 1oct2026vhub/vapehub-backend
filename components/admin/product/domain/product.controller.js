@@ -2071,6 +2071,19 @@ module.exports.restoreProduct = async (req, res, next) => {
         await product.restore({ transaction });
         await product.update({ redirect_url: null }, { transaction });
 
+        // Remove redirect records associated with this product
+        await Redirect.update(
+            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+            {
+                where: {
+                    slug: product.slug,
+                    entity_type: 'product',
+                    deletedAt: null
+                },
+                transaction
+            }
+        );
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);
 
@@ -2132,6 +2145,19 @@ module.exports.bulkRestoreProducts = async (req, res, next) => {
 
                 // Restore the product
                 await product.restore({ transaction: t });
+
+                // Remove redirect records associated with this product
+                await Redirect.update(
+                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+                    {
+                        where: {
+                            slug: product.slug,
+                            entity_type: 'product',
+                            deletedAt: null
+                        },
+                        transaction: t
+                    }
+                );
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, t);

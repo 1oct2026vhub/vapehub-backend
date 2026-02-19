@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu, Redirect } = require("../../../../models");
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
@@ -499,6 +499,19 @@ module.exports.restoreBrand = async (req, res, next) => {
         // Restore the brand
         await brand.restore({ transaction: t });
 
+        // Remove redirect records associated with this brand
+        await Redirect.update(
+            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+            {
+                where: {
+                    slug: brand.slug,
+                    entity_type: 'brand',
+                    deletedAt: null
+                },
+                transaction: t
+            }
+        );
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
         
@@ -557,6 +570,19 @@ module.exports.bulkRestoreBrands = async (req, res, next) => {
 
                 // Restore the brand
                 await brand.restore({ transaction: t });
+
+                // Remove redirect records associated with this brand
+                await Redirect.update(
+                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+                    {
+                        where: {
+                            slug: brand.slug,
+                            entity_type: 'brand',
+                            deletedAt: null
+                        },
+                        transaction: t
+                    }
+                );
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
