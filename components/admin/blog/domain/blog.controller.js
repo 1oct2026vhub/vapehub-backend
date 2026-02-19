@@ -291,10 +291,10 @@ module.exports.updateBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { title, content, slug, categories, tags, published_at, alt_text } = req.body;
+        const { title, content, slug, categories, tags, published_at, alt_text, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const status = req.body.status;
-        const blog = await Blog.findByPk(id, { transaction });
+        const blog = await Blog.findByPk(id, { transaction, paranoid: false });
         if (!blog) {
             await transaction.rollback();
             return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
@@ -353,9 +353,31 @@ module.exports.updateBlog = async (req, res) => {
         // Update SEO noIndex based on blog post status and publication date
         await seoService.updateBlogPostNoIndex(id, status, published_at);
 
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        if (blog.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/blog/${blog.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog', slug: blog.slug },
+                transaction
+            });
+            if (redirect) {
+                await redirect.update({ sources: redirect_url.trim() }, { transaction });
+            } else {
+                await Redirect.create({
+                    sources: redirect_url.trim(),
+                    url_to: oldUrl,
+                    entity_type: 'blog',
+                    slug: blog.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction });
+            }
+        }
 
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {
+            paranoid: false,
             include: [
                 { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
@@ -365,7 +387,26 @@ module.exports.updateBlog = async (req, res) => {
         });
 
         await transaction.commit();
-        return successResponse(res, updatedBlog, "Blog post updated successfully");
+
+        let responseData = updatedBlog;
+        if (updatedBlog && updatedBlog.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog', slug: updatedBlog.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...updatedBlog.toJSON(),
+                    redirect: {
+                        redirect_url: redirect.sources,
+                        old_path: redirect.url_to,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Blog post updated successfully");
     } catch (error) {
         console.log("error", error);
         await transaction.rollback();

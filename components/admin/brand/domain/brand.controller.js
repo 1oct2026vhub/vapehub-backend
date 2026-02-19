@@ -174,12 +174,12 @@ module.exports.updateBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        let { name, slug, description } = req.body;
+        let { name, slug, description, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
-        // Find brand
-        const brand = await Brand.findByPk(id);
+        // Find brand (include soft-deleted so we can update and set redirect when deleted)
+        const brand = await Brand.findByPk(id, { transaction: t, paranoid: false });
         if (!brand) {
             await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
@@ -247,9 +247,49 @@ module.exports.updateBrand = async (req, res, next) => {
         // Update SEO noIndex based on brand status
         await seoService.updateBrandNoIndex(id);
 
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        if (brand.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/brand/${brand.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug },
+                transaction: t
+            });
+            if (redirect) {
+                await redirect.update({ sources: redirect_url.trim() }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: redirect_url.trim(),
+                    url_to: oldUrl,
+                    entity_type: 'brand',
+                    slug: brand.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction: t });
+            }
+        }
 
         await t.commit();
-        return successResponse(res, brand, "Brand updated successfully");
+
+        let responseData = brand;
+        if (brand.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(brand.toJSON ? brand.toJSON() : brand),
+                    redirect: {
+                        redirect_url: redirect.sources,
+                        old_path: redirect.url_to,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Brand updated successfully");
     } catch (error) {
         console.log("error", error);
         await t.rollback();

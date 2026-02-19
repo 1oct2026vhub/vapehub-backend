@@ -198,9 +198,11 @@ module.exports.updateDeal = async (req, res, next) => {
         const { id } = req.params;
         const dealData = req.body;
         const product_ids = dealData.product_ids || [];
+        const redirect_url = dealData.redirect_url;
         delete dealData.product_ids;
+        delete dealData.redirect_url;
 
-        const deal = await Deal.findByPk(id, { transaction });
+        const deal = await Deal.findByPk(id, { transaction, paranoid: false });
         if (!deal) {
             await transaction.rollback();
             const error = new Error('Deal not found');
@@ -453,8 +455,31 @@ module.exports.updateDeal = async (req, res, next) => {
             }
         }
 
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        if (deal.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/product-tag/${deal.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'deal', slug: deal.slug },
+                transaction
+            });
+            if (redirect) {
+                await redirect.update({ sources: redirect_url.trim() }, { transaction });
+            } else {
+                await Redirect.create({
+                    sources: redirect_url.trim(),
+                    url_to: oldUrl,
+                    entity_type: 'deal',
+                    slug: deal.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction });
+            }
+        }
+
         // Fetch the updated deal with associations
         const updatedDeal = await Deal.findByPk(id, {
+            paranoid: false,
             include: [
                 {
                     model: Product,
@@ -467,7 +492,26 @@ module.exports.updateDeal = async (req, res, next) => {
         });
 
         await transaction.commit();
-        successResponse(res, updatedDeal, 'Deal updated successfully');
+
+        let responseData = updatedDeal;
+        if (updatedDeal && updatedDeal.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'deal', slug: updatedDeal.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(updatedDeal.toJSON ? updatedDeal.toJSON() : updatedDeal),
+                    redirect: {
+                        redirect_url: redirect.sources,
+                        old_path: redirect.url_to,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        successResponse(res, responseData, 'Deal updated successfully');
     } catch (error) {
         console.log("error", error);
         if (transaction && !transaction.finished) {
@@ -649,6 +693,7 @@ module.exports.getDeal = async (req, res, next) => {
         const { id } = req.params;
 
         const deal = await Deal.findByPk(id, {
+            paranoid: false,
             include: [
                 {
                     model: Product,
@@ -664,7 +709,22 @@ module.exports.getDeal = async (req, res, next) => {
             throw error;
         }
 
-        successResponse(res, deal, 'Success');
+        const payload = deal.toJSON ? deal.toJSON() : deal;
+        if (deal.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'deal', slug: deal.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                payload.redirect = {
+                    redirect_url: redirect.sources,
+                    old_path: redirect.url_to,
+                    header_code: redirect.header_code,
+                    status: redirect.status
+                };
+            }
+        }
+        successResponse(res, payload, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

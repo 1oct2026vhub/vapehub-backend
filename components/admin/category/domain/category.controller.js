@@ -233,12 +233,12 @@ module.exports.updateCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, parent_id: rawParentId, alt_text } = req.body;
+        const { name, slug, description, parent_id: rawParentId, alt_text, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
-        // Find category
-        const category = await Category.findByPk(id);
+        // Find category (include soft-deleted so we can update and set redirect when deleted)
+        const category = await Category.findByPk(id, { transaction: t, paranoid: false });
         if (!category) {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
@@ -318,8 +318,50 @@ module.exports.updateCategory = async (req, res, next) => {
         }
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
+
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        if (category.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldUrl = `/product-category/${category.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug },
+                transaction: t
+            });
+            if (redirect) {
+                await redirect.update({ sources: redirect_url.trim() }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: redirect_url.trim(),
+                    url_to: oldUrl,
+                    entity_type: 'category',
+                    slug: category.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction: t });
+            }
+        }
+
         await t.commit();
-        return successResponse(res, category, "Category updated successfully");
+
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.sources,
+                        old_path: redirect.url_to,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Category updated successfully");
     } catch (error) {
         await t.rollback();
         return errorResponse(res, error, error.message);

@@ -100,19 +100,60 @@ module.exports = (sequelize, DataTypes) => {
     sources: {
       type: DataTypes.STRING(500),
       allowNull: false,
-      comment: 'Old URL pattern that should redirect (e.g., /ivg-pro-6000-prefilled-pods/)',
+      comment: 'Source URL/path that should redirect (e.g., /old-path or https://...)',
       validate: {
         notEmpty: true,
-        len: [1, 500]
+        len: [1, 500],
+        isValidUrlOrPath(value) {
+          if (!value || typeof value !== 'string') return;
+          const v = value.trim();
+          if (!v) return;
+          if (/^https?:\/\//i.test(v)) {
+            try {
+              new URL(v);
+            } catch (e) {
+              throw new Error('sources must be a valid absolute URL (e.g. https://example.com/path)');
+            }
+            return;
+          }
+          if (!v.startsWith('/')) {
+            throw new Error('sources must be a valid URL (https://...) or path starting with /');
+          }
+          if (/\s/.test(v) || /[<>"|?*]/.test(v)) {
+            throw new Error('sources path contains invalid characters');
+          }
+        }
       }
     },
     url_to: {
       type: DataTypes.STRING(500),
       allowNull: false,
-      comment: 'New destination URL/path (e.g., /ivg-pro-12-prefilled-pods/)',
+      comment: 'New destination URL/path (e.g., /ivg-pro-12-prefilled-pods/ or https://...)',
       validate: {
         notEmpty: true,
-        len: [1, 500]
+        len: [1, 500],
+        isValidUrlOrPath(value) {
+          if (!value || typeof value !== 'string') return;
+          const v = value.trim();
+          if (!v) return;
+          // Absolute URL: must be valid http/https URL
+          if (/^https?:\/\//i.test(v)) {
+            try {
+              new URL(v);
+            } catch (e) {
+              throw new Error('url_to must be a valid absolute URL (e.g. https://example.com/path)');
+            }
+            return;
+          }
+          // Relative path: must start with / and contain valid path characters
+          if (!v.startsWith('/')) {
+            throw new Error('url_to must be a valid URL (https://...) or path starting with /');
+          }
+          // Disallow spaces, control chars, or obviously invalid path segments
+          if (/\s/.test(v) || /[<>"|?*]/.test(v)) {
+            throw new Error('url_to path contains invalid characters');
+          }
+        }
       }
     },
     header_code: {
