@@ -1855,6 +1855,29 @@ module.exports.updateProduct = async (req, res, next) => {
 
         const productStatus = updatedProduct.status;
 
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        // sources = old path (for matching incoming requests); url_to = redirect_url from request
+        if (updatedProduct.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldPath = `/${updatedProduct.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'product', slug: updatedProduct.slug },
+                transaction
+            });
+            if (redirect) {
+                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'product',
+                    slug: updatedProduct.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction });
+            }
+        }
+
         // Commit transaction FIRST to avoid conflicts
         await transaction.commit();
 
@@ -1879,7 +1902,27 @@ module.exports.updateProduct = async (req, res, next) => {
             });
         }
 
-        return successResponse(res, updatedProduct, "Product updated successfully");
+        // Include redirect information in response if product is deleted
+        let responseData = updatedProduct;
+        if (updatedProduct.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'product', slug: updatedProduct.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+
+        return successResponse(res, responseData, "Product updated successfully");
     } catch (error) {
         await transaction.rollback();
         console.log(error);
