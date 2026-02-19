@@ -1889,12 +1889,12 @@ module.exports.deleteProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
-        // Create redirect record if redirect_url is provided (sources = new path, url_to = old path)
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
         if (redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/${product.slug}`;
+            const oldPath = `/${product.slug}`;
             await Redirect.create({
-                sources: redirect_url.trim(),
-                url_to: oldUrl,
+                sources: oldPath,
+                url_to: redirect_url.trim(),
                 entity_type: 'product',
                 slug: product.slug,
                 header_code: 301,
@@ -1955,12 +1955,12 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
                     continue;
                 }
 
-                // Create redirect record if redirect_url is provided
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
                 if (redirect_url != null && redirect_url !== '') {
-                    const oldUrl = `/${product.slug}`;
+                    const oldPath = `/${product.slug}`;
                     await Redirect.create({
-                        sources: redirect_url.trim(),
-                        url_to: oldUrl,
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
                         entity_type: 'product',
                         slug: product.slug,
                         header_code: 301,

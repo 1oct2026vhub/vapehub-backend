@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1264,47 +1264,6 @@ module.exports.getSlugRelations = async (req, res, next) => {
         // Parse slugs from query string
         const slugArray = slugs.split(',').map(slug => slug.trim());
 
-        // Helper function to generate path variations for redirect lookup
-        const generatePathVariations = (slug) => {
-            const variations = new Set();
-            let s = String(slug).trim();
-            
-            // Base variations: with/without leading slash, with/without trailing slash
-            variations.add(s);
-            variations.add('/' + s);
-            variations.add(s + '/');
-            variations.add('/' + s + '/');
-            
-            // Remove /amp/ suffix if present
-            s = s.replace(/\/amp\/?$/, '');
-            variations.add(s);
-            variations.add('/' + s);
-            variations.add(s + '/');
-            variations.add('/' + s + '/');
-            
-            // If slug doesn't start with a prefix, try adding common prefixes
-            const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
-            for (const prefix of prefixes) {
-                if (!s.includes('/')) {
-                    variations.add(prefix + '/' + s);
-                    variations.add('/' + prefix + '/' + s);
-                    variations.add(prefix + '/' + s + '/');
-                    variations.add('/' + prefix + '/' + s + '/');
-                }
-            }
-            
-            // Normalize: ensure leading slash, remove trailing slash (except root)
-            const normalized = [];
-            variations.forEach(v => {
-                let n = v.trim();
-                if (!n.startsWith('/')) n = '/' + n;
-                n = n.replace(/\/$/, '') || '/';
-                normalized.push(n);
-            });
-            
-            return [...new Set(normalized)]; // Remove duplicates
-        };
-
         // Query slug relations
         const slugRelations = await SlugRelation.findAll({
             where: {
@@ -1323,93 +1282,11 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const unmatchedSlugs = slugArray.filter(s => !matchedSlugSet.has(s));
         let redirectMap = new Map();
         if (unmatchedSlugs.length > 0) {
-            // 1) Soft-deleted products with redirect_url
             const redirectRows = await Product.sequelize.query(
                 `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
-            redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
-
-            // 2) Redirect table: match by sources (handle prefixes, trailing slashes, /amp/, etc.)
-            // Map URL prefixes to entity types for smarter matching
-            const getEntityTypeFromPrefix = (url) => {
-                if (url.includes('/product-tag/')) return 'deal';
-                if (url.includes('/product-category/')) return 'category';
-                if (url.includes('/brand/')) return 'brand';
-                if (url.includes('/blog/')) return 'blog';
-                return null;
-            };
-            
-            // Build map: path variation -> {original slug, expected entity type}
-            const pathVariationsBySlug = new Map();
-            unmatchedSlugs.forEach(slug => {
-                const variations = generatePathVariations(slug);
-                variations.forEach(path => {
-                    if (!pathVariationsBySlug.has(path)) {
-                        const expectedEntityType = getEntityTypeFromPrefix(path);
-                        pathVariationsBySlug.set(path, { slug, expectedEntityType });
-                    }
-                });
-            });
-            
-            const candidatePaths = [...pathVariationsBySlug.keys()];
-            if (candidatePaths.length > 0) {
-                const tableRedirects = await Redirect.findAll({
-                    where: {
-                        sources: { [Op.in]: candidatePaths },
-                        status: 'active'
-                    },
-                    attributes: ['sources', 'url_to', 'entity_type']
-                });
-                
-                // Prioritize redirects that match expected entity type based on prefix
-                tableRedirects.forEach(r => {
-                    const pathInfo = pathVariationsBySlug.get(r.sources);
-                    if (pathInfo == null) return;
-                    
-                    const { slug: originalSlug, expectedEntityType } = pathInfo;
-                    
-                    // Skip if already in redirectMap
-                    if (redirectMap.has(originalSlug)) return;
-                    
-                    // If we have an expected entity type, verify it matches (or allow if no expectation)
-                    if (expectedEntityType == null || r.entity_type === expectedEntityType) {
-                        redirectMap.set(originalSlug, r.url_to);
-                    }
-                });
-            }
-        }
-        
-        // Check redirects for matched slugs and build redirect map for them
-        const matchedSlugRedirectMap = new Map();
-        if (slugRelations.length > 0) {
-            const matchedSlugVariations = new Map();
-            slugRelations.forEach(relation => {
-                const variations = generatePathVariations(relation.slug);
-                variations.forEach(path => {
-                    if (!matchedSlugVariations.has(path)) {
-                        matchedSlugVariations.set(path, relation.slug);
-                    }
-                });
-            });
-            
-            const matchedCandidatePaths = [...matchedSlugVariations.keys()];
-            if (matchedCandidatePaths.length > 0) {
-                const matchedRedirects = await Redirect.findAll({
-                    where: {
-                        sources: { [Op.in]: matchedCandidatePaths },
-                        status: 'active'
-                    },
-                    attributes: ['sources', 'url_to']
-                });
-                
-                matchedRedirects.forEach(r => {
-                    const slug = matchedSlugVariations.get(r.sources);
-                    if (slug && !matchedSlugRedirectMap.has(slug)) {
-                        matchedSlugRedirectMap.set(slug, r.url_to);
-                    }
-                });
-            }
+            redirectMap = new Map(redirectRows.map(r => [r.slug, r.redirect_url]));
         }
         // Handle no slug_relation matches: return redirect if soft-deleted product has redirect_url, else 404
         if (!slugRelations.length) {
@@ -1507,11 +1384,6 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 entity_id: slugRelations[0].entity_id,
                 seo: seoData
             };
-            
-            // Add redirect_url if slug has a redirect in redirect table
-            if (matchedSlugRedirectMap.has(slugRelations[0].slug)) {
-                response.redirect_url = matchedSlugRedirectMap.get(slugRelations[0].slug);
-            }
 
             // Add category description and name if entity is category (using pre-fetched category)
             if (slugRelations[0].entity_type === 'category') {
@@ -1589,11 +1461,6 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         entity_type: relation.entity_type,
                         entity_id: relation.entity_id
                     };
-                    
-                    // Add redirect_url if slug has a redirect in redirect table
-                    if (matchedSlugRedirectMap.has(relation.slug)) {
-                        item.redirect_url = matchedSlugRedirectMap.get(relation.slug);
-                    }
                     
                     // Add category description and name if entity is category
                     if (relation.entity_type === 'category') {
@@ -1749,11 +1616,6 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     entity_type: relation.entity_type,
                     entity_id: relation.entity_id
                 };
-                
-                // Add redirect_url if slug has a redirect in redirect table
-                if (matchedSlugRedirectMap.has(relation.slug)) {
-                    item.redirect_url = matchedSlugRedirectMap.get(relation.slug);
-                }
                 
                 // Add category description and name if entity is category
                 if (relation.entity_type === 'category') {

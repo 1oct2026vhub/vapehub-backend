@@ -456,18 +456,19 @@ module.exports.updateDeal = async (req, res, next) => {
         }
 
         // If entity is deleted and redirect_url provided, create or update redirect record
+        // sources = old path (for matching incoming requests); url_to = redirect_url from request
         if (deal.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/product-tag/${deal.slug}`;
+            const oldPath = `/product-tag/${deal.slug}`;
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'deal', slug: deal.slug },
                 transaction
             });
             if (redirect) {
-                await redirect.update({ sources: redirect_url.trim() }, { transaction });
+                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
             } else {
                 await Redirect.create({
-                    sources: redirect_url.trim(),
-                    url_to: oldUrl,
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
                     entity_type: 'deal',
                     slug: deal.slug,
                     header_code: 301,
@@ -503,8 +504,8 @@ module.exports.updateDeal = async (req, res, next) => {
                 responseData = {
                     ...(updatedDeal.toJSON ? updatedDeal.toJSON() : updatedDeal),
                     redirect: {
-                        redirect_url: redirect.sources,
-                        old_path: redirect.url_to,
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
                         header_code: redirect.header_code,
                         status: redirect.status
                     }
@@ -717,8 +718,8 @@ module.exports.getDeal = async (req, res, next) => {
             });
             if (redirect) {
                 payload.redirect = {
-                    redirect_url: redirect.sources,
-                    old_path: redirect.url_to,
+                    redirect_url: redirect.url_to,
+                    old_path: redirect.sources,
                     header_code: redirect.header_code,
                     status: redirect.status
                 };
@@ -770,12 +771,12 @@ module.exports.deleteDeal = async (req, res, next) => {
             throw error;
         }
 
-        // Create redirect record if redirect_url is provided
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
         if (redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/product-tag/${deal.slug}`;
+            const oldPath = `/product-tag/${deal.slug}`;
             await Redirect.create({
-                sources: redirect_url.trim(),
-                url_to: oldUrl,
+                sources: oldPath,
+                url_to: redirect_url.trim(),
                 entity_type: 'deal',
                 slug: deal.slug,
                 header_code: 301,
@@ -840,12 +841,12 @@ module.exports.bulkDeleteDeals = async (req, res, next) => {
         for (const deal of dealsToDelete) {
             const t = await Deal.sequelize.transaction();
             try {
-                // Create redirect record if redirect_url is provided
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
                 if (redirect_url != null && redirect_url !== '') {
-                    const oldUrl = `/product-tag/${deal.slug}`;
+                    const oldPath = `/product-tag/${deal.slug}`;
                     await Redirect.create({
-                        sources: redirect_url.trim(),
-                        url_to: oldUrl,
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
                         entity_type: 'deal',
                         slug: deal.slug,
                         header_code: 301,

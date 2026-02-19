@@ -354,18 +354,19 @@ module.exports.updateBlog = async (req, res) => {
         await seoService.updateBlogPostNoIndex(id, status, published_at);
 
         // If entity is deleted and redirect_url provided, create or update redirect record
+        // sources = old path (for matching incoming requests); url_to = redirect_url from request
         if (blog.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/blog/${blog.slug}`;
+            const oldPath = `/blog/${blog.slug}`;
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'blog', slug: blog.slug },
                 transaction
             });
             if (redirect) {
-                await redirect.update({ sources: redirect_url.trim() }, { transaction });
+                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
             } else {
                 await Redirect.create({
-                    sources: redirect_url.trim(),
-                    url_to: oldUrl,
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
                     entity_type: 'blog',
                     slug: blog.slug,
                     header_code: 301,
@@ -398,8 +399,8 @@ module.exports.updateBlog = async (req, res) => {
                 responseData = {
                     ...updatedBlog.toJSON(),
                     redirect: {
-                        redirect_url: redirect.sources,
-                        old_path: redirect.url_to,
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
                         header_code: redirect.header_code,
                         status: redirect.status
                     }
@@ -424,12 +425,12 @@ module.exports.deleteBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        // Create redirect record if redirect_url is provided
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
         if (redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/blog/${blog.slug}`;
+            const oldPath = `/blog/${blog.slug}`;
             await Redirect.create({
-                sources: redirect_url.trim(),
-                url_to: oldUrl,
+                sources: oldPath,
+                url_to: redirect_url.trim(),
                 entity_type: 'blog',
                 slug: blog.slug,
                 header_code: 301,
@@ -508,12 +509,12 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                     continue;
                 }
 
-                // Create redirect record if redirect_url is provided
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
                 if (redirect_url != null && redirect_url !== '') {
-                    const oldUrl = `/blog/${blog.slug}`;
+                    const oldPath = `/blog/${blog.slug}`;
                     await Redirect.create({
-                        sources: redirect_url.trim(),
-                        url_to: oldUrl,
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
                         entity_type: 'blog',
                         slug: blog.slug,
                         header_code: 301,

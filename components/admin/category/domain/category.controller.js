@@ -320,18 +320,19 @@ module.exports.updateCategory = async (req, res, next) => {
         await seoService.updateCategoryNoIndex(id);
 
         // If entity is deleted and redirect_url provided, create or update redirect record
+        // sources = old path (for matching incoming requests); url_to = redirect_url from request
         if (category.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/product-category/${category.slug}`;
+            const oldPath = `/product-category/${category.slug}`;
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'category', slug: category.slug },
                 transaction: t
             });
             if (redirect) {
-                await redirect.update({ sources: redirect_url.trim() }, { transaction: t });
+                await redirect.update({ url_to: redirect_url.trim() }, { transaction: t });
             } else {
                 await Redirect.create({
-                    sources: redirect_url.trim(),
-                    url_to: oldUrl,
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
                     entity_type: 'category',
                     slug: category.slug,
                     header_code: 301,
@@ -353,8 +354,8 @@ module.exports.updateCategory = async (req, res, next) => {
                 responseData = {
                     ...(category.toJSON ? category.toJSON() : category),
                     redirect: {
-                        redirect_url: redirect.sources,
-                        old_path: redirect.url_to,
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
                         header_code: redirect.header_code,
                         status: redirect.status
                     }
@@ -404,12 +405,12 @@ module.exports.deleteCategory = async (req, res, next) => {
             );
         }
 
-        // Create redirect record if redirect_url is provided
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
         if (redirect_url != null && redirect_url !== '') {
-            const oldUrl = `/product-category/${category.slug}`;
+            const oldPath = `/product-category/${category.slug}`;
             await Redirect.create({
-                sources: redirect_url.trim(),
-                url_to: oldUrl,
+                sources: oldPath,
+                url_to: redirect_url.trim(),
                 entity_type: 'category',
                 slug: category.slug,
                 header_code: 301,
@@ -487,12 +488,12 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                     continue;
                 }
 
-                // Create redirect record if redirect_url is provided
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
                 if (redirect_url != null && redirect_url !== '') {
-                    const oldUrl = `/product-category/${category.slug}`;
+                    const oldPath = `/product-category/${category.slug}`;
                     await Redirect.create({
-                        sources: redirect_url.trim(),
-                        url_to: oldUrl,
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
                         entity_type: 'category',
                         slug: category.slug,
                         header_code: 301,
