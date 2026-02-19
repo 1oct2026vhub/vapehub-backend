@@ -159,10 +159,6 @@ module.exports.getBlogById = async (req, res) => {
             ]
         });
 
-        if (!blog) {
-            throw new Error('Blog post not found');
-        }
-
         // Process blog to remove published_at for draft or archived status
         const blogData = blog.toJSON();
         if (blogData.status === 'draft' || blogData.status === 'archived') {

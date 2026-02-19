@@ -67,14 +67,12 @@ module.exports = {
         return String(path).trim().replace(/^\/+/, '').replace(/\/+$/, '');
       };
 
-      // Build new url_to path for deals only (required format for new app)
+      // Replace product-tag with product-deals in url_to for deals only
       // e.g. deal: /product-tag/slug (old) → /product-deals/slug (new)
       // Other entity types keep the same URL format as old database
-      const buildNewUrlToForDeal = (slug) => {
-        if (!slug) return null;
-        const s = String(slug).trim().replace(/^\/+|\/+$/g, '');
-        if (!s) return null;
-        return `/product-deals/${s}`;
+      const replaceProductTagInUrl = (url) => {
+        if (!url) return url;
+        return String(url).replace(/\/product-tag\//g, '/product-deals/');
       };
 
       // Extract patterns from PHP serialized string
@@ -294,10 +292,10 @@ module.exports = {
 
           // Build redirect record
           // sources: Save the original old database source pattern (the old used slug)
-          // url_to: For deals only, use new format (/product-deals/slug). Others keep old DB format.
+          // url_to: For deals only, normalize and replace product-tag with product-deals. Others save exact URL from old DB.
           const finalUrlTo = parsed.entityType === 'deal' 
-            ? (buildNewUrlToForDeal(finalSlug) || urlTo)
-            : urlTo;
+            ? replaceProductTagInUrl(urlTo)  // Normalized URL with product-tag replaced
+            : (oldRedirect.url_to || urlTo);  // Exact URL from old DB for non-deals
           
           // Safely prepare meta_data JSON - ensure strings are properly formatted
           // Note: bulkInsert requires JSON.stringify() for JSON columns (bypasses model layer)
