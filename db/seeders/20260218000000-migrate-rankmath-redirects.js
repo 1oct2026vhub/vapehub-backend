@@ -126,6 +126,14 @@ module.exports = {
         return { entityType, slug: slug || null };
       };
 
+      // For brand only: slug_relations has the brand slug (e.g. "geekvape"), not full path (e.g. "geekvape/geekvape-kits")
+      const getBrandSlugForLookup = (pathAfterBrand) => {
+        if (!pathAfterBrand) return null;
+        const s = String(pathAfterBrand).trim().replace(/\/+$/, '');
+        const first = s.split('/')[0];
+        return first || null;
+      };
+
       // Fetch redirects from old database
       console.log('📥 Fetching redirects from vh_rank_math_redirections...');
       const oldRedirects = await crossServerMigration.fetchFromOldDb(`
@@ -257,13 +265,18 @@ module.exports = {
                 if (entityId) finalSlug = destSlug;
               }
               break;
-            case 'brand':
-              entityId = brandSlugMap.get(parsed.slug.toLowerCase());
+            case 'brand': {
+              // slug_relations stores brand slug only (e.g. geekvape), not full path (e.g. geekvape/geekvape-kits)
+              const brandLookupSlug = getBrandSlugForLookup(parsed.slug) || parsed.slug;
+              entityId = brandSlugMap.get(parsed.slug.toLowerCase()) || brandSlugMap.get(brandLookupSlug.toLowerCase());
+              if (entityId) finalSlug = brandLookupSlug;
               if (!entityId && destSlug) {
-                entityId = brandSlugMap.get(destSlug.toLowerCase());
-                if (entityId) finalSlug = destSlug;
+                const destBrandSlug = getBrandSlugForLookup(destSlug) || destSlug;
+                entityId = brandSlugMap.get(destSlug.toLowerCase()) || brandSlugMap.get(destBrandSlug.toLowerCase());
+                if (entityId) finalSlug = destBrandSlug;
               }
               break;
+            }
             case 'blog':
               entityId = blogSlugMap.get(parsed.slug.toLowerCase());
               if (!entityId && destSlug) {
