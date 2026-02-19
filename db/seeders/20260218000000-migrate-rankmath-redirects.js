@@ -300,6 +300,7 @@ module.exports = {
             : urlTo;
           
           // Safely prepare meta_data JSON - ensure strings are properly formatted
+          // Note: bulkInsert requires JSON.stringify() for JSON columns (bypasses model layer)
           const prepareMetaData = () => {
             const meta = {
               imported_from: 'vh_rank_math_redirections',
@@ -326,7 +327,8 @@ module.exports = {
             if (oldRedirect.created) meta.created = oldRedirect.created;
             if (oldRedirect.updated) meta.updated = oldRedirect.updated;
             
-            return meta;
+            // bulkInsert requires explicit JSON.stringify() for JSON columns
+            return JSON.stringify(meta);
           };
           
           const redirectRecord = {
@@ -336,7 +338,7 @@ module.exports = {
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: parsed.entityType,
             slug: finalSlug,
-            meta_data: prepareMetaData(),
+            meta_data: prepareMetaData(), // Already stringified JSON string
             createdAt: oldRedirect.created ? new Date(oldRedirect.created) : new Date(),
             updatedAt: oldRedirect.updated ? new Date(oldRedirect.updated) : new Date()
           };
