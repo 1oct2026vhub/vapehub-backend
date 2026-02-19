@@ -337,6 +337,8 @@ module.exports.updateBlog = async (req, res) => {
             await transaction.rollback();
             return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
         }
+        // Use slug before update for redirect lookup (redirect was created at delete time with this slug)
+        const slugForRedirect = blog.slug;
 
         const image_url = await handleImageUpload(req.file) || blog.image_url;
 
@@ -392,14 +394,14 @@ module.exports.updateBlog = async (req, res) => {
         await seoService.updateBlogPostNoIndex(id, status, published_at);
 
         // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
-        // Blog model uses column deleted_at; check both property names
+        // Find with paranoid: false so a soft-deleted redirect is found; then update url_to and set deletedAt: null to restore it
         const blogIsDeleted = blog.deletedAt != null || blog.deleted_at != null;
         if (blogIsDeleted) {
             const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
             if (trimmedUrl) {
-                const oldPath = `/blog/${blog.slug}`;
+                const oldPath = `/blog/${slugForRedirect}`;
                 const redirect = await Redirect.findOne({
-                    where: { entity_type: 'blog', slug: blog.slug },
+                    where: { entity_type: 'blog', slug: slugForRedirect },
                     paranoid: false,
                     transaction
                 });
@@ -410,7 +412,7 @@ module.exports.updateBlog = async (req, res) => {
                         sources: oldPath,
                         url_to: trimmedUrl,
                         entity_type: 'blog',
-                        slug: blog.slug,
+                        slug: slugForRedirect,
                         header_code: 301,
                         status: 'active',
                         meta_data: { source: 'put_api', created_by: req.user?.id || null }
@@ -418,7 +420,7 @@ module.exports.updateBlog = async (req, res) => {
                 }
             } else {
                 await Redirect.destroy({
-                    where: { entity_type: 'blog', slug: blog.slug, deletedAt: null },
+                    where: { entity_type: 'blog', slug: slugForRedirect, deletedAt: null },
                     transaction
                 });
             }
@@ -441,7 +443,7 @@ module.exports.updateBlog = async (req, res) => {
         const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
         if (updatedBlogIsDeleted) {
             const redirect = await Redirect.findOne({
-                where: { entity_type: 'blog', slug: updatedBlog.slug, status: 'active' },
+                where: { entity_type: 'blog', slug: slugForRedirect, status: 'active' },
                 attributes: ['sources', 'url_to', 'header_code', 'status']
             });
             if (redirect) {
