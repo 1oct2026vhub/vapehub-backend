@@ -222,26 +222,33 @@ module.exports = (sequelize, DataTypes) => {
     hooks: {
       beforeValidate: async (redirect) => {
         // Normalize sources and url_to (preserve prefixes like brand/, product-tag/, etc.)
-        // Only normalize slashes: ensure leading slash, remove trailing slash
+        // Only normalize slashes: ensure leading slash for relative paths, remove trailing slash
         if (redirect.sources) {
           redirect.sources = redirect.sources.trim();
-          // Preserve prefixes (brand/, product-tag/, product-category/, blog/) but normalize slashes
-          if (!redirect.sources.startsWith('/')) {
+          // Skip normalization for absolute URLs
+          const isAbsoluteUrl = /^https?:\/\//i.test(redirect.sources);
+          if (!isAbsoluteUrl && !redirect.sources.startsWith('/')) {
             redirect.sources = '/' + redirect.sources;
           }
-          // Remove trailing slash for consistency (except root path)
-          redirect.sources = redirect.sources.replace(/\/$/, '') || '/';
-          // Remove /amp/ suffix if present (normalize AMP URLs)
-          redirect.sources = redirect.sources.replace(/\/amp\/?$/, '');
+          // Remove trailing slash for consistency (except root path and absolute URLs)
+          if (!isAbsoluteUrl) {
+            redirect.sources = redirect.sources.replace(/\/$/, '') || '/';
+            // Remove /amp/ suffix if present (normalize AMP URLs)
+            redirect.sources = redirect.sources.replace(/\/amp\/?$/, '');
+          }
         }
         
         if (redirect.url_to) {
           redirect.url_to = redirect.url_to.trim();
-          if (!redirect.url_to.startsWith('/')) {
+          // Skip normalization for absolute URLs
+          const isAbsoluteUrl = /^https?:\/\//i.test(redirect.url_to);
+          if (!isAbsoluteUrl && !redirect.url_to.startsWith('/')) {
             redirect.url_to = '/' + redirect.url_to;
           }
-          // Remove trailing slash for consistency (except root path)
-          redirect.url_to = redirect.url_to.replace(/\/$/, '') || '/';
+          // Remove trailing slash for consistency (except root path and absolute URLs)
+          if (!isAbsoluteUrl) {
+            redirect.url_to = redirect.url_to.replace(/\/$/, '') || '/';
+          }
         }
       }
     }
