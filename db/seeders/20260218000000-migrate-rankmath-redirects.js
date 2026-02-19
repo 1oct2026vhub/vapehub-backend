@@ -275,7 +275,7 @@ module.exports = {
 
           if (!entityId) {
             stats.skipped_no_slug_match++;
-            console.log(`⚠️  No ${parsed.entityType} found for slug: ${parsed.slug} (source: ${sourceUrl})`);
+            console.warn(`⚠️  [NO SLUG MATCH] Slug not found in slug_relations: entity_type=${parsed.entityType}, slug="${parsed.slug}", source=${sourceUrl}`);
             continue;
           }
 
@@ -291,7 +291,6 @@ module.exports = {
             header_code: oldRedirect.header_code || 301,
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: parsed.entityType,
-            entity_id: entityId,
             slug: finalSlug,
             meta_data: {
               imported_from: 'vh_rank_math_redirections',
@@ -326,6 +325,9 @@ module.exports = {
         console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
         console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
         console.log(`   Skipped (no slug match): ${stats.skipped_no_slug_match}`);
+        if (stats.skipped_no_slug_match > 0) {
+          console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) skipped — slug not found in slug_relations. Check logs above for details.`);
+        }
         await crossServerMigration.closeOldDbConnection();
         await transaction.commit();
         return;
@@ -369,6 +371,9 @@ module.exports = {
       console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
       console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
       console.log(`   Skipped (no slug match): ${stats.skipped_no_slug_match}`);
+      if (stats.skipped_no_slug_match > 0) {
+        console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) skipped — slug not found in slug_relations. Check logs above for details.`);
+      }
 
       await crossServerMigration.closeOldDbConnection();
       await transaction.commit();
