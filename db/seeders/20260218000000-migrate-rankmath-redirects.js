@@ -298,6 +298,37 @@ module.exports = {
           const finalUrlTo = parsed.entityType === 'deal' 
             ? (buildNewUrlToForDeal(finalSlug) || urlTo)
             : urlTo;
+          
+          // Safely prepare meta_data JSON - ensure strings are properly formatted
+          const prepareMetaData = () => {
+            const meta = {
+              imported_from: 'vh_rank_math_redirections',
+              rank_math_id: oldRedirect.id,
+              pattern_slug: parsed.slug,
+              original_pattern: pattern
+            };
+            
+            // Store PHP serialized string as string (truncate if extremely long to avoid JSON issues)
+            if (oldRedirect.sources) {
+              const sourcesStr = String(oldRedirect.sources);
+              // MySQL JSON column can handle large strings, but truncate if > 1MB to be safe
+              meta.sources_raw = sourcesStr.length > 1000000 ? sourcesStr.substring(0, 1000000) + '...[truncated]' : sourcesStr;
+            } else {
+              meta.sources_raw = null;
+            }
+            
+            if (oldRedirect.url_to) {
+              meta.url_to_raw = String(oldRedirect.url_to);
+            } else {
+              meta.url_to_raw = null;
+            }
+            
+            if (oldRedirect.created) meta.created = oldRedirect.created;
+            if (oldRedirect.updated) meta.updated = oldRedirect.updated;
+            
+            return meta;
+          };
+          
           const redirectRecord = {
             sources: sourceUrl, // Original pattern from Rank Math (normalized)
             url_to: finalUrlTo,  // New format for deals (/product-deals/slug), old format for others
@@ -305,16 +336,7 @@ module.exports = {
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: parsed.entityType,
             slug: finalSlug,
-            meta_data: {
-              imported_from: 'vh_rank_math_redirections',
-              rank_math_id: oldRedirect.id,
-              pattern_slug: parsed.slug,
-              original_pattern: pattern, // Original pattern before normalization
-              sources_raw: oldRedirect.sources || null, // Raw PHP serialized string
-              url_to_raw: oldRedirect.url_to || null,
-              created: oldRedirect.created || null,
-              updated: oldRedirect.updated || null
-            },
+            meta_data: prepareMetaData(),
             createdAt: oldRedirect.created ? new Date(oldRedirect.created) : new Date(),
             updatedAt: oldRedirect.updated ? new Date(oldRedirect.updated) : new Date()
           };
