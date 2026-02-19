@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { BlogCategory, SlugRelation, sequelize } = require("../../../../models");
+const { BlogCategory, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
@@ -61,11 +61,12 @@ module.exports.listAllBlogCategories = async (req, res, next) => {
 };
 
 /**
- * Retrieves a single blog category by ID.
+ * Retrieves a single blog category by ID (includes soft-deleted; adds redirect details when deleted).
  */
 module.exports.getBlogCategoryById = async (req, res, next) => {
     try {
         const category = await BlogCategory.findByPk(req.params.id, {
+            paranoid: false,
             include: [
                 {
                     model: BlogCategory,
@@ -82,7 +83,25 @@ module.exports.getBlogCategoryById = async (req, res, next) => {
         if (!category) {
             return errorResponse(res, { message: "Blog category not found" }, "Blog category not found", 404);
         }
-        return successResponse(res, category, "Blog category retrieved successfully");
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog_category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Blog category retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -172,11 +191,11 @@ module.exports.updateBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, description, status, parent_id: initialParentId, slug, show_home_page, alt_text } = req.body;
+        const { name, description, status, parent_id: initialParentId, slug, show_home_page, alt_text, redirect_url } = req.body;
         let parent_id = initialParentId;
         const { file } = req;
 
-        const category = await BlogCategory.findByPk(id);
+        const category = await BlogCategory.findByPk(id, { transaction: t, paranoid: false });
         if (!category) {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Not found", 404);
@@ -261,10 +280,51 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         // Update SEO noIndex based on category status
         await seoService.updateBlogCategoryNoIndex(id, status);
 
+        // If entity is deleted and redirect_url provided, create or update redirect record
+        // sources = old path (for matching incoming requests); url_to = redirect_url from request
+        if (category.deletedAt && redirect_url != null && redirect_url !== '') {
+            const oldPath = `/blogs/category/${category.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog_category', slug: category.slug },
+                transaction: t
+            });
+            if (redirect) {
+                await redirect.update({ url_to: redirect_url.trim() }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'blog_category',
+                    slug: category.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                }, { transaction: t });
+            }
+        }
 
         await t.commit();
 
-        return successResponse(res, category, "Blog category updated successfully");
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog_category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+
+        return successResponse(res, responseData, "Blog category updated successfully");
     } catch (error) {
         await t.rollback();
         return errorResponse(res, error, error.message);
@@ -278,11 +338,29 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
 
         const category = await BlogCategory.findByPk(id);
         if (!category) {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Not found", 404);
+        }
+
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+        if (redirect_url != null && redirect_url !== '') {
+            const oldPath = `/blogs/category/${category.slug}`;
+            await Redirect.create({
+                sources: oldPath,
+                url_to: redirect_url.trim(),
+                entity_type: 'blog_category',
+                slug: category.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction: t });
         }
 
         // Delete slug relation first
@@ -341,7 +419,7 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
 
 module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedCategories = [];
         const notDeletedCategories = [];
@@ -355,6 +433,23 @@ module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
                     await t.rollback();
                     notDeletedCategories.push({ id, reason: 'Category not found' });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/blogs/category/${category.slug}`;
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'blog_category',
+                        slug: category.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug relation first
