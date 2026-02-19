@@ -265,26 +265,34 @@ module.exports.updateBrand = async (req, res, next) => {
         // Update SEO noIndex based on brand status
         await seoService.updateBrandNoIndex(id);
 
-        // If entity is deleted and redirect_url provided, create or update redirect record
-        // sources = old path (for matching incoming requests); url_to = redirect_url from request
-        if (brand.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldPath = `/brand/${brand.slug}`;
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'brand', slug: brand.slug },
-                transaction: t
-            });
-            if (redirect) {
-                await redirect.update({ url_to: redirect_url.trim() }, { transaction: t });
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        if (brand.deletedAt) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/brand/${brand.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'brand', slug: brand.slug },
+                    paranoid: false,
+                    transaction: t
+                });
+                if (redirect) {
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'brand',
+                        slug: brand.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction: t });
+                }
             } else {
-                await Redirect.create({
-                    sources: oldPath,
-                    url_to: redirect_url.trim(),
-                    entity_type: 'brand',
-                    slug: brand.slug,
-                    header_code: 301,
-                    status: 'active',
-                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
-                }, { transaction: t });
+                await Redirect.destroy({
+                    where: { entity_type: 'brand', slug: brand.slug, deletedAt: null },
+                    transaction: t
+                });
             }
         }
 
