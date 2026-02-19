@@ -1,4 +1,4 @@
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
@@ -10,7 +10,7 @@ const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelation
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false, category_id, tag_id, status } = req.query;
+        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted, category_id, tag_id, status } = req.query;
         const offset = (page - 1) * limit;
 
         let whereCondition = {};
@@ -28,6 +28,15 @@ module.exports.listAllBlogs = async (req, res) => {
         // Add status filter if provided
         if (status) {
             whereCondition.status = status;
+        }
+
+        // Handle deleted filter
+        let paranoid = true; // Default: exclude soft-deleted records
+        if (deleted === 'true') {
+            paranoid = false; // Include soft-deleted records
+            whereCondition.deletedAt = { [Op.ne]: null }; // Only deleted records
+        } else if (deleted === 'false') {
+            whereCondition.deletedAt = null; // Only non-deleted records
         }
 
         // Parse category_id and tag_id for filtering blogs
@@ -68,14 +77,11 @@ module.exports.listAllBlogs = async (req, res) => {
             }
         ];
 
-        // Convert deleted string to boolean
-        const showDeleted = deleted === 'true' || deleted === true;
-
         // First, get the total count with the same filters
         const totalCount = await Blog.count({
             where: whereCondition,
             include: includeConditions,
-            paranoid: !showDeleted,
+            paranoid: paranoid,
             distinct: true
         });
 
@@ -86,7 +92,7 @@ module.exports.listAllBlogs = async (req, res) => {
             order: [[sort, order]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !showDeleted,
+            paranoid: paranoid,
             distinct: true,
             group: ['Blog.id']
         });
@@ -484,6 +490,19 @@ module.exports.restoreBlog = async (req, res) => {
 
         await blog.restore();
 
+        // Remove redirect records associated with this blog
+        await Redirect.update(
+            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+            {
+                where: {
+                    slug: blog.slug,
+                    entity_type: 'blog',
+                    deletedAt: null
+                },
+                transaction
+            }
+        );
+
         // Update SEO noIndex based on blog status
         await seoService.updateBlogPostNoIndex(blog.id, blog.status, blog.published_at);
         
@@ -629,6 +648,19 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
 
                 // Restore the blog
                 await blog.restore({ transaction: t });
+
+                // Remove redirect records associated with this blog
+                await Redirect.update(
+                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+                    {
+                        where: {
+                            slug: blog.slug,
+                            entity_type: 'blog',
+                            deletedAt: null
+                        },
+                        transaction: t
+                    }
+                );
 
                 // Recreate slug using static method
                 await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, t);
