@@ -1855,26 +1855,43 @@ module.exports.updateProduct = async (req, res, next) => {
 
         const productStatus = updatedProduct.status;
 
-        // If entity is deleted and redirect_url provided, create or update redirect record
-        // sources = old path (for matching incoming requests); url_to = redirect_url from request
-        if (updatedProduct.deletedAt && redirect_url != null && redirect_url !== '') {
-            const oldPath = `/${updatedProduct.slug}`;
-            const redirect = await Redirect.findOne({
-                where: { entity_type: 'product', slug: updatedProduct.slug },
-                transaction
-            });
-            if (redirect) {
-                await redirect.update({ url_to: redirect_url.trim() }, { transaction });
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove redirect when empty
+        // Use paranoid: false so we find existing redirects that may have been soft-deleted on restore
+        if (updatedProduct.deletedAt) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/${updatedProduct.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'product', slug: updatedProduct.slug },
+                    paranoid: false,
+                    transaction
+                });
+                if (redirect) {
+                    await redirect.update(
+                        { url_to: trimmedUrl, deletedAt: null },
+                        { transaction }
+                    );
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'product',
+                        slug: updatedProduct.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction });
+                }
             } else {
-                await Redirect.create({
-                    sources: oldPath,
-                    url_to: redirect_url.trim(),
-                    entity_type: 'product',
-                    slug: updatedProduct.slug,
-                    header_code: 301,
-                    status: 'active',
-                    meta_data: { source: 'put_api', created_by: req.user?.id || null }
-                }, { transaction });
+                // redirect_url is empty or null: remove redirect record(s) for this product
+                await Redirect.destroy({
+                    where: {
+                        entity_type: 'product',
+                        slug: updatedProduct.slug,
+                        deletedAt: null
+                    },
+                    transaction
+                });
             }
         }
 
