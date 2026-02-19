@@ -445,8 +445,15 @@ module.exports.deleteBlog = async (req, res) => {
         // Delete slug using static method
         await slugManager.deleteSlug('blog', req.params.id, transaction);
 
-        // This will cascade delete relations due to model associations
+        // Soft delete: set deleted_at (paranoid). Fallback explicit update if destroy() doesn't set it.
         await blog.destroy({ transaction });
+        const reloaded = await Blog.findByPk(blog.id, { transaction, paranoid: false });
+        if (reloaded && !reloaded.deletedAt) {
+            await Blog.update(
+                { deletedAt: new Date() },
+                { where: { id: blog.id }, transaction }
+            );
+        }
 
         // Update SEO noIndex to true before deletion
         await seoService.updateNoIndex('blog', req.params.id, true);
@@ -471,7 +478,7 @@ module.exports.restoreBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        if (!blog.deleted_at) {
+        if (!blog.deletedAt) {
             throw new Error('Blog post is not deleted');
         }
 
@@ -529,8 +536,15 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                 // Delete slug using static method
                 await slugManager.deleteSlug('blog', id, t);
 
-                // Soft delete the blog
+                // Soft delete the blog; fallback explicit update if destroy() doesn't set deleted_at
                 await blog.destroy({ transaction: t });
+                const reloaded = await Blog.findByPk(blog.id, { transaction: t, paranoid: false });
+                if (reloaded && !reloaded.deletedAt) {
+                    await Blog.update(
+                        { deletedAt: new Date() },
+                        { where: { id: blog.id }, transaction: t }
+                    );
+                }
 
                 // Update SEO noIndex to true before deletion
                 await seoService.updateNoIndex('blog', id, true);
@@ -603,7 +617,7 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                 }
 
                 // Check if blog is already active (not deleted)
-                if (!blog.deleted_at) {
+                if (!blog.deletedAt) {
                     await t.rollback();
                     notRestoredBlogs.push({
                         id,
