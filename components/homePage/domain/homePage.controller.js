@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1264,6 +1264,38 @@ module.exports.getSlugRelations = async (req, res, next) => {
         // Parse slugs from query string
         const slugArray = slugs.split(',').map(slug => slug.trim());
 
+        // Helper: generate path variations for redirect lookup (handles prefixes, slashes, /amp/)
+        const generatePathVariations = (slug) => {
+            const variations = new Set();
+            let s = String(slug).trim();
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            s = s.replace(/\/amp\/?$/, '');
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
+            for (const prefix of prefixes) {
+                if (!s.includes('/')) {
+                    variations.add(prefix + '/' + s);
+                    variations.add('/' + prefix + '/' + s);
+                    variations.add(prefix + '/' + s + '/');
+                    variations.add('/' + prefix + '/' + s + '/');
+                }
+            }
+            const normalized = [];
+            variations.forEach(v => {
+                let n = v.trim();
+                if (!n.startsWith('/')) n = '/' + n;
+                n = n.replace(/\/$/, '') || '/';
+                normalized.push(n);
+            });
+            return [...new Set(normalized)];
+        };
+
         // Query slug relations
         const slugRelations = await SlugRelation.findAll({
             where: {
@@ -1282,13 +1314,38 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const unmatchedSlugs = slugArray.filter(s => !matchedSlugSet.has(s));
         let redirectMap = new Map();
         if (unmatchedSlugs.length > 0) {
+            // 1) Soft-deleted products with redirect_url
             const redirectRows = await Product.sequelize.query(
                 `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
-            redirectMap = new Map(redirectRows.map(r => [r.slug, r.redirect_url]));
+            redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
+
+            // 2) Redirect table (status = active): match by sources with path variations
+            const pathBySlug = new Map();
+            unmatchedSlugs.forEach(slug => {
+                generatePathVariations(slug).forEach(path => {
+                    if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+                });
+            });
+            const candidatePaths = [...pathBySlug.keys()];
+            if (candidatePaths.length > 0) {
+                const tableRedirects = await Redirect.findAll({
+                    where: {
+                        sources: { [Op.in]: candidatePaths },
+                        status: 'active'
+                    },
+                    attributes: ['sources', 'url_to']
+                });
+                tableRedirects.forEach(r => {
+                    const slug = pathBySlug.get(r.sources);
+                    if (slug != null && !redirectMap.has(slug)) {
+                        redirectMap.set(slug, r.url_to);
+                    }
+                });
+            }
         }
-        // Handle no slug_relation matches: return redirect if soft-deleted product has redirect_url, else 404
+        // Handle no slug_relation matches: return redirect if found (product or redirect table), else 404
         if (!slugRelations.length) {
             if (redirectMap.size > 0) {
                 if (slugArray.length === 1 && redirectMap.has(slugArray[0])) {
