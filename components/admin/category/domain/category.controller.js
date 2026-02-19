@@ -119,15 +119,33 @@ module.exports.listAllCategories = async (req, res, next) => {
 };
 
 /**
- * Retrieves a category by ID.
+ * Retrieves a category by ID. Includes redirect details when the category is deleted and has a redirect.
  */
 module.exports.getCategoryById = async (req, res, next) => {
     try {
-        const category = await Category.findByPk(req.params.id);
+        const category = await Category.findByPk(req.params.id, { paranoid: false });
         if (!category) {
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
-        return successResponse(res, category, "Category retrieved successfully");
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Category retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
