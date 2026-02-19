@@ -140,6 +140,7 @@ module.exports.listAllBlogs = async (req, res) => {
 module.exports.getBlogById = async (req, res) => {
     try {
         const blog = await Blog.findByPk(req.params.id, {
+            paranoid: false,
             include: [
                 {
                     model: User,
@@ -159,10 +160,33 @@ module.exports.getBlogById = async (req, res) => {
             ]
         });
 
+        if (!blog) {
+            return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
+        }
+
         // Process blog to remove published_at for draft or archived status
-        const blogData = blog.toJSON();
+        let blogData = blog.toJSON ? blog.toJSON() : blog;
         if (blogData.status === 'draft' || blogData.status === 'archived') {
             blogData.published_at = null;
+        }
+
+        // If blog is deleted, add redirect details if available
+        if (blog.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog', slug: blog.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                blogData = {
+                    ...blogData,
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
         }
 
         successResponse(res, blogData);
