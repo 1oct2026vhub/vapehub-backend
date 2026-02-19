@@ -79,15 +79,33 @@ module.exports.listAllBrands = async (req, res, next) => {
 };
 
 /**
- * Retrieves a single brand by ID.
+ * Retrieves a single brand by ID (includes soft-deleted; adds redirect details when deleted).
  */
 module.exports.getBrandById = async (req, res, next) => {
     try {
-        const brand = await Brand.findByPk(req.params.id);
+        const brand = await Brand.findByPk(req.params.id, { paranoid: false });
         if (!brand) {
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
-        return successResponse(res, brand, "Brand retrieved successfully");
+        let responseData = brand;
+        if (brand.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(brand.toJSON ? brand.toJSON() : brand),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Brand retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
