@@ -1313,37 +1313,38 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const matchedSlugSet = new Set(slugRelations.map(r => r.slug));
         const unmatchedSlugs = slugArray.filter(s => !matchedSlugSet.has(s));
         let redirectMap = new Map();
+
+        // Build path variations for ALL slugs (matched and unmatched) so we include redirect details when found
+        const pathBySlug = new Map();
+        slugArray.forEach(slug => {
+            generatePathVariations(slug).forEach(path => {
+                if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+            });
+        });
+        const candidatePaths = [...pathBySlug.keys()];
+        if (candidatePaths.length > 0) {
+            const tableRedirects = await Redirect.findAll({
+                where: {
+                    sources: { [Op.in]: candidatePaths },
+                    status: 'active'
+                },
+                attributes: ['sources', 'url_to']
+            });
+            tableRedirects.forEach(r => {
+                const slug = pathBySlug.get(r.sources);
+                if (slug != null && !redirectMap.has(slug)) {
+                    redirectMap.set(slug, r.url_to);
+                }
+            });
+        }
+
         if (unmatchedSlugs.length > 0) {
-            // 1) Soft-deleted products with redirect_url
+            // Soft-deleted products with redirect_url (only for unmatched slugs)
             const redirectRows = await Product.sequelize.query(
                 `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
             redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
-
-            // 2) Redirect table (status = active): match by sources with path variations
-            const pathBySlug = new Map();
-            unmatchedSlugs.forEach(slug => {
-                generatePathVariations(slug).forEach(path => {
-                    if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
-                });
-            });
-            const candidatePaths = [...pathBySlug.keys()];
-            if (candidatePaths.length > 0) {
-                const tableRedirects = await Redirect.findAll({
-                    where: {
-                        sources: { [Op.in]: candidatePaths },
-                        status: 'active'
-                    },
-                    attributes: ['sources', 'url_to']
-                });
-                tableRedirects.forEach(r => {
-                    const slug = pathBySlug.get(r.sources);
-                    if (slug != null && !redirectMap.has(slug)) {
-                        redirectMap.set(slug, r.url_to);
-                    }
-                });
-            }
         }
         // Handle no slug_relation matches: return redirect if found (product or redirect table), else 404
         if (!slugRelations.length) {
@@ -1504,6 +1505,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 response.deals_text = latestDealsData.deals_text;
             }
 
+            // Include redirect details when a redirect exists for this slug
+            if (redirectMap.has(slugRelations[0].slug)) {
+                response.redirect = true;
+                response.redirect_url = redirectMap.get(slugRelations[0].slug);
+            }
+
             return successResponse(res, response, 'Success');
         }
 
@@ -1518,6 +1525,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         entity_type: relation.entity_type,
                         entity_id: relation.entity_id
                     };
+                    
+                    // Add redirect details when a redirect exists for this slug
+                    if (redirectMap.has(relation.slug)) {
+                        item.redirect = true;
+                        item.redirect_url = redirectMap.get(relation.slug);
+                    }
                     
                     // Add category description and name if entity is category
                     if (relation.entity_type === 'category') {
@@ -1717,6 +1730,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (banners.length > 0) {
                         item.banners = banners;
                     }
+                }
+                
+                // Add redirect details when a redirect exists for this slug
+                if (redirectMap.has(relation.slug)) {
+                    item.redirect = true;
+                    item.redirect_url = redirectMap.get(relation.slug);
                 }
                 
                 return item;
