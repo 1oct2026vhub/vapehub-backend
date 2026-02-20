@@ -426,6 +426,7 @@ module.exports.updateBlog = async (req, res) => {
             } else {
                 await Redirect.destroy({
                     where: { entity_type: 'blog', slug: slugForRedirect, deletedAt: null },
+                    force: true,
                     transaction
                 });
             }

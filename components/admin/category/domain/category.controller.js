@@ -365,6 +365,7 @@ module.exports.updateCategory = async (req, res, next) => {
             } else {
                 await Redirect.destroy({
                     where: { entity_type: 'category', slug: category.slug, deletedAt: null },
+                    force: true,
                     transaction: t
                 });
             }
@@ -621,6 +622,7 @@ module.exports.restoreCategory = async (req, res, next) => {
                 entity_type: 'category',
                 deletedAt: null
             },
+            force: true,
             transaction: t
         });
 
@@ -691,6 +693,7 @@ module.exports.bulkRestoreCategories = async (req, res, next) => {
                         entity_type: 'category',
                         deletedAt: null
                     },
+                    force: true,
                     transaction: t
                 });
 

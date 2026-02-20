@@ -480,6 +480,7 @@ module.exports.updateDeal = async (req, res, next) => {
             } else {
                 await Redirect.destroy({
                     where: { entity_type: 'deal', slug: deal.slug },
+                    force: true,
                     transaction
                 });
             }

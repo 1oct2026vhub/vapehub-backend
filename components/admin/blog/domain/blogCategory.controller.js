@@ -310,6 +310,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             } else {
                 await Redirect.destroy({
                     where: { entity_type: 'blog_category', slug: slugForRedirect },
+                    force: true,
                     transaction: t
                 });
             }
@@ -428,6 +429,7 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
         // Remove redirect for this category so old URL no longer redirects
         await Redirect.destroy({
             where: { entity_type: 'blog_category', slug: category.slug },
+            force: true,
             transaction: t
         });
 

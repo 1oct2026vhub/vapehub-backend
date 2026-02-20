@@ -293,6 +293,7 @@ module.exports.updateBrand = async (req, res, next) => {
             } else {
                 await Redirect.destroy({
                     where: { entity_type: 'brand', slug: brand.slug, deletedAt: null },
+                    force: true,
                     transaction: t
                 });
             }
@@ -538,6 +539,7 @@ module.exports.restoreBrand = async (req, res, next) => {
                 entity_type: 'brand',
                 deletedAt: null
             },
+            force: true,
             transaction: t
         });
 
@@ -607,6 +609,7 @@ module.exports.bulkRestoreBrands = async (req, res, next) => {
                         entity_type: 'brand',
                         deletedAt: null
                     },
+                    force: true,
                     transaction: t
                 });
 

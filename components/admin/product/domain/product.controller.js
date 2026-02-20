@@ -1890,6 +1890,7 @@ module.exports.updateProduct = async (req, res, next) => {
                         slug: updatedProduct.slug,
                         deletedAt: null
                     },
+                    force: true,
                     transaction
                 });
             }
@@ -2138,6 +2139,7 @@ module.exports.restoreProduct = async (req, res, next) => {
                 entity_type: 'product',
                 deletedAt: null
             },
+            force: true,
             transaction
         });
 
@@ -2211,6 +2213,7 @@ module.exports.bulkRestoreProducts = async (req, res, next) => {
                         entity_type: 'product',
                         deletedAt: null
                     },
+                    force: true,
                     transaction: t
                 });
 
