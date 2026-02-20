@@ -543,18 +543,15 @@ module.exports.restoreBlog = async (req, res) => {
 
         await blog.restore();
 
-        // Remove redirect records associated with this blog
-        await Redirect.update(
-            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-            {
-                where: {
-                    slug: blog.slug,
-                    entity_type: 'blog',
-                    deletedAt: null
-                },
-                transaction
-            }
-        );
+        // Remove redirect records associated with this blog (hard delete)
+        await Redirect.destroy({
+            where: {
+                slug: blog.slug,
+                entity_type: 'blog'
+            },
+            force: true,
+            transaction
+        });
 
         // Update SEO noIndex based on blog status
         await seoService.updateBlogPostNoIndex(blog.id, blog.status, blog.published_at);
@@ -703,18 +700,15 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                 // Restore the blog
                 await blog.restore({ transaction: t });
 
-                // Remove redirect records associated with this blog
-                await Redirect.update(
-                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-                    {
-                        where: {
-                            slug: blog.slug,
-                            entity_type: 'blog',
-                            deletedAt: null
-                        },
-                        transaction: t
-                    }
-                );
+                // Remove redirect records associated with this blog (hard delete)
+                await Redirect.destroy({
+                    where: {
+                        slug: blog.slug,
+                        entity_type: 'blog'
+                    },
+                    force: true,
+                    transaction: t
+                });
 
                 // Recreate slug using static method
                 await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, t);
