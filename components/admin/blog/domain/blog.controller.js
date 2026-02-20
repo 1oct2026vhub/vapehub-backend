@@ -172,7 +172,12 @@ module.exports.getBlogById = async (req, res) => {
 
         // Include redirect details whenever an active redirect exists for this blog (by slug)
         const redirect = await Redirect.findOne({
-            where: { entity_type: 'blog', slug: blog.slug, status: 'active' },
+            where: {
+                entity_type: 'blog',
+                slug: blog.slug,
+                status: 'active',
+                deletedAt: null
+            },
             attributes: ['sources', 'url_to', 'header_code', 'status']
         });
         if (redirect) {
@@ -404,6 +409,7 @@ module.exports.updateBlog = async (req, res) => {
                     transaction
                 });
                 if (redirect) {
+                    // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
                     await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction });
                 } else {
                     await Redirect.create({
@@ -413,6 +419,7 @@ module.exports.updateBlog = async (req, res) => {
                         slug: slugForRedirect,
                         header_code: 301,
                         status: 'active',
+                        deletedAt: null,
                         meta_data: { source: 'put_api', created_by: req.user?.id || null }
                     }, { transaction });
                 }

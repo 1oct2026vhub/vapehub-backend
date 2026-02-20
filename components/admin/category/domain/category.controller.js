@@ -348,6 +348,7 @@ module.exports.updateCategory = async (req, res, next) => {
                     transaction: t
                 });
                 if (redirect) {
+                    // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
                     await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
                 } else {
                     await Redirect.create({
@@ -357,6 +358,7 @@ module.exports.updateCategory = async (req, res, next) => {
                         slug: category.slug,
                         header_code: 301,
                         status: 'active',
+                        deletedAt: null,
                         meta_data: { source: 'put_api', created_by: req.user?.id || null }
                     }, { transaction: t });
                 }
@@ -440,6 +442,7 @@ module.exports.deleteCategory = async (req, res, next) => {
                 paranoid: false
             });
             if (redirect) {
+                // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
                 await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
             } else {
                 await Redirect.create({
@@ -449,6 +452,7 @@ module.exports.deleteCategory = async (req, res, next) => {
                     slug: category.slug,
                     header_code: 301,
                     status: 'active',
+                    deletedAt: null,
                     meta_data: {
                         source: 'delete_api',
                         created_by: req.user?.id || null
@@ -532,6 +536,7 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                         paranoid: false
                     });
                     if (redirect) {
+                        // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
                         await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
                     } else {
                         await Redirect.create({
@@ -541,6 +546,7 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                             slug: category.slug,
                             header_code: 301,
                             status: 'active',
+                            deletedAt: null,
                             meta_data: {
                                 source: 'bulk_delete_api',
                                 created_by: req.user?.id || null
