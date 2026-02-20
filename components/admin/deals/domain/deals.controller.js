@@ -1,7 +1,7 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant, Redirect } = require("../../../../models");
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
@@ -810,35 +810,53 @@ module.exports.deleteDeal = async (req, res, next) => {
 };
 
 module.exports.restoreDeal = async (req, res, next) => {
+    const transaction = await Deal.sequelize.transaction();
     try {
         const { id } = req.params;
 
-        const deal = await Deal.findByPk(id, { paranoid: false });
+        const deal = await Deal.findOne({
+            where: { id },
+            paranoid: false,
+            transaction
+        });
         if (!deal) {
+            await transaction.rollback();
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
         }
 
         if (!deal.deletedAt) {
+            await transaction.rollback();
             const error = new Error('Deal is not deleted');
             error.statusCode = 400;
             throw error;
         }
 
-        await deal.restore();
+        await deal.restore({ transaction });
 
-        // Remove redirect records associated with this deal
-        await Redirect.destroy({
-            where: {
-                slug: deal.slug,
-                entity_type: 'deal',
-                deletedAt: null
+        // Soft-delete redirect records (same as blog) so they can be re-used when deal is deleted again
+        await Redirect.update(
+            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+            {
+                where: {
+                    slug: deal.slug,
+                    entity_type: 'deal',
+                    deletedAt: null
+                },
+                transaction
             }
-        });
+        );
 
+        // Recreate slug relation (same as blog)
+        await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, transaction);
+
+        await transaction.commit();
         successResponse(res, deal, 'Deal restored successfully');
     } catch (error) {
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message);
     }
 };
@@ -919,29 +937,45 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
 
         for (const rawId of ids) {
             const id = Number(rawId);
+            const t = await Deal.sequelize.transaction();
             try {
-                const deal = await Deal.findOne({ where: { id }, paranoid: false });
+                const deal = await Deal.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
                 if (!deal) {
+                    await t.rollback();
                     notRestoredDeals.push({ id, reason: 'Deal not found' });
                     continue;
                 }
                 if (!deal.deletedAt) {
+                    await t.rollback();
                     notRestoredDeals.push({ id, name: deal.name, reason: 'Deal is already active (not deleted)' });
                     continue;
                 }
-                await deal.restore();
+                await deal.restore({ transaction: t });
 
-                // Remove redirect records associated with this deal
-                await Redirect.destroy({
-                    where: {
-                        slug: deal.slug,
-                        entity_type: 'deal',
-                        deletedAt: null
+                // Soft-delete redirect records (same as blog) so they can be re-used when deal is deleted again
+                await Redirect.update(
+                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
+                    {
+                        where: {
+                            slug: deal.slug,
+                            entity_type: 'deal',
+                            deletedAt: null
+                        },
+                        transaction: t
                     }
-                });
+                );
 
+                // Recreate slug relation (same as blog)
+                await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, t);
+
+                await t.commit();
                 restoredDeals.push({ id: deal.id, name: deal.name });
             } catch (error) {
+                await t.rollback();
                 notRestoredDeals.push({ id, reason: error.message || 'Failed to restore deal' });
             }
         }
