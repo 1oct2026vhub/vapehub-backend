@@ -359,21 +359,30 @@ module.exports.deleteBrand = async (req, res, next) => {
             );
         }
 
-        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+        // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
         if (redirect_url != null && redirect_url !== '') {
             const oldPath = `/brand/${brand.slug}`;
-            await Redirect.create({
-                sources: oldPath,
-                url_to: redirect_url.trim(),
-                entity_type: 'brand',
-                slug: brand.slug,
-                header_code: 301,
-                status: 'active',
-                meta_data: {
-                    source: 'delete_api',
-                    created_by: req.user?.id || null
-                }
-            }, { transaction: t });
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug },
+                transaction: t,
+                paranoid: false
+            });
+            if (redirect) {
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'brand',
+                    slug: brand.slug,
+                    header_code: 301,
+                    status: 'active',
+                    meta_data: {
+                        source: 'delete_api',
+                        created_by: req.user?.id || null
+                    }
+                }, { transaction: t });
+            }
         }
 
         // Delete slug relation first
@@ -433,21 +442,30 @@ module.exports.bulkDeleteBrands = async (req, res, next) => {
                     continue;
                 }
 
-                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
                 if (redirect_url != null && redirect_url !== '') {
                     const oldPath = `/brand/${brand.slug}`;
-                    await Redirect.create({
-                        sources: oldPath,
-                        url_to: redirect_url.trim(),
-                        entity_type: 'brand',
-                        slug: brand.slug,
-                        header_code: 301,
-                        status: 'active',
-                        meta_data: {
-                            source: 'bulk_delete_api',
-                            created_by: req.user?.id || null
-                        }
-                    }, { transaction: t });
+                    const redirect = await Redirect.findOne({
+                        where: { entity_type: 'brand', slug: brand.slug },
+                        transaction: t,
+                        paranoid: false
+                    });
+                    if (redirect) {
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                    } else {
+                        await Redirect.create({
+                            sources: oldPath,
+                            url_to: redirect_url.trim(),
+                            entity_type: 'brand',
+                            slug: brand.slug,
+                            header_code: 301,
+                            status: 'active',
+                            meta_data: {
+                                source: 'bulk_delete_api',
+                                created_by: req.user?.id || null
+                            }
+                        }, { transaction: t });
+                    }
                 }
 
                 // Delete slug relation first
