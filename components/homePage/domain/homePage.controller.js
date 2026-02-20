@@ -1262,7 +1262,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
         }
 
         // Parse slugs from query string
-        const slugArray = slugs.split(',').map(slug => slug.trim());
+        const slugArray = slugs.split(',').map(slug => slug.trim()).filter(slug => slug.length > 0);
+
+        // Validate that we have at least one valid slug
+        if (slugArray.length === 0) {
+            return errorResponse(res, { message: "At least one valid slug is required" }, "At least one valid slug is required", 400);
+        }
 
         // Helper: generate path variations for redirect lookup (handles prefixes, slashes, /amp/)
         const generatePathVariations = (slug) => {
@@ -1295,6 +1300,61 @@ module.exports.getSlugRelations = async (req, res, next) => {
             });
             return [...new Set(normalized)];
         };
+
+        // Check existence of slugs in SlugRelation table
+        const existingSlugs = await SlugRelation.findAll({
+            where: {
+                slug: {
+                    [Op.in]: slugArray
+                }
+            },
+            attributes: ['slug'],
+            raw: true
+        });
+        const existingSlugSet = new Set(existingSlugs.map(s => s.slug));
+        const nonExistentSlugs = slugArray.filter(slug => !existingSlugSet.has(slug));
+
+        // If all slugs don't exist, check for redirects before returning error
+        if (nonExistentSlugs.length === slugArray.length) {
+            // Build path variations for redirect lookup
+            const pathBySlug = new Map();
+            slugArray.forEach(slug => {
+                generatePathVariations(slug).forEach(path => {
+                    if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+                });
+            });
+            const candidatePaths = [...pathBySlug.keys()];
+            
+            let hasRedirect = false;
+            if (candidatePaths.length > 0) {
+                const tableRedirects = await Redirect.findAll({
+                    where: {
+                        sources: { [Op.in]: candidatePaths },
+                        status: 'active'
+                    },
+                    attributes: ['sources', 'url_to'],
+                    limit: 1
+                });
+                hasRedirect = tableRedirects.length > 0;
+            }
+
+            // Check soft-deleted products with redirect_url
+            if (!hasRedirect && nonExistentSlugs.length > 0) {
+                const redirectRows = await Product.sequelize.query(
+                    `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != '' LIMIT 1`,
+                    { replacements: { slugs: nonExistentSlugs }, type: Product.sequelize.QueryTypes.SELECT }
+                );
+                hasRedirect = redirectRows.length > 0;
+            }
+
+            // If no redirects found, return error about non-existent slugs
+            if (!hasRedirect) {
+                return errorResponse(res, { 
+                    message: "None of the provided slugs exist",
+                    non_existent_slugs: nonExistentSlugs
+                }, "None of the provided slugs exist", 404);
+            }
+        }
 
         // Query slug relations
         const slugRelations = await SlugRelation.findAll({
