@@ -1566,6 +1566,14 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (blogCategory) {
                     response.description = blogCategory.description;
                     response.name = blogCategory.name;
+                } else {
+                    // Blog category is soft-deleted (slug relation exists but category not found)
+                    // Check if there's a redirect, if not return 404
+                    if (!redirectMap.has(slugRelations[0].slug)) {
+                        return errorResponse(res, { 
+                            message: "Blog category not found or has been deleted"
+                        }, "Blog category not found", 404);
+                    }
                 }
             }
 
@@ -1655,6 +1663,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (blogCategory) {
                             item.description = blogCategory.description;
                             item.name = blogCategory.name;
+                        } else if (!redirectMap.has(relation.slug)) {
+                            // Blog category is soft-deleted and no redirect - skip this item
+                            return null;
                         }
                     }
                     
@@ -1677,7 +1688,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     }
                     
                     return item;
-                });
+                }).filter(item => item !== null); // Filter out null items (soft-deleted blog categories without redirects)
             const redirectItems = Array.from(redirectMap.entries()).map(([slug, redirect_url]) => ({
                 slug,
                 entity_type: 'redirect',
@@ -1810,6 +1821,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (blogCategory) {
                         item.description = blogCategory.description;
                         item.name = blogCategory.name;
+                    } else if (!redirectMap.has(relation.slug)) {
+                        // Blog category is soft-deleted and no redirect - return error
+                        return errorResponse(res, { 
+                            message: "Blog category not found or has been deleted",
+                            slug: relation.slug
+                        }, "Blog category not found", 404);
                     }
                 }
                 
