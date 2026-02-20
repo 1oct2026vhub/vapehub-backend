@@ -836,18 +836,13 @@ module.exports.restoreDeal = async (req, res, next) => {
 
         await deal.restore({ transaction });
 
-        // Soft-delete redirect records (same as blog) so they can be re-used when deal is deleted again
-        await Redirect.update(
-            { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-            {
-                where: {
-                    slug: deal.slug,
-                    entity_type: 'deal',
-                    deletedAt: null
-                },
-                transaction
-            }
-        );
+        // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
+        await Redirect.destroy({
+            where: { slug: deal.slug, entity_type: 'deal' },
+            force: true,
+            paranoid: false,
+            transaction
+        });
 
         // Recreate slug relation (same as blog)
         await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, transaction);
@@ -957,18 +952,13 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
                 }
                 await deal.restore({ transaction: t });
 
-                // Soft-delete redirect records (same as blog) so they can be re-used when deal is deleted again
-                await Redirect.update(
-                    { deletedAt: Sequelize.literal('CURRENT_TIMESTAMP') },
-                    {
-                        where: {
-                            slug: deal.slug,
-                            entity_type: 'deal',
-                            deletedAt: null
-                        },
-                        transaction: t
-                    }
-                );
+                // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
+                await Redirect.destroy({
+                    where: { slug: deal.slug, entity_type: 'deal' },
+                    force: true,
+                    paranoid: false,
+                    transaction: t
+                });
 
                 // Recreate slug relation (same as blog)
                 await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, t);
