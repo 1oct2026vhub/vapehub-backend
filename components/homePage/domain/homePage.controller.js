@@ -1264,6 +1264,38 @@ module.exports.getSlugRelations = async (req, res, next) => {
         // Parse slugs from query string
         const slugArray = slugs.split(',').map(slug => slug.trim());
 
+        // Helper: generate path variations for redirect lookup (handles prefixes, slashes, /amp/)
+        const generatePathVariations = (slug) => {
+            const variations = new Set();
+            let s = String(slug).trim();
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            s = s.replace(/\/amp\/?$/, '');
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
+            for (const prefix of prefixes) {
+                if (!s.includes('/')) {
+                    variations.add(prefix + '/' + s);
+                    variations.add('/' + prefix + '/' + s);
+                    variations.add(prefix + '/' + s + '/');
+                    variations.add('/' + prefix + '/' + s + '/');
+                }
+            }
+            const normalized = [];
+            variations.forEach(v => {
+                let n = v.trim();
+                if (!n.startsWith('/')) n = '/' + n;
+                n = n.replace(/\/$/, '') || '/';
+                normalized.push(n);
+            });
+            return [...new Set(normalized)];
+        };
+
         // Query slug relations
         const slugRelations = await SlugRelation.findAll({
             where: {
@@ -1289,19 +1321,26 @@ module.exports.getSlugRelations = async (req, res, next) => {
             );
             redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
 
-            // 2) Redirect table (status = active): match by slug (covers all entity types: blog, blog_category, deal, brand, category)
-            const slugsStillUnmatched = unmatchedSlugs.filter(s => !redirectMap.has(s));
-            if (slugsStillUnmatched.length > 0) {
-                const redirectsBySlug = await Redirect.findAll({
+            // 2) Redirect table (status = active): match by sources with path variations
+            const pathBySlug = new Map();
+            unmatchedSlugs.forEach(slug => {
+                generatePathVariations(slug).forEach(path => {
+                    if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+                });
+            });
+            const candidatePaths = [...pathBySlug.keys()];
+            if (candidatePaths.length > 0) {
+                const tableRedirects = await Redirect.findAll({
                     where: {
-                        slug: { [Op.in]: slugsStillUnmatched },
+                        sources: { [Op.in]: candidatePaths },
                         status: 'active'
                     },
-                    attributes: ['slug', 'url_to']
+                    attributes: ['sources', 'url_to']
                 });
-                redirectsBySlug.forEach(r => {
-                    if (!redirectMap.has(r.slug)) {
-                        redirectMap.set(r.slug, r.url_to);
+                tableRedirects.forEach(r => {
+                    const slug = pathBySlug.get(r.sources);
+                    if (slug != null && !redirectMap.has(slug)) {
+                        redirectMap.set(slug, r.url_to);
                     }
                 });
             }
