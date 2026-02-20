@@ -425,8 +425,9 @@ module.exports.updateBlog = async (req, res) => {
                 }
             } else {
                 await Redirect.destroy({
-                    where: { entity_type: 'blog', slug: slugForRedirect, deletedAt: null },
+                    where: { entity_type: 'blog', slug: slugForRedirect },
                     force: true,
+                    paranoid: false,
                     transaction
                 });
             }
@@ -543,13 +544,14 @@ module.exports.restoreBlog = async (req, res) => {
 
         await blog.restore();
 
-        // Remove redirect records associated with this blog (hard delete)
+        // Remove redirect records associated with this blog (hard delete; paranoid: false so soft-deleted rows are also removed)
         await Redirect.destroy({
             where: {
                 slug: blog.slug,
                 entity_type: 'blog'
             },
             force: true,
+            paranoid: false,
             transaction
         });
 
@@ -700,13 +702,14 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                 // Restore the blog
                 await blog.restore({ transaction: t });
 
-                // Remove redirect records associated with this blog (hard delete)
+                // Remove redirect records associated with this blog (hard delete; paranoid: false so soft-deleted rows are also removed)
                 await Redirect.destroy({
                     where: {
                         slug: blog.slug,
                         entity_type: 'blog'
                     },
                     force: true,
+                    paranoid: false,
                     transaction: t
                 });
 
