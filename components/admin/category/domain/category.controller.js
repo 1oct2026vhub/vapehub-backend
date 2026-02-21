@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu } = require("../../../../models");
+const { Category, SlugRelation, sequelize, Product, ProductCategory, Menu, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require("exceljs"); // Import the exceljs library
@@ -119,15 +119,33 @@ module.exports.listAllCategories = async (req, res, next) => {
 };
 
 /**
- * Retrieves a category by ID.
+ * Retrieves a category by ID. Includes redirect details when the category is deleted and has a redirect.
  */
 module.exports.getCategoryById = async (req, res, next) => {
     try {
-        const category = await Category.findByPk(req.params.id);
+        const category = await Category.findByPk(req.params.id, { paranoid: false });
         if (!category) {
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
-        return successResponse(res, category, "Category retrieved successfully");
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Category retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -233,12 +251,12 @@ module.exports.updateCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, parent_id: rawParentId, alt_text } = req.body;
+        const { name, slug, description, parent_id: rawParentId, alt_text, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
-        // Find category
-        const category = await Category.findByPk(id);
+        // Find category (include soft-deleted so we can update and set redirect when deleted)
+        const category = await Category.findByPk(id, { transaction: t, paranoid: false });
         if (!category) {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
@@ -318,8 +336,62 @@ module.exports.updateCategory = async (req, res, next) => {
         }
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
+
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        if (category.deletedAt) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/product-category/${category.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'category', slug: category.slug },
+                    paranoid: false,
+                    transaction: t
+                });
+                if (redirect) {
+                    // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'category',
+                        slug: category.slug,
+                        header_code: 301,
+                        status: 'active',
+                        deletedAt: null,
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction: t });
+                }
+            } else {
+                await Redirect.destroy({
+                    where: { entity_type: 'category', slug: category.slug, deletedAt: null },
+                    force: true,
+                    transaction: t
+                });
+            }
+        }
+
         await t.commit();
-        return successResponse(res, category, "Category updated successfully");
+
+        let responseData = category;
+        if (category.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(category.toJSON ? category.toJSON() : category),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Category updated successfully");
     } catch (error) {
         await t.rollback();
         return errorResponse(res, error, error.message);
@@ -333,6 +405,7 @@ module.exports.deleteCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
         const category = await Category.findByPk(id);
         if (!category) {
             await t.rollback();
@@ -360,7 +433,35 @@ module.exports.deleteCategory = async (req, res, next) => {
                 400
             );
         }
-        
+
+        // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
+        if (redirect_url != null && redirect_url !== '') {
+            const oldPath = `/product-category/${category.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'category', slug: category.slug },
+                transaction: t,
+                paranoid: false
+            });
+            if (redirect) {
+                // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'category',
+                    slug: category.slug,
+                    header_code: 301,
+                    status: 'active',
+                    deletedAt: null,
+                    meta_data: {
+                        source: 'delete_api',
+                        created_by: req.user?.id || null
+                    }
+                }, { transaction: t });
+            }
+        }
+
         // Delete slug relation first
         await slugManager.deleteSlug('category', id, t);
 
@@ -386,7 +487,7 @@ module.exports.deleteCategory = async (req, res, next) => {
  */
 module.exports.bulkDeleteCategories = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedCategories = [];
         const notDeletedCategories = [];
@@ -425,6 +526,34 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                     await t.rollback();
                     notDeletedCategories.push({ id, name: category.name, reason: `Category has ${childrenCount} active child categor${childrenCount > 1 ? 'ies' : 'y'}` });
                     continue;
+                }
+
+                // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/product-category/${category.slug}`;
+                    const redirect = await Redirect.findOne({
+                        where: { entity_type: 'category', slug: category.slug },
+                        transaction: t,
+                        paranoid: false
+                    });
+                    if (redirect) {
+                        // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                    } else {
+                        await Redirect.create({
+                            sources: oldPath,
+                            url_to: redirect_url.trim(),
+                            entity_type: 'category',
+                            slug: category.slug,
+                            header_code: 301,
+                            status: 'active',
+                            deletedAt: null,
+                            meta_data: {
+                                source: 'bulk_delete_api',
+                                created_by: req.user?.id || null
+                            }
+                        }, { transaction: t });
+                    }
                 }
 
                 // Delete slug relation first
@@ -486,6 +615,17 @@ module.exports.restoreCategory = async (req, res, next) => {
         // Restore the category
         await category.restore({ transaction: t });
 
+        // Remove redirect records associated with this category
+        await Redirect.destroy({
+            where: {
+                slug: category.slug,
+                entity_type: 'category',
+                deletedAt: null
+            },
+            force: true,
+            transaction: t
+        });
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);
 
@@ -545,6 +685,17 @@ module.exports.bulkRestoreCategories = async (req, res, next) => {
 
                 // Restore the category
                 await category.restore({ transaction: t });
+
+                // Remove redirect records associated with this category
+                await Redirect.destroy({
+                    where: {
+                        slug: category.slug,
+                        entity_type: 'category',
+                        deletedAt: null
+                    },
+                    force: true,
+                    transaction: t
+                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(category.slug, 'category', category.id, t);

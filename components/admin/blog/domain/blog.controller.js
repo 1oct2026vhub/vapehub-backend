@@ -1,6 +1,6 @@
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize } = require("../../../../models");
+const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);  
@@ -10,7 +10,7 @@ const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelation
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted = false, category_id, tag_id, status } = req.query;
+        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted, category_id, tag_id, status } = req.query;
         const offset = (page - 1) * limit;
 
         let whereCondition = {};
@@ -28,6 +28,27 @@ module.exports.listAllBlogs = async (req, res) => {
         // Add status filter if provided
         if (status) {
             whereCondition.status = status;
+        }
+
+        // Handle deleted filter - use literal SQL to avoid Sequelize column mapping issues
+        let paranoid = true; // Default: exclude soft-deleted records
+        if (deleted === 'true') {
+            paranoid = false; // Include soft-deleted records
+            // Add condition using literal SQL to reference the actual database column
+            const deletedCondition = Sequelize.literal('`Blog`.`deleted_at` IS NOT NULL');
+            // Merge with existing conditions
+            const existingConditions = Object.keys(whereCondition).length > 0 ? [whereCondition] : [];
+            whereCondition = {
+                [Op.and]: [...existingConditions, deletedCondition]
+            };
+        } else if (deleted === 'false') {
+            paranoid = false; // Need to include soft-deleted to filter them out
+            const deletedCondition = Sequelize.literal('`Blog`.`deleted_at` IS NULL');
+            // Merge with existing conditions
+            const existingConditions = Object.keys(whereCondition).length > 0 ? [whereCondition] : [];
+            whereCondition = {
+                [Op.and]: [...existingConditions, deletedCondition]
+            };
         }
 
         // Parse category_id and tag_id for filtering blogs
@@ -68,14 +89,11 @@ module.exports.listAllBlogs = async (req, res) => {
             }
         ];
 
-        // Convert deleted string to boolean
-        const showDeleted = deleted === 'true' || deleted === true;
-
         // First, get the total count with the same filters
         const totalCount = await Blog.count({
             where: whereCondition,
             include: includeConditions,
-            paranoid: !showDeleted,
+            paranoid: paranoid,
             distinct: true
         });
 
@@ -86,7 +104,7 @@ module.exports.listAllBlogs = async (req, res) => {
             order: [[sort, order]],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            paranoid: !showDeleted,
+            paranoid: paranoid,
             distinct: true,
             group: ['Blog.id']
         });
@@ -122,6 +140,7 @@ module.exports.listAllBlogs = async (req, res) => {
 module.exports.getBlogById = async (req, res) => {
     try {
         const blog = await Blog.findByPk(req.params.id, {
+            paranoid: false,
             include: [
                 {
                     model: User,
@@ -142,13 +161,35 @@ module.exports.getBlogById = async (req, res) => {
         });
 
         if (!blog) {
-            throw new Error('Blog post not found');
+            return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
         }
 
         // Process blog to remove published_at for draft or archived status
-        const blogData = blog.toJSON();
+        let blogData = blog.toJSON ? blog.toJSON() : blog;
         if (blogData.status === 'draft' || blogData.status === 'archived') {
             blogData.published_at = null;
+        }
+
+        // Include redirect details whenever an active redirect exists for this blog (by slug)
+        const redirect = await Redirect.findOne({
+            where: {
+                entity_type: 'blog',
+                slug: blog.slug,
+                status: 'active',
+                deletedAt: null
+            },
+            attributes: ['sources', 'url_to', 'header_code', 'status']
+        });
+        if (redirect) {
+            blogData = {
+                ...blogData,
+                redirect: {
+                    redirect_url: redirect.url_to,
+                    old_path: redirect.sources,
+                    header_code: redirect.header_code,
+                    status: redirect.status
+                }
+            };
         }
 
         successResponse(res, blogData);
@@ -291,14 +332,16 @@ module.exports.updateBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { title, content, slug, categories, tags, published_at, alt_text } = req.body;
+        const { title, content, slug, categories, tags, published_at, alt_text, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const status = req.body.status;
-        const blog = await Blog.findByPk(id, { transaction });
+        const blog = await Blog.findByPk(id, { transaction, paranoid: false });
         if (!blog) {
             await transaction.rollback();
             return errorResponse(res, { message: "Blog post not found" }, "Blog post not found", 404);
         }
+        // Use slug before update for redirect lookup (redirect was created at delete time with this slug)
+        const slugForRedirect = blog.slug;
 
         const image_url = await handleImageUpload(req.file) || blog.image_url;
 
@@ -353,9 +396,46 @@ module.exports.updateBlog = async (req, res) => {
         // Update SEO noIndex based on blog post status and publication date
         await seoService.updateBlogPostNoIndex(id, status, published_at);
 
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        // Find with paranoid: false so a soft-deleted redirect is found; then update url_to and set deletedAt: null to restore it
+        const blogIsDeleted = blog.deletedAt != null || blog.deleted_at != null;
+        if (blogIsDeleted) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/blog/${slugForRedirect}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'blog', slug: slugForRedirect },
+                    paranoid: false,
+                    transaction
+                });
+                if (redirect) {
+                    // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'blog',
+                        slug: slugForRedirect,
+                        header_code: 301,
+                        status: 'active',
+                        deletedAt: null,
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction });
+                }
+            } else {
+                await Redirect.destroy({
+                    where: { entity_type: 'blog', slug: slugForRedirect },
+                    force: true,
+                    paranoid: false,
+                    transaction
+                });
+            }
+        }
 
         // Fetch updated blog
         const updatedBlog = await Blog.findByPk(id, {
+            paranoid: false,
             include: [
                 { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
@@ -365,7 +445,27 @@ module.exports.updateBlog = async (req, res) => {
         });
 
         await transaction.commit();
-        return successResponse(res, updatedBlog, "Blog post updated successfully");
+
+        let responseData = updatedBlog;
+        const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
+        if (updatedBlogIsDeleted) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'blog', slug: slugForRedirect, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...updatedBlog.toJSON(),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Blog post updated successfully");
     } catch (error) {
         console.log("error", error);
         await transaction.rollback();
@@ -377,16 +477,41 @@ module.exports.deleteBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     
     try {
+        const { redirect_url } = req.body || {};
         const blog = await Blog.findByPk(req.params.id, { transaction });
         if (!blog) {
             throw new Error('Blog post not found');
         }
 
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+        if (redirect_url != null && redirect_url !== '') {
+            const oldPath = `/blog/${blog.slug}`;
+            await Redirect.create({
+                sources: oldPath,
+                url_to: redirect_url.trim(),
+                entity_type: 'blog',
+                slug: blog.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction });
+        }
+
         // Delete slug using static method
         await slugManager.deleteSlug('blog', req.params.id, transaction);
 
-        // This will cascade delete relations due to model associations
+        // Soft delete: set deleted_at (paranoid). Fallback explicit update if destroy() doesn't set it.
         await blog.destroy({ transaction });
+        const reloaded = await Blog.findByPk(blog.id, { transaction, paranoid: false });
+        if (reloaded && !reloaded.deletedAt) {
+            await Blog.update(
+                { deletedAt: new Date() },
+                { where: { id: blog.id }, transaction }
+            );
+        }
 
         // Update SEO noIndex to true before deletion
         await seoService.updateNoIndex('blog', req.params.id, true);
@@ -411,11 +536,24 @@ module.exports.restoreBlog = async (req, res) => {
             throw new Error('Blog post not found');
         }
 
-        if (!blog.deleted_at) {
+        // Blog model maps to column deleted_at; check both possible property names
+        const isDeleted = blog.deletedAt != null || blog.deleted_at != null;
+        if (!isDeleted) {
             throw new Error('Blog post is not deleted');
         }
 
         await blog.restore();
+
+        // Remove redirect records associated with this blog (hard delete; paranoid: false so soft-deleted rows are also removed)
+        await Redirect.destroy({
+            where: {
+                slug: blog.slug,
+                entity_type: 'blog'
+            },
+            force: true,
+            paranoid: false,
+            transaction
+        });
 
         // Update SEO noIndex based on blog status
         await seoService.updateBlogPostNoIndex(blog.id, blog.status, blog.published_at);
@@ -433,7 +571,7 @@ module.exports.restoreBlog = async (req, res) => {
 
 module.exports.bulkDeleteBlogs = async (req, res) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedBlogs = [];
         const notDeletedBlogs = [];
@@ -449,11 +587,35 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                     continue;
                 }
 
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/blog/${blog.slug}`;
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'blog',
+                        slug: blog.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
+                }
+
                 // Delete slug using static method
                 await slugManager.deleteSlug('blog', id, t);
 
-                // Soft delete the blog
+                // Soft delete the blog; fallback explicit update if destroy() doesn't set deleted_at
                 await blog.destroy({ transaction: t });
+                const reloaded = await Blog.findByPk(blog.id, { transaction: t, paranoid: false });
+                if (reloaded && !reloaded.deletedAt) {
+                    await Blog.update(
+                        { deletedAt: new Date() },
+                        { where: { id: blog.id }, transaction: t }
+                    );
+                }
 
                 // Update SEO noIndex to true before deletion
                 await seoService.updateNoIndex('blog', id, true);
@@ -525,8 +687,9 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                     continue;
                 }
 
-                // Check if blog is already active (not deleted)
-                if (!blog.deleted_at) {
+                // Check if blog is already active (not deleted). Blog model uses column deleted_at.
+                const isDeleted = blog.deletedAt != null || blog.deleted_at != null;
+                if (!isDeleted) {
                     await t.rollback();
                     notRestoredBlogs.push({
                         id,
@@ -538,6 +701,17 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
 
                 // Restore the blog
                 await blog.restore({ transaction: t });
+
+                // Remove redirect records associated with this blog (hard delete; paranoid: false so soft-deleted rows are also removed)
+                await Redirect.destroy({
+                    where: {
+                        slug: blog.slug,
+                        entity_type: 'blog'
+                    },
+                    force: true,
+                    paranoid: false,
+                    transaction: t
+                });
 
                 // Recreate slug using static method
                 await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, t);

@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, ProductLinkedProduct, SeoMeta } = require("../../../../models");
+const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, SlugRelation, ProductCategory, ProductBrand, ProductLinkedProduct, SeoMeta, Redirect } = require("../../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
@@ -711,11 +711,30 @@ module.exports.getProductById = async (req, res, next) => {
         }
 
         // Add puff count to the product response
-        const productResponse = {
+        let productResponse = {
             ...productData,
             puff_count: puffCount
         };
-        
+
+        // When product is deleted, attach redirect details from Redirect table if any
+        if (product.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'product', slug: product.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                productResponse = {
+                    ...productResponse,
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+
         // Return success response with the retrieved product data
         return successResponse(res, productResponse, "Product retrieved successfully");
         
@@ -1836,6 +1855,47 @@ module.exports.updateProduct = async (req, res, next) => {
 
         const productStatus = updatedProduct.status;
 
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove redirect when empty
+        // Use paranoid: false so we find existing redirects that may have been soft-deleted on restore
+        if (updatedProduct.deletedAt) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/${updatedProduct.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'product', slug: updatedProduct.slug },
+                    paranoid: false,
+                    transaction
+                });
+                if (redirect) {
+                    await redirect.update(
+                        { url_to: trimmedUrl, deletedAt: null },
+                        { transaction }
+                    );
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'product',
+                        slug: updatedProduct.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                    }, { transaction });
+                }
+            } else {
+                // redirect_url is empty or null: remove redirect record(s) for this product
+                await Redirect.destroy({
+                    where: {
+                        entity_type: 'product',
+                        slug: updatedProduct.slug,
+                        deletedAt: null
+                    },
+                    force: true,
+                    transaction
+                });
+            }
+        }
+
         // Commit transaction FIRST to avoid conflicts
         await transaction.commit();
 
@@ -1860,7 +1920,27 @@ module.exports.updateProduct = async (req, res, next) => {
             });
         }
 
-        return successResponse(res, updatedProduct, "Product updated successfully");
+        // Include redirect information in response if product is deleted
+        let responseData = updatedProduct;
+        if (updatedProduct.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'product', slug: updatedProduct.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+
+        return successResponse(res, responseData, "Product updated successfully");
     } catch (error) {
         await transaction.rollback();
         console.log(error);
@@ -1889,9 +1969,21 @@ module.exports.deleteProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
-        // Set redirect URL before soft delete (for old product URL to redirect)
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
         if (redirect_url != null && redirect_url !== '') {
-            await product.update({ redirect_url: redirect_url.trim() }, { transaction });
+            const oldPath = `/${product.slug}`;
+            await Redirect.create({
+                sources: oldPath,
+                url_to: redirect_url.trim(),
+                entity_type: 'product',
+                slug: product.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                }
+            }, { transaction });
         }
 
         // Delete slug relation first
@@ -1922,7 +2014,7 @@ module.exports.deleteProduct = async (req, res, next) => {
  */
 module.exports.bulkDeleteProducts = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedProducts = [];
         const notDeletedProducts = [];
@@ -1941,6 +2033,23 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
                         reason: 'Product not found' 
                     });
                     continue;
+                }
+
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/${product.slug}`;
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'product',
+                        slug: product.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        }
+                    }, { transaction: t });
                 }
 
                 // Delete slug relation first
@@ -2023,6 +2132,17 @@ module.exports.restoreProduct = async (req, res, next) => {
         await product.restore({ transaction });
         await product.update({ redirect_url: null }, { transaction });
 
+        // Remove redirect records associated with this product
+        await Redirect.destroy({
+            where: {
+                slug: product.slug,
+                entity_type: 'product',
+                deletedAt: null
+            },
+            force: true,
+            transaction
+        });
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, transaction);
 
@@ -2082,8 +2202,20 @@ module.exports.bulkRestoreProducts = async (req, res, next) => {
                     continue;
                 }
 
-                // Restore the product
+                // Restore the product and clear redirect URL
                 await product.restore({ transaction: t });
+                await product.update({ redirect_url: null }, { transaction: t });
+
+                // Remove redirect records associated with this product
+                await Redirect.destroy({
+                    where: {
+                        slug: product.slug,
+                        entity_type: 'product',
+                        deletedAt: null
+                    },
+                    force: true,
+                    transaction: t
+                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(product.slug, 'product', product.id, t);

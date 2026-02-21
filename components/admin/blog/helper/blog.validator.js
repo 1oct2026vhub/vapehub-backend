@@ -201,8 +201,8 @@ const filterValidations = [
     
     query('deleted')
         .optional()
-        .isBoolean()
-        .withMessage('Deleted must be a boolean'),
+        .isIn(['true', 'false'])
+        .withMessage('Deleted must be "true" or "false"'),
     
     query('status')
         .optional()
