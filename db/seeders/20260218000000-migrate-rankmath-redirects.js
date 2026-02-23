@@ -54,10 +54,13 @@ module.exports = {
         return normalized;
       };
 
+      // Strip all leading protocol+host segments (fixes doubled/staging URLs), return path only
       const normalizeUrlTo = (url) => {
         if (!url) return null;
         let normalized = String(url).trim();
-        normalized = normalized.replace(/^https?:\/\/[^\/]+/, '');
+        while (/^https?:\/\/[^/]+/.test(normalized)) {
+          normalized = normalized.replace(/^https?:\/\/[^/]+/, '');
+        }
         if (!normalized.startsWith('/')) normalized = '/' + normalized;
         normalized = normalized.replace(/\/$/, '') || '/';
         return normalized;
@@ -75,9 +78,7 @@ module.exports = {
         return parts.length ? parts[parts.length - 1] : null;
       };
 
-      // Replace product-tag with product-deals in url_to for deals only
-      // e.g. deal: /product-tag/slug (old) → /product-deals/slug (new)
-      // Other entity types keep the same URL format as old database
+      // Only replace /product-tag/ with /product-deals/ in url_to (no other changes)
       const replaceProductTagInUrl = (url) => {
         if (!url) return url;
         return String(url).replace(/\/product-tag\//g, '/product-deals/');
@@ -420,10 +421,8 @@ module.exports = {
 
           // Build redirect record
           // sources: Save the original old database source pattern (the old used slug)
-          // url_to: For deals only, normalize and replace product-tag with product-deals. Others save exact URL from old DB.
-          const finalUrlTo = entityType === 'deal' 
-            ? replaceProductTagInUrl(urlTo)  // Normalized URL with product-tag replaced
-            : (oldRedirect.url_to || urlTo);  // Exact URL from old DB for non-deals
+          // url_to: Normalized path (no staging/doubled URLs); only replace /product-tag/ → /product-deals/ in the path.
+          const finalUrlTo = replaceProductTagInUrl(urlTo);
           
           // Safely prepare meta_data JSON - ensure strings are properly formatted
           // Note: bulkInsert requires JSON.stringify() for JSON columns (bypasses model layer)
@@ -459,7 +458,7 @@ module.exports = {
           
           const redirectRecord = {
             sources: sourceUrl, // Original pattern from Rank Math (normalized)
-            url_to: finalUrlTo,  // New format for deals (/product-deals/slug), old format for others
+            url_to: finalUrlTo,  // Path with /product-tag/ → /product-deals/ only
             header_code: oldRedirect.header_code || 301,
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: entityType,
