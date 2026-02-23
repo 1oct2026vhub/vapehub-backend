@@ -240,6 +240,8 @@ module.exports = {
       // Process redirects
       const redirectsToInsert = [];
       const seenSourceUrls = new Set();
+      const duplicatesLog = [];
+      const urlToNotInSlugRelationsLog = [];
       const stats = {
         total: 0,
         deals: 0,
@@ -274,7 +276,7 @@ module.exports = {
           // Skip duplicates
           if (seenSourceUrls.has(sourceUrl)) {
             stats.skipped_duplicate++;
-            console.warn('⚠️  Skipping pattern: duplicate source URL', {
+            duplicatesLog.push({
               rank_math_id: oldRedirect.id,
               pattern,
               sources: sourceUrl,
@@ -404,13 +406,12 @@ module.exports = {
           const urlToFoundInSlugRelations = isSlugInRelations(urlToSlugForLookup);
           if (!urlToFoundInSlugRelations) {
             stats.skipped_no_slug_match++;
-            console.warn('⚠️  url_to not found in slug_relations (warning only, record will still be imported)', {
+            urlToNotInSlugRelationsLog.push({
               rank_math_id: oldRedirect.id,
               pattern,
               sources: sourceUrl,
               url_to: oldRedirect.url_to,
               normalized_url_to: urlTo,
-              parsed_url_to: parsedUrlTo,
               url_to_slug_checked: urlToSlugForLookup,
               entity_type: entityType,
               slug: finalSlug
@@ -499,8 +500,13 @@ module.exports = {
         console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
         console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
         console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
-        if (stats.skipped_no_slug_match > 0) {
-          console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) had url_to not found in slug_relations (warning only). Check logs above for details.`);
+        if (duplicatesLog.length > 0) {
+          console.log('\n📋 Duplicates (skipped):');
+          duplicatesLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
+        }
+        if (urlToNotInSlugRelationsLog.length > 0) {
+          console.log('\n📋 url_to not found in slug_relations (warning only):');
+          urlToNotInSlugRelationsLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
         }
         await crossServerMigration.closeOldDbConnection();
         await transaction.commit();
@@ -546,8 +552,13 @@ module.exports = {
       console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
       console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
       console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
-      if (stats.skipped_no_slug_match > 0) {
-        console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) had url_to not found in slug_relations (warning only). Check logs above for details.`);
+      if (duplicatesLog.length > 0) {
+        console.log('\n📋 Duplicates (skipped):');
+        duplicatesLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
+      }
+      if (urlToNotInSlugRelationsLog.length > 0) {
+        console.log('\n📋 url_to not found in slug_relations (warning only):');
+        urlToNotInSlugRelationsLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
       }
 
       await crossServerMigration.closeOldDbConnection();
