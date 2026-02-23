@@ -11,6 +11,7 @@
  *    - product-category/ → category
  *    - brand/ → brand
  *    - blog/ → blog
+ *    - product/ → product
  * 4. Extracts slugs from patterns and destination URLs
  * 5. Maps slugs to entity_ids by querying slug_relations table (canonical slug source)
  * 6. Inserts into redirects table
@@ -67,6 +68,13 @@ module.exports = {
         return String(path).trim().replace(/^\/+/, '').replace(/\/+$/, '');
       };
 
+      const getLastPathSegment = (path) => {
+        const s = extractSlug(path);
+        if (!s) return null;
+        const parts = String(s).split('/').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : null;
+      };
+
       // Replace product-tag with product-deals in url_to for deals only
       // e.g. deal: /product-tag/slug (old) → /product-deals/slug (new)
       // Other entity types keep the same URL format as old database
@@ -107,9 +115,12 @@ module.exports = {
         let entityType = null;
         let slug = null;
         
-        if (normalized.includes('product-tag/')) {
+        if (normalized.includes('product-tag/') || normalized.includes('product-deals/')) {
           entityType = 'deal';
-          slug = normalized.replace(/.*product-tag\//, '').replace(/\/$/, '').replace(/\/amp\/?$/, '');
+          slug = normalized
+            .replace(/.*(product-tag|product-deals)\//, '')
+            .replace(/\/$/, '')
+            .replace(/\/amp\/?$/, '');
         } else if (normalized.includes('product-category/')) {
           entityType = 'category';
           slug = normalized.replace(/.*product-category\//, '').replace(/\/$/, '').replace(/\/amp\/?$/, '');
@@ -119,6 +130,9 @@ module.exports = {
         } else if (normalized.includes('blog/')) {
           entityType = 'blog';
           slug = normalized.replace(/.*blog\//, '').replace(/\/$/, '').replace(/\/amp\/?$/, '');
+        } else if (normalized.includes('product/')) {
+          entityType = 'product';
+          slug = normalized.replace(/.*product\//, '').replace(/\/$/, '').replace(/\/amp\/?$/, '');
         }
         
         return { entityType, slug: slug || null };
@@ -200,6 +214,29 @@ module.exports = {
       });
       console.log(`   Blogs: ${blogSlugMap.size} mapped`);
 
+      const productSlugMap = new Map();
+      const productSlugRelations = await SlugRelation.findAll({
+        where: { entity_type: 'product' },
+        attributes: ['slug', 'entity_id'],
+        transaction
+      });
+      productSlugRelations.forEach(sr => {
+        if (sr.slug) productSlugMap.set(sr.slug.toLowerCase(), sr.entity_id);
+      });
+      console.log(`   Products: ${productSlugMap.size} mapped`);
+
+      const isSlugInRelations = (slug) => {
+        if (!slug) return false;
+        const key = String(slug).toLowerCase();
+        return (
+          dealSlugMap.has(key) ||
+          categorySlugMap.has(key) ||
+          brandSlugMap.has(key) ||
+          blogSlugMap.has(key) ||
+          productSlugMap.has(key)
+        );
+      };
+
       // Process redirects
       const redirectsToInsert = [];
       const seenSourceUrls = new Set();
@@ -209,6 +246,7 @@ module.exports = {
         categories: 0,
         brands: 0,
         blogs: 0,
+        products: 0,
         skipped_no_entity: 0,
         skipped_duplicate: 0,
         skipped_no_slug_match: 0
@@ -225,12 +263,23 @@ module.exports = {
           const sourceUrl = normalizeSourceUrl(pattern);
           if (!sourceUrl || sourceUrl === '/') {
             stats.skipped_no_entity++;
+            console.warn('⚠️  Skipping pattern: invalid/empty source URL', {
+              rank_math_id: oldRedirect.id,
+              pattern,
+              url_to: oldRedirect.url_to
+            });
             continue;
           }
 
           // Skip duplicates
           if (seenSourceUrls.has(sourceUrl)) {
             stats.skipped_duplicate++;
+            console.warn('⚠️  Skipping pattern: duplicate source URL', {
+              rank_math_id: oldRedirect.id,
+              pattern,
+              sources: sourceUrl,
+              url_to: oldRedirect.url_to
+            });
             continue;
           }
           seenSourceUrls.add(sourceUrl);
@@ -238,62 +287,140 @@ module.exports = {
           // Parse pattern to get entity type and slug
           const parsed = parsePattern(pattern);
           
-          if (!parsed.entityType || !parsed.slug) {
+          let entityType = parsed?.entityType || null;
+          let patternSlug = parsed?.slug || null;
+
+          // Fallback: if RankMath pattern doesn't match known prefixes, default to product using last segment.
+          if ((!entityType || !patternSlug) && sourceUrl) {
+            const fallbackSlug = getLastPathSegment(sourceUrl);
+            if (fallbackSlug) {
+              if (!entityType) entityType = 'product';
+              if (!patternSlug) patternSlug = fallbackSlug;
+              console.warn('⚠️  Pattern did not match known prefixes; defaulting to product', {
+                rank_math_id: oldRedirect.id,
+                pattern,
+                sources: sourceUrl,
+                url_to: oldRedirect.url_to,
+                fallback_entity_type: entityType,
+                fallback_slug: patternSlug
+              });
+            }
+          }
+
+          if (!entityType || !patternSlug) {
             stats.skipped_no_entity++;
+            console.warn('⚠️  Skipping pattern: could not determine entity_type/slug', {
+              rank_math_id: oldRedirect.id,
+              pattern,
+              sources: sourceUrl,
+              url_to: oldRedirect.url_to,
+              parsed
+            });
             continue;
           }
 
           // Try to find entity_id by slug
           let entityId = null;
-          let finalSlug = parsed.slug;
+          let finalSlug = patternSlug;
 
-          switch (parsed.entityType) {
+          switch (entityType) {
             case 'deal':
-              entityId = dealSlugMap.get(parsed.slug.toLowerCase());
+              entityId = dealSlugMap.get(patternSlug.toLowerCase());
               // Also try destination slug if pattern slug doesn't match
-              if (!entityId && destSlug) {
-                entityId = dealSlugMap.get(destSlug.toLowerCase());
-                if (entityId) finalSlug = destSlug;
+              // Note: destSlug can be a full path; only last segment is useful for most entity types.
+              if (!entityId) {
+                const destCandidate = getLastPathSegment(urlTo);
+                if (destCandidate) {
+                  entityId = dealSlugMap.get(destCandidate.toLowerCase());
+                  if (entityId) finalSlug = destCandidate;
+                }
               }
               break;
             case 'category':
-              entityId = categorySlugMap.get(parsed.slug.toLowerCase());
-              if (!entityId && destSlug) {
-                entityId = categorySlugMap.get(destSlug.toLowerCase());
-                if (entityId) finalSlug = destSlug;
+              entityId = categorySlugMap.get(patternSlug.toLowerCase());
+              if (!entityId) {
+                const destCandidate = getLastPathSegment(urlTo);
+                if (destCandidate) {
+                  entityId = categorySlugMap.get(destCandidate.toLowerCase());
+                  if (entityId) finalSlug = destCandidate;
+                }
               }
               break;
             case 'brand': {
               // slug_relations stores brand slug only (e.g. geekvape), not full path (e.g. geekvape/geekvape-kits)
-              const brandLookupSlug = getBrandSlugForLookup(parsed.slug) || parsed.slug;
-              entityId = brandSlugMap.get(parsed.slug.toLowerCase()) || brandSlugMap.get(brandLookupSlug.toLowerCase());
+              const brandLookupSlug = getBrandSlugForLookup(patternSlug) || patternSlug;
+              entityId = brandSlugMap.get(patternSlug.toLowerCase()) || brandSlugMap.get(brandLookupSlug.toLowerCase());
               if (entityId) finalSlug = brandLookupSlug;
-              if (!entityId && destSlug) {
-                const destBrandSlug = getBrandSlugForLookup(destSlug) || destSlug;
-                entityId = brandSlugMap.get(destSlug.toLowerCase()) || brandSlugMap.get(destBrandSlug.toLowerCase());
+              if (!entityId) {
+                const parsedUrlTo = parsePattern(urlTo);
+                const urlToBrandPath = parsedUrlTo?.entityType === 'brand' ? parsedUrlTo.slug : extractSlug(urlTo);
+                const destBrandSlug = getBrandSlugForLookup(urlToBrandPath) || urlToBrandPath;
+                entityId = brandSlugMap.get(String(urlToBrandPath || '').toLowerCase()) || brandSlugMap.get(String(destBrandSlug || '').toLowerCase());
                 if (entityId) finalSlug = destBrandSlug;
               }
               break;
             }
             case 'blog':
-              entityId = blogSlugMap.get(parsed.slug.toLowerCase());
-              if (!entityId && destSlug) {
-                entityId = blogSlugMap.get(destSlug.toLowerCase());
-                if (entityId) finalSlug = destSlug;
+              entityId = blogSlugMap.get(patternSlug.toLowerCase());
+              if (!entityId) {
+                const destCandidate = getLastPathSegment(urlTo);
+                if (destCandidate) {
+                  entityId = blogSlugMap.get(destCandidate.toLowerCase());
+                  if (entityId) finalSlug = destCandidate;
+                }
               }
               break;
+            case 'product':
+              entityId = productSlugMap.get(patternSlug.toLowerCase());
+              if (!entityId) {
+                const destCandidate = getLastPathSegment(urlTo);
+                if (destCandidate) {
+                  entityId = productSlugMap.get(destCandidate.toLowerCase());
+                  if (entityId) finalSlug = destCandidate;
+                }
+              }
+              break;
+            default: {
+              // Unknown entity types should be treated as product (never drop the record for this).
+              const productCandidate = getLastPathSegment(urlTo) || patternSlug;
+              entityType = 'product';
+              finalSlug = productCandidate || finalSlug;
+              entityId = productCandidate ? productSlugMap.get(String(productCandidate).toLowerCase()) : null;
+              break;
+            }
           }
 
-          if (!entityId) {
+          // Validate url_to against slug_relations (warning only, never skip)
+          const parsedUrlTo = parsePattern(urlTo);
+          let urlToSlugForLookup = null;
+          if (parsedUrlTo?.entityType === 'brand') {
+            urlToSlugForLookup = getBrandSlugForLookup(parsedUrlTo.slug) || getLastPathSegment(parsedUrlTo.slug);
+          } else if (parsedUrlTo?.slug) {
+            urlToSlugForLookup = parsedUrlTo.slug;
+          } else {
+            urlToSlugForLookup = getLastPathSegment(urlTo);
+          }
+
+          const urlToFoundInSlugRelations = isSlugInRelations(urlToSlugForLookup);
+          if (!urlToFoundInSlugRelations) {
             stats.skipped_no_slug_match++;
-            console.warn(`⚠️  [NO SLUG MATCH] Slug not found in slug_relations: entity_type=${parsed.entityType}, slug="${parsed.slug}", source=${sourceUrl}`);
-            continue;
+            console.warn('⚠️  url_to not found in slug_relations (warning only, record will still be imported)', {
+              rank_math_id: oldRedirect.id,
+              pattern,
+              sources: sourceUrl,
+              url_to: oldRedirect.url_to,
+              normalized_url_to: urlTo,
+              parsed_url_to: parsedUrlTo,
+              url_to_slug_checked: urlToSlugForLookup,
+              entity_type: entityType,
+              slug: finalSlug
+            });
           }
 
           // Build redirect record
           // sources: Save the original old database source pattern (the old used slug)
           // url_to: For deals only, normalize and replace product-tag with product-deals. Others save exact URL from old DB.
-          const finalUrlTo = parsed.entityType === 'deal' 
+          const finalUrlTo = entityType === 'deal' 
             ? replaceProductTagInUrl(urlTo)  // Normalized URL with product-tag replaced
             : (oldRedirect.url_to || urlTo);  // Exact URL from old DB for non-deals
           
@@ -303,7 +430,7 @@ module.exports = {
             const meta = {
               imported_from: 'vh_rank_math_redirections',
               rank_math_id: oldRedirect.id,
-              pattern_slug: parsed.slug,
+              pattern_slug: patternSlug,
               original_pattern: pattern
             };
             
@@ -334,7 +461,7 @@ module.exports = {
             url_to: finalUrlTo,  // New format for deals (/product-deals/slug), old format for others
             header_code: oldRedirect.header_code || 301,
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
-            entity_type: parsed.entityType,
+            entity_type: entityType,
             slug: finalSlug,
             meta_data: prepareMetaData(), // Already stringified JSON string
             createdAt: oldRedirect.created ? new Date(oldRedirect.created) : new Date(),
@@ -343,12 +470,24 @@ module.exports = {
 
           redirectsToInsert.push(redirectRecord);
 
+          console.log('↪ Imported redirect (prepared)', {
+            rank_math_id: oldRedirect.id,
+            sources: sourceUrl,
+            url_to: finalUrlTo,
+            entity_type: entityType,
+            slug: finalSlug,
+            url_to_slug_checked: urlToSlugForLookup,
+            url_to_found_in_slug_relations: urlToFoundInSlugRelations,
+            entity_id_found: Boolean(entityId)
+          });
+
           // Update stats
-          switch (parsed.entityType) {
+          switch (entityType) {
             case 'deal': stats.deals++; break;
             case 'category': stats.categories++; break;
             case 'brand': stats.brands++; break;
             case 'blog': stats.blogs++; break;
+            case 'product': stats.products++; break;
           }
         }
       }
@@ -359,9 +498,9 @@ module.exports = {
         console.log(`   Total patterns processed: ${stats.total}`);
         console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
         console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
-        console.log(`   Skipped (no slug match): ${stats.skipped_no_slug_match}`);
+        console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
         if (stats.skipped_no_slug_match > 0) {
-          console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) skipped — slug not found in slug_relations. Check logs above for details.`);
+          console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) had url_to not found in slug_relations (warning only). Check logs above for details.`);
         }
         await crossServerMigration.closeOldDbConnection();
         await transaction.commit();
@@ -401,13 +540,14 @@ module.exports = {
       console.log(`   Categories: ${stats.categories}`);
       console.log(`   Brands: ${stats.brands}`);
       console.log(`   Blogs: ${stats.blogs}`);
+      console.log(`   Products: ${stats.products}`);
       console.log(`\n📊 Processing Statistics:`);
       console.log(`   Total patterns processed: ${stats.total}`);
       console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
       console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
-      console.log(`   Skipped (no slug match): ${stats.skipped_no_slug_match}`);
+      console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
       if (stats.skipped_no_slug_match > 0) {
-        console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) skipped — slug not found in slug_relations. Check logs above for details.`);
+        console.warn(`\n⚠️  WARNING: ${stats.skipped_no_slug_match} redirect(s) had url_to not found in slug_relations (warning only). Check logs above for details.`);
       }
 
       await crossServerMigration.closeOldDbConnection();
