@@ -393,16 +393,9 @@ module.exports = {
             }
           }
 
-          // Validate url_to against slug_relations (warning only, never skip)
-          const parsedUrlTo = parsePattern(urlTo);
-          let urlToSlugForLookup = null;
-          if (parsedUrlTo?.entityType === 'brand') {
-            urlToSlugForLookup = getBrandSlugForLookup(parsedUrlTo.slug) || getLastPathSegment(parsedUrlTo.slug);
-          } else if (parsedUrlTo?.slug) {
-            urlToSlugForLookup = parsedUrlTo.slug;
-          } else {
-            urlToSlugForLookup = getLastPathSegment(urlTo);
-          }
+          // Validate url_to against slug_relations (warning only, never skip).
+          // Warning means: the last segment of the destination path is not present as a slug in slug_relations (any entity type).
+          const urlToSlugForLookup = getLastPathSegment(urlTo);
 
           const urlToFoundInSlugRelations = isSlugInRelations(urlToSlugForLookup);
           if (!urlToFoundInSlugRelations) {
@@ -421,8 +414,8 @@ module.exports = {
 
           // Build redirect record
           // sources: Save the original old database source pattern (the old used slug)
-          // url_to: Normalized path (no staging/doubled URLs); only replace /product-tag/ → /product-deals/ in the path.
-          const finalUrlTo = replaceProductTagInUrl(urlTo);
+          // url_to: Save as in the old table; only replace /product-tag/ → /product-deals/ when present.
+          const finalUrlTo = replaceProductTagInUrl(oldRedirect.url_to || urlTo);
           
           // Safely prepare meta_data JSON - ensure strings are properly formatted
           // Note: bulkInsert requires JSON.stringify() for JSON columns (bypasses model layer)
@@ -458,7 +451,7 @@ module.exports = {
           
           const redirectRecord = {
             sources: sourceUrl, // Original pattern from Rank Math (normalized)
-            url_to: finalUrlTo,  // Path with /product-tag/ → /product-deals/ only
+            url_to: finalUrlTo,  // As in old table; /product-tag/ → /product-deals/ only if present
             header_code: oldRedirect.header_code || 301,
             status: oldRedirect.status === 'active' ? 'active' : 'inactive',
             entity_type: entityType,
@@ -498,13 +491,13 @@ module.exports = {
         console.log(`   Total patterns processed: ${stats.total}`);
         console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
         console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
-        console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
+        console.log(`   Warnings (url_to last segment not in slug_relations): ${stats.skipped_no_slug_match}`);
         if (duplicatesLog.length > 0) {
           console.log('\n📋 Duplicates (skipped):');
           duplicatesLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
         }
         if (urlToNotInSlugRelationsLog.length > 0) {
-          console.log('\n📋 url_to not found in slug_relations (warning only):');
+          console.log('\n📋 url_to last segment not in slug_relations (warning only):');
           urlToNotInSlugRelationsLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
         }
         await crossServerMigration.closeOldDbConnection();
@@ -550,13 +543,13 @@ module.exports = {
       console.log(`   Total patterns processed: ${stats.total}`);
       console.log(`   Skipped (no entity): ${stats.skipped_no_entity}`);
       console.log(`   Skipped (duplicate): ${stats.skipped_duplicate}`);
-      console.log(`   Warnings (url_to not found in slug_relations): ${stats.skipped_no_slug_match}`);
+      console.log(`   Warnings (url_to last segment not in slug_relations): ${stats.skipped_no_slug_match}`);
       if (duplicatesLog.length > 0) {
         console.log('\n📋 Duplicates (skipped):');
         duplicatesLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
       }
       if (urlToNotInSlugRelationsLog.length > 0) {
-        console.log('\n📋 url_to not found in slug_relations (warning only):');
+        console.log('\n📋 url_to last segment not in slug_relations (warning only):');
         urlToNotInSlugRelationsLog.forEach((entry, i) => console.log(`   ${i + 1}.`, JSON.stringify(entry)));
       }
 
