@@ -349,17 +349,20 @@ module.exports.deleteUser = async (req, res) => {
 module.exports.restoreUser = async (req, res) => {
     try {
         const { id } = req.params;
-        
+        const requestingUser = req.user;
+
         const user = await User.findOne({
             where: { id },
             paranoid: false // Allows retrieving soft-deleted records
         });
-        
+
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        
+
         await user.restore(); // Restores the soft-deleted user
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
+        await user.save();
         return successResponse(res, { }, "User restored successfully", 200);
     } catch (error) {
         console.error("Error restoring user:", error);
