@@ -58,6 +58,14 @@ module.exports = (sequelize) => {
     noIndex: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    updatedBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'User ID who last updated this SEO meta'
     }
   }, {
     timestamps: true,
@@ -100,6 +108,8 @@ module.exports = (sequelize) => {
       foreignKey: 'entityId',
       as: 'blog'
     });
+
+    SeoMeta.belongsTo(models.User, { foreignKey: 'updatedBy', as: 'updatedByUser' });
   };
 
   return SeoMeta;
