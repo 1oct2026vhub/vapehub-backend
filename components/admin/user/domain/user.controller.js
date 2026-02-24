@@ -88,6 +88,7 @@ module.exports.createUser = async (req, res) => {
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
 
+        const updated_by = req.user?.id ?? null;
         const newUser = await User.create({
             first_name,
             last_name,
@@ -98,7 +99,8 @@ module.exports.createUser = async (req, res) => {
             gender,
             dob,
             token,
-            token_expiry
+            token_expiry,
+            ...(updated_by != null && { updated_by })
         });
 
         if(newUser){
@@ -169,7 +171,9 @@ module.exports.updateUser = async (req, res) => {
         if (password){
             const hashedPassword = await bcrypt.hashSync(password, 10);
             user.password = hashedPassword;
-        } 
+        }
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) user.updated_by = updated_by;
 
         await user.save();
 
@@ -386,6 +390,7 @@ module.exports.blockUser = async (req, res) => {
         }
 
         user.blocked = true;
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
         await user.save();
         return successResponse(res, { }, "User blocked successfully", 200);
     } catch (error) {
@@ -416,6 +421,7 @@ module.exports.unblockUser = async (req, res) => {
         }
         
         user.blocked = false;
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
         await user.save();
 
         return successResponse(res, { }, "User unblocked successfully", 200);
