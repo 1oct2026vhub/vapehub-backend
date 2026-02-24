@@ -124,6 +124,9 @@ module.exports.createDeal = async (req, res, next) => {
             }
         }
         
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
+
         // Create the deal first
         const deal = await Deal.create(dealData, { transaction });
         
@@ -410,7 +413,8 @@ module.exports.updateDeal = async (req, res, next) => {
         if (dealData.show_home_page !== undefined) {
             dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : deal.show_home_page;
         }
-        // dealData.slug = slug.slug;
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
         // Update the deal
         await deal.update(dealData, { transaction });
         
@@ -838,6 +842,8 @@ module.exports.restoreDeal = async (req, res, next) => {
         }
 
         await deal.restore({ transaction });
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) await deal.update({ updated_by }, { transaction });
 
         // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
         await Redirect.destroy({
@@ -955,6 +961,8 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
                     continue;
                 }
                 await deal.restore({ transaction: t });
+                const updated_by = req.user?.id ?? null;
+                if (updated_by != null) await deal.update({ updated_by }, { transaction: t });
 
                 // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
                 await Redirect.destroy({
