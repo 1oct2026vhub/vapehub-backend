@@ -335,6 +335,8 @@ module.exports.deleteUser = async (req, res) => {
             await subscription.destroy();
         }
 
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
+        await user.save();
         await user.destroy(); // Soft delete enabled because `paranoid: true`
         return successResponse(res, { }, "User deleted successfully", 200);
     } catch (error) {
