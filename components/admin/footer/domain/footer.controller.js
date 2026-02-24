@@ -68,7 +68,10 @@ class FooterController {
         });
       }
 
-      const section = await FooterSection.create(req.body);
+      const updated_by = req.user?.id ?? null;
+      const createData = { ...req.body };
+      if (updated_by != null) createData.updated_by = updated_by;
+      const section = await FooterSection.create(createData);
       res.status(201).json({
         success: true,
         data: section
@@ -91,7 +94,10 @@ class FooterController {
           error: 'Footer section not found'
         });
       }
-      const updatedSection = await section.update(req.body);
+      const updateData = { ...req.body };
+      const updated_by = req.user?.id ?? null;
+      if (updated_by != null) updateData.updated_by = updated_by;
+      const updatedSection = await section.update(updateData);
       res.json({
         success: true,
         data: updatedSection
@@ -114,6 +120,8 @@ class FooterController {
           error: 'Footer section not found'
         });
       }
+      const updated_by = req.user?.id ?? null;
+      if (updated_by != null) await section.update({ updated_by });
       await section.destroy();
       res.json({
         success: true,
@@ -183,7 +191,10 @@ class FooterController {
         });
       }
 
-      const link = await FooterLink.create(req.body);
+      const updated_by = req.user?.id ?? null;
+      const createData = { ...req.body };
+      if (updated_by != null) createData.updated_by = updated_by;
+      const link = await FooterLink.create(createData);
       res.status(201).json({
         success: true,
         data: link
@@ -206,7 +217,10 @@ class FooterController {
           error: 'Footer link not found'
         });
       }
-      const updatedLink = await link.update(req.body);
+      const updateData = { ...req.body };
+      const updated_by = req.user?.id ?? null;
+      if (updated_by != null) updateData.updated_by = updated_by;
+      const updatedLink = await link.update(updateData);
       res.json({
         success: true,
         data: updatedLink
@@ -229,6 +243,8 @@ class FooterController {
           error: 'Footer link not found'
         });
       }
+      const updated_by = req.user?.id ?? null;
+      if (updated_by != null) await link.update({ updated_by });
       await link.destroy();
       res.json({
         success: true,
@@ -288,10 +304,9 @@ class FooterController {
         }
 
         // Update current section's order
-        await section.update(
-          { order: new_order },
-          { transaction: t }
-        );
+        const orderPayload = { order: new_order };
+        if (req.user?.id != null) orderPayload.updated_by = req.user.id;
+        await section.update(orderPayload, { transaction: t });
       });
 
       // Get updated sections list
@@ -365,10 +380,9 @@ class FooterController {
         }
 
         // Update current link's order
-        await link.update(
-          { order: new_order },
-          { transaction: t }
-        );
+        const orderPayload = { order: new_order };
+        if (req.user?.id != null) orderPayload.updated_by = req.user.id;
+        await link.update(orderPayload, { transaction: t });
       });
 
       // Get updated links list for the section

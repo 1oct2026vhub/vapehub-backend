@@ -9,6 +9,7 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'section_id',
         as: 'links'
       });
+      this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
     }
   }
 
@@ -26,6 +27,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true
+    },
+    updated_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'User ID who last updated this section'
     }
   }, {
     sequelize,
