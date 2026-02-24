@@ -4,7 +4,7 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class MailSubscriptionSettings extends Model {
         static associate(models) {
-            // Define associations here if needed
+            this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
         }
     }
 
@@ -51,6 +51,14 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
             defaultValue: true,
             comment: 'Whether the mail subscription setting is active'
+        },
+        updated_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: 'users', key: 'id' },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            comment: 'User ID who last updated this setting'
         }
     }, {
         sequelize,
