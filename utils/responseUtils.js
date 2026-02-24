@@ -17,16 +17,15 @@ const successResponse = (res, data, message = "Request successful", statusCode =
 
 // Error response function
 const errorResponse = (res, error, message, statusCode) => {
-    if (!message) {
-        message = error?.errors?.[0]?.message || error.message;
-    }
+    // Prefer the first validation/constraint error message (e.g. "Slug already exists") over generic error.message
+    const resolvedMessage = (error?.errors?.[0]?.message) || message || error?.message;
     if (!statusCode) {
         statusCode = error?.statusCode ? error.statusCode : 500;
     }
     const errorData = error.errors ? error.errors : error;
     res.status(statusCode).json({
         success: false,
-        message: message,
+        message: resolvedMessage,
         error: errorData
     });
 };
