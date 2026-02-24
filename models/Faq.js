@@ -5,7 +5,7 @@ const {
 module.exports = (sequelize, DataTypes) => {
     class FAQ extends Model {
         static associate(models) {
-            // define association here
+            this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
         }
     }
     FAQ.init({
@@ -26,7 +26,15 @@ module.exports = (sequelize, DataTypes) => {
             comment: 'ID of the related entity'
         },
         question: DataTypes.TEXT('long'),
-        answer: DataTypes.TEXT('long')
+        answer: DataTypes.TEXT('long'),
+        updated_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: 'users', key: 'id' },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            comment: 'User ID who last updated this FAQ'
+        }
     }, {
         sequelize,
         modelName: 'FAQ',
