@@ -451,7 +451,8 @@ module.exports.updateDeal = async (req, res, next) => {
             
             // Update menu if there are changes
             if (Object.keys(menuUpdateData).length > 0) {
-                await Menu.update(menuUpdateData, { where: { entity_id: id } }, { transaction });
+                menuUpdateData.updated_by = req.user?.id ?? null;
+                await Menu.update(menuUpdateData, { where: { entity_id: id }, transaction });
             }
         }
 

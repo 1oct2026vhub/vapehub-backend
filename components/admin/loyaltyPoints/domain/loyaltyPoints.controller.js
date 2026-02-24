@@ -269,6 +269,9 @@ module.exports = {
                 return errorResponse(res, {}, 'Loyalty points setting not found', 404);
             }
 
+            if (userId != null) {
+                await existingSetting.update({ updated_by: userId });
+            }
             // Soft delete the setting
             await existingSetting.destroy();
 

@@ -297,6 +297,10 @@ module.exports.deleteFeatureContent = async (req, res) => {
       });
     }
 
+    const updated_by = req.user?.id ?? null;
+    if (updated_by != null) {
+      await featureContent.update({ updated_by });
+    }
     await featureContent.destroy();
 
     return successResponse(res, {}, 'Feature content deleted successfully');

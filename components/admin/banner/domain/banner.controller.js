@@ -483,6 +483,7 @@ module.exports.updateBanner = async (req, res) => {
 module.exports.deleteBanner = async (req, res) => {
     try {
         const { id } = req.params;
+        const user_id = req?.user?.id ?? null;
         const banner = await BannerImage.findByPk(id);
         
         if (!banner) {
@@ -495,7 +496,8 @@ module.exports.deleteBanner = async (req, res) => {
             // Update display orders of items after the deleted item
             await BannerImage.update(
                 { 
-                    display_order: Sequelize.literal('display_order - 1')
+                    display_order: Sequelize.literal('display_order - 1'),
+                    updated_by: user_id
                 },
                 { 
                     where: {
@@ -514,6 +516,9 @@ module.exports.deleteBanner = async (req, res) => {
                 await deleteAllResizedImages(baseS3Key);
             }
 
+            if (user_id != null) {
+                await banner.update({ updated_by: user_id }, { transaction: t });
+            }
             // Soft delete the banner (marks as deleted but keeps record)
             await banner.destroy({ transaction: t });
         });

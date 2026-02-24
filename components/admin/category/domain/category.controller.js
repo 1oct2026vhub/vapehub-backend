@@ -329,10 +329,8 @@ module.exports.updateCategory = async (req, res, next) => {
         if (menu) {
             await Menu.update({
                 original: `/${slug?.trim()}`,
-                // name: name?.trim() || menu.name,
-                // slug: slug?.trim() || menu.slug
-
-            }, { where: { entity_id: id } }, { transaction: t });
+                updated_by
+            }, { where: { entity_id: id }, transaction: t });
         }
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
