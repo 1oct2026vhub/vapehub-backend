@@ -206,7 +206,7 @@ router.put(
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked]
+ *           enum: [id, first_name, last_name, email, phone, gender, role, createdAt, updatedAt, deletedAt, email_verified_at, blocked]
  *         description: Sort users by field (default - createdAt)
  *       - in: query
  *         name: order

@@ -202,7 +202,7 @@ module.exports.listUsers = async (req, res) => {
         // Validate sort_by parameter and set default if invalid
         const allowedSortFields = [
             'id', 'first_name', 'last_name', 'email', 'phone', 
-            'gender', 'createdAt', 'updatedAt', 'deletedAt',
+            'gender', 'role', 'createdAt', 'updatedAt', 'deletedAt',
             'email_verified_at', 'blocked'
         ];
         
@@ -211,6 +211,11 @@ module.exports.listUsers = async (req, res) => {
         // Validate order parameter and set default if invalid
         const validOrders = ['ASC', 'DESC'];
         const validatedOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+
+        // Order by User field or by associated Role.role when sort_by is 'role'
+        const orderClause = validatedSortBy === 'role'
+            ? [[{ model: Role, as: 'roles' }, 'role', validatedOrder]]
+            : [[validatedSortBy, validatedOrder]];
 
         const offset = (page - 1) * limit;
         const whereCondition = {};
@@ -268,7 +273,7 @@ module.exports.listUsers = async (req, res) => {
             include: [{ model: Role, as: "roles", attributes: ["id", "role"] }],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [[validatedSortBy, validatedOrder]],
+            order: orderClause,
             paranoid: false,
         });
 
