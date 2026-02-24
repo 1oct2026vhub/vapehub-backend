@@ -39,7 +39,7 @@ module.exports.listPopularCategories = async (req, res, next) => {
         const offset = (page - 1) * limit;
 
         // Validate sort parameters
-        const allowedSortFields = ["id", "title", "description", "status", "order", "createdAt", "updatedAt"];
+        const allowedSortFields = ["id", "title", "description", "status", "order", "createdAt", "updatedAt", "updated_by"];
         sortBy = allowedSortFields.includes(sortBy) ? sortBy : "order";
         sortOrder = ["ASC", "DESC"].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : "ASC";
 
@@ -138,14 +138,17 @@ module.exports.createPopularCategory = async (req, res, next) => {
 
         // Auto-assign order if not provided
         const finalOrder = order !== undefined ? parseInt(order) : await getNextOrder();
+        const updated_by = req.user?.id ?? null;
 
-        const popularCategory = await PopularCategory.create({
+        const createData = {
             category_id,
             title: title.trim(),
             description: description?.trim() || null,
             status,
             order: finalOrder
-        }, { transaction: t });
+        };
+        if (updated_by != null) createData.updated_by = updated_by;
+        const popularCategory = await PopularCategory.create(createData, { transaction: t });
 
         await t.commit();
 
@@ -200,6 +203,8 @@ module.exports.updatePopularCategory = async (req, res, next) => {
         if (description !== undefined) updateData.description = description?.trim() || null;
         if (status !== undefined) updateData.status = status;
         if (order !== undefined) updateData.order = parseInt(order);
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) updateData.updated_by = updated_by;
 
         await popularCategory.update(updateData, { transaction: t });
         await t.commit();
@@ -271,6 +276,7 @@ module.exports.restorePopularCategory = async (req, res, next) => {
         }
 
         await popularCategory.restore();
+        if (req.user?.id != null) await popularCategory.update({ updated_by: req.user.id });
 
         const restoredCategory = await PopularCategory.findByPk(req.params.id, {
             include: [{
@@ -340,13 +346,9 @@ module.exports.shuffleOrder = async (req, res, next) => {
             );
         }
 
-        // Update current popular category's order
-        await currentPopularCategory.update(
-            { 
-                order: parseInt(new_order)
-            },
-            { transaction: t }
-        );
+        const orderPayload = { order: parseInt(new_order) };
+        if (req.user?.id != null) orderPayload.updated_by = req.user.id;
+        await currentPopularCategory.update(orderPayload, { transaction: t });
 
         await t.commit();
 
@@ -493,7 +495,9 @@ module.exports.bulkRestorePopularCategories = async (req, res, next) => {
 
                 // Assign to end of list
                 const maxOrder = await PopularCategory.max('order');
-                await popularCategory.update({ order: (maxOrder || 0) + 1 });
+                const orderUpdate = { order: (maxOrder || 0) + 1 };
+                if (req.user?.id != null) orderUpdate.updated_by = req.user.id;
+                await popularCategory.update(orderUpdate);
 
                 restoredPopularCategories.push({
                     id: popularCategory.id,
