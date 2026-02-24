@@ -466,7 +466,7 @@ module.exports.updateDeal = async (req, res, next) => {
                     paranoid: false
                 });
                 if (redirect) {
-                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction });
+                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: req.user?.id ?? null }, { transaction });
                 } else {
                     await Redirect.create({
                         sources: oldPath,
@@ -475,7 +475,8 @@ module.exports.updateDeal = async (req, res, next) => {
                         slug: deal.slug,
                         header_code: 301,
                         status: 'active',
-                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by: req.user?.id ?? null
                     }, { transaction });
                 }
             } else {
@@ -793,7 +794,8 @@ module.exports.deleteDeal = async (req, res, next) => {
                 meta_data: {
                     source: 'delete_api',
                     created_by: req.user?.id || null
-                }
+                },
+                updated_by: req.user?.id ?? null
             }, { transaction });
         }
 
@@ -886,7 +888,8 @@ module.exports.bulkDeleteDeals = async (req, res, next) => {
                         meta_data: {
                             source: 'bulk_delete_api',
                             created_by: req.user?.id || null
-                        }
+                        },
+                        updated_by: req.user?.id ?? null
                     }, { transaction: t });
                 }
 

@@ -1869,7 +1869,7 @@ module.exports.updateProduct = async (req, res, next) => {
                 });
                 if (redirect) {
                     await redirect.update(
-                        { url_to: trimmedUrl, deletedAt: null },
+                        { url_to: trimmedUrl, deletedAt: null, updated_by: req.user?.id ?? null },
                         { transaction }
                     );
                 } else {
@@ -1880,7 +1880,8 @@ module.exports.updateProduct = async (req, res, next) => {
                         slug: updatedProduct.slug,
                         header_code: 301,
                         status: 'active',
-                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by: req.user?.id ?? null
                     }, { transaction });
                 }
             } else {
@@ -1983,7 +1984,8 @@ module.exports.deleteProduct = async (req, res, next) => {
                 meta_data: {
                     source: 'delete_api',
                     created_by: req.user?.id || null
-                }
+                },
+                updated_by: req.user?.id ?? null
             }, { transaction });
         }
 
@@ -2049,7 +2051,8 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
                         meta_data: {
                             source: 'bulk_delete_api',
                             created_by: req.user?.id || null
-                        }
+                        },
+                        updated_by: req.user?.id ?? null
                     }, { transaction: t });
                 }
 

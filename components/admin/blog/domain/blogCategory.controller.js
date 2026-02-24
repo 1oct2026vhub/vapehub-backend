@@ -294,7 +294,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
                 });
                 if (redirect) {
                     // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null, updated_by: req.user?.id ?? null }, { transaction: t });
                 } else {
                     await Redirect.create({
                         sources: oldPath,
@@ -304,7 +304,8 @@ module.exports.updateBlogCategory = async (req, res, next) => {
                         header_code: 301,
                         status: 'active',
                         deletedAt: null,
-                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by: req.user?.id ?? null
                     }, { transaction: t });
                 }
             } else {
@@ -369,7 +370,7 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
             });
             if (redirect) {
                 // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: req.user?.id ?? null }, { transaction: t });
             } else {
                 await Redirect.create({
                     sources: oldPath,
@@ -382,7 +383,8 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
                     meta_data: {
                         source: 'delete_api',
                         created_by: req.user?.id || null
-                    }
+                    },
+                    updated_by: req.user?.id ?? null
                 }, { transaction: t });
             }
         }
@@ -476,7 +478,7 @@ module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
                     });
                     if (redirect) {
                         // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: req.user?.id ?? null }, { transaction: t });
                     } else {
                         await Redirect.create({
                             sources: oldPath,
@@ -489,7 +491,8 @@ module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
                             meta_data: {
                                 source: 'bulk_delete_api',
                                 created_by: req.user?.id || null
-                            }
+                            },
+                            updated_by: req.user?.id ?? null
                         }, { transaction: t });
                     }
                 }
