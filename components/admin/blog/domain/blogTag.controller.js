@@ -161,11 +161,15 @@ module.exports.updateBlogTag = async (req, res, next) => {
 module.exports.deleteBlogTag = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const updated_by = req.user?.id ?? null;
         const tag = await BlogTag.findByPk(id);
         if (!tag) {
             return errorResponse(res, { message: "Blog tag not found" }, "Blog tag not found", 404);
         }
 
+        if (updated_by != null) {
+            await tag.update({ updated_by });
+        }
         await tag.destroy();
         return successResponse(res, {}, "Blog tag deleted successfully");
     } catch (error) {

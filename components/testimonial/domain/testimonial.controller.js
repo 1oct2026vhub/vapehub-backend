@@ -40,8 +40,9 @@ module.exports.getTestimonialByid = async (req, res, next) => {
 module.exports.createTestimonial = async (req, res, next) => {
     try {
         const { rating, content, product_id = null } = req.body;
-        const { id: user_id } = req.user
-        const testimonial = await Testimonial.create({ rating, content, product_id, user_id });
+        const { id: user_id } = req.user;
+        const updated_by = req.user?.id ?? null;
+        const testimonial = await Testimonial.create({ rating, content, product_id, user_id, updated_by });
         console.log("🚀 ~ module.exports.createTestimonial= ~ req.user:", req.user)
         successResponse(res, testimonial, 'Testimonial created successfully', 201);
     } catch (error) {
@@ -52,7 +53,8 @@ module.exports.updateTestimonial = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { rating, content, product_id = null} = req.body;
-        const { id: user_id } = req.user
+        const { id: user_id } = req.user;
+        const updated_by = req.user?.id ?? null;
 
         const testimonial = await Testimonial.findByPk(id);
         if (!testimonial) {
@@ -67,6 +69,7 @@ module.exports.updateTestimonial = async (req, res, next) => {
             ...(content && { content }),
             ...(product_id && { product_id }),
             ...(user_id && { user_id }),
+            ...(updated_by != null && { updated_by }),
         });
         successResponse(res, testimonial, 'Testimonial updated successfully',);
     } catch (error) {

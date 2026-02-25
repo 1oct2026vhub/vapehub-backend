@@ -265,10 +265,11 @@ const couponController = {
       const coupon = await Coupon.findByPk(req.params.id);
       
       if (!coupon) {
-        logger.warn('Coupon not found for deletion', { couponId: id });
+        logger.warn('Coupon not found for deletion', { couponId: req.params.id });
         return errorResponse(res, { message: 'Coupon not found' }, "Not Found", 404);
       }
 
+      await coupon.update({ updated_by: req.user.id });
       await coupon.destroy();
 
       return successResponse(res, { message: 'Coupon deleted successfully' }, "Coupon deleted successfully");

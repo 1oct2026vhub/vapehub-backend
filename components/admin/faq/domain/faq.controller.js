@@ -110,7 +110,7 @@ const createFaq = async (req, res, next) => {
     const transaction = await FAQ.sequelize.transaction();
     try {
         const { entity_type, entity_id, question, answer } = req.body;
-        const { id: updated_by } = req.user;
+        const updated_by = req.user?.id ?? null;
 
         const faq = await FAQ.create({
             entity_type,
@@ -140,7 +140,7 @@ const updateFaq = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { entity_type, entity_id, question, answer } = req.body;
-        const { id: updated_by } = req.user;
+        const updated_by = req.user?.id ?? null;
 
         const faq = await FAQ.findByPk(id);
         if (!faq) {
@@ -148,13 +148,9 @@ const updateFaq = async (req, res, next) => {
             return errorResponse(res, { message: 'FAQ not found' }, 'FAQ not found', 404);
         }
 
-        await faq.update({
-            entity_type,
-            entity_id,
-            question,
-            answer,
-            updated_by
-        }, { transaction });
+        const updateData = { entity_type, entity_id, question, answer };
+        if (updated_by != null) updateData.updated_by = updated_by;
+        await faq.update(updateData, { transaction });
 
         await transaction.commit();
         return successResponse(res, faq, 'FAQ updated successfully');
@@ -203,7 +199,7 @@ const restoreFaq = async (req, res, next) => {
     const transaction = await FAQ.sequelize.transaction();
     try {
         const { id } = req.params;
-        const { id: updated_by } = req.user;
+        const updated_by = req.user?.id ?? null;
 
         const faq = await FAQ.findOne({
             where: { id },
@@ -221,7 +217,7 @@ const restoreFaq = async (req, res, next) => {
         }
 
         await faq.restore({ transaction });
-        await faq.update({ updated_by }, { transaction });
+        if (updated_by != null) await faq.update({ updated_by }, { transaction });
 
         await transaction.commit();
         return successResponse(res, faq, 'FAQ restored successfully');

@@ -124,6 +124,9 @@ module.exports.createDeal = async (req, res, next) => {
             }
         }
         
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
+
         // Create the deal first
         const deal = await Deal.create(dealData, { transaction });
         
@@ -410,7 +413,8 @@ module.exports.updateDeal = async (req, res, next) => {
         if (dealData.show_home_page !== undefined) {
             dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : deal.show_home_page;
         }
-        // dealData.slug = slug.slug;
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
         // Update the deal
         await deal.update(dealData, { transaction });
         
@@ -451,7 +455,8 @@ module.exports.updateDeal = async (req, res, next) => {
             
             // Update menu if there are changes
             if (Object.keys(menuUpdateData).length > 0) {
-                await Menu.update(menuUpdateData, { where: { entity_id: id } }, { transaction });
+                menuUpdateData.updated_by = req.user?.id ?? null;
+                await Menu.update(menuUpdateData, { where: { entity_id: id }, transaction });
             }
         }
 
@@ -465,7 +470,7 @@ module.exports.updateDeal = async (req, res, next) => {
                     paranoid: false
                 });
                 if (redirect) {
-                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction });
+                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: req.user?.id ?? null }, { transaction });
                 } else {
                     await Redirect.create({
                         sources: oldPath,
@@ -474,7 +479,8 @@ module.exports.updateDeal = async (req, res, next) => {
                         slug: deal.slug,
                         header_code: 301,
                         status: 'active',
-                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by: req.user?.id ?? null
                     }, { transaction });
                 }
             } else {
@@ -792,7 +798,8 @@ module.exports.deleteDeal = async (req, res, next) => {
                 meta_data: {
                     source: 'delete_api',
                     created_by: req.user?.id || null
-                }
+                },
+                updated_by: req.user?.id ?? null
             }, { transaction });
         }
 
@@ -835,6 +842,8 @@ module.exports.restoreDeal = async (req, res, next) => {
         }
 
         await deal.restore({ transaction });
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) await deal.update({ updated_by }, { transaction });
 
         // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
         await Redirect.destroy({
@@ -885,7 +894,8 @@ module.exports.bulkDeleteDeals = async (req, res, next) => {
                         meta_data: {
                             source: 'bulk_delete_api',
                             created_by: req.user?.id || null
-                        }
+                        },
+                        updated_by: req.user?.id ?? null
                     }, { transaction: t });
                 }
 
@@ -951,6 +961,8 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
                     continue;
                 }
                 await deal.restore({ transaction: t });
+                const updated_by = req.user?.id ?? null;
+                if (updated_by != null) await deal.update({ updated_by }, { transaction: t });
 
                 // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
                 await Redirect.destroy({

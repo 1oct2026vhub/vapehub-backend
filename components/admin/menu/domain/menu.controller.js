@@ -734,9 +734,11 @@ const deleteMenu = async (req, res) => {
             return errorResponse(res, null, 'Menu item not found', 404);
         }
 
+        const userId = req.user?.id ?? null;
         // Always delete all descendant menus recursively
-        await deleteChildren(id, transaction);
+        await deleteChildren(id, transaction, userId);
 
+        await menu.update({ updated_by: userId }, { transaction });
         await menu.destroy({ transaction });
         await transaction.commit();
         return successResponse(res, { message: 'Menu deleted successfully' });
@@ -918,15 +920,19 @@ const buildMenuTree = (menus, parentId = null) => {
  * Helper function to recursively delete menu children
  * @param {number} parentId - Parent menu ID
  * @param {Object} transaction - Sequelize transaction object
+ * @param {number|null} updatedBy - User ID for updated_by (optional)
  */
-const deleteChildren = async (parentId, transaction) => {
+const deleteChildren = async (parentId, transaction, updatedBy = null) => {
     const children = await Menu.findAll({
         where: { menu_parent: parentId },
         transaction
     });
 
     for (const child of children) {
-        await deleteChildren(child.id, transaction);
+        await deleteChildren(child.id, transaction, updatedBy);
+        if (updatedBy != null) {
+            await child.update({ updated_by: updatedBy }, { transaction });
+        }
         await child.destroy({ transaction });
     }
 };

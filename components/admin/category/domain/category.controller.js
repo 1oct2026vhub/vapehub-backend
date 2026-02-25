@@ -329,10 +329,8 @@ module.exports.updateCategory = async (req, res, next) => {
         if (menu) {
             await Menu.update({
                 original: `/${slug?.trim()}`,
-                // name: name?.trim() || menu.name,
-                // slug: slug?.trim() || menu.slug
-
-            }, { where: { entity_id: id } }, { transaction: t });
+                updated_by
+            }, { where: { entity_id: id }, transaction: t });
         }
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
@@ -349,7 +347,7 @@ module.exports.updateCategory = async (req, res, next) => {
                 });
                 if (redirect) {
                     // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                    await redirect.update({ url_to: trimmedUrl, deletedAt: null }, { transaction: t });
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null, updated_by }, { transaction: t });
                 } else {
                     await Redirect.create({
                         sources: oldPath,
@@ -359,7 +357,8 @@ module.exports.updateCategory = async (req, res, next) => {
                         header_code: 301,
                         status: 'active',
                         deletedAt: null,
-                        meta_data: { source: 'put_api', created_by: req.user?.id || null }
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by
                     }, { transaction: t });
                 }
             } else {
@@ -435,6 +434,7 @@ module.exports.deleteCategory = async (req, res, next) => {
         }
 
         // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
+        const redirectUpdatedBy = req.user?.id ?? null;
         if (redirect_url != null && redirect_url !== '') {
             const oldPath = `/product-category/${category.slug}`;
             const redirect = await Redirect.findOne({
@@ -444,7 +444,7 @@ module.exports.deleteCategory = async (req, res, next) => {
             });
             if (redirect) {
                 // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: redirectUpdatedBy }, { transaction: t });
             } else {
                 await Redirect.create({
                     sources: oldPath,
@@ -457,7 +457,8 @@ module.exports.deleteCategory = async (req, res, next) => {
                     meta_data: {
                         source: 'delete_api',
                         created_by: req.user?.id || null
-                    }
+                    },
+                    updated_by: redirectUpdatedBy
                 }, { transaction: t });
             }
         }
@@ -488,6 +489,7 @@ module.exports.deleteCategory = async (req, res, next) => {
 module.exports.bulkDeleteCategories = async (req, res, next) => {
     try {
         const { ids, redirect_url } = req.body;
+        const redirectUpdatedBy = req.user?.id ?? null;
 
         const deletedCategories = [];
         const notDeletedCategories = [];
@@ -538,7 +540,7 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                     });
                     if (redirect) {
                         // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
-                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null }, { transaction: t });
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: redirectUpdatedBy }, { transaction: t });
                     } else {
                         await Redirect.create({
                             sources: oldPath,
@@ -551,7 +553,8 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                             meta_data: {
                                 source: 'bulk_delete_api',
                                 created_by: req.user?.id || null
-                            }
+                            },
+                            updated_by: redirectUpdatedBy
                         }, { transaction: t });
                     }
                 }

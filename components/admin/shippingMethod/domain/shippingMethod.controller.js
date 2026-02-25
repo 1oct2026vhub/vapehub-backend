@@ -381,6 +381,7 @@ module.exports.calculateShippingCost = async (req, res) => {
 // Delete a shipping method (soft delete)
 module.exports.deleteShippingMethod = async (req, res) => {
     try {
+        const { id: updated_by } = req.user || {};
         const shippingMethod = await ShippingMethod.findByPk(req.params.id);
         if (!shippingMethod) {
             const error = new Error("Shipping method not found");
@@ -388,6 +389,9 @@ module.exports.deleteShippingMethod = async (req, res) => {
             throw error;
         }
         
+        if (updated_by != null) {
+            await shippingMethod.update({ updated_by });
+        }
         await shippingMethod.destroy();
         return successResponse(res, { message: "Shipping method deleted successfully" });
     } catch (error) {

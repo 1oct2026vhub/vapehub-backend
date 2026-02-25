@@ -4,9 +4,7 @@ const { Model, Op } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
   class Redirect extends Model {
     static associate(models) {
-      // Optional: Define associations if needed
-      // For example, you could add a belongsTo relation to SlugRelation
-      // but since we're using slug as a string reference, it's not strictly necessary
+      this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
     }
 
     /**
@@ -193,6 +191,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.JSON,
       allowNull: true,
       comment: 'Additional metadata (e.g., source, notes, created_by)'
+    },
+    updated_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'User ID who last updated this redirect'
     }
   }, {
     sequelize,

@@ -211,6 +211,7 @@ module.exports.createEntityBanner = async (req, res) => {
             return errorResponse(res, { statusCode: 400 }, 'Image is required (either as file upload or URL)');
         }
 
+        const updated_by = req.user?.id ?? null;
         const entityBanner = await EntityBanner.create({
             type,
             brand_id,
@@ -219,7 +220,8 @@ module.exports.createEntityBanner = async (req, res) => {
             image: imageUrl,
             alt,
             url,
-            order
+            order,
+            ...(updated_by != null && { updated_by })
         });
 
         return successResponse(res, entityBanner, 'Entity banner created successfully');
@@ -279,7 +281,7 @@ module.exports.updateEntityBanner = async (req, res) => {
             imageUrl = await handleImageUpload(req.file);
         }
 
-        await entityBanner.update({
+        const updatePayload = {
             type: newType,
             brand_id: newBrandId,
             category_id: newCategoryId,
@@ -288,7 +290,10 @@ module.exports.updateEntityBanner = async (req, res) => {
             alt: alt ?? entityBanner.alt,
             url: url ?? entityBanner.url,
             order: newOrder
-        });
+        };
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) updatePayload.updated_by = updated_by;
+        await entityBanner.update(updatePayload);
 
         return successResponse(res, entityBanner, 'Entity banner updated successfully');
     } catch (error) {

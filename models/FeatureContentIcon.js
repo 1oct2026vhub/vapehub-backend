@@ -9,11 +9,11 @@ module.exports = (sequelize, DataTypes) => {
      * The `models/index` file will call this method automatically.
      */
     static associate(models) {
-      // Define associations here
       FeatureContentIcon.hasMany(models.FeatureContent, {
         foreignKey: 'icon_id',
         as: 'featureContents'
       });
+      FeatureContentIcon.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
     }
   }
   
@@ -43,6 +43,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: sequelize.literal('CURRENT_TIMESTAMP')
+    },
+    updated_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'User ID who last updated this icon'
     },
     deletedAt: {
       type: DataTypes.DATE,
