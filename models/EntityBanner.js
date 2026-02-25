@@ -24,6 +24,7 @@ module.exports = (sequelize, DataTypes) => {
                 onDelete: 'SET NULL',
                 onUpdate: 'CASCADE'
             });
+            this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
         }
     }
 
@@ -99,6 +100,14 @@ module.exports = (sequelize, DataTypes) => {
                 }
             },
             comment: 'URL associated with the entity'
+        },
+        updated_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: 'users', key: 'id' },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            comment: 'User ID who last updated this entity banner'
         }
     }, {
         sequelize,

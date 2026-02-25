@@ -92,15 +92,17 @@ module.exports = {
                 return errorResponse(res, {}, 'Discount amount cannot be negative', 400);
             }
 
-            // Create new setting
-            const newSetting = await MailSubscriptionSettings.create({
+            const updated_by = req?.user?.id ?? null;
+            const createData = {
                 email_frequency: email_frequency || 'weekly',
                 product_updates: product_updates !== undefined ? product_updates : true,
                 discount_notifications: discount_notifications !== undefined ? discount_notifications : true,
                 discount_amount: discount_amount !== undefined ? discount_amount : 0.00,
                 discount_type: discount_type || 'percentage',
                 status: true
-            });
+            };
+            if (updated_by != null) createData.updated_by = updated_by;
+            const newSetting = await MailSubscriptionSettings.create(createData);
 
             logger.info('Mail subscription setting created', {
                 user_id: userId,
@@ -159,6 +161,7 @@ module.exports = {
             if (discount_amount !== undefined) updateData.discount_amount = discount_amount;
             if (discount_type !== undefined) updateData.discount_type = discount_type;
             if (status !== undefined) updateData.status = status;
+            if (userId != null) updateData.updated_by = userId;
 
             await existingSetting.update(updateData);
 
@@ -187,6 +190,7 @@ module.exports = {
                 return errorResponse(res, {}, 'Mail subscription setting not found', 404);
             }
 
+            if (userId != null) await existingSetting.update({ updated_by: userId });
             // Soft delete the setting
             await existingSetting.destroy();
 

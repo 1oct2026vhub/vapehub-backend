@@ -55,7 +55,7 @@ const getAllSettings = async (req, res, next) => {
         }
 
         // Validate sort_by field to prevent SQL injection and use correct column names
-        const allowedSortFields = ['id', 'content_key', 'content', 'is_active', 'created_at', 'updated_at'];
+        const allowedSortFields = ['id', 'content_key', 'content', 'is_active', 'created_at', 'updated_at', 'updated_by'];
         const validatedSortBy = allowedSortFields.includes(sort_by) ? sort_by : 'created_at';
 
         // Calculate offset for pagination
@@ -150,6 +150,7 @@ const createSetting = async (req, res, next) => {
         }
 
         const { content_key, content, is_active = true } = req.body;
+        const updated_by = req.user?.id ?? null;
 
         // Validate required fields
         if (!content_key || !content) {
@@ -188,7 +189,8 @@ const createSetting = async (req, res, next) => {
             // Update existing active setting
             await existingSetting.update({
                 content: sanitizedContent,
-                is_active
+                is_active,
+                updated_by
             }, { transaction });
             
             setting = existingSetting;
@@ -199,7 +201,8 @@ const createSetting = async (req, res, next) => {
             setting = await Settings.create({
                 content_key,
                 content: sanitizedContent,
-                is_active
+                is_active,
+                updated_by
             }, { transaction });
             
             message = 'Setting created successfully';
@@ -226,6 +229,7 @@ const updateSetting = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { content, is_active } = req.body;
+        const updated_by = req.user?.id ?? null;
 
         const setting = await Settings.findByPk(id);
         if (!setting) {
@@ -252,10 +256,15 @@ const updateSetting = async (req, res, next) => {
             updateData.is_active = is_active;
         }
 
-        // Check if there are any fields to update
-        if (Object.keys(updateData).length === 0) {
+        // Require at least one of content or is_active; updated_by is set when user is logged in
+        const hasContentOrActive = content !== undefined || is_active !== undefined;
+        if (!hasContentOrActive) {
             await transaction.rollback();
             return errorResponse(res, { message: 'No valid fields to update. Only content and is_active can be updated.' }, 'No updates provided', 400);
+        }
+
+        if (updated_by != null) {
+            updateData.updated_by = updated_by;
         }
 
         await setting.update(updateData, { transaction });
@@ -308,6 +317,7 @@ const toggleSettingStatus = async (req, res, next) => {
     const transaction = await Settings.sequelize.transaction();
     try {
         const { id } = req.params;
+        const updated_by = req.user?.id ?? null;
         const setting = await Settings.findByPk(id);
 
         if (!setting) {
@@ -315,9 +325,11 @@ const toggleSettingStatus = async (req, res, next) => {
             return errorResponse(res, { message: 'Setting not found' }, 'Setting not found', 404);
         }
 
-        await setting.update({
-            is_active: !setting.is_active
-        }, { transaction });
+        const updatePayload = { is_active: !setting.is_active };
+        if (updated_by != null) {
+            updatePayload.updated_by = updated_by;
+        }
+        await setting.update(updatePayload, { transaction });
 
         await transaction.commit();
         return successResponse(res, setting, 'Setting status toggled successfully');
@@ -378,7 +390,8 @@ const getLegalContent = async (req, res, next) => {
                 content: setting.content,
                 is_active: setting.is_active,
                 created_at: setting.created_at,
-                updated_at: setting.updated_at
+                updated_at: setting.updated_at,
+                updated_by: setting.updated_by
             };
         });
 

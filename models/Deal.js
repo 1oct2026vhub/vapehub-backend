@@ -6,13 +6,13 @@ const SlugManager = require('../utils/slugManager');
 module.exports = (sequelize, DataTypes) => {
     class Deal extends Model {
         static associate(models) {
-            // Define associations here
             Deal.belongsToMany(models.Product, {
                 through: models.DealProduct,
                 foreignKey: 'deal_id',
                 otherKey: 'product_id',
                 as: 'products'
             });
+            Deal.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
         }
     }
 
@@ -154,6 +154,14 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false
+        },
+        updated_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: 'users', key: 'id' },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            comment: 'User ID who last updated this deal'
         }
     }, {
         sequelize,

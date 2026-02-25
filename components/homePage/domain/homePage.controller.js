@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1262,7 +1262,120 @@ module.exports.getSlugRelations = async (req, res, next) => {
         }
 
         // Parse slugs from query string
-        const slugArray = slugs.split(',').map(slug => slug.trim());
+        const slugArray = slugs.split(',').map(slug => slug.trim()).filter(slug => slug.length > 0);
+
+        // Validate that we have at least one valid slug
+        if (slugArray.length === 0) {
+            return errorResponse(res, { message: "At least one valid slug is required" }, "At least one valid slug is required", 400);
+        }
+
+        // Helper: generate path variations for redirect lookup (handles prefixes, slashes, /amp/)
+        const generatePathVariations = (slug) => {
+            const variations = new Set();
+            let s = String(slug).trim();
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            s = s.replace(/\/amp\/?$/, '');
+            variations.add(s);
+            variations.add('/' + s);
+            variations.add(s + '/');
+            variations.add('/' + s + '/');
+            const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
+            for (const prefix of prefixes) {
+                if (!s.includes('/')) {
+                    variations.add(prefix + '/' + s);
+                    variations.add('/' + prefix + '/' + s);
+                    variations.add(prefix + '/' + s + '/');
+                    variations.add('/' + prefix + '/' + s + '/');
+                }
+            }
+            // Add blog category specific path format: /blogs/category/{slug}
+            if (!s.includes('/')) {
+                variations.add('blogs/category/' + s);
+                variations.add('/blogs/category/' + s);
+                variations.add('blogs/category/' + s + '/');
+                variations.add('/blogs/category/' + s + '/');
+            }
+            const normalized = [];
+            variations.forEach(v => {
+                let n = v.trim();
+                if (!n.startsWith('/')) n = '/' + n;
+                n = n.replace(/\/$/, '') || '/';
+                normalized.push(n);
+            });
+            return [...new Set(normalized)];
+        };
+
+        // Check existence of slugs in SlugRelation table
+        const existingSlugs = await SlugRelation.findAll({
+            where: {
+                slug: {
+                    [Op.in]: slugArray
+                }
+            },
+            attributes: ['slug'],
+            raw: true
+        });
+        const existingSlugSet = new Set(existingSlugs.map(s => s.slug));
+        const nonExistentSlugs = slugArray.filter(slug => !existingSlugSet.has(slug));
+
+        // If all slugs don't exist, check for redirects before returning error
+        if (nonExistentSlugs.length === slugArray.length) {
+            // Build path variations for redirect lookup
+            const pathBySlug = new Map();
+            slugArray.forEach(slug => {
+                generatePathVariations(slug).forEach(path => {
+                    if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+                });
+            });
+            const candidatePaths = [...pathBySlug.keys()];
+            
+            let hasRedirect = false;
+            if (candidatePaths.length > 0) {
+                const tableRedirects = await Redirect.findAll({
+                    where: {
+                        sources: { [Op.in]: candidatePaths },
+                        status: 'active'
+                    },
+                    attributes: ['sources', 'url_to'],
+                    limit: 1
+                });
+                hasRedirect = tableRedirects.length > 0;
+            }
+
+            // Check blog category redirects by entity_type and slug
+            if (!hasRedirect && nonExistentSlugs.length > 0) {
+                const blogCategoryRedirect = await Redirect.findOne({
+                    where: {
+                        entity_type: 'blog_category',
+                        slug: { [Op.in]: nonExistentSlugs },
+                        status: 'active',
+                        deletedAt: null
+                    },
+                    attributes: ['slug', 'url_to']
+                });
+                hasRedirect = blogCategoryRedirect != null;
+            }
+
+            // Check soft-deleted products with redirect_url
+            if (!hasRedirect && nonExistentSlugs.length > 0) {
+                const redirectRows = await Product.sequelize.query(
+                    `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != '' LIMIT 1`,
+                    { replacements: { slugs: nonExistentSlugs }, type: Product.sequelize.QueryTypes.SELECT }
+                );
+                hasRedirect = redirectRows.length > 0;
+            }
+
+            // If no redirects found, return error about non-existent slugs
+            if (!hasRedirect) {
+                return errorResponse(res, { 
+                    message: "None of the provided slugs exist",
+                    non_existent_slugs: nonExistentSlugs
+                }, "None of the provided slugs exist", 404);
+            }
+        }
 
         // Query slug relations
         const slugRelations = await SlugRelation.findAll({
@@ -1281,14 +1394,58 @@ module.exports.getSlugRelations = async (req, res, next) => {
         const matchedSlugSet = new Set(slugRelations.map(r => r.slug));
         const unmatchedSlugs = slugArray.filter(s => !matchedSlugSet.has(s));
         let redirectMap = new Map();
+
+        // Build path variations for ALL slugs (matched and unmatched) so we include redirect details when found
+        const pathBySlug = new Map();
+        slugArray.forEach(slug => {
+            generatePathVariations(slug).forEach(path => {
+                if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
+            });
+        });
+        const candidatePaths = [...pathBySlug.keys()];
+        if (candidatePaths.length > 0) {
+            const tableRedirects = await Redirect.findAll({
+                where: {
+                    sources: { [Op.in]: candidatePaths },
+                    status: 'active'
+                },
+                attributes: ['sources', 'url_to']
+            });
+            tableRedirects.forEach(r => {
+                const slug = pathBySlug.get(r.sources);
+                if (slug != null && !redirectMap.has(slug)) {
+                    redirectMap.set(slug, r.url_to);
+                }
+            });
+        }
+
+        // Check for blog category redirects by entity_type and slug (more reliable than path matching)
+        if (slugArray.length > 0) {
+            const blogCategoryRedirects = await Redirect.findAll({
+                where: {
+                    entity_type: 'blog_category',
+                    slug: { [Op.in]: slugArray },
+                    status: 'active',
+                    deletedAt: null
+                },
+                attributes: ['slug', 'url_to']
+            });
+            blogCategoryRedirects.forEach(r => {
+                if (!redirectMap.has(r.slug)) {
+                    redirectMap.set(r.slug, r.url_to);
+                }
+            });
+        }
+
         if (unmatchedSlugs.length > 0) {
+            // Soft-deleted products with redirect_url (only for unmatched slugs)
             const redirectRows = await Product.sequelize.query(
                 `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
-            redirectMap = new Map(redirectRows.map(r => [r.slug, r.redirect_url]));
+            redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
         }
-        // Handle no slug_relation matches: return redirect if soft-deleted product has redirect_url, else 404
+        // Handle no slug_relation matches: return redirect if found (product or redirect table), else 404
         if (!slugRelations.length) {
             if (redirectMap.size > 0) {
                 if (slugArray.length === 1 && redirectMap.has(slugArray[0])) {
@@ -1409,6 +1566,14 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (blogCategory) {
                     response.description = blogCategory.description;
                     response.name = blogCategory.name;
+                } else {
+                    // Blog category is soft-deleted (slug relation exists but category not found)
+                    // Check if there's a redirect, if not return 404
+                    if (!redirectMap.has(slugRelations[0].slug)) {
+                        return errorResponse(res, { 
+                            message: "Blog category not found or has been deleted"
+                        }, "Blog category not found", 404);
+                    }
                 }
             }
 
@@ -1447,6 +1612,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 response.deals_text = latestDealsData.deals_text;
             }
 
+            // Include redirect details when a redirect exists for this slug
+            if (redirectMap.has(slugRelations[0].slug)) {
+                response.redirect = true;
+                response.redirect_url = redirectMap.get(slugRelations[0].slug);
+            }
+
             return successResponse(res, response, 'Success');
         }
 
@@ -1461,6 +1632,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         entity_type: relation.entity_type,
                         entity_id: relation.entity_id
                     };
+                    
+                    // Add redirect details when a redirect exists for this slug
+                    if (redirectMap.has(relation.slug)) {
+                        item.redirect = true;
+                        item.redirect_url = redirectMap.get(relation.slug);
+                    }
                     
                     // Add category description and name if entity is category
                     if (relation.entity_type === 'category') {
@@ -1486,6 +1663,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (blogCategory) {
                             item.description = blogCategory.description;
                             item.name = blogCategory.name;
+                        } else if (!redirectMap.has(relation.slug)) {
+                            // Blog category is soft-deleted and no redirect - skip this item
+                            return null;
                         }
                     }
                     
@@ -1508,7 +1688,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     }
                     
                     return item;
-                });
+                }).filter(item => item !== null); // Filter out null items (soft-deleted blog categories without redirects)
             const redirectItems = Array.from(redirectMap.entries()).map(([slug, redirect_url]) => ({
                 slug,
                 entity_type: 'redirect',
@@ -1641,6 +1821,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (blogCategory) {
                         item.description = blogCategory.description;
                         item.name = blogCategory.name;
+                    } else if (!redirectMap.has(relation.slug)) {
+                        // Blog category is soft-deleted and no redirect - return error
+                        return errorResponse(res, { 
+                            message: "Blog category not found or has been deleted",
+                            slug: relation.slug
+                        }, "Blog category not found", 404);
                     }
                 }
                 
@@ -1660,6 +1846,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (banners.length > 0) {
                         item.banners = banners;
                     }
+                }
+                
+                // Add redirect details when a redirect exists for this slug
+                if (redirectMap.has(relation.slug)) {
+                    item.redirect = true;
+                    item.redirect_url = redirectMap.get(relation.slug);
                 }
                 
                 return item;

@@ -152,11 +152,14 @@ const seoController = {
         return errorResponse(res, { message: 'Slug must be unique' }, 'Bad Request', 400);
       }
 
+      const updatedBy = req.user?.id ?? null;
+
       // Create or update SEO metadata
       const [seoMeta, created] = await SeoMeta.upsert({
         entityType,
         entityId: entityType === 'page' ? null : entityId,
-        ...seoData
+        ...seoData,
+        ...(updatedBy != null && { updatedBy })
       }, {
         returning: true
       });
