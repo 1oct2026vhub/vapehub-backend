@@ -20,7 +20,7 @@ const createFaqValidation = [
         .optional()
         .isString()
         .trim()
-        .isIn(['product', 'category', 'brand', 'variant', 'common'])
+        .isIn(['product', 'category', 'brand', 'variant', 'common', 'blog', 'blog_post', 'blog_category'])
         .withMessage('Invalid entity type'),
     body('entity_id')
         .optional()
@@ -54,7 +54,7 @@ const updateFaqValidation = [
         .optional()
         .isString()
         .trim()
-        .isIn(['product', 'category', 'brand', 'variant', 'common'])
+        .isIn(['product', 'category', 'brand', 'variant', 'common', 'blog', 'blog_post', 'blog_category'])
         .withMessage('Invalid entity type'),
     body('entity_id')
         .optional()
