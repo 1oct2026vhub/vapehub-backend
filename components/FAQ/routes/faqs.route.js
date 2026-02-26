@@ -17,7 +17,7 @@ const { check, query, param } = require("express-validator");
  *         name: entity_type
  *         schema:
  *           type: string
- *           enum: [product, category, brand, variant, common]
+ *           enum: [product, category, brand, variant, common, blog, blog_post, blog_category]
  *         description: Type of entity
  *       - in: query
  *         name: entity_id
@@ -73,7 +73,7 @@ router.get('/', FAQController.listfaqs);
  *             properties:
  *               entity_type:
  *                 type: string
- *                 enum: [product, category, brand, variant, common]
+ *                 enum: [product, category, brand, variant, common, blog, blog_post, blog_category]
  *                 example: "product"
  *               entity_id:
  *                 type: integer
@@ -121,7 +121,7 @@ router.post('/', authenticateJWT,
     validateRequest([
         check('question').isString().withMessage('Question must be a string').notEmpty().withMessage('Question cannot be empty'),
         check('answer').isString().withMessage('Answer must be a string').notEmpty().withMessage('Answer cannot be empty'),
-        check('entity_type').optional().isIn(['product', 'category', 'brand', 'variant', 'common']).withMessage('Invalid entity type'),
+        check('entity_type').optional().isIn(['product', 'category', 'brand', 'variant', 'common', 'blog', 'blog_post', 'blog_category']).withMessage('Invalid entity type'),
         check('entity_id').optional().isInt().withMessage('Entity ID must be an integer'),
     ]),
     FAQController.createFaq);
