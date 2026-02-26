@@ -290,6 +290,34 @@ module.exports.listUsers = async (req, res) => {
     }
 };
 
+// Get a single user by ID
+module.exports.getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requestingUser = req.user;
+
+        const user = await User.findOne({
+            where: { id },
+            include: [{ model: Role, as: "roles", attributes: ["id", "role"] }],
+            attributes: { exclude: ["password", "token", "remember_token"] },
+            paranoid: false,
+        });
+
+        if (!user) {
+            return errorResponse(res, { message: "User not found" }, "Not Found", 404);
+        }
+
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to view this user" }, "Forbidden", 403);
+        }
+
+        return successResponse(res, { user }, "User retrieved successfully", 200);
+    } catch (error) {
+        console.error("Error getting user by ID:", error);
+        return errorResponse(res, error);
+    }
+};
+
 //Soft Delete a User
 module.exports.deleteUser = async (req, res) => {
     try {
