@@ -301,6 +301,81 @@ router.get(
 /**
  * @swagger
  * /api/admin/user/{id}:
+ *   get:
+ *     summary: Get user details by ID
+ *     tags:
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to retrieve
+ *     responses:
+ *       200:
+ *         description: User retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     first_name:
+ *                       type: string
+ *                     last_name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     phone:
+ *                       type: string
+ *                     gender:
+ *                       type: string
+ *                     dob:
+ *                       type: string
+ *                       format: date
+ *                     blocked:
+ *                       type: boolean
+ *                     email_verified_at:
+ *                       type: string
+ *                       format: date-time
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     deletedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     roles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           role:
+ *                             type: string
+ *       403:
+ *         description: Permission denied (cannot view super user)
+ *       404:
+ *         description: User not found
+ */
+router.get(
+    "/:id",
+    [authMiddleware(true), validateRequest(validationRules.userIDValidation)],
+    userController.getUserById
+);
+
+/**
+ * @swagger
+ * /api/admin/user/{id}:
  *   delete:
  *     summary: Delete a user (soft delete)
  *     tags: 
