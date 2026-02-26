@@ -47,9 +47,9 @@ function extractProperFaqsFromContent(content) {
 
   // Section runs from sectionStart until next major heading or shortcode or end (limit to ~15k chars)
   const afterHeading = content.slice(sectionStart);
-  const sectionEndMatch = afterHeading.match(/\n\s*<h[1-4]\s|<\/h[1-4]>\s*<h[1-4]|\[sp_easyaccordion|$/i);
-  const sectionLength = sectionEndMatch ? sectionEndMatch.index : Math.min(15000, afterHeading.length);
-  let sectionText = afterHeading.slice(0, sectionLength);
+  const sectionEndMatch = afterHeading.match(/\n\s*<h[1-4]\s|<\/h[1-4]>\s*<h[1-4]|\[sp_easyaccordion|$/im);
+  const sectionLen = sectionEndMatch ? sectionEndMatch.index : Math.min(15000, afterHeading.length);
+  let sectionText = afterHeading.slice(0, sectionLen);
 
   // Skip if section is only the shortcode (no real Q&A)
   if (SHORTCODE_PATTERN.test(sectionText) && sectionText.replace(SHORTCODE_PATTERN, '').trim().length < 50) {
@@ -57,19 +57,34 @@ function extractProperFaqsFromContent(content) {
   }
   SHORTCODE_PATTERN.lastIndex = 0;
 
-  // Pattern 1: Numbered Q&A — "1. Question text?" or "1) Question" then answer until "2." or end
-  const numberedBlock = /(\d+)[.)]\s*([^\n<]+(?:\?|:)?)\s*[\n\r]+([\s\S]*?)(?=\d+[.)]\s*[\s\S]*|$)/gi;
   let match;
-  while ((match = numberedBlock.exec(sectionText)) !== null) {
-    const question = stripHtml(match[2]).trim();
-    let answer = match[3].trim();
-    answer = stripHtml(answer).replace(/\n\s*\n/g, '\n\n').trim();
-    if (question.length >= 10 && answer.length >= 15) {
-      faqs.push({ question, answer: wrapAnswerInP(answer) });
+
+  // Pattern 1 (prefer when HTML): <p><strong>1. Question?</strong></p><p>Answer</p> — catches all numbered Q&A in HTML
+  if (/<strong[^>]*>[\s\S]*?\d+[.)]/.test(sectionText)) {
+    const strongNumbered = /<p[^>]*>\s*<strong[^>]*>(\d+[.)]\s*)?([\s\S]*?)<\/strong>\s*<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
+    while ((match = strongNumbered.exec(sectionText)) !== null) {
+      const question = stripHtml((match[1] || '') + (match[2] || '')).trim();
+      const answer = stripHtml(match[3] || '').trim();
+      if (question.length >= 10 && answer.length >= 15) {
+        faqs.push({ question, answer: wrapAnswerInP(answer) });
+      }
     }
   }
 
-  // Pattern 2: HTML <p><strong>Question</strong></p><p>Answer</p> (if no numbered found)
+  // Pattern 2: Plain numbered — "1. Question?" then answer until "2." or end
+  if (faqs.length === 0) {
+    const numberedBlock = /(\d+)[.)]\s*([^\n<]+(?:\?|:)?)\s*[\n\r]+([\s\S]*?)(?=\d+[.)]\s*|\s*$)/gim;
+    while ((match = numberedBlock.exec(sectionText)) !== null) {
+      const question = stripHtml(match[2]).trim();
+      let answer = match[3].trim();
+      answer = stripHtml(answer).replace(/\n\s*\n/g, '\n\n').trim();
+      if (question.length >= 10 && answer.length >= 15) {
+        faqs.push({ question, answer: wrapAnswerInP(answer) });
+      }
+    }
+  }
+
+  // Pattern 3: HTML <p><strong>Question</strong></p><p>Answer</p> (no number in strong)
   if (faqs.length === 0) {
     const strongBlock = /<p[^>]*>\s*<strong[^>]*>([\s\S]*?)<\/strong>\s*<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
     while ((match = strongBlock.exec(sectionText)) !== null) {
@@ -81,7 +96,7 @@ function extractProperFaqsFromContent(content) {
     }
   }
 
-  // Pattern 3: **Question** or bold line followed by paragraph
+  // Pattern 4: **Question** or bold line followed by paragraph
   if (faqs.length === 0) {
     const boldLine = /\*\*([^*]+)\*\*\s*[\n\r]+([\s\S]*?)(?=\*\*[^*]+\*\*|$)/g;
     while ((match = boldLine.exec(sectionText)) !== null) {
@@ -91,6 +106,17 @@ function extractProperFaqsFromContent(content) {
         faqs.push({ question, answer: wrapAnswerInP(answer) });
       }
     }
+  }
+
+  // If we found the FAQ heading but extracted nothing, still remove the block if it looks like FAQ content (multiple ?)
+  const looksLikeFaq = (sectionText.match(/\?/g) || []).length >= 2 && sectionText.length > 100;
+  if (faqs.length === 0 && looksLikeFaq) {
+    // Remove section anyway so raw FAQ block doesn't stay
+    return {
+      faqs: [],
+      sectionStart,
+      sectionLength: sectionText.length
+    };
   }
 
   return {
@@ -139,18 +165,18 @@ module.exports = {
 
       // ---- Part 1: Extract "proper" FAQs and remove FAQ section from content ----
       const allBlogs = await queryInterface.sequelize.query(
-        `SELECT id, title, content FROM blogs WHERE content IS NOT NULL AND content != ''`,
+        `SELECT id, title, content FROM blogs WHERE content IS NOT NULL AND content != '' AND deleted_at IS NULL`,
         { transaction, type: Sequelize.QueryTypes.SELECT }
       );
 
       for (const blog of allBlogs) {
         try {
           const { faqs, sectionStart, sectionLength } = extractProperFaqsFromContent(blog.content);
-          if (faqs.length === 0 || sectionStart < 0 || sectionLength <= 0) continue;
+          if (sectionStart < 0 || sectionLength <= 0) continue;
 
           stats.properFaqBlogsFound++;
 
-          // Avoid duplicate questions
+          // Avoid duplicate questions; insert only when we extracted FAQs
           const seen = new Set();
           for (const faq of faqs) {
             const q = faq.question.substring(0, 500);
@@ -158,7 +184,7 @@ module.exports = {
             seen.add(q);
 
             const existingRows = await queryInterface.sequelize.query(
-              `SELECT id FROM FAQs WHERE entity_type = 'blog' AND entity_id = :blogId AND question = :q`,
+              `SELECT id FROM FAQs WHERE entity_type = 'blog' AND entity_id = :blogId AND question = :q AND deletedAt IS NULL`,
               {
                 replacements: { blogId: blog.id, q },
                 transaction,
