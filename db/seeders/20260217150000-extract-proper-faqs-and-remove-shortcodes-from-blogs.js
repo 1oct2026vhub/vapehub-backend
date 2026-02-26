@@ -59,8 +59,20 @@ function extractProperFaqsFromContent(content) {
 
   let match;
 
+  // Pattern 0: WordPress block format — <h3><strong>1. Question?</strong></h3> followed by <p>Answer</p>
+  if (/<h3[\s>][\s\S]*?<strong[\s\S]*?\d+[.)]/.test(sectionText)) {
+    const h3Block = /<h3[^>]*>[\s\S]*?<strong[^>]*>(?:(\d+)[.)]\s*)?([\s\S]*?)<\/strong>[\s\S]*?<\/h3>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi;
+    while ((match = h3Block.exec(sectionText)) !== null) {
+      const question = stripHtml((match[1] || '') + (match[2] || '')).trim();
+      const answer = stripHtml(match[3] || '').trim();
+      if (question.length >= 10 && answer.length >= 15) {
+        faqs.push({ question, answer: wrapAnswerInP(answer) });
+      }
+    }
+  }
+
   // Pattern 1 (prefer when HTML): <p><strong>1. Question?</strong></p><p>Answer</p> — catches all numbered Q&A in HTML
-  if (/<strong[^>]*>[\s\S]*?\d+[.)]/.test(sectionText)) {
+  if (faqs.length === 0 && /<strong[^>]*>[\s\S]*?\d+[.)]/.test(sectionText)) {
     const strongNumbered = /<p[^>]*>\s*<strong[^>]*>(\d+[.)]\s*)?([\s\S]*?)<\/strong>\s*<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
     while ((match = strongNumbered.exec(sectionText)) !== null) {
       const question = stripHtml((match[1] || '') + (match[2] || '')).trim();
