@@ -8,7 +8,7 @@ module.exports = (sequelize, DataTypes) => {
      * The `models/index` file will call this method automatically.
      */
     static associate(models) {
-      // Define associations here if needed
+      this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
     }
   }
 
@@ -45,6 +45,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW
+    },
+    updated_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'User ID who last updated this setting'
     },
     deleted_at: {
       type: DataTypes.DATE,

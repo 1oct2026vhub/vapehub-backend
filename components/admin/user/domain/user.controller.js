@@ -1,6 +1,6 @@
 const { v4: uuid } = require('uuid')
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { User, Role, Order } = require("../../../../models");
+const { User, Role, Order, MailSubscription } = require("../../../../models");
 const sendEmail = require("../../../../library/sendEmail");
 const constants = require('../../../../config/constants');
 const bcrypt = require('bcrypt');
@@ -88,6 +88,7 @@ module.exports.createUser = async (req, res) => {
         const token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
 
+        const updated_by = req.user?.id ?? null;
         const newUser = await User.create({
             first_name,
             last_name,
@@ -98,7 +99,8 @@ module.exports.createUser = async (req, res) => {
             gender,
             dob,
             token,
-            token_expiry
+            token_expiry,
+            ...(updated_by != null && { updated_by })
         });
 
         if(newUser){
@@ -169,7 +171,9 @@ module.exports.updateUser = async (req, res) => {
         if (password){
             const hashedPassword = await bcrypt.hashSync(password, 10);
             user.password = hashedPassword;
-        } 
+        }
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) user.updated_by = updated_by;
 
         await user.save();
 
@@ -198,7 +202,7 @@ module.exports.listUsers = async (req, res) => {
         // Validate sort_by parameter and set default if invalid
         const allowedSortFields = [
             'id', 'first_name', 'last_name', 'email', 'phone', 
-            'gender', 'createdAt', 'updatedAt', 'deletedAt',
+            'gender', 'role', 'createdAt', 'updatedAt', 'deletedAt',
             'email_verified_at', 'blocked'
         ];
         
@@ -207,6 +211,11 @@ module.exports.listUsers = async (req, res) => {
         // Validate order parameter and set default if invalid
         const validOrders = ['ASC', 'DESC'];
         const validatedOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+
+        // Order by User field or by associated Role.role when sort_by is 'role'
+        const orderClause = validatedSortBy === 'role'
+            ? [[{ model: Role, as: 'roles' }, 'role', validatedOrder]]
+            : [[validatedSortBy, validatedOrder]];
 
         const offset = (page - 1) * limit;
         const whereCondition = {};
@@ -264,7 +273,7 @@ module.exports.listUsers = async (req, res) => {
             include: [{ model: Role, as: "roles", attributes: ["id", "role"] }],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [[validatedSortBy, validatedOrder]],
+            order: orderClause,
             paranoid: false,
         });
 
@@ -277,6 +286,34 @@ module.exports.listUsers = async (req, res) => {
 
     } catch (error) {
         console.error("Error listing users:", error);
+        return errorResponse(res, error);
+    }
+};
+
+// Get a single user by ID
+module.exports.getUserById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requestingUser = req.user;
+
+        const user = await User.findOne({
+            where: { id },
+            include: [{ model: Role, as: "roles", attributes: ["id", "role"] }],
+            attributes: { exclude: ["password", "token", "remember_token"] },
+            paranoid: false,
+        });
+
+        if (!user) {
+            return errorResponse(res, { message: "User not found" }, "Not Found", 404);
+        }
+
+        if (!requestingUser.super_user && user.super_user) {
+            return errorResponse(res, { message: "You don't have permission to view this user" }, "Forbidden", 403);
+        }
+
+        return successResponse(res, { user }, "User retrieved successfully", 200);
+    } catch (error) {
+        console.error("Error getting user by ID:", error);
         return errorResponse(res, error);
     }
 };
@@ -323,6 +360,16 @@ module.exports.deleteUser = async (req, res) => {
             }, 400);
         }
 
+        // Soft delete all mail subscriptions associated with this user
+        const mailSubscriptions = await MailSubscription.findAll({
+            where: { user_id: id }
+        });
+        for (const subscription of mailSubscriptions) {
+            await subscription.destroy();
+        }
+
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
+        await user.save();
         await user.destroy(); // Soft delete enabled because `paranoid: true`
         return successResponse(res, { }, "User deleted successfully", 200);
     } catch (error) {
@@ -335,17 +382,20 @@ module.exports.deleteUser = async (req, res) => {
 module.exports.restoreUser = async (req, res) => {
     try {
         const { id } = req.params;
-        
+        const requestingUser = req.user;
+
         const user = await User.findOne({
             where: { id },
             paranoid: false // Allows retrieving soft-deleted records
         });
-        
+
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
-        
+
         await user.restore(); // Restores the soft-deleted user
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
+        await user.save();
         return successResponse(res, { }, "User restored successfully", 200);
     } catch (error) {
         console.error("Error restoring user:", error);
@@ -378,6 +428,7 @@ module.exports.blockUser = async (req, res) => {
         }
 
         user.blocked = true;
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
         await user.save();
         return successResponse(res, { }, "User blocked successfully", 200);
     } catch (error) {
@@ -408,6 +459,7 @@ module.exports.unblockUser = async (req, res) => {
         }
         
         user.blocked = false;
+        if (requestingUser?.id != null) user.updated_by = requestingUser.id;
         await user.save();
 
         return successResponse(res, { }, "User unblocked successfully", 200);

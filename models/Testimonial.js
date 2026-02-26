@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     class Testimonial extends Model {
         static associate(models) {
             this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+            this.belongsTo(models.User, { foreignKey: 'updated_by', as: 'updatedBy' });
             this.belongsTo(models.Product, { foreignKey: 'product_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
         }
     }
@@ -49,9 +50,15 @@ module.exports = (sequelize, DataTypes) => {
         content: {
             type: DataTypes.TEXT('long'),
             allowNull: false,
+        },
+        updated_by: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            references: { model: 'users', key: 'id' },
+            onUpdate: 'CASCADE',
+            onDelete: 'SET NULL',
+            comment: 'User ID who last updated this testimonial'
         }
-
-
     }, {
         sequelize,
         modelName: 'Testimonial',

@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu } = require("../../../../models");
+const { Brand, SlugRelation, sequelize, Product, ProductBrand, Menu, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const ExcelJS = require('exceljs');
@@ -79,15 +79,33 @@ module.exports.listAllBrands = async (req, res, next) => {
 };
 
 /**
- * Retrieves a single brand by ID.
+ * Retrieves a single brand by ID (includes soft-deleted; adds redirect details when deleted).
  */
 module.exports.getBrandById = async (req, res, next) => {
     try {
-        const brand = await Brand.findByPk(req.params.id);
+        const brand = await Brand.findByPk(req.params.id, { paranoid: false });
         if (!brand) {
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
-        return successResponse(res, brand, "Brand retrieved successfully");
+        let responseData = brand;
+        if (brand.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(brand.toJSON ? brand.toJSON() : brand),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Brand retrieved successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -174,12 +192,12 @@ module.exports.updateBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        let { name, slug, description } = req.body;
+        let { name, slug, description, redirect_url } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
-        // Find brand
-        const brand = await Brand.findByPk(id);
+        // Find brand (include soft-deleted so we can update and set redirect when deleted)
+        const brand = await Brand.findByPk(id, { transaction: t, paranoid: false });
         if (!brand) {
             await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
@@ -247,9 +265,62 @@ module.exports.updateBrand = async (req, res, next) => {
         // Update SEO noIndex based on brand status
         await seoService.updateBrandNoIndex(id);
 
+        // If entity is deleted: create/update redirect when redirect_url has a value, or remove when empty
+        if (brand.deletedAt) {
+            const trimmedUrl = redirect_url != null ? String(redirect_url).trim() : '';
+            if (trimmedUrl) {
+                const oldPath = `/brand/${brand.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'brand', slug: brand.slug },
+                    paranoid: false,
+                    transaction: t
+                });
+                if (redirect) {
+                    // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                    await redirect.update({ url_to: trimmedUrl, deletedAt: null, updated_by }, { transaction: t });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: trimmedUrl,
+                        entity_type: 'brand',
+                        slug: brand.slug,
+                        header_code: 301,
+                        status: 'active',
+                        deletedAt: null,
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by
+                    }, { transaction: t });
+                }
+            } else {
+                await Redirect.destroy({
+                    where: { entity_type: 'brand', slug: brand.slug, deletedAt: null },
+                    force: true,
+                    transaction: t
+                });
+            }
+        }
 
         await t.commit();
-        return successResponse(res, brand, "Brand updated successfully");
+
+        let responseData = brand;
+        if (brand.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(brand.toJSON ? brand.toJSON() : brand),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        return successResponse(res, responseData, "Brand updated successfully");
     } catch (error) {
         console.log("error", error);
         await t.rollback();
@@ -264,6 +335,7 @@ module.exports.deleteBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
         const brand = await Brand.findByPk(id);
         if (!brand) {
             await t.rollback();
@@ -291,6 +363,36 @@ module.exports.deleteBrand = async (req, res, next) => {
             );
         }
 
+        // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
+        const redirectUpdatedBy = req.user?.id ?? null;
+        if (redirect_url != null && redirect_url !== '') {
+            const oldPath = `/brand/${brand.slug}`;
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'brand', slug: brand.slug },
+                transaction: t,
+                paranoid: false
+            });
+            if (redirect) {
+                // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: redirectUpdatedBy }, { transaction: t });
+            } else {
+                await Redirect.create({
+                    sources: oldPath,
+                    url_to: redirect_url.trim(),
+                    entity_type: 'brand',
+                    slug: brand.slug,
+                    header_code: 301,
+                    status: 'active',
+                    deletedAt: null,
+                    meta_data: {
+                        source: 'delete_api',
+                        created_by: req.user?.id || null
+                    },
+                    updated_by: redirectUpdatedBy
+                }, { transaction: t });
+            }
+        }
+
         // Delete slug relation first
         await slugManager.deleteSlug('brand', id, t);
 
@@ -313,7 +415,8 @@ module.exports.deleteBrand = async (req, res, next) => {
  */
 module.exports.bulkDeleteBrands = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
+        const redirectUpdatedBy = req.user?.id ?? null;
 
         const deletedBrands = [];
         const notDeletedBrands = [];
@@ -346,6 +449,35 @@ module.exports.bulkDeleteBrands = async (req, res, next) => {
                     await t.rollback();
                     notDeletedBrands.push({ id, name: brand.name, reason: `Brand has ${productCount} associated product${productCount > 1 ? 's' : ''}` });
                     continue;
+                }
+
+                // Create or restore redirect when redirect_url provided (find with paranoid: false to reuse soft-deleted row)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/brand/${brand.slug}`;
+                    const redirect = await Redirect.findOne({
+                        where: { entity_type: 'brand', slug: brand.slug },
+                        transaction: t,
+                        paranoid: false
+                    });
+                    if (redirect) {
+                        // Restore redirect when redirect_url is updated: set deletedAt to null so the record is no longer soft-deleted
+                        await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: redirectUpdatedBy }, { transaction: t });
+                    } else {
+                        await Redirect.create({
+                            sources: oldPath,
+                            url_to: redirect_url.trim(),
+                            entity_type: 'brand',
+                            slug: brand.slug,
+                            header_code: 301,
+                            status: 'active',
+                            deletedAt: null,
+                            meta_data: {
+                                source: 'bulk_delete_api',
+                                created_by: req.user?.id || null
+                            },
+                            updated_by: redirectUpdatedBy
+                        }, { transaction: t });
+                    }
                 }
 
                 // Delete slug relation first
@@ -405,6 +537,17 @@ module.exports.restoreBrand = async (req, res, next) => {
         // Restore the brand
         await brand.restore({ transaction: t });
 
+        // Remove redirect records associated with this brand
+        await Redirect.destroy({
+            where: {
+                slug: brand.slug,
+                entity_type: 'brand',
+                deletedAt: null
+            },
+            force: true,
+            transaction: t
+        });
+
         // Recreate slug relation
         await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);
         
@@ -463,6 +606,17 @@ module.exports.bulkRestoreBrands = async (req, res, next) => {
 
                 // Restore the brand
                 await brand.restore({ transaction: t });
+
+                // Remove redirect records associated with this brand
+                await Redirect.destroy({
+                    where: {
+                        slug: brand.slug,
+                        entity_type: 'brand',
+                        deletedAt: null
+                    },
+                    force: true,
+                    transaction: t
+                });
 
                 // Recreate slug relation
                 await slugManager.createOrUpdateSlug(brand.slug, 'brand', brand.id, t);

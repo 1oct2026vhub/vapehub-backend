@@ -206,7 +206,7 @@ router.put(
  *         name: sort_by
  *         schema:
  *           type: string
- *           enum: [id, first_name, last_name, email, phone, gender, createdAt, updatedAt, deletedAt, email_verified_at, blocked]
+ *           enum: [id, first_name, last_name, email, phone, gender, role, createdAt, updatedAt, deletedAt, email_verified_at, blocked]
  *         description: Sort users by field (default - createdAt)
  *       - in: query
  *         name: order
@@ -296,6 +296,81 @@ router.get(
     "/",
     [authMiddleware(true), validateRequest(validationRules.userListValidationRules)],
     userController.listUsers
+);
+
+/**
+ * @swagger
+ * /api/admin/user/{id}:
+ *   get:
+ *     summary: Get user details by ID
+ *     tags:
+ *       - ADMIN - User
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to retrieve
+ *     responses:
+ *       200:
+ *         description: User retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     first_name:
+ *                       type: string
+ *                     last_name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     phone:
+ *                       type: string
+ *                     gender:
+ *                       type: string
+ *                     dob:
+ *                       type: string
+ *                       format: date
+ *                     blocked:
+ *                       type: boolean
+ *                     email_verified_at:
+ *                       type: string
+ *                       format: date-time
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     deletedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                     roles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           role:
+ *                             type: string
+ *       403:
+ *         description: Permission denied (cannot view super user)
+ *       404:
+ *         description: User not found
+ */
+router.get(
+    "/:id",
+    [authMiddleware(true), validateRequest(validationRules.userIDValidation)],
+    userController.getUserById
 );
 
 /**

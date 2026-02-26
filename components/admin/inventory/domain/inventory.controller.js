@@ -1354,6 +1354,9 @@ module.exports = {
         formattedVariants = formattedVariants.filter(variant => variant.isLowStock);
       }
 
+      // Sort variants alphabetically by name (case-insensitive)
+      formattedVariants.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+
       return successResponse(res, {
         product: {
           id: product.id,
@@ -2619,6 +2622,61 @@ module.exports = {
       // Sort alphabetically by variant name
       filteredData.sort((a, b) => a.variantName.localeCompare(b.variantName));
 
+      // --- Out of stock 28+ days: variants with stock=0 and last sale > 28 days ago (or never sold) ---
+      const outOfStockVariants = variants.filter(v => (v.stock || 0) === 0);
+      let outOfStock28Data = [];
+      if (outOfStockVariants.length > 0) {
+        const outOfStockVariantIds = outOfStockVariants.map(v => v.id);
+        const lastSoldRows = await sequelize.query(
+          `
+          SELECT 
+            oi.variant_id,
+            MAX(o.updatedAt) as last_sold_at
+          FROM order_items oi
+          INNER JOIN orders o ON oi.order_id = o.id
+          WHERE o.status IN (:statuses)
+            AND oi.variant_id IN (:variantIds)
+            AND oi.deletedAt IS NULL
+          GROUP BY oi.variant_id
+          `,
+          {
+            replacements: { statuses: SUCCESSFUL_ORDER_STATUSES, variantIds: outOfStockVariantIds },
+            type: sequelize.QueryTypes.SELECT
+          }
+        );
+        const lastSoldMap = {};
+        lastSoldRows.forEach(row => {
+          if (row.variant_id) lastSoldMap[row.variant_id] = row.last_sold_at ? new Date(row.last_sold_at) : null;
+        });
+        const cutoff28 = new Date(now);
+        cutoff28.setDate(cutoff28.getDate() - 28);
+        const buildVariantName = (variant) => {
+          let name = variant.product?.name || 'Unknown Product';
+          if (variant.variantAttributes && variant.variantAttributes.length > 0) {
+            const parts = variant.variantAttributes.map(va => `${va.attribute?.name || ''}: ${va.term?.name || ''}`).filter(Boolean);
+            if (parts.length > 0) name += ` - ${parts.join(', ')}`;
+            else if (variant.slug) name += ` - ${variant.slug}`;
+          } else if (variant.slug) name += ` - ${variant.slug}`;
+          else name += ` - Variant #${variant.id}`;
+          return name;
+        };
+        outOfStock28Data = outOfStockVariants
+          .map(variant => {
+            const lastSoldAt = lastSoldMap[variant.id] || null;
+            const include = lastSoldAt === null || lastSoldAt < cutoff28;
+            if (!include) return null;
+            const daysOut = lastSoldAt ? Math.floor((now - lastSoldAt) / (1000 * 60 * 60 * 24)) : null;
+            return {
+              variantName: buildVariantName(variant),
+              currentStock: 0,
+              lastSoldDate: lastSoldAt ? lastSoldAt.toISOString().split('T')[0] : 'Never',
+              daysOutOfStock: daysOut != null ? daysOut : 'N/A'
+            };
+          })
+          .filter(Boolean);
+        outOfStock28Data.sort((a, b) => a.variantName.localeCompare(b.variantName));
+      }
+
       if (format === 'csv') {
         // CSV Export
         const csvFields = [
@@ -2722,6 +2780,51 @@ module.exports = {
 
         // Auto-fit columns
         worksheet.columns.forEach(column => {
+          column.alignment = { vertical: 'middle', horizontal: 'left' };
+        });
+
+        // Second sheet: Out of Stock 28+ Days
+        const sheetOutOfStock = workbook.addWorksheet('Out of Stock 28+ Days');
+        sheetOutOfStock.columns = [
+          { header: 'Product Variant Name', key: 'variantName', width: 50 },
+          { header: 'Current Stock', key: 'currentStock', width: 15 },
+          { header: 'Last Sold Date', key: 'lastSoldDate', width: 18 },
+          { header: 'Days Out of Stock', key: 'daysOutOfStock', width: 20 }
+        ];
+        outOfStock28Data.forEach((item) => {
+          const row = sheetOutOfStock.addRow({
+            variantName: item.variantName,
+            currentStock: item.currentStock,
+            lastSoldDate: item.lastSoldDate,
+            daysOutOfStock: item.daysOutOfStock
+          });
+          for (let col = 1; col <= 4; col++) {
+            const cell = row.getCell(col);
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+          }
+        });
+        const headerRowOutOfStock = sheetOutOfStock.getRow(1);
+        headerRowOutOfStock.font = { bold: true };
+        headerRowOutOfStock.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE8F1FF' }
+        };
+        for (let col = 1; col <= 4; col++) {
+          const cell = headerRowOutOfStock.getCell(col);
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        }
+        sheetOutOfStock.columns.forEach(column => {
           column.alignment = { vertical: 'middle', horizontal: 'left' };
         });
 

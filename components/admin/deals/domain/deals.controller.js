@@ -1,7 +1,7 @@
 'use strict';
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant } = require("../../../../models");
-const { Op } = require('sequelize');
+const { Deal, Product, SlugRelation, DealProduct, Menu, ProductVariant, Redirect } = require("../../../../models");
+const { Op, Sequelize } = require('sequelize');
 const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
@@ -124,6 +124,9 @@ module.exports.createDeal = async (req, res, next) => {
             }
         }
         
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
+
         // Create the deal first
         const deal = await Deal.create(dealData, { transaction });
         
@@ -198,9 +201,11 @@ module.exports.updateDeal = async (req, res, next) => {
         const { id } = req.params;
         const dealData = req.body;
         const product_ids = dealData.product_ids || [];
+        const redirect_url = dealData.redirect_url;
         delete dealData.product_ids;
+        delete dealData.redirect_url;
 
-        const deal = await Deal.findByPk(id, { transaction });
+        const deal = await Deal.findByPk(id, { transaction, paranoid: false });
         if (!deal) {
             await transaction.rollback();
             const error = new Error('Deal not found');
@@ -408,7 +413,8 @@ module.exports.updateDeal = async (req, res, next) => {
         if (dealData.show_home_page !== undefined) {
             dealData.show_home_page = typeof dealData.show_home_page === "boolean" ? dealData.show_home_page : deal.show_home_page;
         }
-        // dealData.slug = slug.slug;
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) dealData.updated_by = updated_by;
         // Update the deal
         await deal.update(dealData, { transaction });
         
@@ -449,12 +455,46 @@ module.exports.updateDeal = async (req, res, next) => {
             
             // Update menu if there are changes
             if (Object.keys(menuUpdateData).length > 0) {
-                await Menu.update(menuUpdateData, { where: { entity_id: id } }, { transaction });
+                menuUpdateData.updated_by = req.user?.id ?? null;
+                await Menu.update(menuUpdateData, { where: { entity_id: id }, transaction });
+            }
+        }
+
+        // If entity is deleted: create/update redirect when redirect_url provided; destroy redirect when empty
+        if (deal.deletedAt) {
+            if (redirect_url != null && redirect_url !== '') {
+                const oldPath = `/product-tag/${deal.slug}`;
+                const redirect = await Redirect.findOne({
+                    where: { entity_type: 'deal', slug: deal.slug },
+                    transaction,
+                    paranoid: false
+                });
+                if (redirect) {
+                    await redirect.update({ url_to: redirect_url.trim(), deletedAt: null, updated_by: req.user?.id ?? null }, { transaction });
+                } else {
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'deal',
+                        slug: deal.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: { source: 'put_api', created_by: req.user?.id || null },
+                        updated_by: req.user?.id ?? null
+                    }, { transaction });
+                }
+            } else {
+                await Redirect.destroy({
+                    where: { entity_type: 'deal', slug: deal.slug },
+                    force: true,
+                    transaction
+                });
             }
         }
 
         // Fetch the updated deal with associations
         const updatedDeal = await Deal.findByPk(id, {
+            paranoid: false,
             include: [
                 {
                     model: Product,
@@ -467,7 +507,26 @@ module.exports.updateDeal = async (req, res, next) => {
         });
 
         await transaction.commit();
-        successResponse(res, updatedDeal, 'Deal updated successfully');
+
+        let responseData = updatedDeal;
+        if (updatedDeal && updatedDeal.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'deal', slug: updatedDeal.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                responseData = {
+                    ...(updatedDeal.toJSON ? updatedDeal.toJSON() : updatedDeal),
+                    redirect: {
+                        redirect_url: redirect.url_to,
+                        old_path: redirect.sources,
+                        header_code: redirect.header_code,
+                        status: redirect.status
+                    }
+                };
+            }
+        }
+        successResponse(res, responseData, 'Deal updated successfully');
     } catch (error) {
         console.log("error", error);
         if (transaction && !transaction.finished) {
@@ -649,6 +708,7 @@ module.exports.getDeal = async (req, res, next) => {
         const { id } = req.params;
 
         const deal = await Deal.findByPk(id, {
+            paranoid: false,
             include: [
                 {
                     model: Product,
@@ -664,7 +724,22 @@ module.exports.getDeal = async (req, res, next) => {
             throw error;
         }
 
-        successResponse(res, deal, 'Success');
+        const payload = deal.toJSON ? deal.toJSON() : deal;
+        if (deal.deletedAt) {
+            const redirect = await Redirect.findOne({
+                where: { entity_type: 'deal', slug: deal.slug, status: 'active' },
+                attributes: ['sources', 'url_to', 'header_code', 'status']
+            });
+            if (redirect) {
+                payload.redirect = {
+                    redirect_url: redirect.url_to,
+                    old_path: redirect.sources,
+                    header_code: redirect.header_code,
+                    status: redirect.status
+                };
+            }
+        }
+        successResponse(res, payload, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -697,43 +772,96 @@ module.exports.getDealsByProduct = async (req, res, next) => {
 };
 
 module.exports.deleteDeal = async (req, res, next) => {
+    const transaction = await Deal.sequelize.transaction();
     try {
         const { id } = req.params;
+        const { redirect_url } = req.body || {};
 
-        const deal = await Deal.findByPk(id);
+        const deal = await Deal.findByPk(id, { transaction });
         if (!deal) {
+            await transaction.rollback();
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
         }
 
-        await deal.destroy();
+        // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+        if (redirect_url != null && redirect_url !== '') {
+            const oldPath = `/product-tag/${deal.slug}`;
+            await Redirect.create({
+                sources: oldPath,
+                url_to: redirect_url.trim(),
+                entity_type: 'deal',
+                slug: deal.slug,
+                header_code: 301,
+                status: 'active',
+                meta_data: {
+                    source: 'delete_api',
+                    created_by: req.user?.id || null
+                },
+                updated_by: req.user?.id ?? null
+            }, { transaction });
+        }
+
+        // Delete slug relation first
+        await slugManager.deleteSlug('deal', id, transaction);
+
+        await deal.destroy({ transaction });
+        await transaction.commit();
         successResponse(res, null, 'Deal deleted successfully');
     } catch (error) {
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message);
     }
 };
 
 module.exports.restoreDeal = async (req, res, next) => {
+    const transaction = await Deal.sequelize.transaction();
     try {
         const { id } = req.params;
 
-        const deal = await Deal.findByPk(id, { paranoid: false });
+        const deal = await Deal.findOne({
+            where: { id },
+            paranoid: false,
+            transaction
+        });
         if (!deal) {
+            await transaction.rollback();
             const error = new Error('Deal not found');
             error.statusCode = 404;
             throw error;
         }
 
         if (!deal.deletedAt) {
+            await transaction.rollback();
             const error = new Error('Deal is not deleted');
             error.statusCode = 400;
             throw error;
         }
 
-        await deal.restore();
+        await deal.restore({ transaction });
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) await deal.update({ updated_by }, { transaction });
+
+        // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
+        await Redirect.destroy({
+            where: { slug: deal.slug, entity_type: 'deal' },
+            force: true,
+            paranoid: false,
+            transaction
+        });
+
+        // Recreate slug relation (same as blog)
+        await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, transaction);
+
+        await transaction.commit();
         successResponse(res, deal, 'Deal restored successfully');
     } catch (error) {
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         return errorResponse(res, error, error.message);
     }
 };
@@ -743,7 +871,7 @@ module.exports.restoreDeal = async (req, res, next) => {
  */
 module.exports.bulkDeleteDeals = async (req, res, next) => {
     try {
-        const { ids } = req.body;
+        const { ids, redirect_url } = req.body;
 
         const deletedDeals = [];
         const notDeletedDeals = [];
@@ -751,10 +879,34 @@ module.exports.bulkDeleteDeals = async (req, res, next) => {
         const dealsToDelete = await Deal.findAll({ where: { id: { [Op.in]: ids } } });
 
         for (const deal of dealsToDelete) {
+            const t = await Deal.sequelize.transaction();
             try {
-                await deal.destroy();
+                // Create redirect record if redirect_url is provided (sources = old path, url_to = redirect_url)
+                if (redirect_url != null && redirect_url !== '') {
+                    const oldPath = `/product-tag/${deal.slug}`;
+                    await Redirect.create({
+                        sources: oldPath,
+                        url_to: redirect_url.trim(),
+                        entity_type: 'deal',
+                        slug: deal.slug,
+                        header_code: 301,
+                        status: 'active',
+                        meta_data: {
+                            source: 'bulk_delete_api',
+                            created_by: req.user?.id || null
+                        },
+                        updated_by: req.user?.id ?? null
+                    }, { transaction: t });
+                }
+
+                // Delete slug relation first
+                await slugManager.deleteSlug('deal', deal.id, t);
+
+                await deal.destroy({ transaction: t });
+                await t.commit();
                 deletedDeals.push({ id: deal.id, name: deal.name });
             } catch (error) {
+                await t.rollback();
                 notDeletedDeals.push({ id: deal.id, name: deal.name, reason: error.message || 'Failed to delete deal' });
             }
         }
@@ -791,19 +943,42 @@ module.exports.bulkRestoreDeals = async (req, res, next) => {
 
         for (const rawId of ids) {
             const id = Number(rawId);
+            const t = await Deal.sequelize.transaction();
             try {
-                const deal = await Deal.findOne({ where: { id }, paranoid: false });
+                const deal = await Deal.findOne({
+                    where: { id },
+                    paranoid: false,
+                    transaction: t
+                });
                 if (!deal) {
+                    await t.rollback();
                     notRestoredDeals.push({ id, reason: 'Deal not found' });
                     continue;
                 }
                 if (!deal.deletedAt) {
+                    await t.rollback();
                     notRestoredDeals.push({ id, name: deal.name, reason: 'Deal is already active (not deleted)' });
                     continue;
                 }
-                await deal.restore();
+                await deal.restore({ transaction: t });
+                const updated_by = req.user?.id ?? null;
+                if (updated_by != null) await deal.update({ updated_by }, { transaction: t });
+
+                // Hard-delete redirect so deletedAt is only set in delete flow; if deal is deleted again a new redirect can be created
+                await Redirect.destroy({
+                    where: { slug: deal.slug, entity_type: 'deal' },
+                    force: true,
+                    paranoid: false,
+                    transaction: t
+                });
+
+                // Recreate slug relation (same as blog)
+                await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, t);
+
+                await t.commit();
                 restoredDeals.push({ id: deal.id, name: deal.name });
             } catch (error) {
+                await t.rollback();
                 notRestoredDeals.push({ id, reason: error.message || 'Failed to restore deal' });
             }
         }

@@ -92,15 +92,17 @@ module.exports = {
                 return errorResponse(res, {}, 'Discount amount cannot be negative', 400);
             }
 
-            // Create new setting
-            const newSetting = await MailSubscriptionSettings.create({
+            const updated_by = req?.user?.id ?? null;
+            const createData = {
                 email_frequency: email_frequency || 'weekly',
                 product_updates: product_updates !== undefined ? product_updates : true,
                 discount_notifications: discount_notifications !== undefined ? discount_notifications : true,
                 discount_amount: discount_amount !== undefined ? discount_amount : 0.00,
                 discount_type: discount_type || 'percentage',
                 status: true
-            });
+            };
+            if (updated_by != null) createData.updated_by = updated_by;
+            const newSetting = await MailSubscriptionSettings.create(createData);
 
             logger.info('Mail subscription setting created', {
                 user_id: userId,
@@ -159,6 +161,7 @@ module.exports = {
             if (discount_amount !== undefined) updateData.discount_amount = discount_amount;
             if (discount_type !== undefined) updateData.discount_type = discount_type;
             if (status !== undefined) updateData.status = status;
+            if (userId != null) updateData.updated_by = userId;
 
             await existingSetting.update(updateData);
 
@@ -187,6 +190,7 @@ module.exports = {
                 return errorResponse(res, {}, 'Mail subscription setting not found', 404);
             }
 
+            if (userId != null) await existingSetting.update({ updated_by: userId });
             // Soft delete the setting
             await existingSetting.destroy();
 
@@ -249,7 +253,7 @@ module.exports = {
 
             if (sendToAll) {
                 // Get all active subscribers with pagination for large datasets
-                const whereClause = { deletedAt: null };
+                const whereClause = { deletedAt: null, subscribed: true };
                 
                 // If frequency is specified, filter by it
                 if (frequency) {
@@ -521,5 +525,46 @@ module.exports = {
             return errorResponse(res, error, error.message);
         }
     },
+
+    // Unsubscribe a subscriber (admin) - sets subscribed = false
+    async unsubscribeSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            subscription.subscribed = false;
+            await subscription.save();
+            return successResponse(res, {
+                id: subscription.id,
+                email: subscription.email,
+                subscribed: false
+            }, 'Subscriber unsubscribed successfully');
+        } catch (error) {
+            logger.error('Error unsubscribing subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    },
+
+    // Delete a subscriber (admin) - soft-deletes the subscriber record
+    async deleteSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            await subscription.destroy();
+            return successResponse(res, { id: Number(subscriberId) }, 'Subscriber deleted successfully');
+        } catch (error) {
+            logger.error('Error deleting subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    }
 
 }; 

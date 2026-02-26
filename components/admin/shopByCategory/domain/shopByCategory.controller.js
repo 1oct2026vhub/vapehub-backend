@@ -41,7 +41,7 @@ module.exports.listShopByCategories = async (req, res, next) => {
         const offset = (page - 1) * limit;
 
         // Validate sort parameters
-        const allowedSortFields = ["id", "category_id", "image_url", "status", "order", "createdAt", "updatedAt"];
+        const allowedSortFields = ["id", "category_id", "image_url", "status", "order", "createdAt", "updatedAt", "updated_by"];
         sortBy = allowedSortFields.includes(sortBy) ? sortBy : "order";
         sortOrder = ["ASC", "DESC"].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : "ASC";
 
@@ -184,6 +184,7 @@ module.exports.createShopByCategory = async (req, res, next) => {
 
         // Auto-assign order if not provided
         const finalOrder = order !== undefined ? parseInt(order) : await getNextOrder();
+        const updated_by = req.user?.id ?? null;
 
         // Start transaction after validations and upload
         t = await sequelize.transaction();
@@ -192,7 +193,8 @@ module.exports.createShopByCategory = async (req, res, next) => {
             image_url: finalImageUrl,
             alt_text,
             status,
-            order: finalOrder
+            order: finalOrder,
+            updated_by
         }, { transaction: t });
 
         await t.commit();
@@ -266,6 +268,8 @@ module.exports.updateShopByCategory = async (req, res, next) => {
         if (alt_text !== undefined) updateData.alt_text = alt_text;
         if (status !== undefined) updateData.status = status;
         if (order !== undefined) updateData.order = parseInt(order);
+        const updated_by = req.user?.id ?? null;
+        if (updated_by != null) updateData.updated_by = updated_by;
 
         // Start transaction for update
         t = await sequelize.transaction();
@@ -314,7 +318,9 @@ module.exports.removeShopByCategoryImage = async (req, res, next) => {
 
         await deleteFile(imageKey);
 
-        await shopByCategory.update({ image_url: null }, { transaction: t });
+        const updatePayload = { image_url: null };
+        if (req.user?.id != null) updatePayload.updated_by = req.user.id;
+        await shopByCategory.update(updatePayload, { transaction: t });
 
         await t.commit();
         return successResponse(res, shopByCategory, "Shop by category image removed successfully");
@@ -375,6 +381,9 @@ module.exports.restoreShopByCategory = async (req, res, next) => {
         }
 
         await shopByCategory.restore();
+        if (req.user?.id != null) {
+            await shopByCategory.update({ updated_by: req.user.id });
+        }
 
         const restoredCategory = await ShopByCategory.findByPk(req.params.id, {
             include: [{
@@ -441,7 +450,9 @@ module.exports.shuffleOrder = async (req, res, next) => {
         }
 
         // Update current item's order
-        await currentItem.update({ order: parseInt(new_order) }, { transaction: t });
+        const orderPayload = { order: parseInt(new_order) };
+        if (req.user?.id != null) orderPayload.updated_by = req.user.id;
+        await currentItem.update(orderPayload, { transaction: t });
 
         await t.commit();
 
@@ -587,7 +598,9 @@ module.exports.bulkRestoreShopByCategories = async (req, res, next) => {
 
                 // Assign to end of list
                 const maxOrder = await ShopByCategory.max('order');
-                await shopByCategory.update({ order: (maxOrder || 0) + 1 });
+                const orderUpdate = { order: (maxOrder || 0) + 1 };
+                if (req.user?.id != null) orderUpdate.updated_by = req.user.id;
+                await shopByCategory.update(orderUpdate);
 
                 restoredShopByCategories.push({
                     id: shopByCategory.id,

@@ -835,6 +835,14 @@ const deleteAccount = async (req, res) => {
             url: '/my-account/personal-info'
         });
 
+        // Soft delete all mail subscriptions associated with this user
+        const mailSubscriptions = await MailSubscription.findAll({
+            where: { user_id: userId }
+        });
+        for (const subscription of mailSubscriptions) {
+            await subscription.destroy();
+        }
+
         // Delete the user account
         await user.destroy();
 

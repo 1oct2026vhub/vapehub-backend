@@ -2013,6 +2013,11 @@ router.get('/deleted', [authMiddleware(true)], inventoryController.getDeletedInv
  * /api/admin/inventory/export/purchase-order:
  *   get:
  *     summary: Export Purchase Order sheet with inventory details
+ *     description: |
+ *       Returns Purchase Order data (variants needing restock). When format=excel, the file includes two sheets:
+ *       1. **Purchase Order** - Variants with units to order > 0 for the next N days.
+ *       2. **Out of Stock 28+ Days** - Variants that are out of stock and have had no sale in the last 28 days (or never sold).
+ *       CSV export contains only the Purchase Order sheet.
  *     tags: [Admin - Inventory]
  *     parameters:
  *       - in: query

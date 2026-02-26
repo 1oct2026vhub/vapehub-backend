@@ -297,6 +297,10 @@ module.exports.deleteFeatureContent = async (req, res) => {
       });
     }
 
+    const updated_by = req.user?.id ?? null;
+    if (updated_by != null) {
+      await featureContent.update({ updated_by });
+    }
     await featureContent.destroy();
 
     return successResponse(res, {}, 'Feature content deleted successfully');
@@ -532,11 +536,10 @@ module.exports.addIcon = async (req, res) => {
     const iconUrl = await handleIconUpload(req.file);
     const fileName = req.file.originalname;
 
-    // Create icon record
-    const icon = await FeatureContentIcon.create({
-      file_name: fileName,
-      icon_url: iconUrl
-    });
+    const updated_by = req.user?.id ?? null;
+    const createData = { file_name: fileName, icon_url: iconUrl };
+    if (updated_by != null) createData.updated_by = updated_by;
+    const icon = await FeatureContentIcon.create(createData);
 
     return successResponse(res, { icon }, 'Icon added successfully', 201);
   } catch (error) {
