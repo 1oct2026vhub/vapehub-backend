@@ -39,10 +39,11 @@ const userValidationRules = [
     .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
 
   body("phone")
-    .optional()
+    .optional({ nullable: true })
     .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
     .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
     .custom((value) => {
+      if (value == null || value === "") return true;
       const mobilePattern = /^\+?\d{8,16}$/; // Updated pattern to allow 8-16 digits
       if (!mobilePattern.test(value)) {
         throw new Error("Invalid phone number format");
@@ -60,9 +61,10 @@ const userValidationRules = [
     .isIn(["male", "female", "other"]).withMessage("Gender must be male, female, or other"),
 
   body("dob")
-    .optional()
+    .optional({ nullable: true })
     .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
     .custom((value) => {
+      if (value == null || value === "") return true;
       const dob = new Date(value);
       const today = new Date();
       const age = today.getFullYear() - dob.getFullYear();
@@ -101,10 +103,11 @@ const userUpdateValidationRules = [
         .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
   
     body("phone")
-        .optional()
+        .optional({ nullable: true })
         .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
         .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
         .custom((value) => {
+          if (value == null || value === "") return true;
           const mobilePattern = /^\+?\d{8,16}$/; // Updated pattern to allow 8-16 digits
           if (!mobilePattern.test(value)) {
             throw new Error("Invalid phone number format");
@@ -122,9 +125,10 @@ const userUpdateValidationRules = [
         .isIn(["male", "female", "other"]).withMessage("Gender must be male, female, or other"),
   
     body("dob")
-        .optional()
+        .optional({ nullable: true })
         .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
         .custom((value) => {
+          if (value == null || value === "") return true;
           const dob = new Date(value);
           const today = new Date();
           const age = today.getFullYear() - dob.getFullYear();
