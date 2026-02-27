@@ -1,302 +1,110 @@
 'use strict';
 
 /**
- * 1) Extract "proper" FAQs from blog content (Frequently Asked Questions section with real Q&A text),
- *    insert into FAQs table, and remove that section from blog content.
- * 2) Remove [sp_easyaccordion id="..."] shortcode from blog content (only for blogs that have FAQs in table).
+ * Remove [sp_easyaccordion id="..."] shortcode from blog content
+ * and the "Frequently Asked Questions" heading directly above it.
  *
- * Prerequisite: Run 20260217140000-migrate-blog-faqs-from-accordion.js first so accordion-based blog FAQs exist.
- * Run order: accordion migration → this seeder.
+ * No FAQ extraction or inserts into FAQs table happen here.
  */
 
 const SHORTCODE_PATTERN = /\[\s*sp_easyaccordion\s+id\s*=\s*(["']?)(\d+)\1\s*\]/gi;
 
-/** Strip [sp_easyaccordion id="..."] from content */
-function stripAccordionShortcodes(content) {
-  if (!content || typeof content !== 'string') return content;
-  return content.replace(SHORTCODE_PATTERN, '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
-}
-
 /**
- * Detect "Frequently Asked Questions" (or similar) section and extract Q&A pairs.
- * Supports: numbered list (1. Question? Answer...), HTML <p><strong>Q</strong></p><p>A</p>, and plain text.
- * Returns { faqs: [{ question, answer }], sectionStart, sectionLength } or { faqs: [], sectionStart: -1, sectionLength: 0 }.
+ * Remove the [sp_easyaccordion ...] shortcode and the "Frequently Asked Questions"
+ * heading directly above it (if present).
  */
-function extractProperFaqsFromContent(content) {
-  const faqs = [];
-  if (!content || typeof content !== 'string') return { faqs, sectionStart: -1, sectionLength: 0 };
+function removeFaqHeadingAndShortcode(content) {
+  if (!content || typeof content !== 'string') return content;
 
-  const faqHeadingPatterns = [
-    /frequently\s+asked\s+questions/i,
-    /<h[2-4][^>]*>\s*faq\s*<\/h[2-4]>/i,
-    /\*\*\s*frequently\s+asked\s+questions\s*\*\*/i,
-    /\*\*\s*faq\s*\*\*/i
-  ];
-
-  let sectionStart = -1;
-  let headingLevel = null;
-
-  // Prefer matching a full HTML heading tag that wraps the FAQ title so we can
-  // remove the entire heading element, not just the inner text.
-  const headingTagMatch = content.match(/<h([1-4])[^>]*>[\s\S]*?frequently\s+asked\s+questions[\s\S]*?<\/h\1>/i);
-  if (headingTagMatch) {
-    sectionStart = content.indexOf(headingTagMatch[0]);
-    headingLevel = parseInt(headingTagMatch[1], 10) || null;
-  } else {
-    for (const re of faqHeadingPatterns) {
-      const m = content.match(re);
-      if (m) {
-        sectionStart = content.indexOf(m[0]);
-        break;
-      }
-    }
-  }
-  if (sectionStart === -1) return { faqs, sectionStart: -1, sectionLength: 0 };
-
-  // Section runs from sectionStart until next major heading or shortcode or end (limit to ~15k chars)
-  const afterHeading = content.slice(sectionStart);
-  // If we know the heading level (e.g. <h2> FAQ </h2>), end the section at the
-  // next heading of the same or higher level so that question headings (usually
-  // h3/h4) remain inside the FAQ block instead of prematurely terminating it.
-  let sectionEndRegex;
-  if (headingLevel) {
-    const levels = [];
-    for (let l = 1; l <= headingLevel; l++) {
-      levels.push(`h${l}`);
-    }
-    const headingGroup = levels.join('|');
-    sectionEndRegex = new RegExp(`\\n\\s*<(?:${headingGroup})\\b|<\\/h[1-4]>\\s*<(?:${headingGroup})\\b|\\[sp_easyaccordion|$`, 'im');
-  } else {
-    sectionEndRegex = /\n\s*<h[1-4]\s|<\/h[1-4]>\s*<h[1-4]|\[sp_easyaccordion|$/im;
-  }
-  const sectionEndMatch = afterHeading.match(sectionEndRegex);
-  const sectionLen = sectionEndMatch ? sectionEndMatch.index : Math.min(15000, afterHeading.length);
-  let sectionText = afterHeading.slice(0, sectionLen);
-
-  // Skip if section is only the shortcode (no real Q&A)
-  if (SHORTCODE_PATTERN.test(sectionText) && sectionText.replace(SHORTCODE_PATTERN, '').trim().length < 50) {
-    return { faqs, sectionStart: -1, sectionLength: 0 };
-  }
-  SHORTCODE_PATTERN.lastIndex = 0;
-
+  let updated = content;
   let match;
 
-  // Pattern 0: WordPress block format — <h3><strong>1. Question?</strong></h3> followed by <p>Answer</p>
-  if (/<h3[\s>][\s\S]*?<strong[\s\S]*?\d+[.)]/.test(sectionText)) {
-    const h3Block = /<h3[^>]*>[\s\S]*?<strong[^>]*>(?:(\d+)[.)]\s*)?([\s\S]*?)<\/strong>[\s\S]*?<\/h3>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi;
-    while ((match = h3Block.exec(sectionText)) !== null) {
-      const question = stripHtml((match[1] || '') + (match[2] || '')).trim();
-      const answer = stripHtml(match[3] || '').trim();
-      if (question.length >= 10 && answer.length >= 15) {
-        faqs.push({ question, answer: wrapAnswerInP(answer) });
+  // Reset regex state for safety
+  SHORTCODE_PATTERN.lastIndex = 0;
+
+  // Handle all shortcodes in the content
+  while ((match = SHORTCODE_PATTERN.exec(updated)) !== null) {
+    const shortcodeStart = match.index;
+    const shortcodeEnd = shortcodeStart + match[0].length;
+
+    // Look for an FAQ heading BEFORE this shortcode.
+    const beforeShortcode = updated.slice(0, shortcodeStart);
+
+    // Find the last <h1–h6> heading containing "Frequently Asked Questions"
+    const headingRegex = /<h([1-6])[^>]*>[\s\S]*?frequently\s+asked\s+questions[\s\S]*?<\/h\1>/gi;
+    let headingMatch;
+    let lastHeadingMatch = null;
+
+    while ((headingMatch = headingRegex.exec(beforeShortcode)) !== null) {
+      lastHeadingMatch = {
+        start: headingMatch.index,
+        end: headingRegex.lastIndex
+      };
+    }
+
+    let removeStart = shortcodeStart;
+    let removeEnd = shortcodeEnd;
+
+    if (lastHeadingMatch) {
+      // Only treat this heading as associated with the shortcode if it is reasonably close
+      const distance = shortcodeStart - lastHeadingMatch.end;
+      if (distance >= 0 && distance <= 2000) {
+        removeStart = lastHeadingMatch.start;
       }
     }
+
+    // Remove from removeStart to removeEnd
+    updated = (updated.slice(0, removeStart) + updated.slice(removeEnd))
+      .replace(/\n\s*\n\s*\n/g, '\n\n')
+      .trim();
+
+    // Reset regex position for updated content
+    SHORTCODE_PATTERN.lastIndex = 0;
   }
 
-  // Pattern 1 (prefer when HTML): <p><strong>1. Question?</strong></p><p>Answer</p> — catches all numbered Q&A in HTML
-  if (faqs.length === 0 && /<strong[^>]*>[\s\S]*?\d+[.)]/.test(sectionText)) {
-    const strongNumbered = /<p[^>]*>\s*<strong[^>]*>(\d+[.)]\s*)?([\s\S]*?)<\/strong>\s*<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
-    while ((match = strongNumbered.exec(sectionText)) !== null) {
-      const question = stripHtml((match[1] || '') + (match[2] || '')).trim();
-      const answer = stripHtml(match[3] || '').trim();
-      if (question.length >= 10 && answer.length >= 15) {
-        faqs.push({ question, answer: wrapAnswerInP(answer) });
-      }
-    }
-  }
-
-  // Pattern 2: Plain numbered — "1. Question?" then answer until "2." or end
-  if (faqs.length === 0) {
-    const numberedBlock = /(\d+)[.)]\s*([^\n<]+(?:\?|:)?)\s*[\n\r]+([\s\S]*?)(?=\d+[.)]\s*|\s*$)/gim;
-    while ((match = numberedBlock.exec(sectionText)) !== null) {
-      const question = stripHtml(match[2]).trim();
-      let answer = match[3].trim();
-      answer = stripHtml(answer).replace(/\n\s*\n/g, '\n\n').trim();
-      if (question.length >= 10 && answer.length >= 15) {
-        faqs.push({ question, answer: wrapAnswerInP(answer) });
-      }
-    }
-  }
-
-  // Pattern 3: HTML <p><strong>Question</strong></p><p>Answer</p> (no number in strong)
-  if (faqs.length === 0) {
-    const strongBlock = /<p[^>]*>\s*<strong[^>]*>([\s\S]*?)<\/strong>\s*<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
-    while ((match = strongBlock.exec(sectionText)) !== null) {
-      const question = stripHtml(match[1]).trim();
-      const answer = stripHtml(match[2]).trim();
-      if (question.length >= 10 && answer.length >= 15) {
-        faqs.push({ question, answer: wrapAnswerInP(answer) });
-      }
-    }
-  }
-
-  // Pattern 4: **Question** or bold line followed by paragraph
-  if (faqs.length === 0) {
-    const boldLine = /\*\*([^*]+)\*\*\s*[\n\r]+([\s\S]*?)(?=\*\*[^*]+\*\*|$)/g;
-    while ((match = boldLine.exec(sectionText)) !== null) {
-      const question = match[1].trim();
-      const answer = stripHtml(match[2]).replace(/\n\s*\n/g, '\n\n').trim();
-      if (question.length >= 10 && answer.length >= 15) {
-        faqs.push({ question, answer: wrapAnswerInP(answer) });
-      }
-    }
-  }
-
-  // If we found the FAQ heading but extracted nothing, still remove the block if it looks like FAQ content (multiple ?)
-  const looksLikeFaq = (sectionText.match(/\?/g) || []).length >= 2 && sectionText.length > 100;
-  if (faqs.length === 0 && looksLikeFaq) {
-    // Remove section anyway so raw FAQ block doesn't stay
-    return {
-      faqs: [],
-      sectionStart,
-      sectionLength: sectionText.length
-    };
-  }
-
-  return {
-    faqs,
-    sectionStart: faqs.length > 0 ? sectionStart : -1,
-    sectionLength: faqs.length > 0 ? sectionText.length : 0
-  };
-}
-
-function stripHtml(html) {
-  if (!html) return '';
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function wrapAnswerInP(text) {
-  if (!text) return '';
-  text = text.trim();
-  if (/^<p>/i.test(text)) return text;
-  return `<p>${text}</p>`;
+  return updated;
 }
 
 module.exports = {
   async up(queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      console.log('🚀 Extract proper FAQs from blog content & remove shortcodes...');
+      console.log('🚀 Remove SP Easy Accordion shortcodes and nearby FAQ headings from blog content...');
       console.log('================================================');
 
-      const stats = {
-        properFaqBlogsFound: 0,
-        properFaqBlogsUpdated: 0,
-        properFaqsInserted: 0,
-        shortcodeBlogsFound: 0,
-        shortcodeBlogsUpdated: 0,
-        errors: 0
-      };
-
-      // ---- Part 1: Extract "proper" FAQs and remove FAQ section from content ----
-      const allBlogs = await queryInterface.sequelize.query(
-        `SELECT id, title, content FROM blogs WHERE content IS NOT NULL AND content != '' AND deleted_at IS NULL`,
-        { transaction, type: Sequelize.QueryTypes.SELECT }
-      );
-
-      for (const blog of allBlogs) {
-        try {
-          const { faqs, sectionStart, sectionLength } = extractProperFaqsFromContent(blog.content);
-          if (sectionStart < 0 || sectionLength <= 0) continue;
-
-          stats.properFaqBlogsFound++;
-
-          // Avoid duplicate questions; insert only when we extracted FAQs
-          const seen = new Set();
-          for (const faq of faqs) {
-            const q = faq.question.substring(0, 500);
-            if (seen.has(q)) continue;
-            seen.add(q);
-
-            const existingRows = await queryInterface.sequelize.query(
-              `SELECT id FROM FAQs WHERE entity_type = 'blog' AND entity_id = :blogId AND question = :q AND deletedAt IS NULL`,
-              {
-                replacements: { blogId: blog.id, q },
-                transaction,
-                type: Sequelize.QueryTypes.SELECT
-              }
-            );
-            if (existingRows && existingRows.length > 0) continue;
-
-            await queryInterface.bulkInsert(
-              'FAQs',
-              [
-                {
-                  entity_type: 'blog',
-                  entity_id: blog.id,
-                  question: q,
-                  answer: (faq.answer || '').substring(0, 2000),
-                  createdAt: new Date(),
-                  updatedAt: new Date()
-                }
-              ],
-              { transaction, ignoreDuplicates: true }
-            );
-            stats.properFaqsInserted++;
-          }
-
-          const cleaned = (blog.content.slice(0, sectionStart) + blog.content.slice(sectionStart + sectionLength))
-            .replace(/\n\s*\n\s*\n/g, '\n\n')
-            .trim();
-          await queryInterface.sequelize.query(`UPDATE blogs SET content = :content WHERE id = :id`, {
-            replacements: { content: cleaned, id: blog.id },
-            transaction
-          });
-          stats.properFaqBlogsUpdated++;
-          console.log(`   ✅ Proper FAQs: blog ID ${blog.id} — ${faqs.length} FAQs extracted, section removed`);
-        } catch (err) {
-          stats.errors++;
-          console.error(`   ❌ Blog ID ${blog.id} (proper FAQ):`, err.message);
-        }
-      }
-
-      // ---- Part 2: Remove shortcode from blogs that have FAQs in table ----
       const blogsWithShortcode = await queryInterface.sequelize.query(
         `SELECT id, title, content FROM blogs WHERE content LIKE '%sp_easyaccordion%'`,
         { transaction, type: Sequelize.QueryTypes.SELECT }
       );
-      stats.shortcodeBlogsFound = Array.isArray(blogsWithShortcode) ? blogsWithShortcode.length : 0;
+      const totalBlogs = Array.isArray(blogsWithShortcode) ? blogsWithShortcode.length : 0;
 
-      const faqBlogRows = await queryInterface.sequelize.query(
-        `SELECT DISTINCT entity_id as blog_id FROM FAQs WHERE entity_type = 'blog'`,
-        { transaction, type: Sequelize.QueryTypes.SELECT }
-      );
-      const blogIdsWithFaqs = new Set((Array.isArray(faqBlogRows) ? faqBlogRows : []).map((r) => r.blog_id));
+      let blogsUpdated = 0;
+      let errors = 0;
 
       for (const blog of blogsWithShortcode || []) {
         try {
-          if (!blogIdsWithFaqs.has(blog.id)) {
-            console.log(`   ⏭️  Shortcode: skip blog ID ${blog.id} (no FAQs in table)`);
+          const originalContent = blog.content || '';
+          const cleaned = removeFaqHeadingAndShortcode(originalContent);
+          if (cleaned === originalContent) {
+            console.log(`   ⏭️  Blog ID ${blog.id}: no changes needed.`);
             continue;
           }
-          const cleaned = stripAccordionShortcodes(blog.content || '');
-          if (cleaned === (blog.content || '')) continue;
 
           await queryInterface.sequelize.query(`UPDATE blogs SET content = :content WHERE id = :id`, {
             replacements: { content: cleaned, id: blog.id },
             transaction
           });
-          stats.shortcodeBlogsUpdated++;
-          console.log(`   ✅ Shortcode removed: blog ID ${blog.id}`);
+          blogsUpdated++;
+          console.log(`   ✅ Blog ID ${blog.id}: shortcode and FAQ heading (if present) removed.`);
         } catch (err) {
-          stats.errors++;
-          console.error(`   ❌ Blog ID ${blog.id} (shortcode):`, err.message);
+          errors++;
+          console.error(`   ❌ Blog ID ${blog.id}:`, err.message);
         }
       }
 
       console.log('\n📊 Summary:');
-      console.log('   Proper FAQ — blogs with section: ' + stats.properFaqBlogsFound + ', updated: ' + stats.properFaqBlogsUpdated + ', FAQs inserted: ' + stats.properFaqsInserted);
-      console.log('   Shortcode — blogs with shortcode: ' + stats.shortcodeBlogsFound + ', updated: ' + stats.shortcodeBlogsUpdated);
-      console.log('   Errors: ' + stats.errors);
+      console.log('   Blogs with shortcode: ' + totalBlogs + ', updated: ' + blogsUpdated);
+      console.log('   Errors: ' + errors);
       console.log('================================================\n');
       await transaction.commit();
     } catch (error) {
@@ -307,6 +115,6 @@ module.exports = {
   },
 
   async down() {
-    console.log('🔄 Down: Cannot revert FAQ extraction or shortcode removal. No-op.');
+    console.log('🔄 Down: Cannot restore removed headings/shortcodes. No-op.');
   }
 };
