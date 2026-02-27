@@ -18,6 +18,7 @@ function removeFaqHeadingAndShortcode(content) {
 
   let updated = content;
   let match;
+  let removedAnyShortcode = false;
 
   // Reset regex state for safety
   SHORTCODE_PATTERN.lastIndex = 0;
@@ -58,8 +59,17 @@ function removeFaqHeadingAndShortcode(content) {
       .replace(/\n\s*\n\s*\n/g, '\n\n')
       .trim();
 
+    removedAnyShortcode = true;
+
     // Reset regex position for updated content
     SHORTCODE_PATTERN.lastIndex = 0;
+  }
+
+  // After removing shortcodes, also strip any remaining FAQ headings so we don't
+  // leave a dangling "Frequently Asked Questions" title above the new FAQ block.
+  if (removedAnyShortcode) {
+    const faqHeadingRegex = /<h([1-6])[^>]*>[\s\S]*?frequently\s+asked\s+questions[\s\S]*?<\/h\1>/gi;
+    updated = updated.replace(faqHeadingRegex, '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
   }
 
   return updated;

@@ -167,7 +167,7 @@ module.exports = {
   async up(queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      console.log('🚀 Seeder: extract FAQs from blog content into FAQs table and remove FAQ section...');
+      console.log('🚀 Seeder: extract FAQs from blog content into FAQs table and remove FAQ section from content...');
 
       const stats = {
         blogsWithFaqSection: 0,
@@ -230,6 +230,7 @@ module.exports = {
             stats.faqsInserted++;
           }
 
+          // Remove the FAQ section (heading + Q&A) from the content now that it has been stored in FAQs.
           const cleaned =
             (blog.content.slice(0, sectionStart) + blog.content.slice(sectionStart + sectionLength))
               .replace(/\n\s*\n\s*\n/g, '\n\n')
@@ -246,6 +247,10 @@ module.exports = {
             stats.blogsUpdated++;
             console.log(
               `   ✅ Blog ID ${blog.id}: extracted ${faqs.length} FAQs and removed FAQ section from content`
+            );
+          } else {
+            console.log(
+              `   ✅ Blog ID ${blog.id}: extracted ${faqs.length} FAQs (FAQ section already minimal or unchanged)`
             );
           }
         } catch (err) {
