@@ -39,7 +39,7 @@ const userValidationRules = [
     .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
 
   body("phone")
-    .optional({ nullable: true })
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
     .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
     .custom((value) => {
@@ -61,7 +61,7 @@ const userValidationRules = [
     .isIn(["male", "female", "other"]).withMessage("Gender must be male, female, or other"),
 
   body("dob")
-    .optional({ nullable: true })
+    .optional({ nullable: true, checkFalsy: true })
     .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
     .custom((value) => {
       if (value == null || value === "") return true;
@@ -103,7 +103,7 @@ const userUpdateValidationRules = [
         .withMessage("Password must contain at least one special character (@, $, !, %, *, ?, &)"),
   
     body("phone")
-        .optional({ nullable: true })
+        .optional({ nullable: true, checkFalsy: true })
         .isLength({ min: 8, max: 16 }).withMessage("Phone number must be between 8 and 16 digits long")
         .matches(/^[+\d]+$/).withMessage("Phone number must contain only digits and + symbol")
         .custom((value) => {
@@ -125,7 +125,7 @@ const userUpdateValidationRules = [
         .isIn(["male", "female", "other"]).withMessage("Gender must be male, female, or other"),
   
     body("dob")
-        .optional({ nullable: true })
+        .optional({ nullable: true, checkFalsy: true })
         .isISO8601().withMessage("DOB must be a valid date in YYYY-MM-DD format")
         .custom((value) => {
           if (value == null || value === "") return true;

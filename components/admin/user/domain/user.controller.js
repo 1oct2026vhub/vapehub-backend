@@ -160,22 +160,21 @@ module.exports.updateUser = async (req, res) => {
             }
         }
 
-        // Update fields
-        if (first_name) user.first_name = first_name;
-        if (last_name) user.last_name = last_name;
-        // if (email) user.email = email;
-        if (phone) user.phone = phone;
-        if (roleId) user.roleId = roleId;
-        if (gender) user.gender = gender;
-        if (dob) user.dob = dob;
-        if (password){
-            const hashedPassword = await bcrypt.hashSync(password, 10);
-            user.password = hashedPassword;
-        }
+        // Build update payload; use !== undefined so optional fields can be cleared with null
+        const updatePayload = {};
+        if (first_name !== undefined) updatePayload.first_name = first_name;
+        if (last_name !== undefined) updatePayload.last_name = last_name;
+        if (phone !== undefined) updatePayload.phone = phone;
+        if (roleId !== undefined) updatePayload.roleId = roleId;
+        if (gender !== undefined) updatePayload.gender = gender;
+        if (dob !== undefined) updatePayload.dob = dob;
         const updated_by = req.user?.id ?? null;
-        if (updated_by != null) user.updated_by = updated_by;
+        if (updated_by != null) updatePayload.updated_by = updated_by;
+        if (password) {
+            updatePayload.password = await bcrypt.hashSync(password, 10);
+        }
 
-        await user.save();
+        await user.update(updatePayload);
 
         return successResponse(res, { user }, "User updated successfully", 200);
     } catch (error) {
