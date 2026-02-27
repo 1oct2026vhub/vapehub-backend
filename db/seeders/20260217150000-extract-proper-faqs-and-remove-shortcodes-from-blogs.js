@@ -26,28 +26,50 @@ function extractProperFaqsFromContent(content) {
   const faqs = [];
   if (!content || typeof content !== 'string') return { faqs, sectionStart: -1, sectionLength: 0 };
 
-  const lower = content.toLowerCase();
   const faqHeadingPatterns = [
-    /frequently\s+asked\s+questions/,
-    /<h[2-4][^>]*>\s*frequently\s+asked\s+questions\s*<\/h[2-4]>/i,
+    /frequently\s+asked\s+questions/i,
     /<h[2-4][^>]*>\s*faq\s*<\/h[2-4]>/i,
     /\*\*\s*frequently\s+asked\s+questions\s*\*\*/i,
     /\*\*\s*faq\s*\*\*/i
   ];
 
   let sectionStart = -1;
-  for (const re of faqHeadingPatterns) {
-    const m = content.match(re);
-    if (m) {
-      sectionStart = content.indexOf(m[0]);
-      break;
+  let headingLevel = null;
+
+  // Prefer matching a full HTML heading tag that wraps the FAQ title so we can
+  // remove the entire heading element, not just the inner text.
+  const headingTagMatch = content.match(/<h([1-4])[^>]*>[\s\S]*?frequently\s+asked\s+questions[\s\S]*?<\/h\1>/i);
+  if (headingTagMatch) {
+    sectionStart = content.indexOf(headingTagMatch[0]);
+    headingLevel = parseInt(headingTagMatch[1], 10) || null;
+  } else {
+    for (const re of faqHeadingPatterns) {
+      const m = content.match(re);
+      if (m) {
+        sectionStart = content.indexOf(m[0]);
+        break;
+      }
     }
   }
   if (sectionStart === -1) return { faqs, sectionStart: -1, sectionLength: 0 };
 
   // Section runs from sectionStart until next major heading or shortcode or end (limit to ~15k chars)
   const afterHeading = content.slice(sectionStart);
-  const sectionEndMatch = afterHeading.match(/\n\s*<h[1-4]\s|<\/h[1-4]>\s*<h[1-4]|\[sp_easyaccordion|$/im);
+  // If we know the heading level (e.g. <h2> FAQ </h2>), end the section at the
+  // next heading of the same or higher level so that question headings (usually
+  // h3/h4) remain inside the FAQ block instead of prematurely terminating it.
+  let sectionEndRegex;
+  if (headingLevel) {
+    const levels = [];
+    for (let l = 1; l <= headingLevel; l++) {
+      levels.push(`h${l}`);
+    }
+    const headingGroup = levels.join('|');
+    sectionEndRegex = new RegExp(`\\n\\s*<(?:${headingGroup})\\b|<\\/h[1-4]>\\s*<(?:${headingGroup})\\b|\\[sp_easyaccordion|$`, 'im');
+  } else {
+    sectionEndRegex = /\n\s*<h[1-4]\s|<\/h[1-4]>\s*<h[1-4]|\[sp_easyaccordion|$/im;
+  }
+  const sectionEndMatch = afterHeading.match(sectionEndRegex);
   const sectionLen = sectionEndMatch ? sectionEndMatch.index : Math.min(15000, afterHeading.length);
   let sectionText = afterHeading.slice(0, sectionLen);
 
