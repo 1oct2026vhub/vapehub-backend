@@ -55,6 +55,19 @@ function extractProperFaqsFromContent(content) {
   const sectionLen = sectionEndMatch ? sectionEndMatch.index : Math.min(15000, afterHeading.length);
   let sectionText = afterHeading.slice(0, sectionLen);
 
+  // Parse only the content below the "Frequently Asked Questions" heading (exclude the heading itself).
+  const closingHeadingMatch = sectionText.match(/<\/h[1-4]>/i);
+  if (closingHeadingMatch) {
+    const endOfHeading = sectionText.indexOf(closingHeadingMatch[0]) + closingHeadingMatch[0].length;
+    sectionText = sectionText.slice(endOfHeading).trim();
+  } else {
+    // No HTML heading tag: skip past the first line (the FAQ title line).
+    const firstNewline = sectionText.search(/\r?\n/);
+    if (firstNewline !== -1) {
+      sectionText = sectionText.slice(firstNewline + 1).trim();
+    }
+  }
+
   if (SHORTCODE_PATTERN.test(sectionText) && sectionText.replace(SHORTCODE_PATTERN, '').trim().length < 50) {
     return { faqs, sectionStart: -1, sectionLength: 0 };
   }
