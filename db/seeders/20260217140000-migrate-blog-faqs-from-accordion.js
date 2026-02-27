@@ -48,48 +48,44 @@ module.exports = {
 
       // Check if FAQs table exists in new database
       console.log('\n🔍 Checking FAQs table existence in new database...');
-      const [tableCheck] = await queryInterface.sequelize.query(`
+      const tableCheckRows = await queryInterface.sequelize.query(`
         SELECT TABLE_NAME 
         FROM INFORMATION_SCHEMA.TABLES 
         WHERE TABLE_SCHEMA = DATABASE() 
         AND TABLE_NAME = 'FAQs'
-      `, { 
+      `, {
         type: Sequelize.QueryTypes.SELECT,
-        transaction 
+        transaction
       });
-      
-      if (tableCheck.length === 0) {
+
+      if (!tableCheckRows || tableCheckRows.length === 0) {
         throw new Error('FAQs table does not exist in new database');
       }
       console.log('✅ FAQs table exists in new database');
 
       // Step 1: Find blog posts in NEW database with accordion references
       console.log('\n📥 Step 1: Finding blog posts with accordion references in NEW database...');
-      
-      const blogsWithAccordions = await queryInterface.sequelize.query(`
-        SELECT 
-          id as new_blog_id,
-          title,
-          slug,
-          content,
-          CAST(
-            SUBSTRING_INDEX(
-              SUBSTRING_INDEX(
-                SUBSTRING(content, LOCATE('id="', content, LOCATE('[sp_easyaccordion', content)) + 4),
-                '"', 1
-              ),
-              '"', 1
-            ) AS UNSIGNED
-          ) as old_accordion_id
-        FROM blogs
-        WHERE content LIKE '%sp_easyaccordion%'
-        AND content LIKE '%id=%'
-        AND deleted_at IS NULL
-        ORDER BY id ASC
-      `, {
-        type: Sequelize.QueryTypes.SELECT,
-        transaction
-      });
+
+      const blogsRaw = await queryInterface.sequelize.query(
+        `SELECT id as new_blog_id, title, slug, content
+         FROM blogs
+         WHERE content LIKE '%sp_easyaccordion%'
+           AND deleted_at IS NULL
+         ORDER BY id ASC`,
+        { type: Sequelize.QueryTypes.SELECT, transaction }
+      );
+
+      // Extract accordion ID from shortcode in JS (same regex as removal seeder: id="123", id='123', id=123, with spaces)
+      const blogsWithAccordions = [];
+      for (const row of blogsRaw) {
+        const content = row.content || '';
+        SHORTCODE_PATTERN.lastIndex = 0;
+        const match = SHORTCODE_PATTERN.exec(content);
+        const old_accordion_id = match ? parseInt(match[2], 10) : null;
+        if (old_accordion_id && old_accordion_id > 0) {
+          blogsWithAccordions.push({ ...row, old_accordion_id });
+        }
+      }
 
       console.log(`📊 Found ${blogsWithAccordions.length} blog posts with accordion references`);
 
@@ -194,22 +190,23 @@ module.exports = {
         for (const faq of faqs) {
           try {
             // Check if FAQ already exists
-            const [existing] = await queryInterface.sequelize.query(`
-              SELECT id FROM FAQs 
-              WHERE entity_type = 'blog' 
-              AND entity_id = :blogId 
-              AND question = :question
-              AND deletedAt IS NULL
-            `, {
-              replacements: { 
-                blogId: newBlogId,
-                question: faq.question.substring(0, 500)
-              },
-              type: Sequelize.QueryTypes.SELECT,
-              transaction
-            });
-            
-            if (existing && existing.length > 0) {
+            const existingRows = await queryInterface.sequelize.query(
+              `SELECT id FROM FAQs
+               WHERE entity_type = 'blog'
+                 AND entity_id = :blogId
+                 AND question = :question
+                 AND deletedAt IS NULL`,
+              {
+                replacements: {
+                  blogId: newBlogId,
+                  question: faq.question.substring(0, 500)
+                },
+                type: Sequelize.QueryTypes.SELECT,
+                transaction
+              }
+            );
+
+            if (existingRows && existingRows.length > 0) {
               migrationStats.faqsSkipped++;
               continue;
             }

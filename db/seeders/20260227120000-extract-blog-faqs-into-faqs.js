@@ -139,15 +139,7 @@ function extractProperFaqsFromContent(content) {
     }
   }
 
-  const looksLikeFaq = (sectionText.match(/\?/g) || []).length >= 2 && sectionText.length > 100;
-  if (faqs.length === 0 && looksLikeFaq) {
-    return {
-      faqs: [],
-      sectionStart,
-      sectionLength: sectionText.length
-    };
-  }
-
+  // Never return a removable section when we extracted 0 FAQs (avoid deleting content without saving).
   return {
     faqs,
     sectionStart: faqs.length > 0 ? sectionStart : -1,
@@ -202,6 +194,7 @@ module.exports = {
         try {
           const { faqs, sectionStart, sectionLength } = extractProperFaqsFromContent(blog.content);
           if (sectionStart < 0 || sectionLength <= 0) continue;
+          if (faqs.length === 0) continue; // Do not remove content when no FAQs were extracted
 
           stats.blogsWithFaqSection++;
 
@@ -243,13 +236,13 @@ module.exports = {
             stats.faqsInserted++;
           }
 
-          // Remove the FAQ section (heading + Q&A) from the content now that it has been stored in FAQs.
+          // Remove the FAQ section (heading + Q&A) from the content only when we saved at least one FAQ.
           const cleaned =
             (blog.content.slice(0, sectionStart) + blog.content.slice(sectionStart + sectionLength))
               .replace(/\n\s*\n\s*\n/g, '\n\n')
               .trim();
 
-          if (cleaned !== blog.content) {
+          if (faqs.length > 0 && cleaned !== blog.content) {
             await queryInterface.sequelize.query(
               `UPDATE blogs SET content = :content WHERE id = :id`,
               {
