@@ -19,6 +19,8 @@
 const CrossServerMigration = require('../../utils/cross-server-migration');
 const phpUnserialize = require('phpunserialize');
 
+const SHORTCODE_PATTERN = /\[\s*sp_easyaccordion\s+id\s*=\s*(["']?)(\d+)\1\s*\]/gi;
+
 module.exports = {
   async up(queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
@@ -237,8 +239,40 @@ module.exports = {
         console.log(`   ✅ Inserted ${insertedCount} FAQs for blog "${blogPost.title}" (ID: ${newBlogId}, Accordion: ${accordionId})`);
       }
 
-      // Step 5: Generate migration report
-      console.log('\n📊 Generating migration report...');
+      // Step 5: Remove shortcode and FAQ section from blog content
+      console.log('\n🧹 Step 5: Removing shortcode and FAQ section from blog content...');
+      let contentUpdates = 0;
+      for (const blogPost of blogsWithAccordions) {
+        if (!blogPost.content || typeof blogPost.content !== 'string') continue;
+        let cleaned = blogPost.content
+          .replace(SHORTCODE_PATTERN, '')
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          .trim();
+        // Remove orphaned "FAQ" / "Frequently Asked Questions" heading block if it's now standalone
+        cleaned = cleaned.replace(
+          /<h[1-4][^>]*>\s*(?:FAQ|Frequently\s+Asked\s+Questions)\s*<\/h[1-4]>\s*/gi,
+          ''
+        ).replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+        if (cleaned !== blogPost.content) {
+          await queryInterface.sequelize.query(
+            `UPDATE blogs SET content = :content, updated_at = :updatedAt WHERE id = :id`,
+            {
+              replacements: {
+                content: cleaned,
+                updatedAt: new Date(),
+                id: blogPost.new_blog_id
+              },
+              transaction
+            }
+          );
+          contentUpdates++;
+          console.log(`   ✅ Removed shortcode from blog ID ${blogPost.new_blog_id}: "${blogPost.title}"`);
+        }
+      }
+      console.log(`📊 Updated content for ${contentUpdates} blog(s)`);
+
+      // Step 6: Generate migration report
+      console.log('\n📊 Step 6: Generating migration report...');
       generateMigrationReport(migrationStats);
 
       // Close old database connection
