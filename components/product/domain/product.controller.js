@@ -2207,57 +2207,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             });
         });
 
-        // Build all_attributes: every attribute and term for this product (no filter except deletion already applied in SQL)
-        const allAttributesMap = new Map();
-        const allAttributesTermsSeen = new Map(); // attributeId -> Set of term_id to avoid duplicates
-        productAttributeTermsResult.forEach((pat) => {
-            const attributeId = pat.attr_id;
-            if (!allAttributesMap.has(attributeId)) {
-                allAttributesMap.set(attributeId, {
-                    attribute: {
-                        id: pat.attr_id,
-                        name: pat.attr_name,
-                        type: pat.attr_type,
-                        image_url: pat.attr_image_url,
-                        description: pat.attr_description || null,
-                        is_visible_page: Boolean(pat.is_visible_page),
-                        used_in_variation: Boolean(pat.used_in_variation)
-                    },
-                    terms: []
-                });
-                allAttributesTermsSeen.set(attributeId, new Set());
-            }
-            const termsSeen = allAttributesTermsSeen.get(attributeId);
-            if (!termsSeen.has(pat.term_id)) {
-                termsSeen.add(pat.term_id);
-                const variantSlugs = [];
-                structuredVariants.forEach(variant => {
-                    const hasTerm = variant.variantAttributes.some(va =>
-                        va.attribute.id === pat.attr_id && va.term.id === pat.term_id
-                    );
-                    if (hasTerm && !variantSlugs.includes(variant.slug)) {
-                        variantSlugs.push(variant.slug);
-                    }
-                });
-                allAttributesMap.get(attributeId).terms.push({
-                    id: pat.term_id,
-                    name: pat.term_name,
-                    slug: pat.term_slug,
-                    description: pat.term_description || null,
-                    used_in_variation: Boolean(pat.used_in_variation),
-                    is_visible_page: Boolean(pat.is_visible_page),
-                    variant_slugs: variantSlugs
-                });
-            }
-        });
-        allAttributesMap.forEach((value) => {
-            value.terms.sort((a, b) => {
-                const nameA = (a.name || '').toLowerCase();
-                const nameB = (b.name || '').toLowerCase();
-                return nameA.localeCompare(nameB);
-            });
-        });
-
         // Filter variants based on provided attribute terms (OPTIMIZED)
         let filteredVariants;
         
@@ -2772,7 +2721,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             })),
             available_terms: Array.from(availableTermsMap.values()),
             filtered_attribute_terms: filteredAttributeTerms,
-            all_attributes: Array.from(allAttributesMap.values()),
             stock_summary: stockSummary
         };
 
