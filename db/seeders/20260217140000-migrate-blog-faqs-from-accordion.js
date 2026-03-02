@@ -39,7 +39,8 @@ module.exports = {
         faqsInserted: 0,
         faqsSkipped: 0,
         blogPostsMapped: 0,
-        errors: 0
+        errors: 0,
+        processedBlogIds: []
       };
 
       // Connect to old database
@@ -172,7 +173,8 @@ module.exports = {
 
       // Step 4: Map FAQs to blog posts and insert
       console.log('\n💾 Step 4: Mapping FAQs to blog posts and inserting...');
-      
+      const processedBlogIds = [];
+
       for (const blogPost of blogsWithAccordions) {
         const accordionId = blogPost.old_accordion_id;
         const faqs = accordionFAQsMap.get(accordionId);
@@ -184,6 +186,7 @@ module.exports = {
 
         migrationStats.blogPostsMapped++;
         const newBlogId = blogPost.new_blog_id;
+        processedBlogIds.push(newBlogId);
 
         // Insert FAQs for this blog post
         let insertedCount = 0;
@@ -235,6 +238,9 @@ module.exports = {
 
         console.log(`   ✅ Inserted ${insertedCount} FAQs for blog "${blogPost.title}" (ID: ${newBlogId}, Accordion: ${accordionId})`);
       }
+
+      migrationStats.processedBlogIds = processedBlogIds;
+      console.log(`📋 Processed Blog IDs (FAQs inserted): ${processedBlogIds.length ? processedBlogIds.join(', ') : 'none'}`);
 
       // Step 5: Remove shortcode and FAQ section from blog content
       console.log('\n🧹 Step 5: Removing shortcode and FAQ section from blog content...');
@@ -504,6 +510,7 @@ STATISTICS:
 - FAQs Skipped (Duplicates): ${migrationStats.faqsSkipped}
 - Blog Posts Mapped: ${migrationStats.blogPostsMapped}
 - Errors: ${migrationStats.errors}
+- Processed Blog IDs: ${(migrationStats.processedBlogIds || []).length ? (migrationStats.processedBlogIds || []).join(', ') : 'none'}
 
 SUCCESS RATE: ${migrationStats.accordionsProcessed > 0 ? 
   ((migrationStats.accordionsWithFAQs / migrationStats.accordionsProcessed) * 100).toFixed(2)
