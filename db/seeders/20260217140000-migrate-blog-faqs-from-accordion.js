@@ -19,6 +19,8 @@
 const CrossServerMigration = require('../../utils/cross-server-migration');
 const phpUnserialize = require('phpunserialize');
 
+const SHORTCODE_PATTERN = /\[\s*sp_easyaccordion\s+id\s*=\s*(["']?)(\d+)\1\s*\]/gi;
+
 module.exports = {
   async up(queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
@@ -37,7 +39,8 @@ module.exports = {
         faqsInserted: 0,
         faqsSkipped: 0,
         blogPostsMapped: 0,
-        errors: 0
+        errors: 0,
+        processedBlogIds: []
       };
 
       // Connect to old database
@@ -46,48 +49,44 @@ module.exports = {
 
       // Check if FAQs table exists in new database
       console.log('\n🔍 Checking FAQs table existence in new database...');
-      const [tableCheck] = await queryInterface.sequelize.query(`
+      const tableCheckRows = await queryInterface.sequelize.query(`
         SELECT TABLE_NAME 
         FROM INFORMATION_SCHEMA.TABLES 
         WHERE TABLE_SCHEMA = DATABASE() 
         AND TABLE_NAME = 'FAQs'
-      `, { 
+      `, {
         type: Sequelize.QueryTypes.SELECT,
-        transaction 
+        transaction
       });
-      
-      if (tableCheck.length === 0) {
+
+      if (!tableCheckRows || tableCheckRows.length === 0) {
         throw new Error('FAQs table does not exist in new database');
       }
       console.log('✅ FAQs table exists in new database');
 
       // Step 1: Find blog posts in NEW database with accordion references
       console.log('\n📥 Step 1: Finding blog posts with accordion references in NEW database...');
-      
-      const blogsWithAccordions = await queryInterface.sequelize.query(`
-        SELECT 
-          id as new_blog_id,
-          title,
-          slug,
-          content,
-          CAST(
-            SUBSTRING_INDEX(
-              SUBSTRING_INDEX(
-                SUBSTRING(content, LOCATE('id="', content, LOCATE('[sp_easyaccordion', content)) + 4),
-                '"', 1
-              ),
-              '"', 1
-            ) AS UNSIGNED
-          ) as old_accordion_id
-        FROM blogs
-        WHERE content LIKE '%sp_easyaccordion%'
-        AND content LIKE '%id=%'
-        AND deleted_at IS NULL
-        ORDER BY id ASC
-      `, {
-        type: Sequelize.QueryTypes.SELECT,
-        transaction
-      });
+
+      const blogsRaw = await queryInterface.sequelize.query(
+        `SELECT id as new_blog_id, title, slug, content
+         FROM blogs
+         WHERE content LIKE '%sp_easyaccordion%'
+           AND deleted_at IS NULL
+         ORDER BY id ASC`,
+        { type: Sequelize.QueryTypes.SELECT, transaction }
+      );
+
+      // Extract accordion ID from shortcode in JS (same regex as removal seeder: id="123", id='123', id=123, with spaces)
+      const blogsWithAccordions = [];
+      for (const row of blogsRaw) {
+        const content = row.content || '';
+        SHORTCODE_PATTERN.lastIndex = 0;
+        const match = SHORTCODE_PATTERN.exec(content);
+        const old_accordion_id = match ? parseInt(match[2], 10) : null;
+        if (old_accordion_id && old_accordion_id > 0) {
+          blogsWithAccordions.push({ ...row, old_accordion_id });
+        }
+      }
 
       console.log(`📊 Found ${blogsWithAccordions.length} blog posts with accordion references`);
 
@@ -174,7 +173,8 @@ module.exports = {
 
       // Step 4: Map FAQs to blog posts and insert
       console.log('\n💾 Step 4: Mapping FAQs to blog posts and inserting...');
-      
+      const processedBlogIds = [];
+
       for (const blogPost of blogsWithAccordions) {
         const accordionId = blogPost.old_accordion_id;
         const faqs = accordionFAQsMap.get(accordionId);
@@ -186,28 +186,30 @@ module.exports = {
 
         migrationStats.blogPostsMapped++;
         const newBlogId = blogPost.new_blog_id;
+        processedBlogIds.push(newBlogId);
 
         // Insert FAQs for this blog post
         let insertedCount = 0;
         for (const faq of faqs) {
           try {
             // Check if FAQ already exists
-            const [existing] = await queryInterface.sequelize.query(`
-              SELECT id FROM FAQs 
-              WHERE entity_type = 'blog' 
-              AND entity_id = :blogId 
-              AND question = :question
-              AND deletedAt IS NULL
-            `, {
-              replacements: { 
-                blogId: newBlogId,
-                question: faq.question.substring(0, 500)
-              },
-              type: Sequelize.QueryTypes.SELECT,
-              transaction
-            });
-            
-            if (existing && existing.length > 0) {
+            const existingRows = await queryInterface.sequelize.query(
+              `SELECT id FROM FAQs
+               WHERE entity_type = 'blog'
+                 AND entity_id = :blogId
+                 AND question = :question
+                 AND deletedAt IS NULL`,
+              {
+                replacements: {
+                  blogId: newBlogId,
+                  question: faq.question.substring(0, 500)
+                },
+                type: Sequelize.QueryTypes.SELECT,
+                transaction
+              }
+            );
+
+            if (existingRows && existingRows.length > 0) {
               migrationStats.faqsSkipped++;
               continue;
             }
@@ -237,8 +239,43 @@ module.exports = {
         console.log(`   ✅ Inserted ${insertedCount} FAQs for blog "${blogPost.title}" (ID: ${newBlogId}, Accordion: ${accordionId})`);
       }
 
-      // Step 5: Generate migration report
-      console.log('\n📊 Generating migration report...');
+      migrationStats.processedBlogIds = processedBlogIds;
+      console.log(`📋 Processed Blog IDs (FAQs inserted): ${processedBlogIds.length ? processedBlogIds.join(', ') : 'none'}`);
+
+      // Step 5: Remove shortcode and FAQ section from blog content
+      console.log('\n🧹 Step 5: Removing shortcode and FAQ section from blog content...');
+      let contentUpdates = 0;
+      for (const blogPost of blogsWithAccordions) {
+        if (!blogPost.content || typeof blogPost.content !== 'string') continue;
+        let cleaned = blogPost.content
+          .replace(SHORTCODE_PATTERN, '')
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          .trim();
+        // Remove orphaned "FAQ" / "Frequently Asked Questions" heading block if it's now standalone
+        cleaned = cleaned.replace(
+          /<h[1-4][^>]*>\s*(?:FAQ|Frequently\s+Asked\s+Questions)\s*<\/h[1-4]>\s*/gi,
+          ''
+        ).replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+        if (cleaned !== blogPost.content) {
+          await queryInterface.sequelize.query(
+            `UPDATE blogs SET content = :content, updated_at = :updatedAt WHERE id = :id`,
+            {
+              replacements: {
+                content: cleaned,
+                updatedAt: new Date(),
+                id: blogPost.new_blog_id
+              },
+              transaction
+            }
+          );
+          contentUpdates++;
+          console.log(`   ✅ Removed shortcode from blog ID ${blogPost.new_blog_id}: "${blogPost.title}"`);
+        }
+      }
+      console.log(`📊 Updated content for ${contentUpdates} blog(s)`);
+
+      // Step 6: Generate migration report
+      console.log('\n📊 Step 6: Generating migration report...');
       generateMigrationReport(migrationStats);
 
       // Close old database connection
@@ -473,6 +510,7 @@ STATISTICS:
 - FAQs Skipped (Duplicates): ${migrationStats.faqsSkipped}
 - Blog Posts Mapped: ${migrationStats.blogPostsMapped}
 - Errors: ${migrationStats.errors}
+- Processed Blog IDs: ${(migrationStats.processedBlogIds || []).length ? (migrationStats.processedBlogIds || []).join(', ') : 'none'}
 
 SUCCESS RATE: ${migrationStats.accordionsProcessed > 0 ? 
   ((migrationStats.accordionsWithFAQs / migrationStats.accordionsProcessed) * 100).toFixed(2)
