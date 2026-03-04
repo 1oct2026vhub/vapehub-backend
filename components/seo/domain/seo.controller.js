@@ -43,6 +43,13 @@ const seoController = {
 
       const pipeline = smStream.pipe(createGzip());
 
+      // Add homepage first (not stored in SeoMeta)
+      smStream.write({
+        url: '/',
+        changefreq: 'daily',
+        priority: 1
+      });
+
       // Get all SEO entries that should be indexed
       const seoEntries = await db.SeoMeta.findAll({
         where: { noIndex: false }
