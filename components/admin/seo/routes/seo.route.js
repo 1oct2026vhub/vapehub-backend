@@ -16,7 +16,7 @@ const seoController = require('../domain/seo.controller');
  *       properties:
  *         entityType:
  *           type: string
- *           enum: [page, product, category, brand, blog_category, blog_post]
+ *           enum: [page, product, category, brand, blog_category, blog_post, deals]
  *           description: Type of entity
  *         entityId:
  *           type: string
@@ -62,7 +62,7 @@ const seoController = require('../domain/seo.controller');
  *         required: true
  *         schema:
  *           type: string
- *           enum: [page, product, category, brand, blog_category, blog_post]
+ *           enum: [page, product, category, brand, blog_category, blog_post, deals]
  *         description: Type of entity
  *       - in: path
  *         name: entityId
@@ -149,7 +149,7 @@ router.post(
  *         name: entityType
  *         schema:
  *           type: string
- *           enum: [page, product, category, brand, blog_category, blog_post]
+ *           enum: [page, product, category, brand, blog_category, blog_post, deals]
  *         description: Filter by entity type
  *       - in: query
  *         name: entityId

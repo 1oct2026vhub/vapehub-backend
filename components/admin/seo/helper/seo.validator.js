@@ -2,7 +2,7 @@ const { body, param, query } = require('express-validator');
 
 const seoValidationRules = {
   getSeoMeta: [
-    param('entityType').isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post']).withMessage('Invalid entity type'),
+    param('entityType').isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post', 'deals']).withMessage('Invalid entity type'),
     param('entityId').optional().custom((value) => {
       if (value === null || value === '{entityId}') {
         value = null;
@@ -14,7 +14,7 @@ const seoValidationRules = {
   ],
 
   upsertSeoMeta: [
-    body('entityType').isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post']).withMessage('Invalid entity type'),
+    body('entityType').isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post', 'deals']).withMessage('Invalid entity type'),
     body('entityId').optional().isInt({ min: 1 }).withMessage('Invalid entity ID format'),
     body('slug').notEmpty().withMessage('Slug is required').isString().withMessage('Slug must be a string'),
     body('title').optional().isString().withMessage('Title must be a string'),
@@ -26,7 +26,7 @@ const seoValidationRules = {
   ],
 
   listSeoMeta: [
-    query('entityType').optional().isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post']).withMessage('Invalid entity type'),
+    query('entityType').optional().isIn(['page', 'product', 'category', 'brand', 'blog_category', 'blog_post', 'deals']).withMessage('Invalid entity type'),
     query('entityId').optional().isInt({ min: 1 }).withMessage('Invalid entity ID format'),
     query('keyword').optional().isString().withMessage('Keyword must be a string'),
     query('noIndex').optional().isIn(['true', 'false']).withMessage('noIndex must be either true or false'),
