@@ -97,8 +97,6 @@ class SlugManager {
       // Allow alphanumeric, hyphens, underscores, and periods
       // Remove any other special characters
       .replace(/[^a-z0-9\-_.]/g, '')
-      // Replace multiple consecutive hyphens with a single hyphen
-      .replace(/-+/g, '-')
       // Replace multiple consecutive periods with a single period
       .replace(/\.+/g, '.')
       // Remove leading and trailing hyphens and periods
