@@ -8,7 +8,7 @@ module.exports = (sequelize) => {
       autoIncrement: true
     },
     entityType: {
-      type: DataTypes.ENUM('page', 'product', 'category', 'brand', 'blog_category', 'blog_post'),
+      type: DataTypes.ENUM('page', 'product', 'category', 'brand', 'blog_category', 'blog_post', 'deals'),
       allowNull: false
     },
     entityId: {
@@ -107,6 +107,12 @@ module.exports = (sequelize) => {
     SeoMeta.belongsTo(models.Blog, {
       foreignKey: 'entityId',
       as: 'blog'
+    });
+
+    // Deal association
+    SeoMeta.belongsTo(models.Deal, {
+      foreignKey: 'entityId',
+      as: 'deal'
     });
 
     SeoMeta.belongsTo(models.User, { foreignKey: 'updatedBy', as: 'updatedByUser' });

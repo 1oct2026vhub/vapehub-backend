@@ -35,8 +35,8 @@ const seoController = {
       // Get SEO health check for all content types
       let health = null;
       try {
-        // For pages, use the slug as the identifier
-        const identifier = entityType === 'page' ? seoMeta.slug : entityId;
+        // For pages, use the slug as the identifier; for others use entityId from params or from seoMeta
+        const identifier = entityType === 'page' ? seoMeta.slug : (entityId ?? seoMeta.entityId);
         health = await seoService.checkSeoHealth(entityType, identifier);
       } catch (error) {
         logger.error({ 

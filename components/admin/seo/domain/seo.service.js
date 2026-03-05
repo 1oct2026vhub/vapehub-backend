@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog } = require('../../../../models');
+const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
 
 // SEO Health Status Constants
@@ -22,7 +22,7 @@ const SEO_METRICS_WEIGHTS = {
 
 class SeoService {
   constructor() {
-    this.models = { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog };
+    this.models = { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal };
     this.logger = logger;
   }
 
