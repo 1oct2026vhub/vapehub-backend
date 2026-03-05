@@ -41,18 +41,7 @@ const INDEXABLE_PAGES = [
   { slug: 'coils', title: 'Coils | VapeHub UK', description: 'Vape coils and replacements.' },
   { slug: '70-30', title: '70/30 E-Liquid | VapeHub UK', description: '70/30 shortfill e-liquids.' },
   { slug: 'vapehub-deals', title: 'VapeHub Deals | VapeHub UK', description: 'Latest VapeHub deals.' },
-  // Nested paths (sitemap uses /${slug}/ so these become /product-deals/buy-3-for-12/ etc.)
-  { slug: 'product-deals/buy-3-for-12', title: 'Buy 3 for £12 | Product Deals | VapeHub UK', description: 'Buy 3 for £12 deal.' },
-  { slug: 'product-deals/buy-3-for-15', title: 'Buy 3 for £15 | Product Deals | VapeHub UK', description: 'Buy 3 for £15 deal.' },
-  { slug: 'product-deals/buy-3-for-22', title: 'Buy 3 for £22 | Product Deals | VapeHub UK', description: 'Buy 3 for £22 deal.' },
-  { slug: 'product-deals/buy-3-for-23', title: 'Buy 3 for £23 | Product Deals | VapeHub UK', description: 'Buy 3 for £23 deal.' },
-  { slug: 'product-deals/buy-2-for-15', title: 'Buy 2 for £15 | Product Deals | VapeHub UK', description: 'Buy 2 for £15 deal.' },
-  { slug: 'product-deals/buy-2-for-20', title: 'Buy 2 for £20 | Product Deals | VapeHub UK', description: 'Buy 2 for £20 deal.' },
-  { slug: 'product-deals/buy-2-for-22', title: 'Buy 2 for £22 | Product Deals | VapeHub UK', description: 'Buy 2 for £22 deal.' },
-  { slug: 'product-deals/buy-4-for-23', title: 'Buy 4 for £23 | Product Deals | VapeHub UK', description: 'Buy 4 for £23 deal.' },
-  { slug: 'product-deals/buy-5-for-10', title: 'Buy 5 for £10 | Product Deals | VapeHub UK', description: 'Buy 5 for £10 deal.' },
-  { slug: 'product-deals/buy-5-for-20', title: 'Buy 5 for £20 | Product Deals | VapeHub UK', description: 'Buy 5 for £20 deal.' },
-  { slug: 'product-deals/buy-5-for-25', title: 'Buy 5 for £25 | Product Deals | VapeHub UK', description: 'Buy 5 for £25 deal.' },
+  // Deal subpages (product-deals/*) are seeded by 20260303180000-seed-seo-meta-deals.js with entityType 'deals' and entityId from deals table
   { slug: 'pod-kits/refillable-pod-kits', title: 'Refillable Pod Kits | Pod Kits | VapeHub UK', description: 'Refillable pod kits within pod kits.' },
   { slug: 'pod-kits/prefilled-pod-kits', title: 'Pre-filled Pod Kits | Pod Kits | VapeHub UK', description: 'Pre-filled pod kits within pod kits.' },
   { slug: 'pod-kits/pre-filled-pod-kits', title: 'Pre-filled Pod Kits | Pod Kits | VapeHub UK', description: 'Pre-filled pod kits within pod kits.' }
