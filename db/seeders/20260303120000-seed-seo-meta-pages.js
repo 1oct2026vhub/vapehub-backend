@@ -54,7 +54,7 @@ module.exports = {
     try {
       const slugs = INDEXABLE_PAGES.map((p) => p.slug);
       const placeholders = slugs.map(() => '?').join(', ');
-      const [existingRows] = await queryInterface.sequelize.query(
+      const existingRows = await queryInterface.sequelize.query(
         `SELECT slug FROM seo_meta WHERE slug IN (${placeholders})`,
         {
           replacements: slugs,

@@ -14,7 +14,7 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
-      const [deals] = await queryInterface.sequelize.query(
+      const deals = await queryInterface.sequelize.query(
         `SELECT id, slug, name, description FROM deals WHERE slug IS NOT NULL AND slug != ''`,
         { type: Sequelize.QueryTypes.SELECT, transaction }
       );
@@ -27,7 +27,7 @@ module.exports = {
 
       const slugs = deals.map((d) => DEAL_SLUG_PREFIX + d.slug);
       const placeholders = slugs.map(() => '?').join(', ');
-      const [existingRows] = await queryInterface.sequelize.query(
+      const existingRows = await queryInterface.sequelize.query(
         `SELECT slug FROM seo_meta WHERE slug IN (${placeholders})`,
         { replacements: slugs, type: Sequelize.QueryTypes.SELECT, transaction }
       );
