@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog } = require('../../../../models');
+const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
 
 // SEO Health Status Constants
@@ -22,7 +22,7 @@ const SEO_METRICS_WEIGHTS = {
 
 class SeoService {
   constructor() {
-    this.models = { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog };
+    this.models = { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal };
     this.logger = logger;
   }
 
@@ -394,7 +394,7 @@ class SeoService {
   async checkContentLength(entityType, entityId) {
     try {
       let content = '';
-      let product, blog, category, seoMeta;
+      let product, blog, category, deal, seoMeta;
 
       // Function to strip HTML tags and decode HTML entities
       const stripHtml = (html) => {
@@ -432,6 +432,10 @@ class SeoService {
           });
           content = seoMeta ? stripHtml(seoMeta.description || '') : '';
           break;
+        case 'deals':
+          deal = await this.models.Deal.findByPk(entityId);
+          content = deal ? stripHtml(deal.description || '') : '';
+          break;
         default:
           return 0.5;
       }
@@ -441,7 +445,8 @@ class SeoService {
         product: { min: 300, medium: 500, good: 1000 },
         blog_post: { min: 500, medium: 1000, good: 2000 },
         category: { min: 200, medium: 400, good: 800 },
-        page: { min: 150, medium: 300, good: 500 } // Lower requirements for pages since we're using meta description
+        page: { min: 150, medium: 300, good: 500 }, // Lower requirements for pages since we're using meta description
+        deals: { min: 200, medium: 400, good: 800 }
       };
 
       const lengths = minLengths[entityType] || { min: 300, medium: 500, good: 1000 };

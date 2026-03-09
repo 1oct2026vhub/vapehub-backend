@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { SeoMeta, Product, Category, Brand, BlogCategory, Blog } = require('../../../../models');
+const { SeoMeta, Product, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const logger = require('../../../../library/logger');
 const seoService = require('./seo.service');
@@ -35,8 +35,8 @@ const seoController = {
       // Get SEO health check for all content types
       let health = null;
       try {
-        // For pages, use the slug as the identifier
-        const identifier = entityType === 'page' ? seoMeta.slug : entityId;
+        // For pages, use the slug as the identifier; for others use entityId from params or from seoMeta
+        const identifier = entityType === 'page' ? seoMeta.slug : (entityId ?? seoMeta.entityId);
         health = await seoService.checkSeoHealth(entityType, identifier);
       } catch (error) {
         logger.error({ 
@@ -82,6 +82,12 @@ const seoController = {
           });
           entityName = entityData?.title;
           break;
+        case 'deals':
+          entityData = await Deal.findByPk(seoMeta.entityId, {
+            attributes: ['id', 'name', 'slug']
+          });
+          entityName = entityData?.name;
+          break;
         case 'page':
           entityName = seoMeta.slug; // For pages, use slug as name
           break;
@@ -126,6 +132,9 @@ const seoController = {
             break;
           case 'blog_post':
             EntityModel = Blog;
+            break;
+          case 'deals':
+            EntityModel = Deal;
             break;
           default:
             return errorResponse(res, { message: `Invalid entity type: ${entityType}` }, 'Bad Request', 400);
@@ -253,6 +262,11 @@ const seoController = {
               attributes: ['id', 'title', 'slug']
             });
             break;
+          case 'deals':
+            entityData = await Deal.findByPk(seoMeta.entityId, {
+              attributes: ['id', 'name', 'slug']
+            });
+            break;
         }
 
         return {
@@ -284,6 +298,9 @@ const seoController = {
               break;
             case 'blog_post':
               entityName = item.blog?.title;
+              break;
+            case 'deals':
+              entityName = item.deals?.name;
               break;
             case 'page':
               entityName = item.slug; // For pages, use slug as name
