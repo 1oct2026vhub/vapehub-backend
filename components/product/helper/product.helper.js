@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { sequelize, Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Order, Deal, DealProduct, ProductCategory, ProductBrand } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
+const { cacheOrFetch, invalidateCachePattern } = require('../../../library/cache');
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -1849,5 +1850,25 @@ function getMinPriceVariant(product) {
   };
 }
 
-module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant };
+// Cached wrapper for product listing (reduces DB load; invalidate with invalidateCachePattern('products:*') on admin product changes)
+const fetchProductsCached = async (query, status = 'published') => {
+  const cacheKey = `products:list:${JSON.stringify({
+    sort_by: query.sort_by,
+    order: query.order,
+    limit: query.limit,
+    offset: query.offset,
+    keyword: query.keyword,
+    price_range: query.price_range,
+    categories: query.categories,
+    brand: query.brand,
+    variant: query.variant,
+    is_new: query.is_new,
+    source: query.source,
+    deal_id: query.deal_id,
+    status
+  })}`;
+  return cacheOrFetch(cacheKey, () => fetchProducts(query, status), 30);
+};
+
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern };
 
