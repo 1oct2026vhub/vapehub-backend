@@ -69,7 +69,7 @@ app.use((req, res, next) => {
 });
 
 // Parse JSON and URL-encoded bodies
-const bodyLimit = process.env.BODY_LIMIT || '1mb';
+const bodyLimit = process.env.BODY_LIMIT || '10mb';
 app.use(express.json({ limit: bodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 // 4. Authentication middleware (uncomment if needed)
