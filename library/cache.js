@@ -1,3 +1,4 @@
+require('dotenv').config();
 const Redis = require('ioredis');
 const logger = require('../utils/logger');
 
@@ -9,6 +10,9 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     retryStrategy(times) {
         if (times > 10) return null;
         return Math.min(times * 200, 2000);
+    },
+    tls: {
+        rejectUnauthorized: false
     }
 });
 
