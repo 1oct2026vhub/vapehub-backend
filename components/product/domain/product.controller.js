@@ -10,44 +10,43 @@ const { productStatus } = require("../../../config/constants");
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const useLegacy = req.query.legacy == 1 || req.query.legacy === '1';
-
-        const {
-            additionalData,
-            products,
-            category_items,
-            brand_items,
-            deal_items,
-            attributes,
-            allAttributes,
-            price_ranges,
-            pagination
-        } = useLegacy
-            ? await fetchProducts({
-                ...req.query,
-                status: productStatus.PUBLISHED
-            })
-            : await fetchProductsOptimized({
+        if(req.query.test == 1) {
+            const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProductsOptimized({
                 ...req.query,
                 status: productStatus.PUBLISHED
             });
-
-        return successResponse(
-            res,
-            {
+            return successResponse(res, { 
                 ...additionalData,
-                products,
-                attributes,
+                products, 
+                attributes,  
                 // allAttributes,
-                category: category_items,
-                brand: brand_items,
-                deal: deal_items,
+                category:category_items,
+                brand:brand_items,
+                deal:deal_items,
                 // deals_text:deals_text,
-                price_ranges,
+                price_ranges, 
                 pagination
-            },
-            'Success'
-        );
+            }, 'Success');
+        } else {
+            const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+                ...req.query,
+                status: productStatus.PUBLISHED
+            });
+            return successResponse(res, { 
+                ...additionalData,
+                products, 
+                attributes,  
+                // allAttributes,
+                category:category_items,
+                brand:brand_items,
+                deal:deal_items,
+                // deals_text:deals_text,
+                price_ranges, 
+                pagination
+            }, 'Success');
+        }
+        
+        
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
