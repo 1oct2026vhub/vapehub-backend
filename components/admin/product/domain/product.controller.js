@@ -9,6 +9,7 @@ const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
+const { invalidateCachePattern } = require('../../../../library/cache');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -1169,6 +1170,7 @@ module.exports.createProduct = async (req, res, next) => {
         await slugManager.createOrUpdateSlug(cleanSlug, 'product', product.id, transaction);
 
         await transaction.commit();
+        invalidateCachePattern('products:*').catch(() => {});
 
         // Fetch and return the created product with related models
         const newProduct = await Product.findByPk(product.id, {
@@ -1900,6 +1902,7 @@ module.exports.updateProduct = async (req, res, next) => {
 
         // Commit transaction FIRST to avoid conflicts
         await transaction.commit();
+        invalidateCachePattern('products:*').catch(() => {});
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
         if (shouldUpdateSeoSlug && cleanSlug) {
@@ -2002,6 +2005,7 @@ module.exports.deleteProduct = async (req, res, next) => {
         await product.destroy({ transaction });
 
         await transaction.commit();
+        invalidateCachePattern('products:*').catch(() => {});
         logger.info(`Product ID ${id} deleted successfully`);
 
         return successResponse(res, { message: "Product deleted successfully" });
@@ -2083,6 +2087,10 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
                 });
                 logger.error(`Error deleting product ${id}:`, error);
             }
+        }
+
+        if (deletedProducts.length > 0) {
+            invalidateCachePattern('products:*').catch(() => {});
         }
 
         const responseData = {

@@ -75,28 +75,32 @@ module.exports.checkout = async (req, res, next) => {
         let dealsDiscount = 0;
         let applicableDeals = [];
 
-        const cart = await Cart.findAll({
-            where: { user_id: userId },
-            include: [
-                {
-                    model: User,
-                    attributes: ["id", "first_name", "last_name", "email", "phone"],
-                    as: "user"
-                },
-                {
-                    model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
-                    as: "product",
-                    paranoid: false
-                },
-                {
-                    model: ProductVariant,
-                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
-                    as: "variant",
-                    paranoid: false
-                }
-            ]
-        });
+        // Run independent queries in parallel
+        const [
+            cart,
+            shippingMethod,
+            paymentMethod,
+            user,
+            loyaltySettings,
+            address
+        ] = await Promise.all([
+            Cart.findAll({
+                where: { user_id: userId },
+                include: [
+                    { model: User, attributes: ["id", "first_name", "last_name", "email", "phone"], as: "user" },
+                    { model: Product, attributes: ["id", "name", "price", "discount_price", "stock_quantity"], as: "product", paranoid: false },
+                    { model: ProductVariant, attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"], as: "variant", paranoid: false }
+                ]
+            }),
+            ShippingMethod.findAll({
+                where: { is_enabled: true },
+                attributes: ["id", "shipping_method", "shipping_cost", "is_free_shipping", "free_shipping_threshold", "display_text", "is_enabled", "min_order_total", "max_order_total", "shipping_rules"]
+            }),
+            PaymentMethod.findAll({ where: { status: "active" } }),
+            User.findOne({ where: { id: userId }, attributes: ['id', 'email', 'loyalty_points'] }),
+            LoyaltyPointsSettings.findOne({ where: { status: true } }),
+            UserAddress.findOne({ where: { user_id: userId }, order: [['createdAt', 'DESC']] })
+        ]);
 
         if (cart.length === 0) {
             throw {
@@ -127,41 +131,17 @@ module.exports.checkout = async (req, res, next) => {
             totalItems += item.quantity;
         }
 
-        // Fetch ShippingMethod separately
-        const shippingMethod = await ShippingMethod.findAll({
-            where: { is_enabled: true },
-            attributes: ["id", "shipping_method", "shipping_cost", "is_free_shipping", "free_shipping_threshold", "display_text", "is_enabled", "min_order_total", "max_order_total", "shipping_rules"]
-        });
-
-        if(!shippingMethod || shippingMethod.length === 0){
-            validityMessage = 'No shipping methods available'
+        if (!shippingMethod || shippingMethod.length === 0) {
+            validityMessage = 'No shipping methods available';
         }
 
-        const paymentMethod = await PaymentMethod.findAll({
-            where: { status: "active" }
-        });
-
-        // Calculate deals
+        // Calculate deals (depends on cart)
         const deals = await dealService.getApplicableDeals(cart);
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
         dealsDiscount = dealResult.totalDiscount;
         applicableDeals = dealResult.appliedDeals;
 
-        // Apply deal discounts to total
         total = subTotal - dealsDiscount;
-
-        // Process referral discount if referral coupon code is provided
-        // if (referralCouponCode) {
-        //     const referralResult = await processReferralDiscount(referralCouponCode);
-        //     if (referralResult.referral?.ReferralMethod?.referral_value_type === 'percentage') {
-        //         referralPercentage = referralResult.discount;
-        //         referralDiscount = (referralPercentage / 100) * subTotal;
-        //     } else {
-        //         referralDiscount = referralResult.discount;
-        //     }
-        //     referralMessage = referralResult.message;
-        //     total = Math.max(0, total - referralDiscount);
-        // }
 
         // Process regular coupon if provided
         if (couponCode) {
@@ -170,8 +150,8 @@ module.exports.checkout = async (req, res, next) => {
                 where: {
                     code: couponCode,
                     status: "active",
-                    start_date: { [Op.lte]: currentUkTime }, // Coupon has started (UK time)
-                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] }, // Not expired (UK time)
+                    start_date: { [Op.lte]: currentUkTime },
+                    end_date: { [Op.or]: [{ [Op.gte]: currentUkTime }, { [Op.is]: null }] },
                 }
             });
 
@@ -183,7 +163,6 @@ module.exports.checkout = async (req, res, next) => {
                         });
                         if (!userUsedCoupon) {
                             let discount = 0;
-                            
                             if (coupon.discount_type === "percentage") {
                                 discount = (coupon.discount_value / 100) * total;
                             } else if (coupon.discount_type === "fixed_amount") {
@@ -210,46 +189,26 @@ module.exports.checkout = async (req, res, next) => {
             }
         }
 
-        if(!couponCode){
-            validityMessage = ''
+        if (!couponCode) {
+            validityMessage = '';
         }
 
-        // Get mail subscription data and loyalty points redemption info
+        // Mail subscription (depends on user from parallel batch)
         let mailSubscriptionData = null;
         let loyaltyRedemptionInfo = null;
-        const user = await User.findOne({
-            where: { id: userId },
-            attributes: ['id', 'email', 'loyalty_points']
-        });
-        
         if (user && user.email) {
-            // Get user's mail subscription
-            const mailSubscription = await MailSubscription.findOne({
-                where: { 
-                    email: user.email
-                }
-            });
-            if (mailSubscription) {
-                // Get active mail subscription settings
-                const mailSettings = await MailSubscriptionSettings.findOne({
-                    where: { 
-                        status: true
-                    }
-                });
-                if (mailSettings) {
-                    mailSubscriptionData = {
-                        isDiscountUsed: mailSubscription.isDiscountUsed,
-                        discount_amount: parseFloat(mailSettings.discount_amount),
-                        discount_type: mailSettings.discount_type
-                    };
-                }
+            const [mailSubscription, mailSettings] = await Promise.all([
+                MailSubscription.findOne({ where: { email: user.email } }),
+                MailSubscriptionSettings.findOne({ where: { status: true } })
+            ]);
+            if (mailSubscription && mailSettings) {
+                mailSubscriptionData = {
+                    isDiscountUsed: mailSubscription.isDiscountUsed,
+                    discount_amount: parseFloat(mailSettings.discount_amount),
+                    discount_type: mailSettings.discount_type
+                };
             }
         }
-
-        // Get loyalty points redemption information
-        const loyaltySettings = await LoyaltyPointsSettings.findOne({
-            where: { status: true }
-        });
 
         if (loyaltySettings && user) {
             const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
@@ -283,11 +242,6 @@ module.exports.checkout = async (req, res, next) => {
         total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         dealsDiscount = Math.floor(dealsDiscount * 100) / 100;
-
-        const address = await UserAddress.findOne({ 
-            where: { user_id: userId },
-            order: [['createdAt', 'DESC']]
-        });
 
         const resObj = {
             cart,
