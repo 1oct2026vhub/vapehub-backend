@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { FlashNews, User } = require("../../../../models");
 const { Op } = require("sequelize");
+const { invalidateCachePattern } = require("../../../../library/cache");
 
 /**
  * Create or update flash news
@@ -34,7 +35,8 @@ module.exports.createOrUpdateFlashNews = async (req, res, next) => {
                 updated_by 
             });
         }
-        
+
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, flashNews, 'Flash news saved successfully');
     } catch (error) {
         console.error("createOrUpdateFlashNews error:", error);
@@ -82,7 +84,8 @@ module.exports.updateFlashNews = async (req, res, next) => {
                 attributes: ['id', 'first_name', 'last_name', 'email']
             }]
         });
-        
+
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, updatedFlashNews, 'Flash news updated successfully');
     } catch (error) {
         console.error("updateFlashNews error:", error);
@@ -168,6 +171,7 @@ module.exports.deleteFlashNews = async (req, res, next) => {
         
         await flashNews.update({ updated_by });
         await flashNews.destroy();
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, null, 'Flash news deleted successfully');
     } catch (error) {
         console.error("deleteFlashNews error:", error);
@@ -200,6 +204,7 @@ module.exports.restoreFlashNews = async (req, res, next) => {
         
         await flashNews.update({ updated_by });
         await flashNews.restore();
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, null, 'Flash news restored successfully');
     } catch (error) {
         console.error("restoreFlashNews error:", error);
@@ -243,6 +248,7 @@ module.exports.bulkDeleteFlashNews = async (req, res, next) => {
             return errorResponse(res, { deleted, not_deleted: notDeleted, summary }, 'No flash news were deleted', 400);
         }
 
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, { deleted, not_deleted: notDeleted, summary }, `Successfully deleted ${deleted.length} item(s)`);
     } catch (error) {
         console.error('bulkDeleteFlashNews error:', error);
@@ -290,6 +296,7 @@ module.exports.bulkRestoreFlashNews = async (req, res, next) => {
             return errorResponse(res, { restored, not_restored: notRestored, summary }, 'No flash news were restored', 400);
         }
 
+        invalidateCachePattern('flash-news:*').catch(() => {});
         return successResponse(res, { restored, not_restored: notRestored, summary }, `Successfully restored ${restored.length} item(s)`);
     } catch (error) {
         console.error('bulkRestoreFlashNews error:', error);

@@ -2,32 +2,32 @@ const { SitemapStream, streamToPromise } = require('sitemap');
 const { createGzip } = require('zlib');
 const db = require('../../../models');
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
+const { cacheOrFetch } = require('../../../library/cache');
 
 const seoController = {
-  // Get SEO metadata by slug
+  // Get SEO metadata by slug (cached)
   async getSeoBySlug(req, res, next) {
     try {
-      console.log('Fetching SEO metadata');
       const { slug } = req.params;
-      
-      // Sanitize the slug
       const sanitizedSlug = slug.trim().toLowerCase();
-      
-      const seoMeta = await db.SeoMeta.findOne({
-        where: {
-          slug: sanitizedSlug,
-          noIndex: false
-        },
-        attributes: ['id', 'slug', 'title', 'description', 'description_text', 'focusKeyword', 'noIndex']
-      });
-      
-      if (!seoMeta) {
-        console.log(`No SEO metadata found for slug: ${sanitizedSlug}`);
+      const cacheKey = `seo:slug:${sanitizedSlug}`;
+
+      const data = await cacheOrFetch(cacheKey, async () => {
+        const seoMeta = await db.SeoMeta.findOne({
+          where: {
+            slug: sanitizedSlug,
+            noIndex: false
+          },
+          attributes: ['id', 'slug', 'title', 'description', 'description_text', 'focusKeyword', 'noIndex']
+        });
+        return seoMeta ? seoMeta.toJSON() : null;
+      }, 300);
+
+      if (!data) {
         return errorResponse(res, {}, 'SEO metadata not found', 404);
       }
 
-      console.log(`Successfully retrieved SEO metadata for slug: ${sanitizedSlug}`);
-      successResponse(res, seoMeta, 'SEO metadata retrieved successfully');
+      successResponse(res, data, 'SEO metadata retrieved successfully');
     } catch (error) {
       console.error('Error fetching SEO metadata:', error);
       return errorResponse(res, error, 'Failed to fetch SEO metadata', 500);
