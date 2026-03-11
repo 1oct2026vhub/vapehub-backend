@@ -3,9 +3,7 @@ const { sequelize, Category, Product, ProductCategory, ProductBrand, Brand, Prod
 const { fetchProducts } = require("../../product/helper/product.helper");
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
-
-// PRODUCTION: Cache removed to avoid PM2 multiple instance issues
-// Performance impact is minimal (only 9-13ms difference)
+const { cacheOrFetch } = require("../../../library/cache");
 
 module.exports.listAllcategories = async (req, res, next) => {
     try {
@@ -110,9 +108,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
         } = query;
         // Default order: DESC for popularity/order_count, ASC for others
         const defaultOrder = (sort_by === 'popularity' || sort_by === 'order_count') ? 'DESC' : 'ASC';
-        const orderValue = order || defaultOrder; 
-
-        // Cache removed for production safety
+        const orderValue = order || defaultOrder;
 
         const parsedLimit = parseInt(limit);
         const parsedOffset = parseInt(offset);
@@ -500,8 +496,15 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             req.query.categories = `${category.id}`;
 
             if(homepage){
-                // Use optimized category-specific query instead of fetchProducts
-                const optimizedResult = await fetchCategoryProducts(category.id, req.query);
+                // Use optimized category-specific query with Redis cache (shared across PM2 instances)
+                const cacheKey = `category:products:${category.id}:${JSON.stringify({
+                    sort_by: req.query.sort_by,
+                    order: req.query.order,
+                    limit: req.query.limit,
+                    offset: req.query.offset,
+                    is_new: req.query.is_new
+                })}`;
+                const optimizedResult = await cacheOrFetch(cacheKey, () => fetchCategoryProducts(category.id, req.query), 60);
                 return successResponse(res, optimizedResult, "Success");
             }
         }

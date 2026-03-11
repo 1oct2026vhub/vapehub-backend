@@ -2615,30 +2615,33 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
 };
 
 /**
- * Get active welcome content for homepage
+ * Get active welcome content for homepage (cached)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
  */
 module.exports.getWelcomeContent = async (req, res, next) => {
     try {
-        const welcomeContent = await WelcomeContent.findOne({
-            where: { status: 'active' },
-            include: [
-                {
-                    model: User,
-                    as: 'updater',
-                    attributes: ['id', 'first_name', 'last_name', 'email'],
-                    required: false
-                }
-            ]
-        });
+        const data = await cacheOrFetch('welcome:content:active', async () => {
+            const welcomeContent = await WelcomeContent.findOne({
+                where: { status: 'active' },
+                include: [
+                    {
+                        model: User,
+                        as: 'updater',
+                        attributes: ['id', 'first_name', 'last_name', 'email'],
+                        required: false
+                    }
+                ]
+            });
+            return { welcomeContent: welcomeContent ? welcomeContent.toJSON() : null };
+        }, 300);
 
-        if (!welcomeContent) {
+        if (!data.welcomeContent) {
             return errorResponse(res, { message: 'No active welcome content found' }, 'No active welcome content found', 404);
         }
 
-        return successResponse(res, { welcomeContent }, 'Welcome content retrieved successfully');
+        return successResponse(res, { welcomeContent: data.welcomeContent }, 'Welcome content retrieved successfully');
     } catch (error) {
         console.error('Error in getWelcomeContent:', error);
         return errorResponse(res, error, error.message || 'Failed to retrieve welcome content');

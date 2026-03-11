@@ -1172,6 +1172,7 @@ module.exports.createProduct = async (req, res, next) => {
         await transaction.commit();
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
+        invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${product.id}`).catch(() => {});
 
         // Fetch and return the created product with related models
@@ -1906,6 +1907,7 @@ module.exports.updateProduct = async (req, res, next) => {
         await transaction.commit();
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
+        invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
@@ -2011,6 +2013,7 @@ module.exports.deleteProduct = async (req, res, next) => {
         await transaction.commit();
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
+        invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
         logger.info(`Product ID ${id} deleted successfully`);
 
@@ -2098,6 +2101,7 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
         if (deletedProducts.length > 0) {
             invalidateCachePattern('products:*').catch(() => {});
             invalidateCachePattern('product:new:*').catch(() => {});
+            invalidateCachePattern('category:products:*').catch(() => {});
             invalidateCache(deletedProducts.map(p => `product:detail:${p.id}`)).catch(() => {});
         }
 
