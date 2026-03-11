@@ -10,8 +10,8 @@ module.exports = {
     "dialect": "mysql",
     "logging": false,
     "pool": {
-          "max": 30,        // Maximum 30 connections
-          "min": 5,         // Keep 5 connections ready
+          "max": 5,        // Maximum 30 connections
+          "min": 0,         // Keep 5 connections ready
           "acquire": 60000, // 60 seconds to get connection
           "idle": 10000,    // Close idle connections after 10s
           "evict": 1000     // Check for idle connections every 1s
