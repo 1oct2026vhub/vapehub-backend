@@ -748,28 +748,37 @@ const fetchProducts = async (query, status = 'published') => {
         FROM reviews r
         LEFT JOIN users u ON u.id = r.user_id
         LEFT JOIN orders o ON o.id = r.order_id
-        WHERE r.product_id IN (${productIds.join(',')})
+        WHERE r.product_id IN (:productIds)
         AND r.is_visible = true
         AND r.deleted_at IS NULL
         ORDER BY r.product_id, r.created_at DESC
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 2. Fetch categories
       productIds.length > 0 ? sequelize.query(`
         SELECT pc.product_id, c.id, c.name, c.slug, pc.is_primary
         FROM product_categories pc
         JOIN categories c ON c.id = pc.category_id
-        WHERE pc.product_id IN (${productIds.join(',')})
+        WHERE pc.product_id IN (:productIds)
         ORDER BY pc.product_id, c.${safeCategorySortBy} ${safeOrder}
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 3. Fetch brands
       productIds.length > 0 ? sequelize.query(`
         SELECT pb.product_id, b.id, b.name, b.slug, pb.is_primary
         FROM product_brands pb
         JOIN brands b ON b.id = pb.brand_id
-        WHERE pb.product_id IN (${productIds.join(',')})
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+        WHERE pb.product_id IN (:productIds)
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 4. Fetch variants with filters
       productIds.length > 0 ? sequelize.query(`
@@ -781,7 +790,7 @@ const fetchProducts = async (query, status = 'published') => {
           pv.stock, pv.low_stock_threshold, pv.stock_status,
           pv.status, pv.updated_by, pv.created_at, pv.updated_at, pv.deleted_at
         FROM product_variants pv
-        WHERE pv.product_id IN (${productIds.join(',')})
+        WHERE pv.product_id IN (:productIds)
         AND pv.status = 'active'
         AND pv.deleted_at IS NULL
         ${priceRange ? `AND EXISTS (
@@ -800,14 +809,20 @@ const fetchProducts = async (query, status = 'published') => {
         )` : ''}
         ${variantFilters.id ? `AND pv.id = ${parseInt(variantFilters.id)}` : ''}
         ORDER BY pv.product_id, pv.${safeVariantSortBy} ${safeOrder}
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 5. Fetch product images
       productIds.length > 0 ? sequelize.query(`
         SELECT pi.id, pi.product_id, pi.image_url, pi.is_primary, pi.alt_text
         FROM product_images pi
-        WHERE pi.product_id IN (${productIds.join(',')})
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+        WHERE pi.product_id IN (:productIds)
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 6. Fetch product attribute terms
       productIds.length > 0 ? sequelize.query(`
@@ -818,9 +833,12 @@ const fetchProducts = async (query, status = 'published') => {
         FROM product_attribute_terms pat
         JOIN attributes a ON a.id = pat.attribute_id
         JOIN attribute_terms t ON t.id = pat.term_id
-        WHERE pat.product_id IN (${productIds.join(',')})
+        WHERE pat.product_id IN (:productIds)
         AND pat.deleted_at IS NULL
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 7. Fetch variant attributes
       productIds.length > 0 ? sequelize.query(`
@@ -835,10 +853,13 @@ const fetchProducts = async (query, status = 'published') => {
         JOIN attribute_terms t ON t.id = pva.term_id
         WHERE pva.variant_id IN (
           SELECT pv.id FROM product_variants pv 
-          WHERE pv.product_id IN (${productIds.join(',')})
+          WHERE pv.product_id IN (:productIds)
         )
         ORDER BY pva.variant_id, a.name, t.name
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 8. Fetch variant images
       productIds.length > 0 ? sequelize.query(`
@@ -846,10 +867,13 @@ const fetchProducts = async (query, status = 'published') => {
         FROM product_variant_images pvi
         WHERE pvi.variant_id IN (
           SELECT pv.id FROM product_variants pv 
-          WHERE pv.product_id IN (${productIds.join(',')})
+          WHERE pv.product_id IN (:productIds)
         )
         AND pvi.deleted_at IS NULL
-      `, { type: sequelize.QueryTypes.SELECT }) : [],
+      `, { 
+        replacements: { productIds },
+        type: sequelize.QueryTypes.SELECT 
+      }) : [],
 
       // 9. Fetch deals (always fetch, filter by deal_id if specified)
       productIds.length > 0 ? sequelize.query(`
@@ -858,13 +882,14 @@ const fetchProducts = async (query, status = 'published') => {
                d.valid_from, d.valid_to
         FROM deal_products dp
         JOIN deals d ON d.id = dp.deal_id
-        WHERE dp.product_id IN (${productIds.join(',')})
+        WHERE dp.product_id IN (:productIds)
         ${deal_id ? `AND d.id = ${parseInt(deal_id)}` : ''}
         AND d.is_active = true
         AND d.is_deleted = false
         AND d.valid_from <= NOW()
         AND d.valid_to >= NOW()
       `, { 
+        replacements: { productIds },
         type: sequelize.QueryTypes.SELECT 
       }) : []
     ]);

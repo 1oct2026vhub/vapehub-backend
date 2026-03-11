@@ -257,11 +257,14 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 FROM reviews r
                 LEFT JOIN users u ON u.id = r.user_id
                 LEFT JOIN orders o ON o.id = r.order_id
-                WHERE r.product_id IN (${productIds.join(',')})
+                WHERE r.product_id IN (:productIds)
                 AND r.is_visible = true
                 AND r.deleted_at IS NULL
                 ORDER BY r.product_id, r.created_at DESC
-            `, { type: sequelize.QueryTypes.SELECT });
+            `, { 
+                replacements: { productIds },
+                type: sequelize.QueryTypes.SELECT 
+            });
         }
 
         // Group reviews by product_id for efficient lookup
