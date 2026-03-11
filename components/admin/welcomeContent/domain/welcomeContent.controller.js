@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { WelcomeContent, User } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
+const { invalidateCache } = require("../../../../library/cache");
 
 // Handle image upload to S3
 const handleImageUpload = async (file) => {
@@ -241,6 +242,7 @@ module.exports.createOrUpdateWelcomeContent = async (req, res) => {
       ? 'Welcome content created successfully' 
       : 'Welcome content updated successfully';
 
+    invalidateCache('welcome:content:active').catch(() => {});
     return successResponse(res, { 
       welcomeContent: finalContent,
       message,
@@ -270,8 +272,9 @@ module.exports.deleteWelcomeContent = async (req, res) => {
     // Soft delete the content
     await welcomeContent.destroy();
 
-    return successResponse(res, { 
-      message: 'Welcome content deleted successfully' 
+    invalidateCache('welcome:content:active').catch(() => {});
+    return successResponse(res, {
+      message: 'Welcome content deleted successfully'
     });
   } catch (error) {
     console.error('Error in deleteWelcomeContent:', error);
@@ -295,8 +298,9 @@ module.exports.restoreWelcomeContent = async (req, res) => {
     // Restore the content
     await welcomeContent.restore();
 
-    return successResponse(res, { 
-      message: 'Welcome content restored successfully' 
+    invalidateCache('welcome:content:active').catch(() => {});
+    return successResponse(res, {
+      message: 'Welcome content restored successfully'
     });
   } catch (error) {
     console.error('Error in restoreWelcomeContent:', error);
@@ -323,8 +327,9 @@ module.exports.permanentDeleteWelcomeContent = async (req, res) => {
     // Permanently delete the content (hard delete)
     await welcomeContent.destroy({ force: true });
 
-    return successResponse(res, { 
-      message: 'Welcome content permanently deleted successfully' 
+    invalidateCache('welcome:content:active').catch(() => {});
+    return successResponse(res, {
+      message: 'Welcome content permanently deleted successfully'
     });
   } catch (error) {
     console.error('Error in permanentDeleteWelcomeContent:', error);
@@ -393,9 +398,10 @@ module.exports.removeWelcomeContentImage = async (req, res) => {
       ]
     });
 
-    return successResponse(res, { 
+    invalidateCache('welcome:content:active').catch(() => {});
+    return successResponse(res, {
       welcomeContent: updatedContent,
-      message: 'Image removed successfully from S3 and database' 
+      message: 'Image removed successfully from S3 and database'
     });
   } catch (error) {
     console.error('Error in removeWelcomeContentImage:', error);

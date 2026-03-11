@@ -5,6 +5,7 @@ const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../.
 const ExcelJS = require("exceljs"); // Import the exceljs library
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
+const { invalidateCachePattern } = require("../../../../library/cache");
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -237,6 +238,7 @@ module.exports.createCategory = async (req, res, next) => {
         await slugManager.createOrUpdateSlug(slug, 'category', category.id, t);
 
         await t.commit();
+        invalidateCachePattern('category:products:*').catch(() => {});
         return successResponse(res, category, "Category created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -371,6 +373,7 @@ module.exports.updateCategory = async (req, res, next) => {
         }
 
         await t.commit();
+        invalidateCachePattern('category:products:*').catch(() => {});
 
         let responseData = category;
         if (category.deletedAt) {
@@ -476,6 +479,7 @@ module.exports.deleteCategory = async (req, res, next) => {
         await seoService.updateNoIndex('category', id, true);   
 
         await t.commit();
+        invalidateCachePattern('category:products:*').catch(() => {});
         return successResponse(res, {}, "Category deleted successfully", 200);
     } catch (error) {
         await t.rollback();
@@ -634,6 +638,7 @@ module.exports.restoreCategory = async (req, res, next) => {
 
 
         await t.commit();
+        invalidateCachePattern('category:products:*').catch(() => {});
 
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
