@@ -6,6 +6,7 @@ const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceV
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
+const { cacheOrFetch } = require('../../../library/cache');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -709,6 +710,8 @@ module.exports.listNewProducts = async (req, res, next) => {
 
 module.exports.getProductByid = async (req, res, next) => {
     try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:detail:${productId}`, async () => {
         const includeClause = [
             {
                 model: Category,
@@ -794,13 +797,13 @@ module.exports.getProductByid = async (req, res, next) => {
         ];
         const product = await Product.findOne({
             where: { 
-                id: req.params.id,
+                id: productId,
                 status: productStatus.PUBLISHED
             }, 
             include: includeClause
         });
         if (!product) {
-            throw new Error("Product not found");
+            return null;
         }
 
         // Group attributes and their terms
@@ -1096,7 +1099,13 @@ module.exports.getProductByid = async (req, res, next) => {
             min_price_variant: minPriceVariant
         };
 
-        successResponse(res, response, 'Success');
+        return response;
+        }, 60);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
