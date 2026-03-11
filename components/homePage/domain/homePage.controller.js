@@ -7,6 +7,7 @@ const seoService = require("../../../components/admin/seo/domain/seo.service");
 const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
 const logger = require("../../../utils/logger");
+const { cacheOrFetch } = require('../../../library/cache');
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -30,6 +31,7 @@ const getEntityType = (type) => {
  * @returns {Object} Object containing deals array and deals text
  */
 const getDealsForEntity = async (entityType, entityId) => {
+    return cacheOrFetch(`deals:entity:${entityType}:${entityId}`, async () => {
     // Build deal filter
     const dealFilter = {
         is_active: true,
@@ -282,6 +284,7 @@ const getDealsForEntity = async (entityType, entityId) => {
         deals,
         deals_text: dealsText
     };
+    }, 120);
 };
 
 /**
@@ -1020,11 +1023,9 @@ const getLatestDealsOriginal = async () => {
 
 module.exports.getHomeCarousel = async (req, res, next) => {
     try {
-        const carousels = await Carousel.findAll({
-            order: [
-                ["display_order", "ASC"]
-            ]
-        });
+        const carousels = await cacheOrFetch('homepage:carousels', () => Carousel.findAll({
+            order: [["display_order", "ASC"]]
+        }), 300);
         successResponse(res, carousels, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -1091,11 +1092,9 @@ module.exports.addBannerImage = async (req, res, next) => {
 
 module.exports.getBannerImages = async (req, res, next) => {
     try {
-        const banners = await BannerImage.findAll({
-            order: [
-                ["display_order", "ASC"]
-            ]
-        });
+        const banners = await cacheOrFetch('homepage:banners', () => BannerImage.findAll({
+            order: [["display_order", "ASC"]]
+        }), 300);
         successResponse(res, banners, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -1104,45 +1103,34 @@ module.exports.getBannerImages = async (req, res, next) => {
 
 module.exports.getHomePageBlock = async (req, res, next) => {
     try {
-        const [shopByCategories, popularCategories] = await Promise.all([
-            ShopByCategory.findAll({
-                where: {
-                    status: true,
-                    deletedAt: null
-                },
-                include: [{
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
-                    where: {
-                        deletedAt: null
-                    },
-                    required: true
-                }],
-                order: [['order', 'ASC']]
-            }),
-            PopularCategory.findAll({
-                where: {
-                    status: true,
-                    deletedAt: null
-                },
-                include: [{
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
-                    where: {
-                        deletedAt: null
-                    },
-                    required: true
-                }],
-                order: [['order', 'ASC']]
-            })
-        ]);
-
-        return successResponse(res, {
-            shopByCategories,
-            popularCategories
-        }, 'Home page block retrieved successfully');
+        const data = await cacheOrFetch('homepage:page-block', async () => {
+            const [shopByCategories, popularCategories] = await Promise.all([
+                ShopByCategory.findAll({
+                    where: { status: true, deletedAt: null },
+                    include: [{
+                        model: Category,
+                        as: 'category',
+                        attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
+                        where: { deletedAt: null },
+                        required: true
+                    }],
+                    order: [['order', 'ASC']]
+                }),
+                PopularCategory.findAll({
+                    where: { status: true, deletedAt: null },
+                    include: [{
+                        model: Category,
+                        as: 'category',
+                        attributes: ['id', 'name', 'slug', 'description', 'logo_url', 'alt_text', 'parent_id'],
+                        where: { deletedAt: null },
+                        required: true
+                    }],
+                    order: [['order', 'ASC']]
+                })
+            ]);
+            return { shopByCategories, popularCategories };
+        }, 300);
+        return successResponse(res, data, 'Home page block retrieved successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

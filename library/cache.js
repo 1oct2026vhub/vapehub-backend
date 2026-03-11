@@ -1,0 +1,97 @@
+const Redis = require('ioredis');
+const logger = require('../utils/logger');
+
+// Create Redis client — use environment variable for connection
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+    maxRetriesPerRequest: 3,
+    retryDelayOnFailover: 100,
+    lazyConnect: true,
+    retryStrategy(times) {
+        if (times > 10) return null;
+        return Math.min(times * 200, 2000);
+    }
+});
+
+redis.on('error', (err) => {
+    logger.logError({ message: 'Redis connection error', error: err.message });
+});
+
+redis.on('connect', () => {
+    logger.logInfo({ message: 'Redis connected successfully' });
+});
+
+redis.connect().catch(() => {
+    logger.logInfo({ message: 'Redis not available — caching disabled, falling through to DB' });
+});
+
+/**
+ * Get data from cache, or execute the fetcher function and cache the result
+ * @param {string} key - Cache key
+ * @param {Function} fetcherFn - Async function that fetches data from DB
+ * @param {number} ttlSeconds - Cache TTL in seconds (default: 60)
+ * @returns {Promise<any>} - Cached or freshly fetched data
+ */
+const cacheOrFetch = async (key, fetcherFn, ttlSeconds = 60) => {
+    try {
+        if (redis.status === 'ready') {
+            const cached = await redis.get(key);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        }
+    } catch (err) {
+        logger.logError({ message: 'Cache read error', key, error: err.message });
+    }
+
+    const data = await fetcherFn();
+
+    try {
+        if (redis.status === 'ready') {
+            redis.setex(key, ttlSeconds, JSON.stringify(data)).catch(() => {});
+        }
+    } catch (err) {
+        // Silently ignore cache write failures
+    }
+    return data;
+};
+
+/**
+ * Invalidate specific cache keys
+ * @param {string|string[]} keys - Key or array of keys to delete
+ */
+const invalidateCache = async (keys) => {
+    try {
+        if (redis.status === 'ready') {
+            const keysArray = Array.isArray(keys) ? keys : [keys];
+            if (keysArray.length > 0) {
+                await redis.del(...keysArray);
+            }
+        }
+    } catch (err) {
+        logger.logError({ message: 'Cache invalidation error', error: err.message });
+    }
+};
+
+/**
+ * Invalidate all cache keys matching a pattern
+ * @param {string} pattern - Glob pattern (e.g., "products:*")
+ */
+const invalidateCachePattern = async (pattern) => {
+    try {
+        if (redis.status === 'ready') {
+            const keys = await redis.keys(pattern);
+            if (keys.length > 0) {
+                await redis.del(...keys);
+            }
+        }
+    } catch (err) {
+        logger.logError({ message: 'Cache pattern invalidation error', error: err.message });
+    }
+};
+
+module.exports = {
+    redis,
+    cacheOrFetch,
+    invalidateCache,
+    invalidateCachePattern
+};
