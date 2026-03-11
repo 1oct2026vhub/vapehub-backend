@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
+const { invalidateCachePattern } = require('../../../../library/cache');
 
 // SEO Health Status Constants
 const SEO_HEALTH_STATUS = {
@@ -74,6 +75,7 @@ class SeoService {
       }
 
       const updatedSeoMeta = await seoMeta.update({ noIndex });
+      invalidateCachePattern('seo:*').catch(() => {});
       this.logger.info({ entityType, entityId, noIndex }, 'Successfully updated noIndex for entity');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {
@@ -588,6 +590,7 @@ class SeoService {
         canonicalUrl: `${process.env.FRONTEND_URL}/${newSlug}`
       });
 
+      invalidateCachePattern('seo:*').catch(() => {});
       this.logger.info({ entityType, entityId, newSlug }, 'Successfully updated SEO slug');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {
