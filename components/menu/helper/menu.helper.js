@@ -2,6 +2,7 @@ const { Menu, MenuItem } = require("../../../models");
 const logger = require("../../../library/logger");
 const { Brand, Category, Product, Blog, Deal, OrderItem, Order, sequelize } = require('../../../models');
 const { Op } = require('sequelize');
+const { cacheOrFetch } = require('../../../library/cache');
 
 /**
  * Validate menu items structure
@@ -234,72 +235,73 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
  * @returns {Array} Array of hot products
  */
 const getHotProducts = async (entityType, entityId, limit = 10) => {
-    const twentyEightDaysAgo = new Date();
-    twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+    const cacheKey = `menu:hot-products:${entityType}:${entityId}:${limit}`;
+    return cacheOrFetch(cacheKey, async () => {
+        const twentyEightDaysAgo = new Date();
+        twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
 
-    let whereClause = 'p.status = "published"';
-    let joinClause = '';
+        let whereClause = 'p.status = "published"';
+        let joinClause = '';
 
-    switch (entityType) {
-        case 'category':
-            whereClause += ' AND p.category_id = :entityId';
-            break;
-        case 'brand':
-            joinClause = 'INNER JOIN product_brands pb ON p.id = pb.product_id AND pb.brand_id = :entityId';
-            break;
-        case 'deal':
-            joinClause = 'INNER JOIN deal_products dp ON p.id = dp.product_id AND dp.deal_id = :entityId';
-            break;
-    }
+        switch (entityType) {
+            case 'category':
+                whereClause += ' AND p.category_id = :entityId';
+                break;
+            case 'brand':
+                joinClause = 'INNER JOIN product_brands pb ON p.id = pb.product_id AND pb.brand_id = :entityId';
+                break;
+            case 'deal':
+                joinClause = 'INNER JOIN deal_products dp ON p.id = dp.product_id AND dp.deal_id = :entityId';
+                break;
+        }
 
-    const products = await sequelize.query(`
-        SELECT 
-            p.id,
-            p.name,
-            p.slug,
-            p.price,
-            p.discount_price,
-            COALESCE(SUM(oi.quantity), 0) as total_sold
-        FROM products p
-        ${joinClause}
-        LEFT JOIN order_items oi ON p.id = oi.product_id
-        LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status IN ('completed', 'delivered')
-            AND o.updatedAt >= :startDate
-        WHERE ${whereClause}
-        GROUP BY p.id, p.name, p.slug, p.price, p.discount_price
-        HAVING total_sold > 0
-        ORDER BY total_sold DESC
-        LIMIT :limit
-    `, {
-        replacements: {
-            startDate: twentyEightDaysAgo,
-            entityId: entityId,
-            limit: limit
-        },
-        type: sequelize.QueryTypes.SELECT
-    });
+        const products = await sequelize.query(`
+            SELECT 
+                p.id,
+                p.name,
+                p.slug,
+                p.price,
+                p.discount_price,
+                COALESCE(SUM(oi.quantity), 0) as total_sold
+            FROM products p
+            ${joinClause}
+            LEFT JOIN order_items oi ON p.id = oi.product_id
+            LEFT JOIN orders o ON oi.order_id = o.id 
+                AND o.status IN ('completed', 'delivered')
+                AND o.updatedAt >= :startDate
+            WHERE ${whereClause}
+            GROUP BY p.id, p.name, p.slug, p.price, p.discount_price
+            HAVING total_sold > 0
+            ORDER BY total_sold DESC
+            LIMIT :limit
+        `, {
+            replacements: {
+                startDate: twentyEightDaysAgo,
+                entityId: entityId,
+                limit: limit
+            },
+            type: sequelize.QueryTypes.SELECT
+        });
 
-    // Fetch product images for the hot products
-    const productIds = products.map(p => p.id);
-    const productImages = await require('../../../models').ProductImage.findAll({
-        where: {
-            product_id: { [Op.in]: productIds },
-            is_primary: true
-        },
-        attributes: ['product_id', 'image_url']
-    });
+        const productIds = products.map(p => p.id);
+        const productImages = productIds.length > 0 ? await require('../../../models').ProductImage.findAll({
+            where: {
+                product_id: { [Op.in]: productIds },
+                is_primary: true
+            },
+            attributes: ['product_id', 'image_url']
+        }) : [];
 
-    // Map images to products
-    const imageMap = {};
-    productImages.forEach(img => {
-        imageMap[img.product_id] = img.image_url;
-    });
+        const imageMap = {};
+        productImages.forEach(img => {
+            imageMap[img.product_id] = img.image_url;
+        });
 
-    return products.map(product => ({
-        ...product,
-        image_url: imageMap[product.id] || null
-    }));
+        return products.map(product => ({
+            ...product,
+            image_url: imageMap[product.id] || null
+        }));
+    }, 300);
 };
 
 /**
@@ -430,56 +432,58 @@ const isProductNew = async (productId) => {
  * @returns {boolean} True if product is hot
  */
 const isProductHot = async (productId) => {
-    const twentyEightDaysAgo = new Date();
-    twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+    const cacheKey = `menu:is-hot:${productId}`;
+    return cacheOrFetch(cacheKey, async () => {
+        const twentyEightDaysAgo = new Date();
+        twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
 
-    const result = await sequelize.query(`
-        SELECT 
-            p.id,
-            COALESCE(SUM(oi.quantity), 0) as total_sold
-        FROM products p
-        LEFT JOIN order_items oi ON p.id = oi.product_id
-        LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status IN ('completed', 'delivered')
-            AND o.updatedAt >= :startDate
-        WHERE p.id = :productId AND p.status = 'published'
-        GROUP BY p.id
-    `, {
-        replacements: {
-            startDate: twentyEightDaysAgo,
-            productId: productId
-        },
-        type: sequelize.QueryTypes.SELECT
-    });
+        const result = await sequelize.query(`
+            SELECT 
+                p.id,
+                COALESCE(SUM(oi.quantity), 0) as total_sold
+            FROM products p
+            LEFT JOIN order_items oi ON p.id = oi.product_id
+            LEFT JOIN orders o ON oi.order_id = o.id 
+                AND o.status IN ('completed', 'delivered')
+                AND o.updatedAt >= :startDate
+            WHERE p.id = :productId AND p.status = 'published'
+            GROUP BY p.id
+        `, {
+            replacements: {
+                startDate: twentyEightDaysAgo,
+                productId: productId
+            },
+            type: sequelize.QueryTypes.SELECT
+        });
 
-    if (result.length === 0 || result[0].total_sold === 0) {
-        return false;
-    }
+        if (result.length === 0 || result[0].total_sold === 0) {
+            return false;
+        }
 
-    // Check if this product is in top 10 most sold
-    const topProducts = await sequelize.query(`
-        SELECT 
-            p.id,
-            COALESCE(SUM(oi.quantity), 0) as total_sold
-        FROM products p
-        LEFT JOIN order_items oi ON p.id = oi.product_id
-        LEFT JOIN orders o ON oi.order_id = o.id 
-            AND o.status IN ('completed', 'delivered')
-            AND o.updatedAt >= :startDate
-        WHERE p.status = 'published'
-        GROUP BY p.id, p.name, p.slug, p.price, p.discount_price
-        HAVING total_sold > 0
-        ORDER BY total_sold DESC
-        LIMIT 10
-    `, {
-        replacements: {
-            startDate: twentyEightDaysAgo
-        },
-        type: sequelize.QueryTypes.SELECT
-    });
+        const topProducts = await sequelize.query(`
+            SELECT 
+                p.id,
+                COALESCE(SUM(oi.quantity), 0) as total_sold
+            FROM products p
+            LEFT JOIN order_items oi ON p.id = oi.product_id
+            LEFT JOIN orders o ON oi.order_id = o.id 
+                AND o.status IN ('completed', 'delivered')
+                AND o.updatedAt >= :startDate
+            WHERE p.status = 'published'
+            GROUP BY p.id, p.name, p.slug, p.price, p.discount_price
+            HAVING total_sold > 0
+            ORDER BY total_sold DESC
+            LIMIT 10
+        `, {
+            replacements: {
+                startDate: twentyEightDaysAgo
+            },
+            type: sequelize.QueryTypes.SELECT
+        });
 
-    const topProductIds = topProducts.map(p => p.id);
-    return topProductIds.includes(productId);
+        const topProductIds = topProducts.map(p => p.id);
+        return topProductIds.includes(productId);
+    }, 300);
 };
 
 module.exports = {

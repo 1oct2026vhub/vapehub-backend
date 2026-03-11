@@ -3,6 +3,7 @@ const { Menu, MenuItem, Product, Brand, Blog, Category, Deal, sequelize, Product
 const logger = require("../../../library/logger");
 const { Op } = require("sequelize");
 const { getNewProducts, getHotProducts, getProductsByEntity, isProductNew, isProductHot } = require("../helper/menu.helper");
+const { cacheOrFetch } = require('../../../library/cache');
 
 // Helper function to check if a menu is a letter menu (single A-Z letter)
 const isLetterMenu = (menu) => {
@@ -210,28 +211,29 @@ module.exports = {
                 });
                 newProductIds = new Set(newProducts.map(p => p.id));
                 
-                // Check hot products - get global top 10, then check if menu products are in that list
-                // This matches the original logic: check if product is in GLOBAL top 10
-                const globalHotProducts = await sequelize.query(`
-                    SELECT 
-                        p.id,
-                        COALESCE(SUM(oi.quantity), 0) as total_sold
-                    FROM products p
-                    LEFT JOIN order_items oi ON p.id = oi.product_id
-                    LEFT JOIN orders o ON oi.order_id = o.id 
-                        AND o.status IN ('completed', 'delivered')
-                        AND o.updatedAt >= :startDate
-                    WHERE p.status = 'published'
-                    GROUP BY p.id
-                    HAVING total_sold > 0
-                    ORDER BY total_sold DESC
-                    LIMIT 10
-                `, {
-                    replacements: {
-                        startDate: twentyEightDaysAgo
-                    },
-                    type: sequelize.QueryTypes.SELECT
-                });
+                // Check hot products - get global top 10 (cached), then check if menu products are in that list
+                const globalHotProducts = await cacheOrFetch('menu:global-hot-products', async () => {
+                    const twentyEightDaysAgo = new Date();
+                    twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
+                    return sequelize.query(`
+                        SELECT 
+                            p.id,
+                            COALESCE(SUM(oi.quantity), 0) as total_sold
+                        FROM products p
+                        LEFT JOIN order_items oi ON p.id = oi.product_id
+                        LEFT JOIN orders o ON oi.order_id = o.id 
+                            AND o.status IN ('completed', 'delivered')
+                            AND o.updatedAt >= :startDate
+                        WHERE p.status = 'published'
+                        GROUP BY p.id
+                        HAVING total_sold > 0
+                        ORDER BY total_sold DESC
+                        LIMIT 10
+                    `, {
+                        replacements: { startDate: twentyEightDaysAgo },
+                        type: sequelize.QueryTypes.SELECT
+                    });
+                }, 300);
                 
                 // Only mark menu products that are in the global top 10
                 const globalHotProductIds = new Set(globalHotProducts.map(p => p.id));
