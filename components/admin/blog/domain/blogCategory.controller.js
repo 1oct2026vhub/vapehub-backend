@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { BlogCategory, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { invalidateCachePattern } = require("../../../../library/cache");
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
 
@@ -176,7 +177,7 @@ module.exports.createBlogCategory = async (req, res, next) => {
         await slugManager.createOrUpdateSlug(category.slug, 'blog_category', category.id, t);
 
         await t.commit();
-
+        invalidateCachePattern('blogs:*').catch(() => {});
         return successResponse(res, category, "Blog category created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -318,6 +319,7 @@ module.exports.updateBlogCategory = async (req, res, next) => {
         }
 
         await t.commit();
+        invalidateCachePattern('blogs:*').catch(() => {});
 
         let responseData = category;
         if (categoryIsDeleted) {
@@ -399,7 +401,7 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
         await seoService.updateNoIndex('blog_category', id, true);
 
         await t.commit();
-
+        invalidateCachePattern('blogs:*').catch(() => {});
         return successResponse(res, null, "Blog category deleted successfully");
     } catch (error) {
         await t.rollback();
@@ -442,7 +444,7 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
         await seoService.updateBlogCategoryNoIndex(id, category.status);
 
         await t.commit();
-
+        invalidateCachePattern('blogs:*').catch(() => {});
         return successResponse(res, category, "Blog category restored successfully");
     } catch (error) {
         await t.rollback();
@@ -535,7 +537,7 @@ module.exports.bulkDeleteBlogCategories = async (req, res, next) => {
                 summary
             }, 'No categories were deleted', 400);
         }
-
+        invalidateCachePattern('blogs:*').catch(() => {});
         return successResponse(res, {
             deleted: deletedCategories,
             not_deleted: notDeletedCategories,
@@ -622,7 +624,7 @@ module.exports.bulkRestoreBlogCategories = async (req, res, next) => {
                 summary
             }, 'No categories were restored', 400);
         }
-
+        invalidateCachePattern('blogs:*').catch(() => {});
         return successResponse(res, {
             restored: restoredCategories,
             not_restored: notRestoredCategories,

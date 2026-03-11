@@ -125,6 +125,20 @@ module.exports.listNewProducts = async (req, res, next) => {
             return acc;
         }, {});
 
+        const cacheKey = `product:new:${JSON.stringify({
+            sort_by,
+            order,
+            limit: parsedLimit,
+            offset: parsedOffset,
+            keyword: keyword || '',
+            price_range: price_range || '',
+            categories: categories || '',
+            brand: brand || '',
+            variant: variant || '',
+            deal_id: deal_id || ''
+        })}`;
+
+        const data = await cacheOrFetch(cacheKey, async () => {
         // Build base where conditions for new products (all products, descending order)
         let productFilterConditions = [
             "p.deletedAt IS NULL",
@@ -233,7 +247,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         // Get product IDs for related data queries
         const productIds = productsResult.map(p => p.id);
         if (productIds.length === 0) {
-            return successResponse(res, {
+            return {
                 products: [],
                 category_items: [],
                 brand_items: [],
@@ -247,7 +261,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                     limit: parsedLimit,
                     offset: parsedOffset
                 }
-            }, 'Success');
+            };
         }
 
         // Fetch reviews for all products in batch (similar to fetchProducts implementation)
@@ -686,7 +700,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             })
         ]);
 
-        return successResponse(res, {
+        return {
             products: availableProducts,
             category_items: categoryResults,
             brand_items: brandResults,
@@ -700,7 +714,10 @@ module.exports.listNewProducts = async (req, res, next) => {
                 limit: parsedLimit,
                 offset: parsedOffset
             }
-        }, 'Success');
+        };
+        }, 60);
+
+        return successResponse(res, data, 'Success');
 
     } catch (error) {
         logger.error(error);

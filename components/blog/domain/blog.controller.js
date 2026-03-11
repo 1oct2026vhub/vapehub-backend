@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Blog, BlogCategory, BlogTag, User } = require("../../../models");
 const { Op } = require("sequelize");
+const { cacheOrFetch } = require("../../../library/cache");
 
 module.exports.listAllBlogs = async (req, res, next) => {
     try {
@@ -241,91 +242,86 @@ module.exports.listAllCategories = async (req, res, next) => {
     try {
         const { order = 'DESC', show_home_page } = req.query;
         const sortOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
-        
-        // Build where clause
-        const whereClause = {
-            status: 'active',
-            parent_id: null // Only get top-level categories
-        };
-        
-        // Add show_home_page filter if provided
-        if (show_home_page !== undefined) {
-            whereClause.show_home_page = show_home_page === 'true' || show_home_page === true;
-        }
-        
-        const categories = await BlogCategory.findAll({
-            where: whereClause,
-            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
-            include: [
-                {
-                    model: Blog,
-                    as: 'blogs',
-                    attributes: ['id', 'published_at', 'status'],
-                    through: { attributes: [] },
-                    required: false
-                },
-                {
-                    model: BlogCategory,
-                    as: 'children',
-                    attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'parent_id','show_home_page'],
-                    where: {
-                        status: 'active',
-                        ...(show_home_page !== undefined && {
-                            show_home_page: show_home_page === 'true' || show_home_page === true
-                        })
-                    },
-                    include: [
-                        {
-                            model: BlogCategory,
-                            as: 'parent',
-                            attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
-                            required: false
-                        },
-                        {
-                            model: Blog,
-                            as: 'blogs',
-                            attributes: ['id', 'published_at', 'status'],
-                            through: { attributes: [] },
-                            required: false
-                        }
-                    ],
-                    required: false
-                }
-            ],
-            order: [['created_at', sortOrder]]
-        });
+        const cacheKey = `blogs:categories:${sortOrder}:${show_home_page !== undefined ? String(show_home_page) : 'all'}`;
 
-        // Get current date for published date check
-        const currentDate = new Date();
+        const categoriesWithCount = await cacheOrFetch(cacheKey, async () => {
+            // Build where clause
+            const whereClause = {
+                status: 'active',
+                parent_id: null // Only get top-level categories
+            };
 
-        // Add blog count to each category and its subcategories
-        const categoriesWithCount = categories.map(category => {
-            const categoryData = category.toJSON();
-            
-            // Filter and count parent category blogs
-            categoryData.blogs = categoryData.blogs.filter(blog => 
-                blog.status === 'published' && new Date(blog.published_at) <= currentDate
-            );
-            categoryData.blog_count = categoryData.blogs.length;
-            
-            // Filter and count subcategory blogs
-            if (categoryData.children) {
-                categoryData.children = categoryData.children.map(child => {
-                    child.blogs = child.blogs.filter(blog => 
-                        blog.status === 'published' && new Date(blog.published_at) <= currentDate
-                    );
-                    child.blog_count = child.blogs.length;
-                    // Remove blogs array as it's no longer needed
-                    delete child.blogs;
-                    return child;
-                });
+            if (show_home_page !== undefined) {
+                whereClause.show_home_page = show_home_page === 'true' || show_home_page === true;
             }
-            
-            // Remove blogs array from parent as it's no longer needed
-            delete categoryData.blogs;
-            
-            return categoryData;
-        });
+
+            const categories = await BlogCategory.findAll({
+                where: whereClause,
+                attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
+                include: [
+                    {
+                        model: Blog,
+                        as: 'blogs',
+                        attributes: ['id', 'published_at', 'status'],
+                        through: { attributes: [] },
+                        required: false
+                    },
+                    {
+                        model: BlogCategory,
+                        as: 'children',
+                        attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'parent_id','show_home_page'],
+                        where: {
+                            status: 'active',
+                            ...(show_home_page !== undefined && {
+                                show_home_page: show_home_page === 'true' || show_home_page === true
+                            })
+                        },
+                        include: [
+                            {
+                                model: BlogCategory,
+                                as: 'parent',
+                                attributes: ['id', 'name', 'slug', 'description', 'image_url', 'alt_text', 'show_home_page'],
+                                required: false
+                            },
+                            {
+                                model: Blog,
+                                as: 'blogs',
+                                attributes: ['id', 'published_at', 'status'],
+                                through: { attributes: [] },
+                                required: false
+                            }
+                        ],
+                        required: false
+                    }
+                ],
+                order: [['created_at', sortOrder]]
+            });
+
+            const currentDate = new Date();
+
+            return categories.map(category => {
+                const categoryData = category.toJSON();
+
+                categoryData.blogs = categoryData.blogs.filter(blog =>
+                    blog.status === 'published' && new Date(blog.published_at) <= currentDate
+                );
+                categoryData.blog_count = categoryData.blogs.length;
+
+                if (categoryData.children) {
+                    categoryData.children = categoryData.children.map(child => {
+                        child.blogs = child.blogs.filter(blog =>
+                            blog.status === 'published' && new Date(blog.published_at) <= currentDate
+                        );
+                        child.blog_count = child.blogs.length;
+                        delete child.blogs;
+                        return child;
+                    });
+                }
+
+                delete categoryData.blogs;
+                return categoryData;
+            });
+        }, 300);
 
         successResponse(res, categoriesWithCount, 'Success');
     } catch (error) {
