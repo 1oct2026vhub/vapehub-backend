@@ -261,11 +261,14 @@ module.exports.listNewProducts = async (req, res, next) => {
                 FROM reviews r
                 LEFT JOIN users u ON u.id = r.user_id
                 LEFT JOIN orders o ON o.id = r.order_id
-                WHERE r.product_id IN (${productIds.join(',')})
+                WHERE r.product_id IN (:productIds)
                 AND r.is_visible = true
                 AND r.deleted_at IS NULL
                 ORDER BY r.product_id, r.created_at DESC
-            `, { type: Product.sequelize.QueryTypes.SELECT });
+            `, { 
+                replacements: { productIds },
+                type: Product.sequelize.QueryTypes.SELECT 
+            });
         }
 
         // Group reviews by product_id for efficient lookup
@@ -291,8 +294,9 @@ module.exports.listNewProducts = async (req, res, next) => {
                     c.id, c.name, c.slug, pc.product_id, pc.is_primary
                 FROM product_categories pc
                 JOIN categories c ON pc.category_id = c.id
-                WHERE pc.product_id IN (${productIds.join(',')})
+                WHERE pc.product_id IN (:productIds)
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -302,8 +306,9 @@ module.exports.listNewProducts = async (req, res, next) => {
                     b.id, b.name, b.slug, pb.product_id, pb.is_primary
                 FROM product_brands pb
                 JOIN brands b ON pb.brand_id = b.id
-                WHERE pb.product_id IN (${productIds.join(',')})
+                WHERE pb.product_id IN (:productIds)
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -312,8 +317,9 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     id, product_id, image_url, is_primary, alt_text
                 FROM product_images
-                WHERE product_id IN (${productIds.join(',')})
+                WHERE product_id IN (:productIds)
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -322,8 +328,9 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     id, product_id, price, discount_price, stock, stock_status, status
                 FROM product_variants
-                WHERE product_id IN (${productIds.join(',')}) AND status = 'active'
+                WHERE product_id IN (:productIds) AND status = 'active'
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -332,10 +339,11 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (${productIds.join(',')}) AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active')
                 AND deleted_at IS NULL
                 LIMIT 50
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -345,12 +353,13 @@ module.exports.listNewProducts = async (req, res, next) => {
                     d.id, d.name, d.deal_type, d.discount_percent, dp.product_id
                 FROM deal_products dp
                 JOIN deals d ON dp.deal_id = d.id
-                WHERE dp.product_id IN (${productIds.join(',')})
+                WHERE dp.product_id IN (:productIds)
                     AND d.is_active = 1 
                     AND d.is_deleted = 0 
                     AND d.valid_from <= NOW() 
                     AND d.valid_to >= NOW()
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
@@ -364,9 +373,10 @@ module.exports.listNewProducts = async (req, res, next) => {
                 FROM product_attribute_terms pat
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
-                WHERE pat.product_id IN (${productIds.join(',')})
+                WHERE pat.product_id IN (:productIds)
                 AND (LOWER(a.name) LIKE LOWER('number%of%puffs') OR LOWER(a.name) = LOWER('flavour'))
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             })
         ]);
@@ -4704,8 +4714,9 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     pc.product_id, c.id, c.name, c.slug
                 FROM product_categories pc
                 JOIN categories c ON pc.category_id = c.id
-                WHERE pc.product_id IN (${productIds.join(',')})
+                WHERE pc.product_id IN (:productIds)
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4715,8 +4726,9 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     pb.product_id, b.id, b.name, b.slug
                 FROM product_brands pb
                 JOIN brands b ON pb.brand_id = b.id
-                WHERE pb.product_id IN (${productIds.join(',')})
+                WHERE pb.product_id IN (:productIds)
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4725,9 +4737,10 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 SELECT 
                     pi.id, pi.product_id, pi.image_url, pi.is_primary, pi.alt_text
                 FROM product_images pi
-                WHERE pi.product_id IN (${productIds.join(',')})
+                WHERE pi.product_id IN (:productIds)
                 AND pi.is_primary = 1
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4737,9 +4750,10 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     pv.id, pv.product_id, pv.price, pv.regular_price, 
                     pv.discount_price, pv.stock, pv.stock_status, pv.status
                 FROM product_variants pv
-                WHERE pv.product_id IN (${productIds.join(',')})
+                WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4749,9 +4763,10 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     pvi.id, pvi.variant_id, pvi.image_url, pvi.is_primary
                 FROM product_variant_images pvi
                 JOIN product_variants pv ON pvi.variant_id = pv.id
-                WHERE pv.product_id IN (${productIds.join(',')})
+                WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4763,12 +4778,13 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                     d.bundle_product_ids_json, d.valid_from, d.valid_to, dp.product_id
                 FROM deal_products dp
                 JOIN deals d ON dp.deal_id = d.id
-                WHERE dp.product_id IN (${productIds.join(',')})
+                WHERE dp.product_id IN (:productIds)
                     AND d.is_active = 1 
                     AND d.is_deleted = 0 
                     AND d.valid_from <= NOW() 
                     AND d.valid_to >= NOW()
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
@@ -4782,9 +4798,10 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 FROM product_attribute_terms pat
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
-                WHERE pat.product_id IN (${productIds.join(',')})
+                WHERE pat.product_id IN (:productIds)
                 AND pat.deleted_at IS NULL
             `, {
+                replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
             })
         ]);
