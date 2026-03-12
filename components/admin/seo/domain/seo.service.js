@@ -38,18 +38,18 @@ class SeoService {
       const cacheKey = `seo:meta:${entityType}:${slug || ''}`;
 
       const data = await cacheOrFetch(cacheKey, async () => {
-        this.logger.info({ entityType, slug }, 'Getting SEO metadata');
+        // this.logger.info({ entityType, slug }, 'Getting SEO metadata');
 
         const seoMeta = await this.models.SeoMeta.findOne({
           where: { entityType, slug }
         });
 
         if (!seoMeta) {
-          this.logger.warn({ entityType, slug }, 'SEO metadata not found');
+          // this.logger.warn({ entityType, slug }, 'SEO metadata not found');
           return null;
         }
 
-        this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
+        // this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
         return seoMeta.toJSON ? seoMeta.toJSON() : seoMeta;
       }, 300);
 
