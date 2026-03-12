@@ -6,6 +6,7 @@ const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceV
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
+const { cacheOrFetch } = require('../../../library/cache');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -124,6 +125,20 @@ module.exports.listNewProducts = async (req, res, next) => {
             return acc;
         }, {});
 
+        const cacheKey = `product:new:${JSON.stringify({
+            sort_by,
+            order,
+            limit: parsedLimit,
+            offset: parsedOffset,
+            keyword: keyword || '',
+            price_range: price_range || '',
+            categories: categories || '',
+            brand: brand || '',
+            variant: variant || '',
+            deal_id: deal_id || ''
+        })}`;
+
+        const data = await cacheOrFetch(cacheKey, async () => {
         // Build base where conditions for new products (all products, descending order)
         let productFilterConditions = [
             "p.deletedAt IS NULL",
@@ -232,7 +247,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         // Get product IDs for related data queries
         const productIds = productsResult.map(p => p.id);
         if (productIds.length === 0) {
-            return successResponse(res, {
+            return {
                 products: [],
                 category_items: [],
                 brand_items: [],
@@ -246,7 +261,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                     limit: parsedLimit,
                     offset: parsedOffset
                 }
-            }, 'Success');
+            };
         }
 
         // Fetch reviews for all products in batch (similar to fetchProducts implementation)
@@ -685,7 +700,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             })
         ]);
 
-        return successResponse(res, {
+        return {
             products: availableProducts,
             category_items: categoryResults,
             brand_items: brandResults,
@@ -699,7 +714,10 @@ module.exports.listNewProducts = async (req, res, next) => {
                 limit: parsedLimit,
                 offset: parsedOffset
             }
-        }, 'Success');
+        };
+        }, 60);
+
+        return successResponse(res, data, 'Success');
 
     } catch (error) {
         logger.error(error);
@@ -709,6 +727,8 @@ module.exports.listNewProducts = async (req, res, next) => {
 
 module.exports.getProductByid = async (req, res, next) => {
     try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:detail:${productId}`, async () => {
         const includeClause = [
             {
                 model: Category,
@@ -794,13 +814,13 @@ module.exports.getProductByid = async (req, res, next) => {
         ];
         const product = await Product.findOne({
             where: { 
-                id: req.params.id,
+                id: productId,
                 status: productStatus.PUBLISHED
             }, 
             include: includeClause
         });
         if (!product) {
-            throw new Error("Product not found");
+            return null;
         }
 
         // Group attributes and their terms
@@ -1096,7 +1116,13 @@ module.exports.getProductByid = async (req, res, next) => {
             min_price_variant: minPriceVariant
         };
 
-        successResponse(res, response, 'Success');
+        return response;
+        }, 60);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }

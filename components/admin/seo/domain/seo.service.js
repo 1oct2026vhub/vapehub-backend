@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
+const { cacheOrFetch, invalidateCachePattern } = require('../../../../library/cache');
 
 // SEO Health Status Constants
 const SEO_HEALTH_STATUS = {
@@ -27,26 +28,32 @@ class SeoService {
   }
 
   /**
-   * Get SEO metadata for a specific entity
+   * Get SEO metadata for a specific entity (cached)
    * @param {string} entityType - Type of entity (product, category, brand, blog_category, blog_post)
    * @param {string} slug - URL slug
-   * @returns {Promise<Object>} SEO metadata
+   * @returns {Promise<Object|null>} SEO metadata as plain object, or null if not found
    */
   async getSeoMeta(entityType, slug) {
     try {
-      this.logger.info({ entityType, slug }, 'Getting SEO metadata');
-      
-      const seoMeta = await this.models.SeoMeta.findOne({
-        where: { entityType, slug }
-      });
+      const cacheKey = `seo:meta:${entityType}:${slug || ''}`;
 
-      if (!seoMeta) {
-        this.logger.warn({ entityType, slug }, 'SEO metadata not found');
-        return null;
-      }
+      const data = await cacheOrFetch(cacheKey, async () => {
+        // this.logger.info({ entityType, slug }, 'Getting SEO metadata');
 
-      this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
-      return seoMeta;
+        const seoMeta = await this.models.SeoMeta.findOne({
+          where: { entityType, slug }
+        });
+
+        if (!seoMeta) {
+          // this.logger.warn({ entityType, slug }, 'SEO metadata not found');
+          return null;
+        }
+
+        // this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
+        return seoMeta.toJSON ? seoMeta.toJSON() : seoMeta;
+      }, 300);
+
+      return data;
     } catch (error) {
       this.logger.error({ error, entityType, slug }, 'Error getting SEO metadata');
       throw error;
@@ -74,6 +81,7 @@ class SeoService {
       }
 
       const updatedSeoMeta = await seoMeta.update({ noIndex });
+      invalidateCachePattern('seo:*').catch(() => {});
       this.logger.info({ entityType, entityId, noIndex }, 'Successfully updated noIndex for entity');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {
@@ -588,6 +596,7 @@ class SeoService {
         canonicalUrl: `${process.env.FRONTEND_URL}/${newSlug}`
       });
 
+      invalidateCachePattern('seo:*').catch(() => {});
       this.logger.info({ entityType, entityId, newSlug }, 'Successfully updated SEO slug');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {

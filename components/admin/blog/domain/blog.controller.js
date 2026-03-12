@@ -2,8 +2,9 @@ const { Op, Sequelize } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
+const { invalidateCachePattern } = require("../../../../library/cache");
 const SlugManager = require("../../../../utils/slugManager");
-const slugManager = new SlugManager(SlugRelation);  
+const slugManager = new SlugManager(SlugRelation);
 const seoService = require('../../seo/domain/seo.service');
 
 const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
@@ -280,6 +281,7 @@ module.exports.createBlog = async (req, res) => {
         });
 
         await transaction.commit();
+        invalidateCachePattern('blogs:*').catch(() => {});
         successResponse(res, createdBlog, 'Blog post created successfully', 201);
     } catch (error) {
         if (transaction) {
@@ -446,6 +448,7 @@ module.exports.updateBlog = async (req, res) => {
         });
 
         await transaction.commit();
+        invalidateCachePattern('blogs:*').catch(() => {});
 
         let responseData = updatedBlog;
         const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
@@ -519,6 +522,7 @@ module.exports.deleteBlog = async (req, res) => {
         await seoService.updateNoIndex('blog', req.params.id, true);
 
         await transaction.commit();
+        invalidateCachePattern('blogs:*').catch(() => {});
         successResponse(res, null, 'Blog post deleted successfully');
     } catch (error) {
         await transaction.rollback();
@@ -564,6 +568,7 @@ module.exports.restoreBlog = async (req, res) => {
         await slugManager.createOrUpdateSlug(blog.slug, 'blog', blog.id, transaction);
 
         await transaction.commit();
+        invalidateCachePattern('blogs:*').catch(() => {});
         successResponse(res, blog, 'Blog post restored successfully');
     } catch (error) {
         await transaction.rollback();
