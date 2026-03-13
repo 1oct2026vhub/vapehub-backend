@@ -25,7 +25,7 @@ async function ensureTemplatesDir() {
 
 async function getBeeToken(req, res) {
   try {
-    const uid = req.body?.uid || 'anonymous';
+    const uid = req.user?.id || 'anonymous';
     const clientId = process.env.BEEFREE_CLIENT_ID;
     const clientSecret = process.env.BEEFREE_CLIENT_SECRET;
 
