@@ -55,22 +55,19 @@ const { authMiddleware } = require('../../../library/middleware');
 /**
  * @swagger
  * /api/newsletter-templates/auth:
- *   post:
+ *   get:
  *     summary: Get Beefree SDK auth token
  *     description: Returns a short-lived access token for initializing the Beefree SDK editor on the frontend.
  *     tags:
  *       - Newsletter Templates
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               uid:
- *                 type: string
- *                 description: Unique identifier for the current admin user
- *                 example: "admin-123"
+ *     parameters:
+ *       - in: query
+ *         name: uid
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional override for the user identifier; if omitted, the backend derives it from the authenticated user.
+ *         example: "admin-123"
  *     responses:
  *       200:
  *         description: Auth token generated successfully
@@ -97,7 +94,7 @@ const { authMiddleware } = require('../../../library/middleware');
  *       500:
  *         description: Server error
  */
-router.post('/auth', newsletterTemplatesController.getBeeToken);
+router.get('/auth', newsletterTemplatesController.getBeeToken);
 
 /**
  * @swagger
