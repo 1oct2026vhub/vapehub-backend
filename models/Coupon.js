@@ -1,6 +1,5 @@
 'use strict';
 const { Model, Op } = require('sequelize');
-const cron = require('node-cron');
 const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
@@ -221,13 +220,6 @@ module.exports = (sequelize, DataTypes) => {
         }
       }
     }
-  });
-
-  // Schedule the cron job to run at midnight (12:15 AM) every day
-  cron.schedule('15 0 * * *', async () => {
-    await Coupon.updateExpiredCoupons();
-  }, {
-    timezone: process.env.UK_TIMEZONE || 'Europe/London'
   });
 
   return Coupon;

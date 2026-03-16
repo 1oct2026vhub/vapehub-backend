@@ -4,6 +4,8 @@ const logger = require('../library/logger');
 require('./lowStockAlert');
 require('./productNotifications');
 require('./cleanupExportFiles'); // Cleanup old export files from S3
+require('./couponExpiration');
+require('./trustpilotInvitations');
 // require('./cleanupTemporaryUsers');
 
 logger.info('All cron jobs initialized successfully');
