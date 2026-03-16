@@ -137,22 +137,47 @@ async function saveTemplate(req, res) {
 
 async function listTemplates(req, res) {
   try {
+    // Basic pagination params with sane defaults and limits.
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSizeRaw = parseInt(req.query.pageSize, 10);
+    const pageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw > 0
+        ? Math.min(pageSizeRaw, 100)
+        : 20;
+
     await ensureTemplatesDir();
     const entries = await fs.readdir(NEWSLETTER_TEMPLATES_DIR, { withFileTypes: true });
     const templates = [];
 
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
-      const metaPath = path.join(NEWSLETTER_TEMPLATES_DIR, ent.name, 'meta.json');
+      const baseDir = path.join(NEWSLETTER_TEMPLATES_DIR, ent.name);
+      const metaPath = path.join(baseDir, 'meta.json');
       try {
         const raw = await fs.readFile(metaPath, 'utf8');
         const meta = JSON.parse(raw);
+        const [designRaw, htmlRaw] = await Promise.all([
+          fs.readFile(path.join(baseDir, 'design.json'), 'utf8').catch(() => null),
+          fs.readFile(path.join(baseDir, 'body.html'), 'utf8').catch(() => null),
+        ]);
+
+        let parsedDesign = null;
+        if (typeof designRaw === 'string') {
+          try {
+            parsedDesign = JSON.parse(designRaw);
+          } catch {
+            parsedDesign = designRaw;
+          }
+        }
+
         templates.push({
           id: meta.id || ent.name,
           name: meta.name || ent.name,
           subject: meta.subject || '',
           createdAt: meta.createdAt || null,
           updatedAt: meta.updatedAt || null,
+          designJson: parsedDesign,
+          html: htmlRaw || '',
         });
       } catch {
         templates.push({
@@ -161,6 +186,8 @@ async function listTemplates(req, res) {
           subject: '',
           createdAt: null,
           updatedAt: null,
+          designJson: null,
+          html: '',
         });
       }
     }
@@ -169,7 +196,25 @@ async function listTemplates(req, res) {
       String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''))
     );
 
-    return successResponse(res, templates, 'Templates listed', 200);
+    const total = templates.length;
+    const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const end = start + pageSize;
+    const pagedTemplates = templates.slice(start, end);
+
+    return successResponse(
+      res,
+      pagedTemplates,
+      'Templates listed',
+      200,
+      {
+        page: safePage,
+        pageSize,
+        total,
+        totalPages,
+      }
+    );
   } catch (err) {
     return errorResponse(res, err, err?.message || 'Failed to list templates', 500);
   }

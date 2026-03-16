@@ -149,11 +149,27 @@ router.post('/templates', [authMiddleware(true)], newsletterTemplatesController.
  * /api/newsletter-templates/templates:
  *   get:
  *     summary: List all newsletter templates
- *     description: Returns metadata for all saved newsletter templates.
+ *     description: Returns a paginated list of newsletter templates, including metadata, Beefree designJson, and rendered HTML.
  *     tags:
  *       - Newsletter Templates
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Page number (1-based). Defaults to 1.
+ *       - in: query
+ *         name: pageSize
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of templates per page. Defaults to 20. Maximum is 100.
  *     responses:
  *       200:
  *         description: Templates listed successfully
@@ -166,8 +182,21 @@ router.post('/templates', [authMiddleware(true)], newsletterTemplatesController.
  *                   type: boolean
  *                 data:
  *                   type: array
+ *                   description: List of newsletter templates for the current page
  *                   items:
  *                     $ref: '#/components/schemas/NewsletterTemplate'
+ *                 page:
+ *                   type: integer
+ *                   description: Current page number (1-based)
+ *                 pageSize:
+ *                   type: integer
+ *                   description: Number of templates per page
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of templates
+ *                 totalPages:
+ *                   type: integer
+ *                   description: Total number of pages
  *                 message:
  *                   type: string
  *       401:
