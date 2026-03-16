@@ -8,6 +8,40 @@ const {
     validatePromotionalImages, 
     generateCampaignId 
 } = require('../helper/imageUpload.helper');
+const path = require('path');
+const fs = require('fs').promises;
+
+const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
+
+async function loadNewsletterTemplateById(id) {
+    if (!id || typeof id !== 'string' || id.includes('..') || id.includes('/') || id.includes('\\')) {
+        const err = new Error('Invalid template id');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, id);
+
+    const [metaRaw, htmlRaw] = await Promise.all([
+        fs.readFile(path.join(templateDir, 'meta.json'), 'utf8').catch(() => null),
+        fs.readFile(path.join(templateDir, 'body.html'), 'utf8').catch(() => null),
+    ]);
+
+    if (!metaRaw) {
+        const err = new Error('Template not found');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const meta = JSON.parse(metaRaw);
+
+    return {
+        id: meta.id || id,
+        name: meta.name,
+        subject: meta.subject,
+        html: htmlRaw || '',
+    };
+}
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -218,7 +252,8 @@ module.exports = {
                 selectedEmails = [],
                 sendToAll = false,
                 frequency = null,
-                imageUrls = [] // Array of image URLs: [{url: 'image_url', alt: 'alt_text', isPrimary: boolean}]
+                imageUrls = [], // Array of image URLs: [{url: 'image_url', alt: 'alt_text', isPrimary: boolean}]
+                templateId
             } = req.body;
 
             // Handle both uploaded files and URL-based images
@@ -244,8 +279,37 @@ module.exports = {
             }
 
             // Validate required fields
-            if (!subject || !content) {
-                return errorResponse(res, null, 'Subject and content are required', 400);
+            if (!subject) {
+                return errorResponse(res, null, 'Subject is required', 400);
+            }
+
+            if (!content && !templateId) {
+                return errorResponse(res, null, 'Either content or templateId must be provided', 400);
+            }
+
+            // Resolve final subject and HTML content (template-based or raw content)
+            let effectiveSubject = subject;
+            let effectiveHtml = content;
+
+            if (templateId) {
+                try {
+                    const template = await loadNewsletterTemplateById(templateId);
+
+                    if (!effectiveSubject && template.subject) {
+                        effectiveSubject = template.subject;
+                    }
+
+                    if (template.html) {
+                        effectiveHtml = template.html;
+                    }
+                } catch (err) {
+                    const status = err.statusCode || 500;
+                    return errorResponse(res, null, err.message || 'Failed to load template', status);
+                }
+            }
+
+            if (!effectiveHtml) {
+                return errorResponse(res, null, 'Email HTML content is empty even after applying template', 400);
             }
 
             // Get subscribers based on criteria with pagination for large datasets
@@ -346,13 +410,14 @@ module.exports = {
                             to: subscriber.email,
                             emailTypes: 'PROMOTIONAL',
                             context: {
-                                subject: subject,
-                                content: content,
+                                subject: effectiveSubject,
+                                content: effectiveHtml,
                                 highlightText: highlightText,
                                 ctaText: ctaText,
                                 ctaUrl: ctaUrl,
                                 email: subscriber.email,
-                                images: finalImages // Pass S3 uploaded images to email template
+                                images: finalImages, // Pass S3 uploaded images to email template
+                                templateId
                             },
                             attachments: [] // No attachments needed, images are hosted on S3
                         };

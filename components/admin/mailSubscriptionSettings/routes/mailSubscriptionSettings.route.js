@@ -456,14 +456,16 @@ router.delete('/:id', [
  *             type: object
  *             required:
  *               - subject
- *               - content
  *             properties:
  *               subject:
  *                 type: string
  *                 description: Email subject line
  *               content:
  *                 type: string
- *                 description: Main email content (HTML supported)
+ *                 description: Main email content (HTML supported). Optional when templateId is provided.
+ *               templateId:
+ *                 type: string
+ *                 description: Newsletter template id created via Beefree. If provided, the stored template HTML will be used.
  *               highlightText:
  *                 type: string
  *                 description: Highlighted text to display prominently
