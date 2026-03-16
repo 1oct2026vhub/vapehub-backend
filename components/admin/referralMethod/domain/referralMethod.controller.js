@@ -51,13 +51,11 @@ class ReferralMethodController {
 
   // Edit existing referral method
   async edit(req, res) {
-    const transaction = await sequelize.transaction();
     try {
       const { id } = req.params;
       const { referral_value_type, referral_value, status, refer_type, minimum_purchase, maximum_purchase } = req.body;
       const referralMethod = await ReferralMethod.findByPk(id);
       if (!referralMethod) {
-        await transaction.rollback();
         logger.warn('Referral method not found for update', { id });
         return errorResponse(res, { message: "Referral method not found" }, "Not Found", 404);
       }
@@ -76,11 +74,8 @@ class ReferralMethodController {
         minimum_purchase,
         maximum_purchase
       }, { 
-        where: { id },
-        transaction 
+        where: { id }
       });
-
-      await transaction.commit();
 
       // Fetch the updated method to return complete data
       const updatedMethodData = await ReferralMethod.findByPk(id);
@@ -92,7 +87,6 @@ class ReferralMethodController {
       }, "Referral method updated successfully");
     } catch (error) {
       console.log(error);
-      await transaction.rollback();
       logger.error('Error updating referral method', { 
         id: req.params.id, 
         error: error.message, 

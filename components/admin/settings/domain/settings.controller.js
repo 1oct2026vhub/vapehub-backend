@@ -141,11 +141,9 @@ const getSettingById = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const createSetting = async (req, res, next) => {
-    const transaction = await Settings.sequelize.transaction();
     try {
         // Handle JSON parsing errors
         if (!req.body || typeof req.body !== 'object') {
-            await transaction.rollback();
             return errorResponse(res, { message: 'Invalid request body format' }, 'Invalid JSON', 400);
         }
 
@@ -154,13 +152,11 @@ const createSetting = async (req, res, next) => {
 
         // Validate required fields
         if (!content_key || !content) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'content_key and content are required' }, 'Missing required fields', 400);
         }
 
         // Validate content_key is one of the allowed legal content keys
         if (!constants.LEGAL_CONTENT_KEY_ENUMS.includes(content_key)) {
-            await transaction.rollback();
             return errorResponse(res, { 
                 message: `Invalid content_key. Must be one of: ${constants.LEGAL_CONTENT_KEY_ENUMS.join(', ')}` 
             }, 'Invalid content key', 400);
@@ -170,7 +166,6 @@ const createSetting = async (req, res, next) => {
         const sanitizedContent = typeof content === 'string' ? content.trim() : String(content).trim();
         
         if (sanitizedContent.length === 0) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'Content cannot be empty' }, 'Empty content', 400);
         }
 
@@ -191,7 +186,7 @@ const createSetting = async (req, res, next) => {
                 content: sanitizedContent,
                 is_active,
                 updated_by
-            }, { transaction });
+            });
             
             setting = existingSetting;
             message = 'Setting updated successfully';
@@ -203,16 +198,14 @@ const createSetting = async (req, res, next) => {
                 content: sanitizedContent,
                 is_active,
                 updated_by
-            }, { transaction });
+            });
             
             message = 'Setting created successfully';
             statusCode = 201;
         }
 
-        await transaction.commit();
         return successResponse(res, setting, message, statusCode);
     } catch (error) {
-        await transaction.rollback();
         logger.error('Create Setting Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -225,7 +218,6 @@ const createSetting = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const updateSetting = async (req, res, next) => {
-    const transaction = await Settings.sequelize.transaction();
     try {
         const { id } = req.params;
         const { content, is_active } = req.body;
@@ -233,7 +225,6 @@ const updateSetting = async (req, res, next) => {
 
         const setting = await Settings.findByPk(id);
         if (!setting) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'Setting not found' }, 'Setting not found', 404);
         }
 
@@ -245,7 +236,6 @@ const updateSetting = async (req, res, next) => {
             const sanitizedContent = typeof content === 'string' ? content.trim() : String(content).trim();
             
             if (sanitizedContent.length === 0) {
-                await transaction.rollback();
                 return errorResponse(res, { message: 'Content cannot be empty' }, 'Empty content', 400);
             }
             updateData.content = sanitizedContent;
@@ -259,7 +249,6 @@ const updateSetting = async (req, res, next) => {
         // Require at least one of content or is_active; updated_by is set when user is logged in
         const hasContentOrActive = content !== undefined || is_active !== undefined;
         if (!hasContentOrActive) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'No valid fields to update. Only content and is_active can be updated.' }, 'No updates provided', 400);
         }
 
@@ -267,12 +256,9 @@ const updateSetting = async (req, res, next) => {
             updateData.updated_by = updated_by;
         }
 
-        await setting.update(updateData, { transaction });
-
-        await transaction.commit();
+        await setting.update(updateData);
         return successResponse(res, setting, 'Setting updated successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Update Setting Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -285,22 +271,17 @@ const updateSetting = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const deleteSetting = async (req, res, next) => {
-    const transaction = await Settings.sequelize.transaction();
     try {
         const { id } = req.params;
         const setting = await Settings.findByPk(id);
 
         if (!setting) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'Setting not found' }, 'Setting not found', 404);
         }
 
-        await setting.destroy({ transaction });
-
-        await transaction.commit();
+        await setting.destroy();
         return successResponse(res, null, 'Setting deleted successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Delete Setting Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -314,14 +295,12 @@ const deleteSetting = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const toggleSettingStatus = async (req, res, next) => {
-    const transaction = await Settings.sequelize.transaction();
     try {
         const { id } = req.params;
         const updated_by = req.user?.id ?? null;
         const setting = await Settings.findByPk(id);
 
         if (!setting) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'Setting not found' }, 'Setting not found', 404);
         }
 
@@ -329,12 +308,9 @@ const toggleSettingStatus = async (req, res, next) => {
         if (updated_by != null) {
             updatePayload.updated_by = updated_by;
         }
-        await setting.update(updatePayload, { transaction });
-
-        await transaction.commit();
+        await setting.update(updatePayload);
         return successResponse(res, setting, 'Setting status toggled successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Toggle Setting Status Error:', error);
         return errorResponse(res, error, error.message);
     }
