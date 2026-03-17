@@ -6,7 +6,7 @@ const { authMiddleware } = require('../../../library/middleware');
  * @swagger
  * components:
  *   schemas:
- *     NewsletterTemplate:
+ *     ADMIN-NewsletterTemplate:
  *       type: object
  *       properties:
  *         id:
@@ -54,7 +54,7 @@ const { authMiddleware } = require('../../../library/middleware');
 
 /**
  * @swagger
- * /api/newsletter-templates/auth:
+ * /api/admin/newsletter-templates/auth:
  *   get:
  *     summary: Get Beefree SDK auth token
  *     description: Returns a short-lived access token for initializing the Beefree SDK editor on the frontend.
@@ -98,7 +98,7 @@ router.get('/auth', newsletterTemplatesController.getBeeToken);
 
 /**
  * @swagger
- * /api/newsletter-templates/templates:
+ * /api/admin/newsletter-templates/templates:
  *   post:
  *     summary: Create or update a newsletter template
  *     description: Saves a Beefree-based newsletter template as files on disk (meta.json, design.json, body.html).
@@ -146,7 +146,7 @@ router.post('/templates', [authMiddleware(true)], newsletterTemplatesController.
 
 /**
  * @swagger
- * /api/newsletter-templates/templates:
+ * /api/admin/newsletter-templates/templates:
  *   get:
  *     summary: List all newsletter templates
  *     description: Returns a paginated list of newsletter templates, including metadata, Beefree designJson, and rendered HTML.
@@ -210,7 +210,7 @@ router.get('/templates', [authMiddleware(true)], newsletterTemplatesController.l
 
 /**
  * @swagger
- * /api/newsletter-templates/templates/{id}:
+ * /api/admin/newsletter-templates/templates/{id}:
  *   get:
  *     summary: Get a single newsletter template
  *     description: Returns full details for a specific template, including designJson and HTML.
@@ -254,7 +254,7 @@ router.get('/templates/:id', [authMiddleware(true)], newsletterTemplatesControll
 
 /**
  * @swagger
- * /api/newsletter-templates/templates/{id}:
+ * /api/admin/newsletter-templates/templates/{id}:
  *   delete:
  *     summary: Delete a newsletter template
  *     description: Permanently deletes the template folder and its files from disk.

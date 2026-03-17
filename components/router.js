@@ -38,6 +38,5 @@ router.use("/settings", require("./settings/routes/settings.route"))
 router.use("/popularCategory", require("./popularCategory/routes/popularCategory.route"))
 router.use("/shopByCategory", require("./shopByCategory/routes/shopByCategory.route"))
 router.use("/entity-banners", require("./entityBanner/routes/entityBanner.route"))
-router.use("/newsletter-templates", require("./admin/newsletterTemplates/routes/newsletterTemplates.route"))
 
 module.exports = router;
