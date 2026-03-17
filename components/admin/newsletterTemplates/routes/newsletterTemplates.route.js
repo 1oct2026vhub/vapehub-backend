@@ -529,7 +529,7 @@ router.post('/templates', [authMiddleware(true)], newsletterTemplatesController.
  *                   type: array
  *                   description: List of newsletter templates for the current page
  *                   items:
- *                     $ref: '#/components/schemas/NewsletterTemplate'
+ *                     $ref: '#/components/schemas/ADMIN-NewsletterTemplate'
  *                 page:
  *                   type: integer
  *                   description: Current page number (1-based)
@@ -581,7 +581,7 @@ router.get('/templates', [authMiddleware(true)], newsletterTemplatesController.l
  *                 success:
  *                   type: boolean
  *                 data:
- *                   $ref: '#/components/schemas/NewsletterTemplate'
+ *                   $ref: '#/components/schemas/ADMIN-NewsletterTemplate'
  *                 message:
  *                   type: string
  *       400:
