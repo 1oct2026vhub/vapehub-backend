@@ -411,7 +411,7 @@ module.exports = {
                     try {
                         const emailData = {
                             to: subscriber.email,
-                            emailTypes: 'PROMOTIONAL',
+                            emailTypes: templateId ? 'PROMOTIONAL_NEWSLETTER' : 'PROMOTIONAL',
                             context: {
                                 subject: effectiveSubject,
                                 content: effectiveHtml,
