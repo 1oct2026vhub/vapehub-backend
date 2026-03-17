@@ -11,6 +11,12 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.Cart, { foreignKey: 'user_id' });
             this.belongsTo(models.Role, { foreignKey: "roleId", as: "roles" });
             this.hasMany(models.Order, { foreignKey: "user_id", as: "orders" });
+            this.belongsToMany(models.NewsletterGroup, {
+                through: models.NewsletterGroupUser,
+                foreignKey: 'user_id',
+                otherKey: 'group_id',
+                as: 'newsletterGroups',
+            });
             
             // Referral relations
             this.hasMany(models.Referral, { 
