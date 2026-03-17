@@ -5,7 +5,8 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
-const { successResponse, errorResponse } = require('../../../utils/responseUtils');
+const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
+const { NewsletterGroup, NewsletterGroupUser, User } = require('../../../../models');
 
 const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
 
@@ -287,10 +288,239 @@ async function deleteTemplate(req, res) {
   }
 }
 
+async function createGroup(req, res) {
+  try {
+    const { name, userIds = [] } = req.body || {};
+    if (!name || typeof name !== 'string') {
+      return errorResponse(res, { statusCode: 400 }, 'name is required', 400);
+    }
+    if (!Array.isArray(userIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    }
+
+    const group = await NewsletterGroup.create({ name });
+    if (userIds.length) {
+      const users = await User.findAll({ where: { id: userIds } });
+      await group.addUsers(users);
+    }
+
+    const count = await group.countUsers();
+    return successResponse(
+      res,
+      { id: group.id, name: group.name, userCount: count },
+      'Group created',
+      201
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to create group', 500);
+  }
+}
+
+async function listGroups(req, res) {
+  try {
+    const groups = await NewsletterGroup.findAll({
+      order: [['updatedAt', 'DESC']],
+    });
+
+    const data = await Promise.all(
+      groups.map(async (g) => ({
+        id: g.id,
+        name: g.name,
+        createdAt: g.createdAt,
+        updatedAt: g.updatedAt,
+        userCount: await g.countUsers(),
+      }))
+    );
+
+    return successResponse(res, data, 'Groups listed', 200);
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to list groups', 500);
+  }
+}
+
+async function getGroup(req, res) {
+  try {
+    const { id } = req.params || {};
+    const group = await NewsletterGroup.findByPk(id, {
+      include: [{ model: User, as: 'users', attributes: ['id', 'email'] }],
+    });
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+    return successResponse(
+      res,
+      {
+        id: group.id,
+        name: group.name,
+        createdAt: group.createdAt,
+        updatedAt: group.updatedAt,
+        users: group.users,
+      },
+      'Group loaded',
+      200
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to load group', 500);
+  }
+}
+
+async function updateGroup(req, res) {
+  try {
+    const { id } = req.params || {};
+    const { name, userIds } = req.body || {};
+
+    const group = await NewsletterGroup.findByPk(id);
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+
+    if (name != null && typeof name !== 'string') {
+      return errorResponse(res, { statusCode: 400 }, 'name must be a string', 400);
+    }
+    if (userIds != null && !Array.isArray(userIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    }
+
+    if (name) {
+      group.name = name;
+    }
+    await group.save();
+
+    if (Array.isArray(userIds)) {
+      const users = await User.findAll({ where: { id: userIds } });
+      await group.setUsers(users);
+    }
+
+    const users = await group.getUsers({ attributes: ['id', 'email'] });
+    return successResponse(
+      res,
+      { id: group.id, name: group.name, users },
+      'Group updated',
+      200
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to update group', 500);
+  }
+}
+
+async function deleteGroup(req, res) {
+  try {
+    const { id } = req.params || {};
+    const group = await NewsletterGroup.findByPk(id);
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+    await group.destroy();
+    return successResponse(res, { id }, 'Group deleted', 200);
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to delete group', 500);
+  }
+}
+
+async function addUsersToGroup(req, res) {
+  try {
+    const { id } = req.params || {};
+    const { userIds = [] } = req.body || {};
+    if (!Array.isArray(userIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    }
+
+    const group = await NewsletterGroup.findByPk(id);
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+
+    const users = await User.findAll({ where: { id: userIds } });
+    await group.addUsers(users);
+
+    const updatedUsers = await group.getUsers({ attributes: ['id', 'email'] });
+    return successResponse(
+      res,
+      { id: group.id, users: updatedUsers },
+      'Users added to group',
+      200
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to add users to group', 500);
+  }
+}
+
+async function removeUsersFromGroup(req, res) {
+  try {
+    const { id } = req.params || {};
+    const { userIds = [] } = req.body || {};
+    if (!Array.isArray(userIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    }
+
+    const group = await NewsletterGroup.findByPk(id);
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+
+    const users = await User.findAll({ where: { id: userIds } });
+    await group.removeUsers(users);
+
+    const updatedUsers = await group.getUsers({ attributes: ['id', 'email'] });
+    return successResponse(
+      res,
+      { id: group.id, users: updatedUsers },
+      'Users removed from group',
+      200
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to remove users from group', 500);
+  }
+}
+
+async function listUserGroups(req, res) {
+  try {
+    const { userId } = req.params || {};
+    const user = await User.findByPk(userId, {
+      include: [{ model: NewsletterGroup, as: 'newsletterGroups' }],
+    });
+    if (!user) {
+      return errorResponse(res, { statusCode: 404 }, 'User not found', 404);
+    }
+    return successResponse(res, user.newsletterGroups, 'User groups listed', 200);
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to list user groups', 500);
+  }
+}
+
+async function listGroupUsers(req, res) {
+  try {
+    const { id } = req.params || {};
+    const group = await NewsletterGroup.findByPk(id, {
+      include: [{ model: User, as: 'users', attributes: ['id', 'email'] }],
+    });
+    if (!group) {
+      return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
+    }
+    return successResponse(
+      res,
+      { id: group.id, name: group.name, users: group.users },
+      'Group users listed',
+      200
+    );
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to list group users', 500);
+  }
+}
+
 module.exports = {
   getBeeToken,
   saveTemplate,
   listTemplates,
   getTemplate,
   deleteTemplate,
+  createGroup,
+  listGroups,
+  getGroup,
+  updateGroup,
+  deleteGroup,
+  addUsersToGroup,
+  removeUsersFromGroup,
+  listUserGroups,
+  listGroupUsers,
 };
