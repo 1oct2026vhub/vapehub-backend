@@ -11,8 +11,7 @@ const {
 const path = require('path');
 const fs = require('fs').promises;
 
-const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
-
+const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', '..', 'newsletterTemplates');
 async function loadNewsletterTemplateById(id) {
     if (!id || typeof id !== 'string' || id.includes('..') || id.includes('/') || id.includes('\\')) {
         const err = new Error('Invalid template id');
