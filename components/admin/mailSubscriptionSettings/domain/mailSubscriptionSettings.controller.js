@@ -279,17 +279,17 @@ module.exports = {
             }
 
             // Validate required fields
-            if (!subject) {
-                return errorResponse(res, null, 'Subject is required', 400);
+            if (!subject && !templateId) {
+                return errorResponse(res, {}, 'Either subject or templateId must be provided', 400);
             }
 
             if (!content && !templateId) {
-                return errorResponse(res, null, 'Either content or templateId must be provided', 400);
+                return errorResponse(res, {}, 'Either content or templateId must be provided', 400);
             }
 
             // Resolve final subject and HTML content (template-based or raw content)
-            let effectiveSubject = subject;
-            let effectiveHtml = content;
+            let effectiveSubject = subject || null;
+            let effectiveHtml = content || null;
 
             if (templateId) {
                 try {
@@ -304,12 +304,16 @@ module.exports = {
                     }
                 } catch (err) {
                     const status = err.statusCode || 500;
-                    return errorResponse(res, null, err.message || 'Failed to load template', status);
+                    return errorResponse(res, err, err.message || 'Failed to load template', status);
                 }
             }
 
+            if (!effectiveSubject) {
+                return errorResponse(res, {}, 'Subject is required (either in request or template)', 400);
+            }
+
             if (!effectiveHtml) {
-                return errorResponse(res, null, 'Email HTML content is empty even after applying template', 400);
+                return errorResponse(res, {}, 'Email HTML content is empty even after applying template', 400);
             }
 
             // Get subscribers based on criteria with pagination for large datasets

@@ -454,18 +454,17 @@ router.delete('/:id', [
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - subject
+ *             required: []
  *             properties:
  *               subject:
  *                 type: string
- *                 description: Email subject line
+ *                 description: Email subject line. Optional when templateId provides the subject.
  *               content:
  *                 type: string
- *                 description: Main email content (HTML supported). Optional when templateId is provided.
+ *                 description: Main email content (HTML supported). Optional when templateId provides the HTML.
  *               templateId:
  *                 type: string
- *                 description: Newsletter template id created via Beefree. If provided, the stored template HTML will be used.
+ *                 description: Newsletter template id created via Beefree. When provided, the stored template HTML (and subject, if present) will be used.
  *               highlightText:
  *                 type: string
  *                 description: Highlighted text to display prominently
