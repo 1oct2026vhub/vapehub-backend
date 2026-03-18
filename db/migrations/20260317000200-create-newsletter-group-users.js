@@ -14,7 +14,7 @@ module.exports = {
         onUpdate: 'CASCADE',
       },
       user_id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'users',
