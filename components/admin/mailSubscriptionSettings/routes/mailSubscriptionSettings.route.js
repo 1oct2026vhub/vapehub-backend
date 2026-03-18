@@ -483,6 +483,9 @@ router.delete('/:id', [
  *                 items:
  *                   type: string
  *                 description: Array of specific email addresses to send to
+ *               groupId:
+ *                 type: integer
+ *                 description: Newsletter group id (from /api/admin/newsletter-templates/groups). Sends to active subscribers whose user_id is in this group.
  *               frequency:
  *                 type: string
  *                 enum: [daily, weekly, monthly]
@@ -509,6 +512,7 @@ router.delete('/:id', [
  *             ctaText: "Shop Now"
  *             ctaUrl: "https://example.com/sale"
  *             sendToAll: false
+ *             groupId: 12
  *             selectedEmails:
  *               - "subscriber1@example.com"
  *               - "subscriber2@example.com"

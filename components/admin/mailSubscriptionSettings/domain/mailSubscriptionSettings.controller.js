@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { MailSubscriptionSettings, MailSubscription } = require('../../../../models');
+const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
 const utilsLogger = require('../../../../utils/logger');
@@ -250,6 +250,7 @@ module.exports = {
                 ctaUrl,
                 selectedEmails = [],
                 sendToAll = false,
+                groupId = null,
                 frequency = null,
                 imageUrls = [], // Array of image URLs: [{url: 'image_url', alt: 'alt_text', isPrimary: boolean}]
                 templateId
@@ -362,6 +363,47 @@ module.exports = {
                 }
                 
                 logger.info(`Total subscribers fetched: ${subscribers.length}`);
+            } else if (groupId != null) {
+                // Send to subscribers who belong to a single newsletter group (by user_id)
+                const parsedGroupId = Number(groupId);
+                if (!Number.isFinite(parsedGroupId) || parsedGroupId <= 0) {
+                    return errorResponse(res, null, 'groupId must be a positive number', 400);
+                }
+
+                // Load group membership (user ids)
+                const memberships = await NewsletterGroupUser.findAll({
+                    where: { group_id: parsedGroupId },
+                    attributes: ['user_id']
+                });
+
+                const userIds = [...new Set(memberships.map(m => m.user_id).filter(Boolean))];
+                if (userIds.length === 0) {
+                    return errorResponse(res, null, 'No users found in the specified group', 404);
+                }
+
+                // Resolve to active subscribers; chunk large IN lists
+                const USER_ID_CHUNK_SIZE = 500;
+                for (let i = 0; i < userIds.length; i += USER_ID_CHUNK_SIZE) {
+                    const chunk = userIds.slice(i, i + USER_ID_CHUNK_SIZE);
+                    const chunkSubscribers = await MailSubscription.findAll({
+                        where: {
+                            user_id: chunk,
+                            subscribed: true,
+                            deletedAt: null
+                        },
+                        attributes: ['id', 'email', 'user_id']
+                    });
+                    subscribers = subscribers.concat(chunkSubscribers);
+                }
+
+                // De-dupe in case multiple subscription rows share email or user_id (safety)
+                const seen = new Set();
+                subscribers = subscribers.filter(s => {
+                    const key = s.user_id != null ? `u:${s.user_id}` : `e:${s.email}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
             } else if (selectedEmails && selectedEmails.length > 0) {
                 // Send to selected emails - handle large email lists in chunks
                 const EMAIL_CHUNK_SIZE = 500; // Process 500 emails at a time for database queries
@@ -383,7 +425,7 @@ module.exports = {
                     subscribers = subscribers.concat(chunkSubscribers);
                 }
             } else {
-                return errorResponse(res, null, 'Either sendToAll must be true or selectedEmails must be provided', 400);
+                return errorResponse(res, null, 'Either sendToAll must be true, groupId must be provided, or selectedEmails must be provided', 400);
             }
 
             if (subscribers.length === 0) {
