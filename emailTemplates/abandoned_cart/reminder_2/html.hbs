@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .email-container {
+            max-width: 640px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        .header {
+            background-color: #111827;
+            text-align: center;
+            padding: 20px 16px;
+        }
+
+        .logo {
+            max-width: 180px;
+            height: auto;
+        }
+
+        .content {
+            padding: 30px 24px;
+            line-height: 1.6;
+        }
+
+        .title {
+            margin: 0 0 14px;
+            font-size: 36px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        p {
+            margin: 0 0 14px;
+            font-size: 18px;
+        }
+
+        .coupon-box {
+            border: 1px dashed #7c3aed;
+            background-color: #faf5ff;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 18px 0 20px;
+        }
+
+        .coupon-label {
+            margin: 0 0 6px;
+            color: #6b7280;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .coupon-code {
+            margin: 0;
+            font-family: "Courier New", monospace;
+            font-size: 28px;
+            font-weight: 700;
+            color: #6d28d9;
+        }
+
+        .coupon-note {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #374151;
+        }
+
+        .cta-wrapper {
+            margin: 24px 0 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            text-decoration: none;
+            background: #0f172a;
+            color: #ffffff !important;
+            font-weight: 700;
+            font-size: 16px;
+            padding: 12px 20px;
+            border-radius: 6px;
+        }
+
+        .footer {
+            border-top: 1px solid #e5e7eb;
+            padding: 20px 24px 24px;
+            font-size: 13px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #111827;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+
+        <div class="content">
+            <h1 class="title">A friendly reminder + 10% off</h1>
+            <p>Hi {{customerName}},</p>
+            <p>Your checkout is still pending, so we saved a one-time 10% discount code for you.</p>
+
+            <div class="coupon-box">
+                <p class="coupon-label">Your code</p>
+                <p class="coupon-code">{{discountCode}}</p>
+                <p class="coupon-note">Copy and apply this code at checkout. Valid for 48 hours and one-time use.</p>
+            </div>
+
+            <div class="cta-wrapper">
+                <a class="cta-button" href="{{ctaUrl}}">Complete Your Purchase</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div>Kind regards,<br />The Team @ <a href="{{FRONTEND_URL}}">VapeHub.co.uk</a></div>
+            <div style="margin-top: 8px;">
+                Customer Services: <a href="mailto:customerservices@vapehub.co.uk">customerservices@vapehub.co.uk</a>
+            </div>
+            <div style="margin-top: 6px;">&copy; {{currentYear}} VapeHub. All rights reserved.</div>
+        </div>
+    </div>
+</body>
+</html>
