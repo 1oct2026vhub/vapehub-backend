@@ -55,6 +55,28 @@ const seoController = {
         where: { noIndex: false }
       });
 
+      // Build lookup of product slug -> updatedAt for product lastmod in sitemap
+      const productSlugs = seoEntries
+        .filter((entry) => entry.entityType === 'product' && entry.slug)
+        .map((entry) => entry.slug);
+
+      let productLastmodBySlug = new Map();
+      if (productSlugs.length > 0) {
+        const products = await db.Product.findAll({
+          where: {
+            slug: productSlugs,
+            status: 'published'
+          },
+          attributes: ['slug', 'updatedAt']
+        });
+
+        productLastmodBySlug = new Map(
+          products
+            .filter((product) => product.updatedAt)
+            .map((product) => [product.slug, product.updatedAt])
+        );
+      }
+
       // Add each URL to the sitemap
       seoEntries.forEach(entry => {
         // Default URL
@@ -65,8 +87,13 @@ const seoController = {
           url = `/brand/${entry.slug}/`;
         }
 
+        const productLastmod = entry.entityType === 'product'
+          ? productLastmodBySlug.get(entry.slug)
+          : null;
+
         smStream.write({
           url,
+          ...(productLastmod ? { lastmod: productLastmod.toISOString() } : {}),
           changefreq: 'weekly',
           priority: 0.8
         });
