@@ -1591,18 +1591,18 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 response.deals_text = dealsData.deals_text;
             }
 
-            // // Include latest 3 deals if entity is deal
+            // Include latest 3 deals if entity is deal
             if (slugRelations[0].entity_type === 'deal') {
                 const latestDealsData = await getLatestDeals();
                 response.latest_deals = latestDealsData.deals;
                 response.deals_text = latestDealsData.deals_text;
             }
 
-            // // Include redirect details when a redirect exists for this slug
-            // if (redirectMap.has(slugRelations[0].slug)) {
-            //     response.redirect = true;
-            //     response.redirect_url = redirectMap.get(slugRelations[0].slug);
-            // }
+            // Include redirect details when a redirect exists for this slug
+            if (redirectMap.has(slugRelations[0].slug)) {
+                response.redirect = true;
+                response.redirect_url = redirectMap.get(slugRelations[0].slug);
+            }
 
             return successResponse(res, response, 'Success');
         }
