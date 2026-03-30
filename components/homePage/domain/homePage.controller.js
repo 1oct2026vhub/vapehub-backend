@@ -1598,11 +1598,11 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 response.deals_text = latestDealsData.deals_text;
             }
 
-            // Include redirect details when a redirect exists for this slug
-            if (redirectMap.has(slugRelations[0].slug)) {
-                response.redirect = true;
-                response.redirect_url = redirectMap.get(slugRelations[0].slug);
-            }
+            // // Include redirect details when a redirect exists for this slug
+            // if (redirectMap.has(slugRelations[0].slug)) {
+            //     response.redirect = true;
+            //     response.redirect_url = redirectMap.get(slugRelations[0].slug);
+            // }
 
             return successResponse(res, response, 'Success');
         }
