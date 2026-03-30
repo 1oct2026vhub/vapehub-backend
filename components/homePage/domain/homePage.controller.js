@@ -1333,18 +1333,17 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 hasRedirect = tableRedirects.length > 0;
             }
 
-            // Check blog category redirects by entity_type and slug
+            // Check active redirects by slug (covers legacy dated paths and non-blog entities)
             if (!hasRedirect && nonExistentSlugs.length > 0) {
-                const blogCategoryRedirect = await Redirect.findOne({
+                const slugRedirect = await Redirect.findOne({
                     where: {
-                        entity_type: 'blog_category',
                         slug: { [Op.in]: nonExistentSlugs },
-                        status: 'active',
-                        deletedAt: null
+                        status: 'active'
                     },
-                    attributes: ['slug', 'url_to']
+                    attributes: ['id'],
+                    limit: 1
                 });
-                hasRedirect = blogCategoryRedirect != null;
+                hasRedirect = slugRedirect != null;
             }
 
             // Check soft-deleted products with redirect_url
@@ -1407,18 +1406,17 @@ module.exports.getSlugRelations = async (req, res, next) => {
             });
         }
 
-        // Check for blog category redirects by entity_type and slug (more reliable than path matching)
+        // Check active redirects by slug when path matching does not hit sources
         if (slugArray.length > 0) {
-            const blogCategoryRedirects = await Redirect.findAll({
+            const slugColumnRedirects = await Redirect.findAll({
                 where: {
-                    entity_type: 'blog_category',
                     slug: { [Op.in]: slugArray },
-                    status: 'active',
-                    deletedAt: null
+                    status: 'active'
                 },
-                attributes: ['slug', 'url_to']
+                attributes: ['slug', 'url_to', 'id'],
+                order: [['id', 'ASC']]
             });
-            blogCategoryRedirects.forEach(r => {
+            slugColumnRedirects.forEach(r => {
                 if (!redirectMap.has(r.slug)) {
                     redirectMap.set(r.slug, r.url_to);
                 }
