@@ -1,8 +1,63 @@
-const { SitemapStream, streamToPromise } = require('sitemap');
+const { SitemapStream, SitemapIndexStream, streamToPromise } = require('sitemap');
 const { createGzip } = require('zlib');
+const { Readable } = require('stream');
 const db = require('../../../models');
-const { errorResponse, successResponse } = require("../../../utils/responseUtils");
+const { errorResponse, successResponse } = require('../../../utils/responseUtils');
 const { cacheOrFetch } = require('../../../library/cache');
+const {
+  collectSitemapEntries,
+  getChunk,
+  chunkCount,
+  CHUNK_SIZE
+} = require('../helper/sitemap.generator');
+
+const SITEMAP_ENTRIES_CACHE_KEY = 'sitemap:dynamic-entries:v2';
+const SITEMAP_CACHE_TTL_SECONDS = 300;
+
+async function getCachedSitemapEntries() {
+  return cacheOrFetch(
+    SITEMAP_ENTRIES_CACHE_KEY,
+    () => collectSitemapEntries(),
+    SITEMAP_CACHE_TTL_SECONDS
+  );
+}
+
+function getHostnameBase() {
+  const raw = process.env.FRONTEND_URL || 'https://www.vapehub.co.uk';
+  return raw.endsWith('/') ? raw.slice(0, -1) : raw;
+}
+
+/**
+ * Public base URL for child sitemap files (used in sitemap index XML).
+ * Override if a reverse proxy serves chunks at a different path than /api/seo/.
+ */
+function getSitemapChunkPublicBase() {
+  if (process.env.SITEMAP_CHUNK_BASE_URL) {
+    return process.env.SITEMAP_CHUNK_BASE_URL.replace(/\/+$/, '');
+  }
+  return `${getHostnameBase()}/api/seo`;
+}
+
+function normalizeLastmod(value) {
+  if (!value) return new Date();
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+function writeSitemapStream(entries) {
+  const hostname = getHostnameBase();
+  const smStream = new SitemapStream({ hostname: `${hostname}/` });
+
+  const links = entries.map((e) => ({
+    url: e.path,
+    lastmod: normalizeLastmod(e.lastmod),
+    changefreq: 'weekly',
+    priority: e.path === '/' ? 1.0 : 0.8
+  }));
+
+  return Readable.from(links).pipe(smStream);
+}
 
 const seoController = {
   // Get SEO metadata by slug (cached)
@@ -34,78 +89,35 @@ const seoController = {
     }
   },
 
-  // Generate sitemap
+  /**
+   * Dynamic sitemap from DB: products, categories, brands, blogs, deals, static pages.
+   * >50k URLs → sitemap index pointing at sitemap-chunk-N.xml routes.
+   */
   async generateSitemap(req, res, next) {
     try {
-      const smStream = new SitemapStream({
-        hostname: process.env.FRONTEND_URL || 'https://www.vapehub.co.uk'
-      });
+      const entries = await getCachedSitemapEntries();
+      const chunkBase = getSitemapChunkPublicBase();
 
-      const pipeline = smStream.pipe(createGzip());
-
-      // Add homepage first (not stored in SeoMeta)
-      smStream.write({
-        url: '/',
-        changefreq: 'daily',
-        priority: 1
-      });
-
-      // Get all SEO entries that should be indexed
-      const seoEntries = await db.SeoMeta.findAll({
-        where: { noIndex: false }
-      });
-
-      // Build lookup of product slug -> updatedAt for product lastmod in sitemap
-      const productSlugs = seoEntries
-        .filter((entry) => entry.entityType === 'product' && entry.slug)
-        .map((entry) => entry.slug);
-
-      let productLastmodBySlug = new Map();
-      if (productSlugs.length > 0) {
-        const products = await db.Product.findAll({
-          where: {
-            slug: productSlugs,
-            status: 'published'
-          },
-          attributes: ['slug', 'updatedAt']
-        });
-
-        productLastmodBySlug = new Map(
-          products
-            .filter((product) => product.updatedAt)
-            .map((product) => [product.slug, product.updatedAt])
-        );
+      if (entries.length > CHUNK_SIZE) {
+        const n = chunkCount(entries);
+        const indexStream = new SitemapIndexStream();
+        for (let i = 0; i < n; i++) {
+          indexStream.write({ url: `${chunkBase}/sitemap-chunk-${i}.xml` });
+        }
+        indexStream.end();
+        const buf = await streamToPromise(indexStream);
+        res.header('Content-Type', 'application/xml; charset=utf-8');
+        return res.send(buf);
       }
 
-      // Add each URL to the sitemap
-      seoEntries.forEach(entry => {
-        // Default URL
-        let url = `/${entry.slug}/`;
-
-        // If this SEO entry is for a brand, prefix with /brand
-        if (entry.entityType === 'brand') {
-          url = `/brand/${entry.slug}/`;
-        }
-
-        const productLastmod = entry.entityType === 'product'
-          ? productLastmodBySlug.get(entry.slug)
-          : null;
-
-        smStream.write({
-          url,
-          ...(productLastmod ? { lastmod: productLastmod.toISOString() } : {}),
-          changefreq: 'weekly',
-          priority: 0.8
-        });
-      });
-
-      smStream.end();
-
-      // Stream the sitemap
-      res.header('Content-Type', 'application/xml');
+      const pipeline = writeSitemapStream(entries).pipe(createGzip());
+      res.header('Content-Type', 'application/xml; charset=utf-8');
       res.header('Content-Encoding', 'gzip');
       pipeline.pipe(res).on('error', (e) => {
-        throw e;
+        console.error('Error piping sitemap:', e);
+        if (!res.headersSent) {
+          res.status(500).end();
+        }
       });
     } catch (error) {
       console.error('Error generating sitemap:', error);
@@ -113,10 +125,42 @@ const seoController = {
     }
   },
 
+  /**
+   * One chunk of URLs (max CHUNK_SIZE). Used when total URLs exceed 50,000.
+   */
+  async generateSitemapChunk(req, res, next) {
+    try {
+      const chunkIndex = parseInt(req.params.chunkIndex, 10);
+      if (Number.isNaN(chunkIndex) || chunkIndex < 0) {
+        return res.status(400).type('text/plain').send('Invalid chunk index');
+      }
+
+      const entries = await getCachedSitemapEntries();
+      const chunk = getChunk(entries, chunkIndex);
+
+      if (!chunk.length) {
+        return res.status(404).type('text/plain').send('Sitemap chunk not found');
+      }
+
+      const pipeline = writeSitemapStream(chunk).pipe(createGzip());
+      res.header('Content-Type', 'application/xml; charset=utf-8');
+      res.header('Content-Encoding', 'gzip');
+      pipeline.pipe(res).on('error', (e) => {
+        console.error('Error piping sitemap chunk:', e);
+        if (!res.headersSent) {
+          res.status(500).end();
+        }
+      });
+    } catch (error) {
+      console.error('Error generating sitemap chunk:', error);
+      return errorResponse(res, error, 'Failed to generate sitemap chunk', 500);
+    }
+  },
+
   // Serve robots.txt
   getRobotsTxt(req, res) {
     try {
-      const sitemapUrl = `${process.env.FRONTEND_URL || 'https://www.vapehub.co.uk'}/sitemap.xml`;
+      const sitemapUrl = `${getHostnameBase()}/sitemap.xml`;
       const robotsTxt = `User-agent: *
 Disallow: /admin
 # Allow pagination for crawl discovery
@@ -134,4 +178,4 @@ Sitemap: ${sitemapUrl}`;
   }
 };
 
-module.exports = seoController; 
+module.exports = seoController;
