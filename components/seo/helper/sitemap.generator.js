@@ -179,20 +179,27 @@ async function collectSitemapEntries() {
   }
 
   // --- Blog posts (published) ---
+  // Blog model maps to DB columns created_at/updated_at; selecting `updatedAt` can emit invalid SQL.
   const blogs = await Blog.findAll({
     where: { status: 'published' },
-    attributes: ['id', 'slug', 'updatedAt', 'published_at']
+    attributes: ['id', 'slug', 'published_at', 'updated_at']
   });
   for (const b of blogs) {
     const path = normalizeSitePath(`/${b.slug}`);
     const seo = seoByKey('blog_post', b.id);
     if (seo?.noIndex) continue;
     if (seo && !isCanonicalSelf(seo.canonicalUrl, path, origin)) continue;
-    const contentDate = maxDate([b.updatedAt, b.published_at ? new Date(b.published_at) : null]);
+    const rawUpdated = b.get ? b.get('updated_at') : b.updated_at;
+    const blogUpdated =
+      rawUpdated instanceof Date ? rawUpdated : rawUpdated ? new Date(rawUpdated) : null;
+    const contentDate = maxDate([
+      blogUpdated,
+      b.published_at ? new Date(b.published_at) : null
+    ]);
     if (!seo) {
-      add(path, contentDate || b.updatedAt);
+      add(path, contentDate || blogUpdated || new Date());
     } else {
-      add(path, maxDate([contentDate, b.updatedAt, seo.updatedAt]));
+      add(path, maxDate([contentDate, blogUpdated, seo.updatedAt]));
     }
   }
 
