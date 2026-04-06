@@ -125,8 +125,7 @@ exports.validateGuestPlaceOrder = [
     .isEmail()
     .withMessage("Invalid email format")
     .notEmpty()
-    .withMessage("Email is required")
-    .normalizeEmail(),
+    .withMessage("Email is required"),
 
   body("first_name")
     .notEmpty()

@@ -14,8 +14,7 @@ const authValidation = {
     forgotPassword: [
       check('email')
         .isEmail()
-        .withMessage('Please provide a valid email address.')
-        .normalizeEmail(),
+        .withMessage('Please provide a valid email address.'),
     ],
     resetPassword: [
         check('token').isString().notEmpty().withMessage('Token is required in query params'),
