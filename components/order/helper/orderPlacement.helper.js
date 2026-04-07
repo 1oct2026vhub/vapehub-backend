@@ -14,6 +14,7 @@ const {
     LoyaltyPointsSettings,
     MailSubscription,
     MailSubscriptionSettings,
+    AbandonedCartFlow,
     Brand,
     Category,
     sequelize
@@ -760,6 +761,18 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         loyalty_discount: loyaltyDiscount,
         mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
     }, { transaction });
+
+    // Track abandoned-cart lifecycle from order creation time.
+    await AbandonedCartFlow.findOrCreate({
+        where: { order_id: order.id },
+        defaults: {
+            user_id: user_id || null,
+            order_unique_id: order.order_unique_id || null,
+            customer_email: order.email || null,
+            status: 'entered'
+        },
+        transaction
+    });
 
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
