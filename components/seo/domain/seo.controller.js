@@ -55,6 +55,28 @@ const seoController = {
         where: { noIndex: false }
       });
 
+      // Build lookup of product slug -> updatedAt for product lastmod in sitemap
+      const productSlugs = seoEntries
+        .filter((entry) => entry.entityType === 'product' && entry.slug)
+        .map((entry) => entry.slug);
+
+      let productLastmodBySlug = new Map();
+      if (productSlugs.length > 0) {
+        const products = await db.Product.findAll({
+          where: {
+            slug: productSlugs,
+            status: 'published'
+          },
+          attributes: ['slug', 'updatedAt']
+        });
+
+        productLastmodBySlug = new Map(
+          products
+            .filter((product) => product.updatedAt)
+            .map((product) => [product.slug, product.updatedAt])
+        );
+      }
+
       // Add each URL to the sitemap
       seoEntries.forEach(entry => {
         // Default URL
@@ -65,8 +87,13 @@ const seoController = {
           url = `/brand/${entry.slug}/`;
         }
 
+        const productLastmod = entry.entityType === 'product'
+          ? productLastmodBySlug.get(entry.slug)
+          : null;
+
         smStream.write({
           url,
+          ...(productLastmod ? { lastmod: productLastmod.toISOString() } : {}),
           changefreq: 'weekly',
           priority: 0.8
         });
@@ -92,26 +119,10 @@ const seoController = {
       const sitemapUrl = `${process.env.FRONTEND_URL || 'https://www.vapehub.co.uk'}/sitemap.xml`;
       const robotsTxt = `User-agent: *
 Disallow: /admin
-Disallow: /*?vahukId=
-Disallow: /*?attribute_pa_flavour=
-Disallow: /*?order=
-Disallow: /*?sort_by=
-Disallow: /*?page=
-Disallow: /*?offset=
-Disallow: /*?price_range=
-Disallow: /*?categories=
-Disallow: /*?brand=
-Disallow: /*?deal_id=
-Disallow: /*?attribute_pa_
-Disallow: /*?attribute_1=
-Disallow: /*?attribute_2=
-Disallow: /*?attribute_3=
-Disallow: /*?attribute_4=
-Disallow: /*?attribute_5=
-Disallow: /*?attribute_6=
-Disallow: /*?attribute_7=
-Disallow: /*?attribute_8=
-Disallow: /*?attribute_9=
+# Allow pagination for crawl discovery
+Allow: /*?page=
+# Block all other parameterised URLs
+Disallow: /*?
 Sitemap: ${sitemapUrl}`;
 
       res.type('text/plain');

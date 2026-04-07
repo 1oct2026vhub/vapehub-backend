@@ -506,17 +506,39 @@ module.exports = {
       ];
 
       const existing = await queryInterface.sequelize.query(
-        "SELECT sources FROM redirects WHERE deletedAt IS NULL",
+        "SELECT sources, url_to FROM redirects WHERE deletedAt IS NULL",
         { type: Sequelize.QueryTypes.SELECT, transaction }
       );
-      const existingSet = new Set(existing.map(r => String(r.sources)));
+      const existingMap = new Map(existing.map(r => [String(r.sources), String(r.url_to || '')]));
 
       const now = new Date();
       const inserts = [];
+      const updates = [];
 
       for (const m of MAPPINGS) {
         if (!m.sources || !m.url_to) continue;
-        if (existingSet.has(m.sources)) continue;
+        const currentUrl = existingMap.get(m.sources);
+
+        if (currentUrl != null) {
+          // Source already exists: keep latest mapping from embedded seeder.
+          if (currentUrl !== m.url_to) {
+            updates.push({
+              sources: m.sources,
+              url_to: m.url_to,
+              header_code: 301,
+              status: 'active',
+              entity_type: 'product',
+              slug: m.slug,
+              meta_data: JSON.stringify({
+                imported_from: "hardcoded_redirect_mapping_csv_generator_embedded",
+                old_url_raw: m.oldUrlRaw,
+                redirect_to_raw: m.redirectToRaw
+              }),
+              updatedAt: now
+            });
+          }
+          continue;
+        }
 
         inserts.push({
           sources: m.sources,
@@ -539,14 +561,32 @@ module.exports = {
         });
       }
 
-      if (!inserts.length) {
-        console.log('✅ No new redirects to insert (already present).');
-        await transaction.commit();
-        return;
+      if (inserts.length) {
+        await queryInterface.bulkInsert('redirects', inserts, { transaction });
       }
 
-      await queryInterface.bulkInsert('redirects', inserts, { transaction });
-      console.log(`✅ Inserted ${inserts.length} embedded redirects.`);
+      for (const u of updates) {
+        await queryInterface.bulkUpdate(
+          'redirects',
+          {
+            url_to: u.url_to,
+            header_code: u.header_code,
+            status: u.status,
+            entity_type: u.entity_type,
+            slug: u.slug,
+            meta_data: u.meta_data,
+            updatedAt: u.updatedAt
+          },
+          { sources: u.sources, deletedAt: null },
+          { transaction }
+        );
+      }
+
+      if (!inserts.length && !updates.length) {
+        console.log('✅ No changes needed (all redirects already up-to-date).');
+      } else {
+        console.log(`✅ Inserted ${inserts.length} and updated ${updates.length} embedded redirects.`);
+      }
       await transaction.commit();
     } catch (e) {
       await transaction.rollback();

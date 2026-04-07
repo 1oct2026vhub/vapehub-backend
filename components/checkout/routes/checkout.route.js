@@ -520,7 +520,7 @@ router.post("/guest/apply-coupon",
  */
 router.post("/guest", 
     validateRequest([
-        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+        check('email').isEmail().withMessage('Valid email is required'),
         check('first_name').notEmpty().withMessage('First name is required').trim(),
         check('last_name').notEmpty().withMessage('Last name is required').trim(),
         check('phone').optional().isString().trim(),
@@ -1140,7 +1140,7 @@ router.post("/guest",
  */
 router.post("/guest/checkout-and-order", 
     validateRequest([
-        check('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+        check('email').isEmail().withMessage('Valid email is required'),
         check('first_name').notEmpty().withMessage('First name is required').trim(),
         check('last_name').notEmpty().withMessage('Last name is required').trim(),
         check('phone').optional().isString().trim(),
