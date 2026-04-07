@@ -127,7 +127,33 @@ module.exports = (sequelize, DataTypes) => {
       try {
         // Only proceed if status has changed
         if (instance.changed('status')) {
+          const previousStatus = instance.previous('status');
           const newStatus = instance.status;
+
+          // Mark abandoned-cart flows as recovered when pending orders progress.
+          const recoveryStatuses = ['processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed'];
+          if (previousStatus === 'pending' && recoveryStatuses.includes(newStatus)) {
+            try {
+              const abandonedFlow = await sequelize.models.AbandonedCartFlow.findOne({
+                where: {
+                  order_id: instance.id,
+                  recovered_at: null,
+                  cancelled_at: null
+                }
+              });
+
+              if (abandonedFlow) {
+                await abandonedFlow.update({
+                  recovered_at: new Date(),
+                  recovered_revenue: instance.total,
+                  status: 'recovered',
+                  last_error: null
+                });
+              }
+            } catch (recoveryError) {
+              logger.error('Error updating abandoned cart recovery:', recoveryError);
+            }
+          }
           
           // Check stock levels when order status changes to processing
           if (newStatus === 'processing') {
