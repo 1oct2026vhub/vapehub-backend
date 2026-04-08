@@ -116,6 +116,11 @@ module.exports = {
             subject: 'Complete your order with 10% off | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
+        PROMOTIONAL_NEWSLETTER: {
+            folderName: 'promotional_newsletter',
+            subject: '',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
     },
     orderStatus: {
         //   0 for pending 1 for successful 2 for returned 3 for payment_failed 4 for canceled
