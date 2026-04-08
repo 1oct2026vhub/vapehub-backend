@@ -87,6 +87,14 @@ router.get(
 );
 
 /**
+ * Chunked sitemap (when total URLs exceed 50,000). Referenced from sitemap index XML.
+ */
+router.get(
+    "/sitemap-chunk-:chunkIndex.xml",
+    seoController.generateSitemapChunk
+);
+
+/**
  * @swagger
  * /api/seo/robots.txt:
  *   get:

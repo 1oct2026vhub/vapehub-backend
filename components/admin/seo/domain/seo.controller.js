@@ -152,6 +152,7 @@ const seoController = {
       });
 
       invalidateCachePattern('seo:*').catch(() => {});
+      invalidateCachePattern('sitemap:*').catch(() => {});
       return successResponse(res, { seoMeta }, `SEO metadata ${created ? 'created' : 'updated'} successfully`);
     } catch (error) {
       console.log(error);
