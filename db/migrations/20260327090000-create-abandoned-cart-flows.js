@@ -11,7 +11,7 @@ module.exports = {
         allowNull: false
       },
       order_id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         allowNull: false,
         unique: true,
         references: {
