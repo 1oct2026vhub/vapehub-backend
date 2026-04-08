@@ -422,7 +422,8 @@ module.exports.updateOrderStatus = async (req, res, next) => {
                 {
                     model: User,
                     as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email']
+                    attributes: ['id', 'first_name', 'last_name', 'email'],
+                    paranoid: false
                 },
                 {
                     model: Order.sequelize.models.OrderAddress,
@@ -626,7 +627,8 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                     {
                         model: User,
                         as: 'user',
-                        attributes: ['id', 'first_name', 'last_name', 'email']
+                        attributes: ['id', 'first_name', 'last_name', 'email'],
+                        paranoid: false
                     },
                     {
                         model: OrderItem,
