@@ -1924,6 +1924,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attributes a ON pva.attribute_id = a.id
                 JOIN attribute_terms t ON pva.term_id = t.id
                 WHERE pva.variant_id = :variant_id
+                AND pva.is_visible = true
             `, {
                 replacements: { variant_id: variantBySlugResult[0].id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1994,6 +1995,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :product_id
                 AND pat.deleted_at IS NULL
+                AND pat.is_visible_page = true
             `, {
                 replacements: { product_id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2056,6 +2058,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     SELECT id FROM product_variants 
                     WHERE product_id = :product_id AND status = 'active'
                 )
+                AND pva.is_visible = true
             `, {
                 replacements: variantsReplacements,
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2845,6 +2848,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             JOIN attribute_terms t ON pat.term_id = t.id
             WHERE pat.product_id = :product_id
             AND pat.deleted_at IS NULL
+            AND pat.is_visible_page = true
         `, {
             replacements: { product_id },
             type: Product.sequelize.QueryTypes.SELECT
@@ -2878,6 +2882,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 SELECT id FROM product_variants 
                 WHERE product_id = :product_id AND status = 'active'
             )
+            AND pva.is_visible = true
         `, {
             replacements: { product_id },
             type: Product.sequelize.QueryTypes.SELECT
