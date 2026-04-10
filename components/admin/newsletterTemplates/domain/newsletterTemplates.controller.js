@@ -1,6 +1,6 @@
 /**
- * Beefree SDK auth proxy – calls Beefree loginV2 and returns token for frontend.
- * Keeps client_id and client_secret only on the server.
+ * Stripo token validation proxy.
+ * Keeps Stripo API token only on the server.
  */
 const path = require('path');
 const fs = require('fs').promises;
@@ -24,52 +24,44 @@ async function ensureTemplatesDir() {
   await fs.mkdir(NEWSLETTER_TEMPLATES_DIR, { recursive: true });
 }
 
-async function getBeeToken(req, res) {
+async function validateStripoToken(req, res) {
   try {
-    const uid =
-      req.user?.id ||
-      req.user?.email ||
-      req.query?.uid ||
-      'anonymous';
-    const clientId = process.env.BEEFREE_CLIENT_ID;
-    const clientSecret = process.env.BEEFREE_CLIENT_SECRET;
+    const stripoApiToken = process.env.STRIPO_API_TOKEN;
 
-    if (!clientId || !clientSecret) {
+    if (!stripoApiToken) {
       return res.status(503).json({
         success: false,
-        error: 'Beefree is not configured (missing BEEFREE_CLIENT_ID or BEEFREE_CLIENT_SECRET)',
+        error: 'Stripo is not configured (missing STRIPO_API_TOKEN)',
       });
     }
 
-    const response = await fetch('https://auth.getbee.io/loginV2', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        uid,
-      }),
+    const response = await fetch('https://my.stripo.email/emailgeneration/v1/validate', {
+      method: 'GET',
+      headers: {
+        'Stripo-Api-Auth': stripoApiToken,
+      },
     });
 
     if (!response.ok) {
       const errText = await response.text();
       return res.status(response.status).json({
         success: false,
-        error: errText || 'Beefree auth failed',
+        valid: false,
+        error: errText || 'Stripo token validation failed',
       });
     }
 
-    const data = await response.json();
     res.json({
       success: true,
-      token: data.access_token,
-      v2: data.v2,
+      valid: true,
+      message: 'Stripo token is valid',
     });
   } catch (err) {
-    console.error('Beefree auth error:', err);
+    console.error('Stripo validate error:', err);
     res.status(500).json({
       success: false,
-      error: 'Failed to get Beefree token',
+      valid: false,
+      error: 'Failed to validate Stripo token',
     });
   }
 }
@@ -509,7 +501,7 @@ async function listGroupUsers(req, res) {
 }
 
 module.exports = {
-  getBeeToken,
+  validateStripoToken,
   saveTemplate,
   listTemplates,
   getTemplate,

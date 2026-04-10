@@ -54,23 +54,17 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/auth:
+ * /api/admin/newsletter-templates/validate:
  *   get:
- *     summary: Get Beefree SDK auth token
- *     description: Returns a short-lived access token for initializing the Beefree SDK editor on the frontend.
+ *     summary: Validate Stripo API token
+ *     description: Validates the configured Stripo token before using newsletter builder functionality.
  *     tags:
  *       - Newsletter Templates
- *     parameters:
- *       - in: query
- *         name: uid
- *         required: false
- *         schema:
- *           type: string
- *         description: Optional override for the user identifier; if omitted, the backend derives it from the authenticated user.
- *         example: "admin-123"
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Auth token generated successfully
+ *         description: Stripo token validated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -78,23 +72,18 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  *               properties:
  *                 success:
  *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     token:
- *                       type: string
- *                     v2:
- *                       type: boolean
+ *                 valid:
+ *                   type: boolean
  *                 message:
  *                   type: string
  *       401:
  *         description: Unauthorized
  *       503:
- *         description: Beefree not configured
+ *         description: Stripo not configured
  *       500:
  *         description: Server error
  */
-router.get('/auth', newsletterTemplatesController.getBeeToken);
+router.get('/validate', [authMiddleware(true)], newsletterTemplatesController.validateStripoToken);
 
 /**
  * @swagger
