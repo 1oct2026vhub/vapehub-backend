@@ -1,10 +1,11 @@
 /**
- * Stripo token validation proxy.
- * Keeps Stripo API token only on the server.
+ * Stripo auth token proxy.
+ * Keeps Stripo credentials only on the server.
  */
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
 const { NewsletterGroup, NewsletterGroupUser, User } = require('../../../../models');
 
@@ -24,45 +25,45 @@ async function ensureTemplatesDir() {
   await fs.mkdir(NEWSLETTER_TEMPLATES_DIR, { recursive: true });
 }
 
-async function validateStripoToken(req, res) {
+async function getStripoAuthToken(req, res) {
   try {
-    const stripoApiToken = process.env.STRIPO_API_TOKEN;
+    const pluginId = process.env.STRIPO_PLUGIN_ID;
+    const secretKey = process.env.STRIPO_SECRET_KEY;
 
-    if (!stripoApiToken) {
-      return res.status(503).json({
-        success: false,
-        error: 'Stripo is not configured (missing STRIPO_API_TOKEN)',
-      });
+    if (!pluginId || !secretKey) {
+      return errorResponse(
+        res,
+        { statusCode: 503 },
+        'Stripo is not configured (missing STRIPO_PLUGIN_ID or STRIPO_SECRET_KEY)',
+        503
+      );
     }
 
-    const response = await fetch('https://my.stripo.email/emailgeneration/v1/validate', {
-      method: 'GET',
-      headers: {
-        'Stripo-Api-Auth': stripoApiToken,
+    const { data } = await axios.post(
+      'https://plugins.stripo.email/api/v1/auth',
+      {
+        pluginId,
+        secretKey,
       },
-    });
+      {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return res.status(response.status).json({
-        success: false,
-        valid: false,
-        error: errText || 'Stripo token validation failed',
-      });
-    }
-
-    res.json({
-      success: true,
-      valid: true,
-      message: 'Stripo token is valid',
-    });
+    return successResponse(
+      res,
+      {
+        pluginId,
+        token: data?.token || null,
+      },
+      'Stripo token generated',
+      200
+    );
   } catch (err) {
-    console.error('Stripo validate error:', err);
-    res.status(500).json({
-      success: false,
-      valid: false,
-      error: 'Failed to validate Stripo token',
-    });
+    return errorResponse(res, err, err?.message || 'Failed to authenticate Stripo', 500);
   }
 }
 
@@ -501,7 +502,7 @@ async function listGroupUsers(req, res) {
 }
 
 module.exports = {
-  validateStripoToken,
+  getStripoAuthToken,
   saveTemplate,
   listTemplates,
   getTemplate,

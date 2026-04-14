@@ -54,17 +54,17 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/validate:
+ * /api/admin/newsletter-templates/auth:
  *   get:
- *     summary: Validate Stripo API token
- *     description: Validates the configured Stripo token before using newsletter builder functionality.
+ *     summary: Generate Stripo auth token
+ *     description: Generates a short-lived Stripo token using pluginId and secretKey from backend environment variables.
  *     tags:
  *       - Newsletter Templates
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Stripo token validated successfully
+ *         description: Stripo token generated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -72,8 +72,13 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  *               properties:
  *                 success:
  *                   type: boolean
- *                 valid:
- *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     pluginId:
+ *                       type: string
+ *                     token:
+ *                       type: string
  *                 message:
  *                   type: string
  *       401:
@@ -83,7 +88,7 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  *       500:
  *         description: Server error
  */
-router.get('/validate', [authMiddleware(true)], newsletterTemplatesController.validateStripoToken);
+router.get('/auth', [authMiddleware(true)], newsletterTemplatesController.getStripoAuthToken);
 
 /**
  * @swagger
