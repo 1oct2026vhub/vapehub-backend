@@ -91,12 +91,14 @@ async function listDefaultTemplates(req, res) {
     const pluginId = process.env.STRIPO_PLUGIN_ID;
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
-    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? '').trim();
+    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'API').trim();
+    const templateType = String(req?.query?.type ?? 'FREE').toUpperCase();
+    const allowedTypes = ['BASIC', 'FREE', 'PREMIUM'];
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSizeRaw = parseInt(req.query.pageSize, 10);
     const pageSize =
       Number.isFinite(pageSizeRaw) && pageSizeRaw > 0
-        ? Math.min(pageSizeRaw, 100)
+        ? Math.min(pageSizeRaw, 50)
         : 20;
 
     if (!pluginId || !secretKey) {
@@ -112,15 +114,16 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'userId is required', 400);
     }
 
+    if (!allowedTypes.includes(templateType)) {
+      return errorResponse(res, { statusCode: 400 }, 'type must be BASIC, FREE, or PREMIUM', 400);
+    }
+
     const authPayload = {
       pluginId,
       secretKey,
       userId: resolvedUserId,
+      role: resolvedRole || 'API',
     };
-
-    if (resolvedRole) {
-      authPayload.role = resolvedRole;
-    }
 
     const { data: authData } = await axios.post(
       'https://plugins.stripo.email/api/v1/auth',
@@ -138,29 +141,27 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
     }
 
-    const { data } = await axios.get('https://plugins.stripo.email/api/v1/templates', {
+    const { data } = await axios.get('https://my.stripo.email/bapi/plugin-templates/v1/templates', {
       timeout: 15000,
       headers: {
         'ES-PLUGIN-AUTH': `Bearer ${token}`,
       },
+      params: {
+        type: templateType,
+        sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
+        limit: pageSize,
+        page,
+      },
     });
 
-    const templates = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.templates)
-        ? data.templates
-        : [];
-
-    const total = templates.length;
+    const templates = Array.isArray(data?.data) ? data.data : [];
+    const total = Number.isFinite(Number(data?.total)) ? Number(data.total) : templates.length;
     const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
     const safePage = Math.min(page, totalPages);
-    const start = (safePage - 1) * pageSize;
-    const end = start + pageSize;
-    const pagedTemplates = templates.slice(start, end);
 
     return successResponse(
       res,
-      pagedTemplates,
+      templates,
       'Default templates fetched',
       200,
       {
