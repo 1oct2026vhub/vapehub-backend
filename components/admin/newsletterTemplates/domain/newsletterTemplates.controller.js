@@ -86,6 +86,65 @@ async function getStripoAuthToken(req, res) {
   }
 }
 
+async function listDefaultTemplates(req, res) {
+  try {
+    const pluginId = process.env.STRIPO_PLUGIN_ID;
+    const secretKey = process.env.STRIPO_SECRET_KEY;
+    const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
+    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? '').trim();
+
+    if (!pluginId || !secretKey) {
+      return errorResponse(
+        res,
+        { statusCode: 503 },
+        'Stripo is not configured (missing STRIPO_PLUGIN_ID or STRIPO_SECRET_KEY)',
+        503
+      );
+    }
+
+    if (!resolvedUserId) {
+      return errorResponse(res, { statusCode: 400 }, 'userId is required', 400);
+    }
+
+    const authPayload = {
+      pluginId,
+      secretKey,
+      userId: resolvedUserId,
+    };
+
+    if (resolvedRole) {
+      authPayload.role = resolvedRole;
+    }
+
+    const { data: authData } = await axios.post(
+      'https://plugins.stripo.email/api/v1/auth',
+      authPayload,
+      {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const token = authData?.token;
+    if (!token) {
+      return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
+    }
+
+    const { data } = await axios.get('https://plugins.stripo.email/api/v1/templates', {
+      timeout: 15000,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return successResponse(res, data, 'Default templates fetched', 200);
+  } catch (err) {
+    return errorResponse(res, err, err?.message || 'Failed to fetch default templates', 500);
+  }
+}
+
 /**
  * Save newsletter template to files under newsletterTemplates/<id>/.
  * Body: { name, subject, designJson, html, id? }
@@ -522,6 +581,7 @@ async function listGroupUsers(req, res) {
 
 module.exports = {
   getStripoAuthToken,
+  listDefaultTemplates,
   saveTemplate,
   listTemplates,
   getTemplate,

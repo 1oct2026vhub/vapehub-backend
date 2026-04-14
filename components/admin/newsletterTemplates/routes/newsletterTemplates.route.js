@@ -124,6 +124,43 @@ router.post('/auth', [authMiddleware(true)], newsletterTemplatesController.getSt
 
 /**
  * @swagger
+ * /api/admin/newsletter-templates/default-templates:
+ *   get:
+ *     summary: List Stripo default templates
+ *     description: Fetches Stripo default templates using a server-generated auth token.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional fallback user id when auth middleware user is unavailable.
+ *       - in: query
+ *         name: role
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional user role for Stripo token context.
+ *     responses:
+ *       200:
+ *         description: Default templates fetched successfully
+ *       400:
+ *         description: userId is required
+ *       401:
+ *         description: Unauthorized
+ *       503:
+ *         description: Stripo not configured
+ *       500:
+ *         description: Server error
+ */
+router.get('/default-templates', [authMiddleware(true)], newsletterTemplatesController.listDefaultTemplates);
+
+/**
+ * @swagger
  * /api/admin/newsletter-templates/groups:
  *   post:
  *     summary: Create a newsletter group
