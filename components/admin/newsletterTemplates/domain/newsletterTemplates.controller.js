@@ -141,7 +141,7 @@ async function listDefaultTemplates(req, res) {
     const { data } = await axios.get('https://plugins.stripo.email/api/v1/templates', {
       timeout: 15000,
       headers: {
-        Authorization: `Bearer ${token}`,
+        'ES-PLUGIN-AUTH': `Bearer ${token}`,
       },
     });
 
