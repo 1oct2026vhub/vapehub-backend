@@ -91,9 +91,10 @@ async function listDefaultTemplates(req, res) {
     const pluginId = process.env.STRIPO_PLUGIN_ID;
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
-    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'API').trim();
+    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
     const templateType = String(req?.query?.type ?? 'FREE').toUpperCase();
     const allowedTypes = ['BASIC', 'FREE', 'PREMIUM'];
+    const allowedRoles = ['USER', 'ADMIN', 'API'];
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSizeRaw = parseInt(req.query.pageSize, 10);
     const pageSize =
@@ -118,11 +119,15 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'type must be BASIC, FREE, or PREMIUM', 400);
     }
 
+    if (!allowedRoles.includes(resolvedRole)) {
+      return errorResponse(res, { statusCode: 400 }, 'role must be USER, ADMIN, or API', 400);
+    }
+
     const authPayload = {
       pluginId,
       secretKey,
       userId: resolvedUserId,
-      role: resolvedRole || 'API',
+      role: resolvedRole,
     };
 
     const { data: authData } = await axios.post(
@@ -150,7 +155,8 @@ async function listDefaultTemplates(req, res) {
         type: templateType,
         sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
         limit: pageSize,
-        page,
+        // Stripo templates API uses zero-based page indexing.
+        page: page - 1,
       },
     });
 
@@ -172,7 +178,17 @@ async function listDefaultTemplates(req, res) {
       }
     );
   } catch (err) {
-    return errorResponse(res, err, err?.message || 'Failed to fetch default templates', 500);
+    const providerError =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null);
+
+    return errorResponse(
+      res,
+      err,
+      providerError || err?.message || 'Failed to fetch default templates',
+      err?.response?.status || 500
+    );
   }
 }
 
