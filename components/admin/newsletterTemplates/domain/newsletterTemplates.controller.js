@@ -92,7 +92,7 @@ async function listDefaultTemplates(req, res) {
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
     const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
-    const templateType = String(req?.query?.type ?? 'FREE').toUpperCase();
+    const templateType = String(req?.query?.type ?? 'BASIC').toUpperCase();
     const allowedTypes = ['BASIC', 'FREE', 'PREMIUM'];
     const allowedRoles = ['USER', 'ADMIN', 'API'];
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -146,6 +146,11 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
     }
 
+    const stripoPageRaw = parseInt(req.query.page, 10);
+    const stripoPage = Number.isFinite(stripoPageRaw)
+      ? Math.max(0, stripoPageRaw)
+      : Math.max(0, page - 1);
+
     const { data } = await axios.get('https://my.stripo.email/bapi/plugin-templates/v1/templates', {
       timeout: 15000,
       headers: {
@@ -155,8 +160,7 @@ async function listDefaultTemplates(req, res) {
         type: templateType,
         sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
         limit: pageSize,
-        // Stripo templates API uses zero-based page indexing.
-        page: page - 1,
+        page: stripoPage,
       },
     });
 
