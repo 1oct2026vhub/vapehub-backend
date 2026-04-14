@@ -56,8 +56,8 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  * @swagger
  * /api/admin/newsletter-templates/auth:
  *   get:
- *     summary: Generate Stripo auth token
- *     description: Generates a short-lived Stripo token using pluginId and secretKey from backend environment variables.
+ *     summary: Generate Stripo auth token (legacy)
+ *     description: Generates a short-lived Stripo token. Uses authenticated user id from token for co-edit compatibility.
  *     tags:
  *       - Newsletter Templates
  *     security:
@@ -79,6 +79,8 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  *                       type: string
  *                     token:
  *                       type: string
+ *                     userId:
+ *                       type: string
  *                 message:
  *                   type: string
  *       401:
@@ -87,8 +89,38 @@ const authMiddleware = require('../../../../library/middleware/authMiddleware');
  *         description: Stripo not configured
  *       500:
  *         description: Server error
+ *   post:
+ *     summary: Generate Stripo auth token
+ *     description: Generates a short-lived Stripo token and accepts optional role in body. Uses authenticated user id (or body userId fallback).
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Stripo token generated successfully
+ *       400:
+ *         description: userId is required
+ *       401:
+ *         description: Unauthorized
+ *       503:
+ *         description: Stripo not configured
+ *       500:
+ *         description: Server error
  */
 router.get('/auth', [authMiddleware(true)], newsletterTemplatesController.getStripoAuthToken);
+router.post('/auth', [authMiddleware(true)], newsletterTemplatesController.getStripoAuthToken);
 
 /**
  * @swagger

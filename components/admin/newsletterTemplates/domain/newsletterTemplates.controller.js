@@ -29,6 +29,8 @@ async function getStripoAuthToken(req, res) {
   try {
     const pluginId = process.env.STRIPO_PLUGIN_ID;
     const secretKey = process.env.STRIPO_SECRET_KEY;
+    const resolvedUserId = String(req?.user?.id ?? req?.body?.userId ?? '').trim();
+    const resolvedRole = String(req?.body?.role ?? req?.user?.role ?? '').trim();
 
     if (!pluginId || !secretKey) {
       return errorResponse(
@@ -39,12 +41,28 @@ async function getStripoAuthToken(req, res) {
       );
     }
 
+    if (!resolvedUserId) {
+      return errorResponse(
+        res,
+        { statusCode: 400 },
+        'userId is required for Stripo co-edit token generation',
+        400
+      );
+    }
+
+    const authPayload = {
+      pluginId,
+      secretKey,
+      userId: resolvedUserId,
+    };
+
+    if (resolvedRole) {
+      authPayload.role = resolvedRole;
+    }
+
     const { data } = await axios.post(
       'https://plugins.stripo.email/api/v1/auth',
-      {
-        pluginId,
-        secretKey,
-      },
+      authPayload,
       {
         timeout: 10000,
         headers: {
@@ -58,6 +76,7 @@ async function getStripoAuthToken(req, res) {
       {
         pluginId,
         token: data?.token || null,
+        userId: resolvedUserId,
       },
       'Stripo token generated',
       200
