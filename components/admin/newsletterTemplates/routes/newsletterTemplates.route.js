@@ -145,6 +145,21 @@ router.post('/auth', [authMiddleware(true)], newsletterTemplatesController.getSt
  *         schema:
  *           type: string
  *         description: Optional user role for Stripo token context.
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Page number (1-based). Defaults to 1.
+ *       - in: query
+ *         name: pageSize
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Number of templates per page. Defaults to 20.
  *     responses:
  *       200:
  *         description: Default templates fetched successfully

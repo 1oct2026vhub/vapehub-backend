@@ -92,6 +92,12 @@ async function listDefaultTemplates(req, res) {
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
     const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? '').trim();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSizeRaw = parseInt(req.query.pageSize, 10);
+    const pageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw > 0
+        ? Math.min(pageSizeRaw, 100)
+        : 20;
 
     if (!pluginId || !secretKey) {
       return errorResponse(
@@ -139,7 +145,31 @@ async function listDefaultTemplates(req, res) {
       },
     });
 
-    return successResponse(res, data, 'Default templates fetched', 200);
+    const templates = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.templates)
+        ? data.templates
+        : [];
+
+    const total = templates.length;
+    const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const end = start + pageSize;
+    const pagedTemplates = templates.slice(start, end);
+
+    return successResponse(
+      res,
+      pagedTemplates,
+      'Default templates fetched',
+      200,
+      {
+        page: safePage,
+        pageSize,
+        total,
+        totalPages,
+      }
+    );
   } catch (err) {
     return errorResponse(res, err, err?.message || 'Failed to fetch default templates', 500);
   }
