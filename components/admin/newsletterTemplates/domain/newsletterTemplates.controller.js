@@ -196,6 +196,83 @@ async function listDefaultTemplates(req, res) {
   }
 }
 
+async function getDefaultTemplateDetail(req, res) {
+  try {
+    const pluginId = process.env.STRIPO_PLUGIN_ID;
+    const secretKey = process.env.STRIPO_SECRET_KEY;
+    const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
+    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
+    const allowedRoles = ['USER', 'ADMIN', 'API'];
+    const templateId = Number.parseInt(req?.params?.templateId, 10);
+
+    if (!pluginId || !secretKey) {
+      return errorResponse(
+        res,
+        { statusCode: 503 },
+        'Stripo is not configured (missing STRIPO_PLUGIN_ID or STRIPO_SECRET_KEY)',
+        503
+      );
+    }
+
+    if (!resolvedUserId) {
+      return errorResponse(res, { statusCode: 400 }, 'userId is required', 400);
+    }
+
+    if (!allowedRoles.includes(resolvedRole)) {
+      return errorResponse(res, { statusCode: 400 }, 'role must be USER, ADMIN, or API', 400);
+    }
+
+    if (!Number.isInteger(templateId) || templateId <= 0) {
+      return errorResponse(res, { statusCode: 400 }, 'templateId must be a positive integer', 400);
+    }
+
+    const { data: authData } = await axios.post(
+      'https://plugins.stripo.email/api/v1/auth',
+      {
+        pluginId,
+        secretKey,
+        userId: resolvedUserId,
+        role: resolvedRole,
+      },
+      {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const token = authData?.token;
+    if (!token) {
+      return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
+    }
+
+    const { data } = await axios.get(
+      `https://my.stripo.email/bapi/plugin-templates/v1/templates/${templateId}`,
+      {
+        timeout: 15000,
+        headers: {
+          'ES-PLUGIN-AUTH': `Bearer ${token}`,
+        },
+      }
+    );
+
+    return successResponse(res, data, 'Default template detail fetched', 200);
+  } catch (err) {
+    const providerError =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null);
+
+    return errorResponse(
+      res,
+      err,
+      providerError || err?.message || 'Failed to fetch default template detail',
+      err?.response?.status || 500
+    );
+  }
+}
+
 /**
  * Save newsletter template to files under newsletterTemplates/<id>/.
  * Body: { name, subject, designJson, html, id? }
@@ -633,6 +710,7 @@ async function listGroupUsers(req, res) {
 module.exports = {
   getStripoAuthToken,
   listDefaultTemplates,
+  getDefaultTemplateDetail,
   saveTemplate,
   listTemplates,
   getTemplate,
