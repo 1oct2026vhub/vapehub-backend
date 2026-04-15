@@ -1228,6 +1228,82 @@ const handlePaymentError = async (order, webhookData) => {
             webhookData.eventDetails.amount.currencyCode
         );
 
+        const failureReasonRaw = webhookData?.eventDetails?.failureReason;
+        const failureReason =
+            failureReasonRaw?.description ||
+            failureReasonRaw?.message ||
+            failureReasonRaw?.reason ||
+            (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Unknown Worldpay failure');
+
+        const historyStats = await Order.findOne({
+            where: {
+                user_id: order.user_id,
+                id: { [Op.ne]: order.id }
+            },
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.col('id')), 'previousOrdersCount'],
+                [
+                    sequelize.fn(
+                        'SUM',
+                        sequelize.literal(
+                            "CASE WHEN status IN ('processing','completed','delivered') THEN 1 ELSE 0 END"
+                        )
+                    ),
+                    'previousSuccessfulOrders'
+                ]
+            ],
+            raw: true
+        });
+
+        const previousOrdersCount = Number(historyStats?.previousOrdersCount || 0);
+        const previousSuccessfulOrders = Number(historyStats?.previousSuccessfulOrders || 0);
+
+        const lastSuccessfulOrder = await Order.findOne({
+            where: {
+                user_id: order.user_id,
+                id: { [Op.ne]: order.id },
+                status: { [Op.in]: ['processing', 'completed', 'delivered'] }
+            },
+            attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+            order: [['createdAt', 'DESC']]
+        });
+
+        const lastOrder = await Order.findOne({
+            where: {
+                user_id: order.user_id,
+                id: { [Op.ne]: order.id }
+            },
+            attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+            order: [['createdAt', 'DESC']]
+        });
+
+        const customerHistory = {
+            hasPreviousOrders: previousOrdersCount > 0,
+            previousOrdersCount,
+            previousSuccessfulOrders,
+            previousFailedOrders: Math.max(previousOrdersCount - previousSuccessfulOrders, 0),
+            lastOrder: lastOrder
+                ? {
+                    id: lastOrder.id,
+                    orderCode: lastOrder.order_code,
+                    orderUniqueId: lastOrder.order_unique_id,
+                    status: lastOrder.status,
+                    total: lastOrder.total,
+                    createdAt: lastOrder.createdAt
+                }
+                : null,
+            lastSuccessfulOrder: lastSuccessfulOrder
+                ? {
+                    id: lastSuccessfulOrder.id,
+                    orderCode: lastSuccessfulOrder.order_code,
+                    orderUniqueId: lastSuccessfulOrder.order_unique_id,
+                    status: lastSuccessfulOrder.status,
+                    total: lastSuccessfulOrder.total,
+                    createdAt: lastSuccessfulOrder.createdAt
+                }
+                : null
+        };
+
         // Update order status to failed
         await order.update({ status: 'fail' });   //, { transaction }
 
@@ -1247,7 +1323,16 @@ const handlePaymentError = async (order, webhookData) => {
                 currency: convertedAmount.currencyCode,
                 type: webhookData.eventDetails.type,
                 classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
+                paymentLink: webhookData.eventDetails._links?.payment?.href,
+                failureReason,
+                failureReasonRaw,
+                customer: {
+                    userId: order.user_id,
+                    email: order.user?.email || null,
+                    firstName: order.user?.first_name || null,
+                    lastName: order.user?.last_name || null
+                },
+                customerHistory
             })
         });
 
@@ -1258,6 +1343,15 @@ const handlePaymentError = async (order, webhookData) => {
             }
         });
 
+        const transactionMetadata = {
+            eventId: webhookData.eventId,
+            eventTimestamp: webhookData.eventTimestamp,
+            eventDate: webhookData.eventDetails.date,
+            type: webhookData.eventDetails.type,
+            classification: webhookData.eventDetails.classification,
+            paymentLink: webhookData.eventDetails._links?.payment?.href
+        };
+
         if (existingTransaction) {
             // Update existing transaction
             await existingTransaction.update({
@@ -1265,14 +1359,7 @@ const handlePaymentError = async (order, webhookData) => {
                 amount: convertedAmount.value,
                 currency: convertedAmount.currencyCode,
                 notes: 'Payment failed',
-                metadata: {
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                }
+                metadata: transactionMetadata
             });
 
             
@@ -1288,14 +1375,7 @@ const handlePaymentError = async (order, webhookData) => {
                 status: 'FAILED',
                 referenceNumber: webhookData.eventDetails.transactionReference,
                 notes: 'Payment failed',
-                metadata: {
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                }
+                metadata: transactionMetadata
             });
 
             
