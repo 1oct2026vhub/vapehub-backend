@@ -5,9 +5,14 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
 const { NewsletterGroup, NewsletterGroupUser, User } = require('../../../../models');
+const {
+  getStripoAccessToken,
+  fetchDefaultTemplates,
+  fetchDefaultTemplateDetail,
+  getProviderErrorMessage,
+} = require('../helper/stripo.helper');
 
 const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
 
@@ -30,7 +35,7 @@ async function getStripoAuthToken(req, res) {
     const pluginId = process.env.STRIPO_PLUGIN_ID;
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.body?.userId ?? '').trim();
-    const resolvedRole = String(req?.body?.role ?? req?.user?.role ?? '').trim();
+    const resolvedRole = String(req?.body?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
 
     if (!pluginId || !secretKey) {
       return errorResponse(
@@ -49,33 +54,18 @@ async function getStripoAuthToken(req, res) {
         400
       );
     }
-
-    const authPayload = {
+    const token = await getStripoAccessToken({
       pluginId,
       secretKey,
       userId: resolvedUserId,
-    };
-
-    if (resolvedRole) {
-      authPayload.role = resolvedRole;
-    }
-
-    const { data } = await axios.post(
-      'https://plugins.stripo.email/api/v1/auth',
-      authPayload,
-      {
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+      role: resolvedRole,
+    });
 
     return successResponse(
       res,
       {
         pluginId,
-        token: data?.token || null,
+        token: token || null,
         userId: resolvedUserId,
       },
       'Stripo token generated',
@@ -123,25 +113,12 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'role must be USER, ADMIN, or API', 400);
     }
 
-    const authPayload = {
+    const token = await getStripoAccessToken({
       pluginId,
       secretKey,
       userId: resolvedUserId,
       role: resolvedRole,
-    };
-
-    const { data: authData } = await axios.post(
-      'https://plugins.stripo.email/api/v1/auth',
-      authPayload,
-      {
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const token = authData?.token;
+    });
     if (!token) {
       return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
     }
@@ -151,17 +128,12 @@ async function listDefaultTemplates(req, res) {
       ? Math.max(0, stripoPageRaw)
       : Math.max(0, page - 1);
 
-    const { data } = await axios.get('https://my.stripo.email/bapi/plugin-templates/v1/templates', {
-      timeout: 15000,
-      headers: {
-        'ES-PLUGIN-AUTH': `Bearer ${token}`,
-      },
-      params: {
-        type: templateType,
-        sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
-        limit: pageSize,
-        page: stripoPage,
-      },
+    const data = await fetchDefaultTemplates({
+      token,
+      type: templateType,
+      sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
+      limit: pageSize,
+      page: stripoPage,
     });
 
     const templates = Array.isArray(data?.data) ? data.data : [];
@@ -182,10 +154,7 @@ async function listDefaultTemplates(req, res) {
       }
     );
   } catch (err) {
-    const providerError =
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      (typeof err?.response?.data === 'string' ? err.response.data : null);
+    const providerError = getProviderErrorMessage(err);
 
     return errorResponse(
       res,
@@ -226,43 +195,21 @@ async function getDefaultTemplateDetail(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'templateId must be a positive integer', 400);
     }
 
-    const { data: authData } = await axios.post(
-      'https://plugins.stripo.email/api/v1/auth',
-      {
-        pluginId,
-        secretKey,
-        userId: resolvedUserId,
-        role: resolvedRole,
-      },
-      {
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const token = authData?.token;
+    const token = await getStripoAccessToken({
+      pluginId,
+      secretKey,
+      userId: resolvedUserId,
+      role: resolvedRole,
+    });
     if (!token) {
       return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
     }
 
-    const { data } = await axios.get(
-      `https://my.stripo.email/bapi/plugin-templates/v1/templates/${templateId}`,
-      {
-        timeout: 15000,
-        headers: {
-          'ES-PLUGIN-AUTH': `Bearer ${token}`,
-        },
-      }
-    );
+    const data = await fetchDefaultTemplateDetail({ token, templateId });
 
     return successResponse(res, data, 'Default template detail fetched', 200);
   } catch (err) {
-    const providerError =
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      (typeof err?.response?.data === 'string' ? err.response.data : null);
+    const providerError = getProviderErrorMessage(err);
 
     return errorResponse(
       res,
