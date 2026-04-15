@@ -17,6 +17,83 @@ const convertAmountToDecimal = (amount, currencyCode) => {
     };
 };
 
+const buildCustomerOrderContext = async (order) => {
+    const historyStats = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id }
+        },
+        attributes: [
+            [sequelize.fn('COUNT', sequelize.col('id')), 'previousOrdersCount'],
+            [
+                sequelize.fn(
+                    'SUM',
+                    sequelize.literal("CASE WHEN status IN ('processing','completed','delivered') THEN 1 ELSE 0 END")
+                ),
+                'previousSuccessfulOrders'
+            ]
+        ],
+        raw: true
+    });
+
+    const previousOrdersCount = Number(historyStats?.previousOrdersCount || 0);
+    const previousSuccessfulOrders = Number(historyStats?.previousSuccessfulOrders || 0);
+
+    const lastOrder = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id }
+        },
+        attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+        order: [['createdAt', 'DESC']]
+    });
+
+    const lastSuccessfulOrder = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id },
+            status: { [Op.in]: ['processing', 'completed', 'delivered'] }
+        },
+        attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+        order: [['createdAt', 'DESC']]
+    });
+
+    return {
+        customer: {
+            userId: order.user_id,
+            email: order.user?.email || null,
+            firstName: order.user?.first_name || null,
+            lastName: order.user?.last_name || null
+        },
+        customerHistory: {
+            hasPreviousOrders: previousOrdersCount > 0,
+            previousOrdersCount,
+            previousSuccessfulOrders,
+            previousFailedOrders: Math.max(previousOrdersCount - previousSuccessfulOrders, 0),
+            lastOrder: lastOrder
+                ? {
+                    id: lastOrder.id,
+                    orderCode: lastOrder.order_code,
+                    orderUniqueId: lastOrder.order_unique_id,
+                    status: lastOrder.status,
+                    total: lastOrder.total,
+                    createdAt: lastOrder.createdAt
+                }
+                : null,
+            lastSuccessfulOrder: lastSuccessfulOrder
+                ? {
+                    id: lastSuccessfulOrder.id,
+                    orderCode: lastSuccessfulOrder.order_code,
+                    orderUniqueId: lastSuccessfulOrder.order_unique_id,
+                    status: lastSuccessfulOrder.status,
+                    total: lastSuccessfulOrder.total,
+                    createdAt: lastSuccessfulOrder.createdAt
+                }
+                : null
+        }
+    };
+};
+
 module.exports.handleWorldpayWebhook = async (req, res) => {
     try {
         // Get raw body data
@@ -190,6 +267,7 @@ const handleCancelledPayment = async (order, webhookData) => {
             order.total,
             webhookData.eventDetails.amount.currencyCode
         );
+        const customerOrderContext = await buildCustomerOrderContext(order);
 
         // Update order status to cancelled
         // await order.update({ status: 'cancel' });   //, { transaction }
@@ -218,7 +296,8 @@ const handleCancelledPayment = async (order, webhookData) => {
                     currency: convertedAmount.currencyCode,
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                    paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...customerOrderContext
                 })
             });
 
@@ -240,7 +319,8 @@ const handleCancelledPayment = async (order, webhookData) => {
                     currency: convertedAmount.currencyCode,
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                    paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...customerOrderContext
                 })
             });
 
@@ -1227,82 +1307,13 @@ const handlePaymentError = async (order, webhookData) => {
             order.total,
             webhookData.eventDetails.amount.currencyCode
         );
-
         const failureReasonRaw = webhookData?.eventDetails?.failureReason;
         const failureReason =
             failureReasonRaw?.description ||
             failureReasonRaw?.message ||
             failureReasonRaw?.reason ||
-            (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Unknown Worldpay failure');
-
-        const historyStats = await Order.findOne({
-            where: {
-                user_id: order.user_id,
-                id: { [Op.ne]: order.id }
-            },
-            attributes: [
-                [sequelize.fn('COUNT', sequelize.col('id')), 'previousOrdersCount'],
-                [
-                    sequelize.fn(
-                        'SUM',
-                        sequelize.literal(
-                            "CASE WHEN status IN ('processing','completed','delivered') THEN 1 ELSE 0 END"
-                        )
-                    ),
-                    'previousSuccessfulOrders'
-                ]
-            ],
-            raw: true
-        });
-
-        const previousOrdersCount = Number(historyStats?.previousOrdersCount || 0);
-        const previousSuccessfulOrders = Number(historyStats?.previousSuccessfulOrders || 0);
-
-        const lastSuccessfulOrder = await Order.findOne({
-            where: {
-                user_id: order.user_id,
-                id: { [Op.ne]: order.id },
-                status: { [Op.in]: ['processing', 'completed', 'delivered'] }
-            },
-            attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
-            order: [['createdAt', 'DESC']]
-        });
-
-        const lastOrder = await Order.findOne({
-            where: {
-                user_id: order.user_id,
-                id: { [Op.ne]: order.id }
-            },
-            attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
-            order: [['createdAt', 'DESC']]
-        });
-
-        const customerHistory = {
-            hasPreviousOrders: previousOrdersCount > 0,
-            previousOrdersCount,
-            previousSuccessfulOrders,
-            previousFailedOrders: Math.max(previousOrdersCount - previousSuccessfulOrders, 0),
-            lastOrder: lastOrder
-                ? {
-                    id: lastOrder.id,
-                    orderCode: lastOrder.order_code,
-                    orderUniqueId: lastOrder.order_unique_id,
-                    status: lastOrder.status,
-                    total: lastOrder.total,
-                    createdAt: lastOrder.createdAt
-                }
-                : null,
-            lastSuccessfulOrder: lastSuccessfulOrder
-                ? {
-                    id: lastSuccessfulOrder.id,
-                    orderCode: lastSuccessfulOrder.order_code,
-                    orderUniqueId: lastSuccessfulOrder.order_unique_id,
-                    status: lastSuccessfulOrder.status,
-                    total: lastSuccessfulOrder.total,
-                    createdAt: lastSuccessfulOrder.createdAt
-                }
-                : null
-        };
+            (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Payment failed via Worldpay');
+        const customerOrderContext = await buildCustomerOrderContext(order);
 
         // Update order status to failed
         await order.update({ status: 'fail' });   //, { transaction }
@@ -1326,13 +1337,7 @@ const handlePaymentError = async (order, webhookData) => {
                 paymentLink: webhookData.eventDetails._links?.payment?.href,
                 failureReason,
                 failureReasonRaw,
-                customer: {
-                    userId: order.user_id,
-                    email: order.user?.email || null,
-                    firstName: order.user?.first_name || null,
-                    lastName: order.user?.last_name || null
-                },
-                customerHistory
+                ...customerOrderContext
             })
         });
 
@@ -1343,15 +1348,6 @@ const handlePaymentError = async (order, webhookData) => {
             }
         });
 
-        const transactionMetadata = {
-            eventId: webhookData.eventId,
-            eventTimestamp: webhookData.eventTimestamp,
-            eventDate: webhookData.eventDetails.date,
-            type: webhookData.eventDetails.type,
-            classification: webhookData.eventDetails.classification,
-            paymentLink: webhookData.eventDetails._links?.payment?.href
-        };
-
         if (existingTransaction) {
             // Update existing transaction
             await existingTransaction.update({
@@ -1359,7 +1355,14 @@ const handlePaymentError = async (order, webhookData) => {
                 amount: convertedAmount.value,
                 currency: convertedAmount.currencyCode,
                 notes: 'Payment failed',
-                metadata: transactionMetadata
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                }
             });
 
             
@@ -1375,7 +1378,14 @@ const handlePaymentError = async (order, webhookData) => {
                 status: 'FAILED',
                 referenceNumber: webhookData.eventDetails.transactionReference,
                 notes: 'Payment failed',
-                metadata: transactionMetadata
+                metadata: {
+                    eventId: webhookData.eventId,
+                    eventTimestamp: webhookData.eventTimestamp,
+                    eventDate: webhookData.eventDetails.date,
+                    type: webhookData.eventDetails.type,
+                    classification: webhookData.eventDetails.classification,
+                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                }
             });
 
             
@@ -2699,6 +2709,17 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
         if (!order) {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
+        const customerOrderContext = await buildCustomerOrderContext(order);
+
+        const cancelAdditionalInfo = JSON.stringify({
+            transactionId: orderCode,
+            amount: amount,
+            currency: currency,
+            type: 'cancelled',
+            classification: 'payment',
+            reason: 'Payment cancelled via Worldpay',
+            ...customerOrderContext
+        });
 
         // Update order status to cancelled
         await order.update({ status: 'cancel' });   //, { transaction }
@@ -2717,18 +2738,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             await existingOrderLog.update({
                 status: 'cancel',
                 label: 'Payment Cancelled via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
+                additional_info: cancelAdditionalInfo
             });
         } else {
             // Create new order log
@@ -2737,18 +2747,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                 user_id: order.user_id,
                 status: 'cancel',
                 label: 'Payment Cancelled via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
+                additional_info: cancelAdditionalInfo
             });
 
             
