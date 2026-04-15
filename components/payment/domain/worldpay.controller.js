@@ -94,6 +94,32 @@ const buildCustomerOrderContext = async (order) => {
     };
 };
 
+const buildGatewayReasonDetails = (webhookData, fallbackReason, gatewayOutcome) => {
+    const reasonRaw = webhookData?.eventDetails?.failureReason || webhookData?.failureReason || null;
+    const gatewayReasonCode = reasonRaw?.code || reasonRaw?.refusalCode || reasonRaw?.errorCode || null;
+    const gatewayReasonMessage =
+        reasonRaw?.description ||
+        reasonRaw?.message ||
+        reasonRaw?.reason ||
+        (typeof reasonRaw === 'string' ? reasonRaw : null);
+
+    let reasonSource = 'fallback';
+    if (reasonRaw?.description) reasonSource = 'eventDetails.failureReason.description';
+    else if (reasonRaw?.message) reasonSource = 'eventDetails.failureReason.message';
+    else if (reasonRaw?.reason) reasonSource = 'eventDetails.failureReason.reason';
+    else if (typeof reasonRaw === 'string') reasonSource = 'eventDetails.failureReason';
+
+    return {
+        gateway: 'worldpay',
+        gatewayEventType: webhookData?.eventDetails?.type || null,
+        gatewayOutcome,
+        gatewayReasonCode,
+        gatewayReasonMessage: gatewayReasonMessage || fallbackReason,
+        gatewayReasonRaw: reasonRaw,
+        reasonSource
+    };
+};
+
 module.exports.handleWorldpayWebhook = async (req, res) => {
     try {
         // Get raw body data
@@ -268,6 +294,7 @@ const handleCancelledPayment = async (order, webhookData) => {
             webhookData.eventDetails.amount.currencyCode
         );
         const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, 'Payment cancelled via Worldpay', 'cancelled');
 
         // Update order status to cancelled
         // await order.update({ status: 'cancel' });   //, { transaction }
@@ -297,6 +324,7 @@ const handleCancelledPayment = async (order, webhookData) => {
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
                     paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...gatewayReasonDetails,
                     ...customerOrderContext
                 })
             });
@@ -320,6 +348,7 @@ const handleCancelledPayment = async (order, webhookData) => {
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
                     paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...gatewayReasonDetails,
                     ...customerOrderContext
                 })
             });
@@ -1314,6 +1343,7 @@ const handlePaymentError = async (order, webhookData) => {
             failureReasonRaw?.reason ||
             (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Payment failed via Worldpay');
         const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, failureReason, 'failed');
 
         // Update order status to failed
         await order.update({ status: 'fail' });   //, { transaction }
@@ -1337,6 +1367,7 @@ const handlePaymentError = async (order, webhookData) => {
                 paymentLink: webhookData.eventDetails._links?.payment?.href,
                 failureReason,
                 failureReasonRaw,
+                ...gatewayReasonDetails,
                 ...customerOrderContext
             })
         });
@@ -2710,6 +2741,11 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
         const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(
+            null,
+            'Payment cancelled via Worldpay (manual cancel endpoint)',
+            'cancelled'
+        );
 
         const cancelAdditionalInfo = JSON.stringify({
             transactionId: orderCode,
@@ -2718,6 +2754,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             type: 'cancelled',
             classification: 'payment',
             reason: 'Payment cancelled via Worldpay',
+            ...gatewayReasonDetails,
             ...customerOrderContext
         });
 
