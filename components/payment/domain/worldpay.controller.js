@@ -95,18 +95,30 @@ const buildCustomerOrderContext = async (order) => {
 };
 
 const buildGatewayReasonDetails = (webhookData, fallbackReason, gatewayOutcome) => {
-    const reasonRaw = webhookData?.eventDetails?.failureReason || webhookData?.failureReason || null;
-    const gatewayReasonCode = reasonRaw?.code || reasonRaw?.refusalCode || reasonRaw?.errorCode || null;
+    const reasonRaw =
+        webhookData?.eventDetails?.failureReason ||
+        webhookData?.eventDetails?.refusal ||
+        webhookData?.eventDetails?.refund?.refusal ||
+        webhookData?.failureReason ||
+        null;
+    const gatewayReasonCode =
+        reasonRaw?.code ||
+        reasonRaw?.refusalCode ||
+        reasonRaw?.errorCode ||
+        reasonRaw?.providerCode ||
+        null;
     const gatewayReasonMessage =
         reasonRaw?.description ||
         reasonRaw?.message ||
         reasonRaw?.reason ||
+        reasonRaw?.detail ||
         (typeof reasonRaw === 'string' ? reasonRaw : null);
 
     let reasonSource = 'fallback';
     if (reasonRaw?.description) reasonSource = 'eventDetails.failureReason.description';
     else if (reasonRaw?.message) reasonSource = 'eventDetails.failureReason.message';
     else if (reasonRaw?.reason) reasonSource = 'eventDetails.failureReason.reason';
+    else if (reasonRaw?.detail) reasonSource = 'eventDetails.failureReason.detail';
     else if (typeof reasonRaw === 'string') reasonSource = 'eventDetails.failureReason';
 
     return {
@@ -256,9 +268,9 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 case 'error':
                     await handlePaymentError(order, webhookData);
                     break;
-                // case 'refused':
-                //     await handlePaymentRefused(order, webhookData);
-                //     break;
+                case 'refused':
+                    await handlePaymentRefused(order, webhookData);
+                    break;
                 case 'sentForRefund':
                     await handleSentForRefund(order, webhookData);
                     break;
@@ -1499,6 +1511,13 @@ const handlePaymentError = async (order, webhookData) => {
 const handlePaymentRefused = async (order, webhookData) => {
     const transaction = await sequelize.transaction();
     try {
+        const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(
+            webhookData,
+            'Payment refused by Worldpay',
+            'refused'
+        );
+
         // Update order status to refused
         await order.update({ status: 'refused' }, { transaction });
 
@@ -1517,7 +1536,9 @@ const handlePaymentRefused = async (order, webhookData) => {
                 octReference: webhookData.eventDetails.octReference,
                 type: webhookData.eventDetails.type,
                 classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links.payment.href
+                paymentLink: webhookData.eventDetails._links.payment.href,
+                ...gatewayReasonDetails,
+                ...customerOrderContext
             })
         }, { transaction });
 
