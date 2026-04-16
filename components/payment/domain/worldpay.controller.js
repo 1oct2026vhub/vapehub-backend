@@ -223,6 +223,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 transaction_reference: transactionReference || null,
                 downstream_reference: downstreamReference || null,
                 failure_reason: failureReason || null,
+                event_details: webhookData?.eventDetails || null,
                 ip_address: req?.ip || null,
                 user_agent: req?.get?.('User-Agent') || null,
                 headers: {
