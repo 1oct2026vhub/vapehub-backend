@@ -1,4 +1,24 @@
 const { body, param, query } = require('express-validator');
+const { htmlToText } = require('html-to-text');
+const he = require('he');
+
+const getPlainTextFromHtml = (html = '') => {
+    const text = htmlToText(String(html), {
+        wordwrap: false,
+        selectors: [
+            { selector: 'a', options: { ignoreHref: true } }
+        ]
+    });
+
+    return he.decode(text)
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const hasValidAnswerTextLength = (value) => {
+    const plainText = getPlainTextFromHtml(value);
+    return plainText.length >= 3 && plainText.length <= 2000;
+};
 
 const getFaqsValidation = [
     query('page').optional().isInt({ min: 1 }).toInt(),
@@ -42,9 +62,9 @@ const createFaqValidation = [
     body('answer')
         .isString()
         .trim()
-        .notEmpty()
+        .custom((value) => getPlainTextFromHtml(value).length > 0)
         .withMessage('Answer is required')
-        .isLength({ min: 3, max: 2000 })
+        .custom((value) => hasValidAnswerTextLength(value))
         .withMessage('Answer must be between 3 and 2000 characters')
 ];
 
@@ -78,9 +98,9 @@ const updateFaqValidation = [
         .optional()
         .isString()
         .trim()
-        .notEmpty()
+        .custom((value) => getPlainTextFromHtml(value).length > 0)
         .withMessage('Answer cannot be empty')
-        .isLength({ min: 3, max: 2000 })
+        .custom((value) => hasValidAnswerTextLength(value))
         .withMessage('Answer must be between 3 and 2000 characters')
 ];
 
