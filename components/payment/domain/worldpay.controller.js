@@ -2128,6 +2128,25 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
 
+        // Idempotency guard: skip re-processing once order is already in a finalized paid/fulfillment flow
+        if (['processing', 'shipped', 'delivered', 'completed'].includes(order.status)) {
+            return successResponse(res, {
+                message: "payment already processed",
+                data: {
+                    order_code: order.order_code,
+                    payment_method: 'Worldpay',
+                    order_details: {
+                        order_id: order.id,
+                        order_unique_id: order.order_unique_id,
+                        order_code: order.order_code,
+                        status: order.status,
+                        amount: amount,
+                        currency: currency
+                    }
+                }
+            }, "Success");
+        }
+
         // Update order status to processing and set ordered to true
         await order.update({ 
             status: 'processing',
