@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const logger = require('../../../library/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
+const paymentWebhookLogger = require('../../../utils/paymentWebhookLogger');
 const axios = require("axios");
 const crypto = require("crypto");
 
@@ -17,7 +18,144 @@ const convertAmountToDecimal = (amount, currencyCode) => {
     };
 };
 
+const buildCustomerOrderContext = async (order) => {
+    const historyStats = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id }
+        },
+        attributes: [
+            [sequelize.fn('COUNT', sequelize.col('id')), 'previousOrdersCount'],
+            [
+                sequelize.fn(
+                    'SUM',
+                    sequelize.literal("CASE WHEN status IN ('processing','completed','delivered') THEN 1 ELSE 0 END")
+                ),
+                'previousSuccessfulOrders'
+            ]
+        ],
+        raw: true
+    });
+
+    const previousOrdersCount = Number(historyStats?.previousOrdersCount || 0);
+    const previousSuccessfulOrders = Number(historyStats?.previousSuccessfulOrders || 0);
+
+    const lastOrder = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id }
+        },
+        attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+        order: [['createdAt', 'DESC']]
+    });
+
+    const lastSuccessfulOrder = await Order.findOne({
+        where: {
+            user_id: order.user_id,
+            id: { [Op.ne]: order.id },
+            status: { [Op.in]: ['processing', 'completed', 'delivered'] }
+        },
+        attributes: ['id', 'order_code', 'order_unique_id', 'status', 'total', 'createdAt'],
+        order: [['createdAt', 'DESC']]
+    });
+
+    return {
+        customer: {
+            userId: order.user_id,
+            email: order.user?.email || null,
+            firstName: order.user?.first_name || null,
+            lastName: order.user?.last_name || null
+        },
+        customerHistory: {
+            hasPreviousOrders: previousOrdersCount > 0,
+            previousOrdersCount,
+            previousSuccessfulOrders,
+            previousFailedOrders: Math.max(previousOrdersCount - previousSuccessfulOrders, 0),
+            lastOrder: lastOrder
+                ? {
+                    id: lastOrder.id,
+                    orderCode: lastOrder.order_code,
+                    orderUniqueId: lastOrder.order_unique_id,
+                    status: lastOrder.status,
+                    total: lastOrder.total,
+                    createdAt: lastOrder.createdAt
+                }
+                : null,
+            lastSuccessfulOrder: lastSuccessfulOrder
+                ? {
+                    id: lastSuccessfulOrder.id,
+                    orderCode: lastSuccessfulOrder.order_code,
+                    orderUniqueId: lastSuccessfulOrder.order_unique_id,
+                    status: lastSuccessfulOrder.status,
+                    total: lastSuccessfulOrder.total,
+                    createdAt: lastSuccessfulOrder.createdAt
+                }
+                : null
+        }
+    };
+};
+
+const buildGatewayReasonDetails = (webhookData, fallbackReason, gatewayOutcome) => {
+    const reasonRaw = webhookData?.eventDetails?.failureReason || webhookData?.failureReason || null;
+    const gatewayReasonCode = reasonRaw?.code || reasonRaw?.refusalCode || reasonRaw?.errorCode || null;
+    const gatewayReasonMessage =
+        reasonRaw?.description ||
+        reasonRaw?.message ||
+        reasonRaw?.reason ||
+        (typeof reasonRaw === 'string' ? reasonRaw : null);
+
+    let reasonSource = 'fallback';
+    if (reasonRaw?.description) reasonSource = 'eventDetails.failureReason.description';
+    else if (reasonRaw?.message) reasonSource = 'eventDetails.failureReason.message';
+    else if (reasonRaw?.reason) reasonSource = 'eventDetails.failureReason.reason';
+    else if (typeof reasonRaw === 'string') reasonSource = 'eventDetails.failureReason';
+
+    return {
+        gateway: 'worldpay',
+        gatewayEventType: webhookData?.eventDetails?.type || null,
+        gatewayOutcome,
+        gatewayReasonCode,
+        gatewayReasonMessage: gatewayReasonMessage || fallbackReason,
+        gatewayReasonRaw: reasonRaw,
+        reasonSource
+    };
+};
+
+const serializeErrorForLog = (error) => ({
+    name: error?.name || null,
+    message: error?.message || null,
+    stack: error?.stack || null,
+    code: error?.code || null,
+    status: error?.status || error?.statusCode || null,
+    axios: error?.isAxiosError ? {
+        method: error?.config?.method || null,
+        url: error?.config?.url || null,
+        timeout: error?.config?.timeout || null,
+        response_status: error?.response?.status || null,
+        response_data: error?.response?.data || null
+    } : null,
+    sequelize: error?.errors
+        ? {
+            errors: error.errors.map((e) => ({
+                message: e?.message || null,
+                path: e?.path || null,
+                value: e?.value || null,
+                type: e?.type || null
+            }))
+        }
+        : null
+});
+
+const logPaymentWebhookError = (type, error, context = {}) => {
+    paymentWebhookLogger.logError({
+        type,
+        ...context,
+        error: serializeErrorForLog(error)
+    });
+};
+
 module.exports.handleWorldpayWebhook = async (req, res) => {
+    paymentWebhookLogger.logWebhookStart();
     try {
         // Get raw body data
         let rawData;
@@ -49,6 +187,11 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 throw new Error('Invalid webhook data format');
             }
         } catch (error) {
+            logPaymentWebhookError('webhook_payload_parse_error', error, {
+                ip_address: req?.ip || null,
+                user_agent: req?.get?.('User-Agent') || null
+            });
+            paymentWebhookLogger.logWebhookEnd();
             
             return errorResponse(res, {}, 'Invalid webhook data format', 400);
         }
@@ -71,6 +214,25 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                     failureReason
                 } = {}
             } = webhookData || {};
+
+            paymentWebhookLogger.logWebhook({
+                type: 'worldpay_webhook_received',
+                event_id: eventId || null,
+                event_type: eventType || null,
+                event_timestamp: eventTimestamp || null,
+                transaction_reference: transactionReference || null,
+                downstream_reference: downstreamReference || null,
+                failure_reason: failureReason || null,
+                event_details: webhookData?.eventDetails || null,
+                ip_address: req?.ip || null,
+                user_agent: req?.get?.('User-Agent') || null,
+                headers: {
+                    'content-type': req?.get?.('Content-Type') || null,
+                    'x-forwarded-for': req?.get?.('X-Forwarded-For') || null,
+                    'x-real-ip': req?.get?.('X-Real-IP') || null,
+                    'cf-ray': req?.get?.('CF-Ray') || null
+                }
+            });
 
 
             // Find the order using the transaction reference
@@ -125,6 +287,13 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             });
 
             if (!order) {
+                paymentWebhookLogger.logError({
+                    type: 'worldpay_order_not_found',
+                    event_id: eventId || null,
+                    event_type: eventType || null,
+                    transaction_reference: transactionReference || null
+                });
+                paymentWebhookLogger.logWebhookEnd();
                 
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
@@ -153,9 +322,9 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 case 'error':
                     await handlePaymentError(order, webhookData);
                     break;
-                // case 'refused':
-                //     await handlePaymentRefused(order, webhookData);
-                //     break;
+                case 'refused':
+                    await handlePaymentRefused(order, webhookData);
+                    break;
                 case 'sentForRefund':
                     await handleSentForRefund(order, webhookData);
                     break;
@@ -163,10 +332,25 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 //     await handleRefundFailed(order, webhookData);
                 //     break;
                 default:
+                    paymentWebhookLogger.logInfo({
+                        type: 'worldpay_unhandled_event_type',
+                        event_id: eventId || null,
+                        event_type: eventType || null,
+                        transaction_reference: transactionReference || null
+                    });
                     
             }
 
             // Log the webhook processing completion
+            paymentWebhookLogger.logInfo({
+                type: 'worldpay_webhook_processed',
+                event_id: eventId || null,
+                event_type: eventType || null,
+                transaction_reference: transactionReference || null,
+                order_id: order?.id || null,
+                order_code: order?.order_code || null
+            });
+            paymentWebhookLogger.logWebhookEnd();
             
 
             // Return success response
@@ -178,6 +362,10 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         }
 
     } catch (error) {
+        logPaymentWebhookError('worldpay_webhook_processing_error', error, {
+            ip_address: req?.ip || null
+        });
+        paymentWebhookLogger.logWebhookEnd();
         
         return errorResponse(res, error, 'Failed to process webhook');
     }
@@ -190,6 +378,18 @@ const handleCancelledPayment = async (order, webhookData) => {
             order.total,
             webhookData.eventDetails.amount.currencyCode
         );
+        const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, 'Payment cancelled via Worldpay', 'cancelled');
+        paymentWebhookLogger.logInfo({
+            type: 'worldpay_cancelled_handler',
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            gateway_reason_code: gatewayReasonDetails?.gatewayReasonCode || null,
+            gateway_reason_message: gatewayReasonDetails?.gatewayReasonMessage || null,
+            reason_source: gatewayReasonDetails?.reasonSource || null,
+            gateway_event_type: gatewayReasonDetails?.gatewayEventType || null
+        });
 
         // Update order status to cancelled
         // await order.update({ status: 'cancel' });   //, { transaction }
@@ -218,7 +418,9 @@ const handleCancelledPayment = async (order, webhookData) => {
                     currency: convertedAmount.currencyCode,
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                    paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...gatewayReasonDetails,
+                    ...customerOrderContext
                 })
             });
 
@@ -240,7 +442,9 @@ const handleCancelledPayment = async (order, webhookData) => {
                     currency: convertedAmount.currencyCode,
                     type: webhookData.eventDetails.type,
                     classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
+                    paymentLink: webhookData.eventDetails._links?.payment?.href,
+                    ...gatewayReasonDetails,
+                    ...customerOrderContext
                 })
             });
 
@@ -362,7 +566,13 @@ const handleCancelledPayment = async (order, webhookData) => {
         
         return webhookData.eventDetails.transactionReference
     } catch (error) {
-        
+        logPaymentWebhookError('worldpay_cancelled_handler_error', error, {
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            event_type: webhookData?.eventDetails?.type || null,
+            event_id: webhookData?.eventId || null
+        });
         throw error;
     }
 };
@@ -1227,6 +1437,24 @@ const handlePaymentError = async (order, webhookData) => {
             order.total,
             webhookData.eventDetails.amount.currencyCode
         );
+        const failureReasonRaw = webhookData?.eventDetails?.failureReason;
+        const failureReason =
+            failureReasonRaw?.description ||
+            failureReasonRaw?.message ||
+            failureReasonRaw?.reason ||
+            (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Payment failed via Worldpay');
+        const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, failureReason, 'failed');
+        paymentWebhookLogger.logInfo({
+            type: 'worldpay_payment_error_handler',
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            gateway_reason_code: gatewayReasonDetails?.gatewayReasonCode || null,
+            gateway_reason_message: gatewayReasonDetails?.gatewayReasonMessage || null,
+            reason_source: gatewayReasonDetails?.reasonSource || null,
+            gateway_event_type: gatewayReasonDetails?.gatewayEventType || null
+        });
 
         // Update order status to failed
         await order.update({ status: 'fail' });   //, { transaction }
@@ -1247,7 +1475,11 @@ const handlePaymentError = async (order, webhookData) => {
                 currency: convertedAmount.currencyCode,
                 type: webhookData.eventDetails.type,
                 classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
+                paymentLink: webhookData.eventDetails._links?.payment?.href,
+                failureReason,
+                failureReasonRaw,
+                ...gatewayReasonDetails,
+                ...customerOrderContext
             })
         });
 
@@ -1364,13 +1596,25 @@ const handlePaymentError = async (order, webhookData) => {
             
             
         } catch (emailError) {
-            
+            logPaymentWebhookError('worldpay_payment_error_email_error', emailError, {
+                order_id: order?.id || null,
+                order_code: order?.order_code || null,
+                transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+                event_type: webhookData?.eventDetails?.type || null,
+                event_id: webhookData?.eventId || null
+            });
         }
 
         
         return webhookData.eventDetails.transactionReference
     } catch (error) {
-        
+        logPaymentWebhookError('worldpay_payment_error_handler_error', error, {
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            event_type: webhookData?.eventDetails?.type || null,
+            event_id: webhookData?.eventId || null
+        });
         throw error;
     }
 };
@@ -1378,6 +1622,23 @@ const handlePaymentError = async (order, webhookData) => {
 const handlePaymentRefused = async (order, webhookData) => {
     const transaction = await sequelize.transaction();
     try {
+        const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(
+            webhookData,
+            'Payment refused by Worldpay',
+            'refused'
+        );
+        paymentWebhookLogger.logInfo({
+            type: 'worldpay_payment_refused_handler',
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            gateway_reason_code: gatewayReasonDetails?.gatewayReasonCode || null,
+            gateway_reason_message: gatewayReasonDetails?.gatewayReasonMessage || null,
+            reason_source: gatewayReasonDetails?.reasonSource || null,
+            gateway_event_type: gatewayReasonDetails?.gatewayEventType || null
+        });
+
         // Update order status to refused
         await order.update({ status: 'refused' }, { transaction });
 
@@ -1396,7 +1657,9 @@ const handlePaymentRefused = async (order, webhookData) => {
                 octReference: webhookData.eventDetails.octReference,
                 type: webhookData.eventDetails.type,
                 classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links.payment.href
+                paymentLink: webhookData.eventDetails._links.payment.href,
+                ...gatewayReasonDetails,
+                ...customerOrderContext
             })
         }, { transaction });
 
@@ -1460,6 +1723,13 @@ const handlePaymentRefused = async (order, webhookData) => {
 
         await transaction.commit();
     } catch (error) {
+        logPaymentWebhookError('worldpay_payment_refused_handler_error', error, {
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+            event_type: webhookData?.eventDetails?.type || null,
+            event_id: webhookData?.eventId || null
+        });
         await transaction.rollback();
         throw error;
     }
@@ -2619,6 +2889,33 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
         if (!order) {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
+        const customerOrderContext = await buildCustomerOrderContext(order);
+        const gatewayReasonDetails = buildGatewayReasonDetails(
+            null,
+            'Payment cancelled via Worldpay (manual cancel endpoint)',
+            'cancelled'
+        );
+        paymentWebhookLogger.logInfo({
+            type: 'worldpay_manual_cancel_handler',
+            order_id: order?.id || null,
+            order_code: order?.order_code || null,
+            transaction_reference: orderCode || null,
+            gateway_reason_code: gatewayReasonDetails?.gatewayReasonCode || null,
+            gateway_reason_message: gatewayReasonDetails?.gatewayReasonMessage || null,
+            reason_source: gatewayReasonDetails?.reasonSource || null,
+            gateway_event_type: gatewayReasonDetails?.gatewayEventType || null
+        });
+
+        const cancelAdditionalInfo = JSON.stringify({
+            transactionId: orderCode,
+            amount: amount,
+            currency: currency,
+            type: 'cancelled',
+            classification: 'payment',
+            reason: 'Payment cancelled via Worldpay',
+            ...gatewayReasonDetails,
+            ...customerOrderContext
+        });
 
         // Update order status to cancelled
         await order.update({ status: 'cancel' });   //, { transaction }
@@ -2637,18 +2934,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             await existingOrderLog.update({
                 status: 'cancel',
                 label: 'Payment Cancelled via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
+                additional_info: cancelAdditionalInfo
             });
         } else {
             // Create new order log
@@ -2657,18 +2943,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                 user_id: order.user_id,
                 status: 'cancel',
                 label: 'Payment Cancelled via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
+                additional_info: cancelAdditionalInfo
             });
 
             
@@ -2799,11 +3074,10 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
                     amount: amount,
                 }}}, "Success");
     } catch (error) {
-        // Log the main error with comprehensive details
-        
-        
-        
-        
+        logPaymentWebhookError('worldpay_manual_cancel_handler_error', error, {
+            order_code: req?.body?.orderCode || null,
+            event_type: 'manual_cancel_endpoint'
+        });
         return errorResponse(res, error, error.message);
     }
 };
