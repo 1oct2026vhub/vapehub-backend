@@ -20,10 +20,9 @@ const getCustomerName = (order) => {
   return 'there';
 };
 
-const getCheckoutCtaUrl = (campaign) => {
+const getCheckoutCtaUrl = () => {
   const base = String(process.env.FRONTEND_URL || '').replace(/\/$/, '');
-  const encodedCampaign = encodeURIComponent(campaign);
-  return `${base}/checkout?utm_source=abandoned_cart&utm_medium=email&utm_campaign=${encodedCampaign}`;
+  return `${base}/checkout`;
 };
 
 const supportsAbandonedEmailType = (emailType) => Boolean(constants.emailTypes?.[emailType]);
@@ -159,7 +158,7 @@ const sendFirstReminder = async () => {
 
       await sendEmail(recipient, EMAIL_TYPE_1, {
         customerName: getCustomerName(order),
-        ctaUrl: getCheckoutCtaUrl('abandoned_cart_2h'),
+        ctaUrl: getCheckoutCtaUrl(),
         orderUniqueId: order.order_unique_id
       });
 
@@ -217,7 +216,7 @@ const sendSecondReminder = async () => {
 
       await sendEmail(recipient, EMAIL_TYPE_2, {
         customerName: getCustomerName(order),
-        ctaUrl: getCheckoutCtaUrl('abandoned_cart_24h'),
+        ctaUrl: getCheckoutCtaUrl(),
         discountCode: couponData.code,
         orderUniqueId: order.order_unique_id
       });
