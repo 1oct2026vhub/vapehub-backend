@@ -11,7 +11,7 @@ const {
   CHUNK_SIZE
 } = require('../helper/sitemap.generator');
 
-const SITEMAP_ENTRIES_CACHE_KEY = 'sitemap:dynamic-entries:v2';
+const SITEMAP_ENTRIES_CACHE_KEY = 'sitemap:dynamic-entries:v3';
 const SITEMAP_CACHE_TTL_SECONDS = 300;
 
 async function getCachedSitemapEntries() {
@@ -107,12 +107,14 @@ const seoController = {
         indexStream.end();
         const buf = await streamToPromise(indexStream);
         res.header('Content-Type', 'application/xml; charset=utf-8');
+        res.header('Cache-Control', 'public, max-age=120, s-maxage=120');
         return res.send(buf);
       }
 
       const pipeline = writeSitemapStream(entries).pipe(createGzip());
       res.header('Content-Type', 'application/xml; charset=utf-8');
       res.header('Content-Encoding', 'gzip');
+      res.header('Cache-Control', 'public, max-age=120, s-maxage=120');
       pipeline.pipe(res).on('error', (e) => {
         console.error('Error piping sitemap:', e);
         if (!res.headersSent) {
@@ -145,6 +147,7 @@ const seoController = {
       const pipeline = writeSitemapStream(chunk).pipe(createGzip());
       res.header('Content-Type', 'application/xml; charset=utf-8');
       res.header('Content-Encoding', 'gzip');
+      res.header('Cache-Control', 'public, max-age=120, s-maxage=120');
       pipeline.pipe(res).on('error', (e) => {
         console.error('Error piping sitemap chunk:', e);
         if (!res.headersSent) {
@@ -170,6 +173,7 @@ Disallow: /*?
 Sitemap: ${sitemapUrl}`;
 
       res.type('text/plain');
+      res.header('Cache-Control', 'public, max-age=3600, s-maxage=3600');
       res.send(robotsTxt);
     } catch (error) {
       console.error('Error serving robots.txt:', error);
