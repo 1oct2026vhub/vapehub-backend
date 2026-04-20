@@ -82,7 +82,7 @@ async function listDefaultTemplates(req, res) {
     const secretKey = process.env.STRIPO_SECRET_KEY;
     const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
     const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
-    const templateType = String(req?.query?.type ?? 'BASIC').toUpperCase();
+    const templateType = String(req?.query?.type ?? 'FREE').toUpperCase();
     const allowedTypes = ['BASIC', 'FREE', 'PREMIUM'];
     const allowedRoles = ['USER', 'ADMIN', 'API'];
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
