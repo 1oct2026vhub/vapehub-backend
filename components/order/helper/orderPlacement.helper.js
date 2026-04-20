@@ -22,6 +22,9 @@ const {
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
+const logger = require("../../../library/logger");
+const constants = require("../../../config/constants");
+const shippingMethodLogger = require("../../../utils/shippingMethodLogger");
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
@@ -825,6 +828,17 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             transaction
         });
     }
+    // Track abandoned-cart lifecycle from order creation time.
+    await AbandonedCartFlow.findOrCreate({
+        where: { order_id: order.id },
+        defaults: {
+            user_id: user_id || null,
+            order_unique_id: order.order_unique_id || null,
+            customer_email: order.email || null,
+            status: 'entered'
+        },
+        transaction
+    });
 
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 

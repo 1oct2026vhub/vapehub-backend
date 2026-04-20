@@ -98,7 +98,8 @@ module.exports = (sequelize, DataTypes) => {
         'email2_sent',
         'recovered',
         'cancelled',
-        'failed'
+        'failed',
+        'superseded'
       ),
       allowNull: false,
       defaultValue: 'entered'
