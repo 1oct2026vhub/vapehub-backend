@@ -115,9 +115,39 @@ async function fetchDefaultTemplateDetail({ token, templateId }) {
   return data;
 }
 
+async function fetchTemplateMetadata({ token, endpoint }) {
+  const { data } = await axios.get(`${STRIPO_TEMPLATES_BASE_URL}/${endpoint}`, {
+    timeout: 15000,
+    headers: {
+      'ES-PLUGIN-AUTH': `Bearer ${token}`,
+    },
+  });
+  return data;
+}
+
+async function fetchDefaultTemplateTypes({ token }) {
+  return fetchTemplateMetadata({ token, endpoint: 'types' });
+}
+
+async function fetchDefaultTemplateSeasons({ token }) {
+  return fetchTemplateMetadata({ token, endpoint: 'seasons' });
+}
+
+async function fetchDefaultTemplateFeatures({ token }) {
+  return fetchTemplateMetadata({ token, endpoint: 'features' });
+}
+
+async function fetchDefaultTemplateIndustries({ token }) {
+  return fetchTemplateMetadata({ token, endpoint: 'industries' });
+}
+
 module.exports = {
   getStripoAccessToken,
   fetchDefaultTemplates,
   fetchDefaultTemplateDetail,
+  fetchDefaultTemplateTypes,
+  fetchDefaultTemplateSeasons,
+  fetchDefaultTemplateFeatures,
+  fetchDefaultTemplateIndustries,
   getProviderErrorMessage,
 };

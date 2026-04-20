@@ -214,6 +214,130 @@ router.get('/default-templates', [authMiddleware(true)], newsletterTemplatesCont
 
 /**
  * @swagger
+ * /api/admin/newsletter-templates/default-templates/types:
+ *   get:
+ *     summary: List Stripo default template types
+ *     description: Fetches available values for Stripo templateTypes filter.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Default template types fetched successfully
+ */
+router.get(
+  '/default-templates/types',
+  [authMiddleware(true)],
+  newsletterTemplatesController.listDefaultTemplateTypes
+);
+
+/**
+ * @swagger
+ * /api/admin/newsletter-templates/default-templates/seasons:
+ *   get:
+ *     summary: List Stripo default template seasons
+ *     description: Fetches available values for Stripo templateSeasons filter.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Default template seasons fetched successfully
+ */
+router.get(
+  '/default-templates/seasons',
+  [authMiddleware(true)],
+  newsletterTemplatesController.listDefaultTemplateSeasons
+);
+
+/**
+ * @swagger
+ * /api/admin/newsletter-templates/default-templates/features:
+ *   get:
+ *     summary: List Stripo default template features
+ *     description: Fetches available values for Stripo templateFeatures filter.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Default template features fetched successfully
+ */
+router.get(
+  '/default-templates/features',
+  [authMiddleware(true)],
+  newsletterTemplatesController.listDefaultTemplateFeatures
+);
+
+/**
+ * @swagger
+ * /api/admin/newsletter-templates/default-templates/industries:
+ *   get:
+ *     summary: List Stripo default template industries
+ *     description: Fetches available values for Stripo templateIndustries filter.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: role
+ *         required: false
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Default template industries fetched successfully
+ */
+router.get(
+  '/default-templates/industries',
+  [authMiddleware(true)],
+  newsletterTemplatesController.listDefaultTemplateIndustries
+);
+
+/**
+ * @swagger
  * /api/admin/newsletter-templates/default-templates/{templateId}:
  *   get:
  *     summary: Get Stripo default template details

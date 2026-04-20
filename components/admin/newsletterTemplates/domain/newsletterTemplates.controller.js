@@ -11,6 +11,10 @@ const {
   getStripoAccessToken,
   fetchDefaultTemplates,
   fetchDefaultTemplateDetail,
+  fetchDefaultTemplateTypes,
+  fetchDefaultTemplateSeasons,
+  fetchDefaultTemplateFeatures,
+  fetchDefaultTemplateIndustries,
   getProviderErrorMessage,
 } = require('../helper/stripo.helper');
 
@@ -235,6 +239,92 @@ async function getDefaultTemplateDetail(req, res) {
       err?.response?.status || 500
     );
   }
+}
+
+async function listDefaultTemplateMetadata(req, res, metadataFetcher, successMessage) {
+  try {
+    const pluginId = process.env.STRIPO_PLUGIN_ID;
+    const secretKey = process.env.STRIPO_SECRET_KEY;
+    const resolvedUserId = String(req?.user?.id ?? req?.query?.userId ?? '').trim();
+    const resolvedRole = String(req?.query?.role ?? req?.user?.role ?? 'USER').trim().toUpperCase();
+    const allowedRoles = ['USER', 'ADMIN', 'API'];
+
+    if (!pluginId || !secretKey) {
+      return errorResponse(
+        res,
+        { statusCode: 503 },
+        'Stripo is not configured (missing STRIPO_PLUGIN_ID or STRIPO_SECRET_KEY)',
+        503
+      );
+    }
+
+    if (!resolvedUserId) {
+      return errorResponse(res, { statusCode: 400 }, 'userId is required', 400);
+    }
+
+    if (!allowedRoles.includes(resolvedRole)) {
+      return errorResponse(res, { statusCode: 400 }, 'role must be USER, ADMIN, or API', 400);
+    }
+
+    const token = await getStripoAccessToken({
+      pluginId,
+      secretKey,
+      userId: resolvedUserId,
+      role: resolvedRole,
+    });
+    if (!token) {
+      return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
+    }
+
+    const data = await metadataFetcher({ token });
+    const items = Array.isArray(data) ? data : [];
+
+    return successResponse(res, items, successMessage, 200);
+  } catch (err) {
+    const providerError = getProviderErrorMessage(err);
+    return errorResponse(
+      res,
+      err,
+      providerError || err?.message || 'Failed to fetch default template metadata',
+      err?.response?.status || 500
+    );
+  }
+}
+
+async function listDefaultTemplateTypes(req, res) {
+  return listDefaultTemplateMetadata(
+    req,
+    res,
+    fetchDefaultTemplateTypes,
+    'Default template types fetched'
+  );
+}
+
+async function listDefaultTemplateSeasons(req, res) {
+  return listDefaultTemplateMetadata(
+    req,
+    res,
+    fetchDefaultTemplateSeasons,
+    'Default template seasons fetched'
+  );
+}
+
+async function listDefaultTemplateFeatures(req, res) {
+  return listDefaultTemplateMetadata(
+    req,
+    res,
+    fetchDefaultTemplateFeatures,
+    'Default template features fetched'
+  );
+}
+
+async function listDefaultTemplateIndustries(req, res) {
+  return listDefaultTemplateMetadata(
+    req,
+    res,
+    fetchDefaultTemplateIndustries,
+    'Default template industries fetched'
+  );
 }
 
 /**
@@ -675,6 +765,10 @@ module.exports = {
   getStripoAuthToken,
   listDefaultTemplates,
   getDefaultTemplateDetail,
+  listDefaultTemplateTypes,
+  listDefaultTemplateSeasons,
+  listDefaultTemplateFeatures,
+  listDefaultTemplateIndustries,
   saveTemplate,
   listTemplates,
   getTemplate,
