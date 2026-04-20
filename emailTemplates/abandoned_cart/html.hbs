@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f6fb;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.10);
+            overflow: hidden;
+        }
+
+        .header {
+            border-radius: 14px;
+            border: 1px solid var(--Natural-10, #FFF);
+            background: linear-gradient(90deg, #083122 0%, #035335 50%, #083122 100%);
+            box-shadow: -1px 4px 24px 0 rgba(0, 0, 0, 0.24);
+            padding: 32px 0 16px 0;
+            text-align: center;
+        }
+
+        .logo {
+            max-width: 160px;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 32px 24px 24px 24px;
+        }
+
+        h2 {
+            color: #2e8b57;
+            margin-bottom: 12px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        p {
+            margin: 0 0 14px;
+            color: #444;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .cta-wrapper {
+            margin: 26px 0 22px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            text-decoration: none;
+            background: linear-gradient(90deg, #083122 0%, #035335 50%, #083122 100%);
+            color: #ffffff !important;
+            font-weight: 700;
+            font-size: 15px;
+            padding: 12px 22px;
+            border-radius: 6px;
+        }
+
+        .footer {
+            background: #f2f6f9;
+            text-align: center;
+            padding: 24px 10px;
+            color: #888;
+            font-size: 13px;
+            border-top: 1px solid #e0e6ed;
+        }
+
+        @media (max-width: 650px) {
+            .email-container {
+                margin: 10px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+
+        <div class="content">
+            <h2>Did you forget something?</h2>
+            <p style="font-size:16px; color:#222;">Hi {{customerName}},</p>
+            <p>It looks like you left something behind.</p>
+            <p>Your items are still waiting in your cart, and you are just a few clicks away from completing your purchase. We have saved everything for you so you can pick up right where you left off.</p>
+            <p>Click below to continue your checkout:</p>
+
+            <div class="cta-wrapper">
+                <a class="cta-button" href="{{ctaUrl}}">Complete Your Purchase</a>
+            </div>
+
+            <p>If you need any help or have questions, simply reply to this email - our customer support team is happy to assist you.</p>
+            <p>Kind regards,<br />The Team at <a href="{{FRONTEND_URL}}" style="color: #2e8b57; text-decoration: none;">VapeHub.co.uk</a></p>
+        </div>
+
+        <div class="footer">
+            <p>Customer Support: <a href="mailto:customerservices@vapehub.co.uk" style="color: #2e8b57;">customerservices@vapehub.co.uk</a></p>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

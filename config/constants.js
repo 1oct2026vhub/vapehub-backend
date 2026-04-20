@@ -17,6 +17,7 @@ module.exports = {
         INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
         PRODUCT_UPDATES: 'PRODUCT_UPDATES',
         PROMOTIONAL: 'PROMOTIONAL',
+        ABANDONED_CART: 'ABANDONED_CART',
     },
     emailTypeData: {
         REGISTER: {
@@ -102,6 +103,11 @@ module.exports = {
         PROMOTIONAL: {
             folderName: 'promotional',
             subject: 'Special Offer from VapeHub! 🎉',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ABANDONED_CART: {
+            folderName: 'abandoned_cart',
+            subject: 'Did you forget something? Complete your purchase | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },
