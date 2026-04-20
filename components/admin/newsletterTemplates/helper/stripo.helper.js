@@ -75,7 +75,17 @@ async function getStripoAccessToken({ pluginId, secretKey, userId, role = 'USER'
   return token;
 }
 
-async function fetchDefaultTemplates({ token, type, sort, limit, page }) {
+async function fetchDefaultTemplates({
+  token,
+  type,
+  sort,
+  limit,
+  page,
+  templateTypes,
+  templateSeasons,
+  templateFeatures,
+  templateIndustries,
+}) {
   const { data } = await axios.get(STRIPO_TEMPLATES_BASE_URL, {
     timeout: 15000,
     headers: {
@@ -86,6 +96,10 @@ async function fetchDefaultTemplates({ token, type, sort, limit, page }) {
       sort,
       limit,
       page,
+      templateTypes,
+      templateSeasons,
+      templateFeatures,
+      templateIndustries,
     },
   });
   return data;

@@ -160,6 +160,44 @@ router.post('/auth', [authMiddleware(true)], newsletterTemplatesController.getSt
  *           minimum: 1
  *           maximum: 100
  *         description: Number of templates per page. Defaults to 20.
+ *       - in: query
+ *         name: type
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [BASIC, FREE, PREMIUM]
+ *         description: Template type filter sent to Stripo. Defaults to FREE.
+ *       - in: query
+ *         name: sort
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [NEW, ACTUAL]
+ *         description: Sort mode sent to Stripo. Defaults to ACTUAL.
+ *       - in: query
+ *         name: templateTypes
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Comma-separated Stripo template type ids (for example 1,2).
+ *       - in: query
+ *         name: templateSeasons
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Comma-separated Stripo template season ids (for example 4).
+ *       - in: query
+ *         name: templateFeatures
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Comma-separated Stripo template feature ids.
+ *       - in: query
+ *         name: templateIndustries
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Comma-separated Stripo template industry ids.
  *     responses:
  *       200:
  *         description: Default templates fetched successfully

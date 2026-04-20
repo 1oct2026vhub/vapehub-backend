@@ -30,6 +30,17 @@ async function ensureTemplatesDir() {
   await fs.mkdir(NEWSLETTER_TEMPLATES_DIR, { recursive: true });
 }
 
+function parseIntegerQueryArray(value) {
+  if (value == null || value === '') return undefined;
+
+  const rawValues = Array.isArray(value) ? value : String(value).split(',');
+  const parsedValues = rawValues
+    .map((item) => Number.parseInt(String(item).trim(), 10))
+    .filter((num) => Number.isInteger(num) && num > 0);
+
+  return parsedValues.length > 0 ? parsedValues : undefined;
+}
+
 async function getStripoAuthToken(req, res) {
   try {
     const pluginId = process.env.STRIPO_PLUGIN_ID;
@@ -127,6 +138,10 @@ async function listDefaultTemplates(req, res) {
     const stripoPage = Number.isFinite(stripoPageRaw)
       ? Math.max(0, stripoPageRaw)
       : Math.max(0, page - 1);
+    const templateTypes = parseIntegerQueryArray(req.query.templateTypes);
+    const templateSeasons = parseIntegerQueryArray(req.query.templateSeasons);
+    const templateFeatures = parseIntegerQueryArray(req.query.templateFeatures);
+    const templateIndustries = parseIntegerQueryArray(req.query.templateIndustries);
 
     const data = await fetchDefaultTemplates({
       token,
@@ -134,6 +149,10 @@ async function listDefaultTemplates(req, res) {
       sort: String(req?.query?.sort ?? 'ACTUAL').toUpperCase(),
       limit: pageSize,
       page: stripoPage,
+      templateTypes,
+      templateSeasons,
+      templateFeatures,
+      templateIndustries,
     });
 
     const templates = Array.isArray(data?.data) ? data.data : [];
