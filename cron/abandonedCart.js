@@ -94,6 +94,8 @@ const ensureSecondReminderCoupon = async (flow, order) => {
 };
 
 const ensureFlow = async (order) => {
+  if (!order?.user_id) return null;
+
   const existing = await AbandonedCartFlow.findOne({ where: { order_id: order.id } });
   if (existing) return existing;
 
@@ -113,6 +115,13 @@ const backfillPendingFlows = async () => {
       status: constants.orderStatus.PENDING,
       createdAt: { [Op.lte]: cutoff }
     },
+    include: [{
+      model: User,
+      as: 'user',
+      required: true,
+      where: { is_temporary: false },
+      attributes: ['id']
+    }],
     attributes: ['id', 'user_id', 'order_unique_id', 'email']
   });
 
@@ -135,6 +144,13 @@ const sendFirstReminder = async () => {
         status: constants.orderStatus.PENDING,
         createdAt: { [Op.lte]: cutoff }
       },
+      include: [{
+        model: User,
+        as: 'user',
+        required: true,
+        where: { is_temporary: false },
+        attributes: ['id']
+      }],
       attributes: ['id', 'user_id', 'email', 'order_unique_id']
     }]
   });
@@ -148,7 +164,7 @@ const sendFirstReminder = async () => {
     try {
       const order = await Order.findOne({
         where: { id: flow.order_id, status: constants.orderStatus.PENDING },
-        include: [{ model: User, as: 'user', required: false, paranoid: false, attributes: ['first_name', 'email'] }],
+        include: [{ model: User, as: 'user', required: true, where: { is_temporary: false }, attributes: ['first_name', 'email'] }],
         attributes: ['id', 'email', 'order_unique_id']
       });
 
@@ -188,6 +204,13 @@ const sendSecondReminder = async () => {
         status: constants.orderStatus.PENDING,
         createdAt: { [Op.lte]: cutoff }
       },
+      include: [{
+        model: User,
+        as: 'user',
+        required: true,
+        where: { is_temporary: false },
+        attributes: ['id']
+      }],
       attributes: ['id', 'user_id', 'email', 'order_unique_id']
     }]
   });
@@ -201,7 +224,7 @@ const sendSecondReminder = async () => {
     try {
       const order = await Order.findOne({
         where: { id: flow.order_id, status: constants.orderStatus.PENDING },
-        include: [{ model: User, as: 'user', required: false, paranoid: false, attributes: ['first_name', 'email'] }],
+        include: [{ model: User, as: 'user', required: true, where: { is_temporary: false }, attributes: ['first_name', 'email'] }],
         attributes: ['id', 'email', 'order_unique_id']
       });
 
@@ -245,6 +268,13 @@ const autoCancelPendingOrders = async () => {
         status: constants.orderStatus.PENDING,
         createdAt: { [Op.lte]: cutoff }
       },
+      include: [{
+        model: User,
+        as: 'user',
+        required: true,
+        where: { is_temporary: false },
+        attributes: ['id']
+      }],
       attributes: ['id', 'status']
     }]
   });
