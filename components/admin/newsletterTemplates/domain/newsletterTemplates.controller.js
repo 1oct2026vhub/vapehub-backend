@@ -134,10 +134,8 @@ async function listDefaultTemplates(req, res) {
       return errorResponse(res, { statusCode: 502 }, 'Failed to obtain Stripo token', 502);
     }
 
-    const stripoPageRaw = parseInt(req.query.page, 10);
-    const stripoPage = Number.isFinite(stripoPageRaw)
-      ? Math.max(0, stripoPageRaw)
-      : Math.max(0, page - 1);
+    // API uses 1-based paging while Stripo expects 0-based page index.
+    const stripoPage = Math.max(0, page - 1);
     const templateTypes = parseIntegerQueryArray(req.query.templateTypes);
     const templateSeasons = parseIntegerQueryArray(req.query.templateSeasons);
     const templateFeatures = parseIntegerQueryArray(req.query.templateFeatures);
