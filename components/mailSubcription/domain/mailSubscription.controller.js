@@ -29,9 +29,12 @@ module.exports.createMailSubscription = async (req, res, next) => {
                 message: 'Email already exists'
             }
         }
+        // create new mailList
+        // if user is authenticated, add user_id to mailList record
+        // else, set null for user_id
         const mailList = await MailSubscription.create({
             email,
-            ...(user_id != null ? { user_id } : {}),
+            ...(user_id ? user_id : null),
             subscribed: true
         });
         successResponse(res, mailList, 'Mail subscription added successfully', 200);

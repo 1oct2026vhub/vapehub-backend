@@ -57,41 +57,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             { receive_promotions },
             { where: { id: user_id }, transaction }
         );
-
-        const checkoutUser = await User.findOne({
-            where: { id: user_id },
-            attributes: ['id', 'email'],
-            transaction
-        });
-        const userEmail = (typeof email === 'string' && email.trim()) || checkoutUser?.email;
-        if (userEmail) {
-            const existingSub = await MailSubscription.findOne({
-                where: { email: userEmail },
-                transaction
-            });
-            if (receive_promotions) {
-                if (existingSub) {
-                    await existingSub.update(
-                        { user_id, subscribed: true },
-                        { transaction }
-                    );
-                } else {
-                    await MailSubscription.create(
-                        {
-                            user_id,
-                            email: userEmail,
-                            subscribed: true
-                        },
-                        { transaction }
-                    );
-                }
-            } else if (existingSub) {
-                await existingSub.update(
-                    { user_id, subscribed: false },
-                    { transaction }
-                );
-            }
-        }
     }
 
     // Save Addresses
