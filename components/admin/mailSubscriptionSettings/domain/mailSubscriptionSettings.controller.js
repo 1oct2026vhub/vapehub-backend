@@ -1,8 +1,9 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser } = require('../../../../models');
+const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser, User } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
 const utilsLogger = require('../../../../utils/logger');
+const Handlebars = require('handlebars');
 const { 
     uploadPromotionalImages, 
     validatePromotionalImages, 
@@ -40,6 +41,21 @@ async function loadNewsletterTemplateById(id) {
         subject: meta.subject,
         html: htmlRaw || '',
     };
+}
+
+function deriveDisplayNameFromSubscriber(subscriber, user) {
+    const first = user?.first_name ? String(user.first_name).trim() : '';
+    const last = user?.last_name ? String(user.last_name).trim() : '';
+    const fullName = [first, last].filter(Boolean).join(' ').trim();
+    if (fullName) return fullName;
+
+    const email = subscriber?.email ? String(subscriber.email) : '';
+    const localPart = email.includes('@') ? email.split('@')[0] : '';
+    if (!localPart) return 'Customer';
+
+    // "john.doe_12" -> "John Doe 12"
+    const normalized = localPart.replace(/[._-]+/g, ' ').trim();
+    return normalized ? normalized.replace(/\b\w/g, c => c.toUpperCase()) : 'Customer';
 }
 
 module.exports = {
@@ -451,16 +467,41 @@ module.exports = {
                 // Process current batch
                 const batchPromises = batch.map(async (subscriber) => {
                     try {
+                        let personalizedHtml = effectiveHtml;
+                        let username = 'Customer';
+
+                        if (templateId) {
+                            let user = null;
+                            if (subscriber.user_id) {
+                                user = await User.findByPk(subscriber.user_id, {
+                                    attributes: ['id', 'first_name', 'last_name', 'email']
+                                });
+                            }
+
+                            username = deriveDisplayNameFromSubscriber(subscriber, user);
+                            const mergeContext = {
+                                username,
+                                firstName: user?.first_name || username,
+                                lastName: user?.last_name || '',
+                                email: subscriber.email,
+                                subject: effectiveSubject
+                            };
+
+                            // Compile stored newsletter template per recipient so merge tags like {{username}} work.
+                            personalizedHtml = Handlebars.compile(effectiveHtml)(mergeContext);
+                        }
+
                         const emailData = {
                             to: subscriber.email,
                             emailTypes: templateId ? 'PROMOTIONAL_NEWSLETTER' : 'PROMOTIONAL',
                             context: {
                                 subject: effectiveSubject,
-                                content: effectiveHtml,
+                                content: personalizedHtml,
                                 highlightText: highlightText,
                                 ctaText: ctaText,
                                 ctaUrl: ctaUrl,
                                 email: subscriber.email,
+                                username,
                                 images: finalImages, // Pass S3 uploaded images to email template
                                 templateId
                             },
