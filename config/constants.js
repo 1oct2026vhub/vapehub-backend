@@ -101,7 +101,7 @@ module.exports = {
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         PROMOTIONAL: {
-            folderName: 'promotional',
+            folderName: 'promotional_newsletter',
             subject: 'Special Offer from VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
