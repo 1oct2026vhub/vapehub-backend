@@ -18,6 +18,17 @@ const CHUNK_SIZE = 50000;
 const DEAL_PATH_PREFIX = 'product-deals';
 
 /**
+ * Normalized paths never listed in the sitemap (legacy slugs, noindex/redirect targets in SEO spec).
+ * DB should still set noIndex/redirects; this is a hard guard so they never appear if data lags.
+ */
+const SITEMAP_EXCLUDED_NORMALIZED_PATHS = new Set([
+  '/uncategorized/',
+  '/uncategorised/',
+  '/70-30-shortfills/',
+  '/how-long-does-crystal-pro-max-last/'
+]);
+
+/**
  * Normalize a site path to a comparable form: leading slash, trailing slash (except '/').
  * @param {string} path
  * @returns {string}
@@ -106,6 +117,7 @@ async function collectSitemapEntries() {
     if (p.includes('?')) return;
     if (p.startsWith('/admin')) return;
     if (redirectPaths.has(p)) return;
+    if (SITEMAP_EXCLUDED_NORMALIZED_PATHS.has(p)) return;
 
     const lm = lastmod instanceof Date && !Number.isNaN(lastmod.getTime()) ? lastmod : new Date();
     const prev = byPath.get(p);
