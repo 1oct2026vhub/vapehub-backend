@@ -451,7 +451,7 @@ module.exports = {
                 // Process current batch
                 const batchPromises = batch.map(async (subscriber) => {
                     try {
-                        const primaryEmailType = templateId ? 'PROMOTIONAL_NEWSLETTER' : 'PROMOTIONAL';
+                        const primaryEmailType = 'PROMOTIONAL_NEWSLETTER';
                         const emailData = {
                             to: subscriber.email,
                             emailTypes: primaryEmailType,
