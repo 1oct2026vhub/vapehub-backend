@@ -100,11 +100,11 @@ module.exports = {
             subject: 'New Products Alert! 🆕 Latest Additions to VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
-        // PROMOTIONAL: {
-        //     folderName: 'promotional',
-        //     subject: 'Special Offer from VapeHub! 🎉',
-        //     from: process.env.EMAIL_NO_REPLY_SENDER,
-        // },
+        PROMOTIONAL: {
+            folderName: 'promotional',
+            subject: 'Special Offer from VapeHub! 🎉',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
         PROMOTIONAL_NEWSLETTER: {
             folderName: 'promotional_newsletter',
             subject: '',
