@@ -451,9 +451,10 @@ module.exports = {
                 // Process current batch
                 const batchPromises = batch.map(async (subscriber) => {
                     try {
+                        const primaryEmailType = templateId ? 'PROMOTIONAL_NEWSLETTER' : 'PROMOTIONAL';
                         const emailData = {
                             to: subscriber.email,
-                            emailTypes: templateId ? 'PROMOTIONAL_NEWSLETTER' : 'PROMOTIONAL',
+                            emailTypes: primaryEmailType,
                             context: {
                                 subject: effectiveSubject,
                                 content: effectiveHtml,
@@ -467,12 +468,33 @@ module.exports = {
                             attachments: [] // No attachments needed, images are hosted on S3
                         };
 
-                        await sendEmail(
-                            emailData.to,
-                            emailData.emailTypes,
-                            emailData.context,
-                            emailData.attachments
-                        );
+                        try {
+                            await sendEmail(
+                                emailData.to,
+                                emailData.emailTypes,
+                                emailData.context,
+                                emailData.attachments
+                            );
+                        } catch (sendError) {
+                            // Some environments may not yet have PROMOTIONAL_NEWSLETTER configured.
+                            // Fallback keeps template-based campaigns deliverable.
+                            const shouldFallbackToPromotional =
+                                primaryEmailType === 'PROMOTIONAL_NEWSLETTER' &&
+                                (sendError?.message === 'Unknown email type' ||
+                                 sendError?.error?.message === 'Unknown email type');
+
+                            if (!shouldFallbackToPromotional) {
+                                throw sendError;
+                            }
+
+                            logger.warn(`Falling back to PROMOTIONAL email type for ${subscriber.email} due to missing PROMOTIONAL_NEWSLETTER config`);
+                            await sendEmail(
+                                emailData.to,
+                                'PROMOTIONAL',
+                                emailData.context,
+                                emailData.attachments
+                            );
+                        }
 
                         logger.info(`Promotional email sent successfully to: ${subscriber.email}`);
                         return { success: true, email: subscriber.email };
