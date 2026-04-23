@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser } = require('../../../../models');
+const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser, User } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
 const utilsLogger = require('../../../../utils/logger');
@@ -432,6 +432,19 @@ module.exports = {
                 return errorResponse(res, null, 'No subscribers found matching the criteria', 404);
             }
 
+            // Resolve user first names once for token replacement in subject/content.
+            const userIds = [...new Set(subscribers.map(s => s.user_id).filter(id => id != null))];
+            const firstNameByUserId = new Map();
+            if (userIds.length > 0) {
+                const users = await User.findAll({
+                    where: { id: userIds },
+                    attributes: ['id', 'first_name']
+                });
+                users.forEach((user) => {
+                    firstNameByUserId.set(user.id, (user.first_name || '').trim());
+                });
+            }
+
             logger.info(`Sending promotional email to ${subscribers.length} subscribers`);
 
             // Send emails in batches to handle large numbers efficiently
@@ -452,12 +465,18 @@ module.exports = {
                 const batchPromises = batch.map(async (subscriber) => {
                     try {
                         const primaryEmailType = 'PROMOTIONAL_NEWSLETTER';
+                        const rawFirstName = firstNameByUserId.get(subscriber.user_id) || '';
+                        const firstName = rawFirstName
+                            ? rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1)
+                            : '';
+                        const personalizedSubject = String(effectiveSubject).replace(/\$\{first_name\}/g, firstName);
+                        const personalizedHtml = String(effectiveHtml).replace(/\$\{first_name\}/g, firstName);
                         const emailData = {
                             to: subscriber.email,
                             emailTypes: primaryEmailType,
                             context: {
-                                subject: effectiveSubject,
-                                content: effectiveHtml,
+                                subject: personalizedSubject,
+                                content: personalizedHtml,
                                 highlightText: highlightText,
                                 ctaText: ctaText,
                                 ctaUrl: ctaUrl,
