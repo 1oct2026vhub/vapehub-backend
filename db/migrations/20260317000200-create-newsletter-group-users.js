@@ -13,11 +13,11 @@ module.exports = {
         onDelete: 'CASCADE',
         onUpdate: 'CASCADE',
       },
-      user_id: {
-        type: Sequelize.INTEGER,
+      subscriber_id: {
+        type: Sequelize.BIGINT,
         allowNull: false,
         references: {
-          model: 'users',
+          model: 'mail_subscription',
           key: 'id',
         },
         onDelete: 'CASCADE',
