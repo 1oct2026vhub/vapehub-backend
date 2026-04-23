@@ -388,7 +388,7 @@ router.get(
  * /api/admin/newsletter-templates/groups:
  *   post:
  *     summary: Create a newsletter group
- *     description: Creates a new group with a name and optional initial users.
+ *     description: Creates a new group with a name and optional initial subscribers.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -404,7 +404,7 @@ router.get(
  *             properties:
  *               name:
  *                 type: string
- *               userIds:
+ *               subscriberIds:
  *                 type: array
  *                 items:
  *                   type: string
@@ -427,7 +427,7 @@ router.post('/groups', [authMiddleware(true)], newsletterTemplatesController.cre
  * /api/admin/newsletter-templates/groups:
  *   get:
  *     summary: List newsletter groups
- *     description: Returns all newsletter groups with user counts.
+ *     description: Returns all newsletter groups with subscriber counts.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -449,7 +449,7 @@ router.get('/groups', [authMiddleware(true)], newsletterTemplatesController.list
  * /api/admin/newsletter-templates/groups/{id}:
  *   get:
  *     summary: Get a newsletter group
- *     description: Returns a specific group with its users.
+ *     description: Returns a specific group with its subscribers.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -482,7 +482,7 @@ router.get('/groups/:id', [authMiddleware(true)], newsletterTemplatesController.
  * /api/admin/newsletter-templates/groups/{id}:
  *   put:
  *     summary: Update a newsletter group
- *     description: Updates group name and/or replaces its user list.
+ *     description: Updates group name and/or replaces its subscriber list.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -503,7 +503,7 @@ router.get('/groups/:id', [authMiddleware(true)], newsletterTemplatesController.
  *             properties:
  *               name:
  *                 type: string
- *               userIds:
+ *               subscriberIds:
  *                 type: array
  *                 items:
  *                   type: string
@@ -558,10 +558,10 @@ router.delete('/groups/:id', [authMiddleware(true)], newsletterTemplatesControll
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/groups/{id}/users:
+ * /api/admin/newsletter-templates/groups/{id}/subscribers:
  *   post:
- *     summary: Bulk add users to a group
- *     description: Adds one or more users to the specified group.
+ *     summary: Bulk add subscribers to a group
+ *     description: Adds one or more subscribers to the specified group.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -580,15 +580,15 @@ router.delete('/groups/:id', [authMiddleware(true)], newsletterTemplatesControll
  *           schema:
  *             type: object
  *             required:
- *               - userIds
+ *               - subscriberIds
  *             properties:
- *               userIds:
+ *               subscriberIds:
  *                 type: array
  *                 items:
  *                   type: string
  *     responses:
  *       200:
- *         description: Users added to group
+ *         description: Subscribers added to group
  *       400:
  *         description: Validation error
  *       401:
@@ -598,20 +598,20 @@ router.delete('/groups/:id', [authMiddleware(true)], newsletterTemplatesControll
  *       404:
  *         description: Group not found
  *       500:
- *         description: Failed to add users
+ *         description: Failed to add subscribers
  */
 router.post(
-  '/groups/:id/users',
+  '/groups/:id/subscribers',
   [authMiddleware(true)],
   newsletterTemplatesController.addUsersToGroup
 );
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/groups/{id}/users:
+ * /api/admin/newsletter-templates/groups/{id}/subscribers:
  *   delete:
- *     summary: Bulk remove users from a group
- *     description: Removes one or more users from the specified group.
+ *     summary: Bulk remove subscribers from a group
+ *     description: Removes one or more subscribers from the specified group.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -630,15 +630,15 @@ router.post(
  *           schema:
  *             type: object
  *             required:
- *               - userIds
+ *               - subscriberIds
  *             properties:
- *               userIds:
+ *               subscriberIds:
  *                 type: array
  *                 items:
  *                   type: string
  *     responses:
  *       200:
- *         description: Users removed from group
+ *         description: Subscribers removed from group
  *       400:
  *         description: Validation error
  *       401:
@@ -648,20 +648,20 @@ router.post(
  *       404:
  *         description: Group not found
  *       500:
- *         description: Failed to remove users
+ *         description: Failed to remove subscribers
  */
 router.delete(
-  '/groups/:id/users',
+  '/groups/:id/subscribers',
   [authMiddleware(true)],
   newsletterTemplatesController.removeUsersFromGroup
 );
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/groups/{id}/users:
+ * /api/admin/newsletter-templates/groups/{id}/subscribers:
  *   get:
- *     summary: List users in a group
- *     description: Returns all user identifiers that belong to the specified group.
+ *     summary: List subscribers in a group
+ *     description: Returns all subscriber identifiers that belong to the specified group.
  *     tags:
  *       - Newsletter Groups
  *     security:
@@ -675,7 +675,7 @@ router.delete(
  *         description: Group id
  *     responses:
  *       200:
- *         description: Group users listed
+ *         description: Group subscribers listed
  *       400:
  *         description: Invalid group id
  *       401:
@@ -685,45 +685,45 @@ router.delete(
  *       404:
  *         description: Group not found
  *       500:
- *         description: Failed to list users
+ *         description: Failed to list subscribers
  */
 router.get(
-  '/groups/:id/users',
+  '/groups/:id/subscribers',
   [authMiddleware(true)],
   newsletterTemplatesController.listGroupUsers
 );
 
 /**
  * @swagger
- * /api/admin/newsletter-templates/users/{userId}/groups:
+ * /api/admin/newsletter-templates/subscribers/{subscriberId}/groups:
  *   get:
- *     summary: List groups for a user
- *     description: Returns all groups that the specified user belongs to.
+ *     summary: List groups for a subscriber
+ *     description: Returns all groups that the specified subscriber belongs to.
  *     tags:
  *       - Newsletter Groups
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: userId
+ *         name: subscriberId
  *         required: true
  *         schema:
  *           type: string
- *         description: User identifier
+ *         description: Subscriber identifier
  *     responses:
  *       200:
- *         description: User groups listed
+ *         description: Subscriber groups listed
  *       400:
- *         description: Invalid userId
+ *         description: Invalid subscriberId
  *       401:
  *         description: Unauthorized
  *       403:
  *         description: Forbidden
  *       500:
- *         description: Failed to list user groups
+ *         description: Failed to list subscriber groups
  */
 router.get(
-  '/users/:userId/groups',
+  '/subscribers/:subscriberId/groups',
   [authMiddleware(true)],
   newsletterTemplatesController.listUserGroups
 );

@@ -364,30 +364,30 @@ module.exports = {
                 
                 logger.info(`Total subscribers fetched: ${subscribers.length}`);
             } else if (groupId != null) {
-                // Send to subscribers who belong to a single newsletter group (by user_id)
+                // Send to subscribers who belong to a single newsletter group (by subscriber_id)
                 const parsedGroupId = Number(groupId);
                 if (!Number.isFinite(parsedGroupId) || parsedGroupId <= 0) {
                     return errorResponse(res, null, 'groupId must be a positive number', 400);
                 }
 
-                // Load group membership (user ids)
+                // Load group membership (subscriber ids)
                 const memberships = await NewsletterGroupUser.findAll({
                     where: { group_id: parsedGroupId },
-                    attributes: ['user_id']
+                    attributes: ['subscriber_id']
                 });
 
-                const userIds = [...new Set(memberships.map(m => m.user_id).filter(Boolean))];
-                if (userIds.length === 0) {
-                    return errorResponse(res, null, 'No users found in the specified group', 404);
+                const subscriberIds = [...new Set(memberships.map(m => m.subscriber_id).filter(Boolean))];
+                if (subscriberIds.length === 0) {
+                    return errorResponse(res, null, 'No subscribers found in the specified group', 404);
                 }
 
                 // Resolve to active subscribers; chunk large IN lists
-                const USER_ID_CHUNK_SIZE = 500;
-                for (let i = 0; i < userIds.length; i += USER_ID_CHUNK_SIZE) {
-                    const chunk = userIds.slice(i, i + USER_ID_CHUNK_SIZE);
+                const SUBSCRIBER_ID_CHUNK_SIZE = 500;
+                for (let i = 0; i < subscriberIds.length; i += SUBSCRIBER_ID_CHUNK_SIZE) {
+                    const chunk = subscriberIds.slice(i, i + SUBSCRIBER_ID_CHUNK_SIZE);
                     const chunkSubscribers = await MailSubscription.findAll({
                         where: {
-                            user_id: chunk,
+                            id: chunk,
                             subscribed: true,
                             deletedAt: null
                         },

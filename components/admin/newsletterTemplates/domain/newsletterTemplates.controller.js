@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
-const { NewsletterGroup, NewsletterGroupUser, User } = require('../../../../models');
+const { NewsletterGroup, MailSubscription } = require('../../../../models');
 const {
   getStripoAccessToken,
   fetchDefaultTemplates,
@@ -543,24 +543,24 @@ async function deleteTemplate(req, res) {
 
 async function createGroup(req, res) {
   try {
-    const { name, userIds = [] } = req.body || {};
+    const { name, subscriberIds = [] } = req.body || {};
     if (!name || typeof name !== 'string') {
       return errorResponse(res, { statusCode: 400 }, 'name is required', 400);
     }
-    if (!Array.isArray(userIds)) {
-      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    if (!Array.isArray(subscriberIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'subscriberIds must be an array', 400);
     }
 
     const group = await NewsletterGroup.create({ name });
-    if (userIds.length) {
-      const users = await User.findAll({ where: { id: userIds } });
-      await group.addUsers(users);
+    if (subscriberIds.length) {
+      const subscribers = await MailSubscription.findAll({ where: { id: subscriberIds } });
+      await group.addSubscribers(subscribers);
     }
 
-    const count = await group.countUsers();
+    const count = await group.countSubscribers();
     return successResponse(
       res,
-      { id: group.id, name: group.name, userCount: count },
+      { id: group.id, name: group.name, subscriberCount: count },
       'Group created',
       201
     );
@@ -581,7 +581,7 @@ async function listGroups(req, res) {
         name: g.name,
         createdAt: g.createdAt,
         updatedAt: g.updatedAt,
-        userCount: await g.countUsers(),
+        subscriberCount: await g.countSubscribers(),
       }))
     );
 
@@ -595,7 +595,7 @@ async function getGroup(req, res) {
   try {
     const { id } = req.params || {};
     const group = await NewsletterGroup.findByPk(id, {
-      include: [{ model: User, as: 'users', attributes: ['id', 'email'] }],
+      include: [{ model: MailSubscription, as: 'subscribers', attributes: ['id', 'email', 'subscribed'] }],
     });
     if (!group) {
       return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
@@ -607,7 +607,7 @@ async function getGroup(req, res) {
         name: group.name,
         createdAt: group.createdAt,
         updatedAt: group.updatedAt,
-        users: group.users,
+        subscribers: group.subscribers,
       },
       'Group loaded',
       200
@@ -620,7 +620,7 @@ async function getGroup(req, res) {
 async function updateGroup(req, res) {
   try {
     const { id } = req.params || {};
-    const { name, userIds } = req.body || {};
+    const { name, subscriberIds } = req.body || {};
 
     const group = await NewsletterGroup.findByPk(id);
     if (!group) {
@@ -630,8 +630,8 @@ async function updateGroup(req, res) {
     if (name != null && typeof name !== 'string') {
       return errorResponse(res, { statusCode: 400 }, 'name must be a string', 400);
     }
-    if (userIds != null && !Array.isArray(userIds)) {
-      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    if (subscriberIds != null && !Array.isArray(subscriberIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'subscriberIds must be an array', 400);
     }
 
     if (name) {
@@ -639,15 +639,15 @@ async function updateGroup(req, res) {
     }
     await group.save();
 
-    if (Array.isArray(userIds)) {
-      const users = await User.findAll({ where: { id: userIds } });
-      await group.setUsers(users);
+    if (Array.isArray(subscriberIds)) {
+      const subscribers = await MailSubscription.findAll({ where: { id: subscriberIds } });
+      await group.setSubscribers(subscribers);
     }
 
-    const users = await group.getUsers({ attributes: ['id', 'email'] });
+    const subscribers = await group.getSubscribers({ attributes: ['id', 'email', 'subscribed'] });
     return successResponse(
       res,
-      { id: group.id, name: group.name, users },
+      { id: group.id, name: group.name, subscribers },
       'Group updated',
       200
     );
@@ -673,9 +673,9 @@ async function deleteGroup(req, res) {
 async function addUsersToGroup(req, res) {
   try {
     const { id } = req.params || {};
-    const { userIds = [] } = req.body || {};
-    if (!Array.isArray(userIds)) {
-      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    const { subscriberIds = [] } = req.body || {};
+    if (!Array.isArray(subscriberIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'subscriberIds must be an array', 400);
     }
 
     const group = await NewsletterGroup.findByPk(id);
@@ -683,27 +683,27 @@ async function addUsersToGroup(req, res) {
       return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
     }
 
-    const users = await User.findAll({ where: { id: userIds } });
-    await group.addUsers(users);
+    const subscribers = await MailSubscription.findAll({ where: { id: subscriberIds } });
+    await group.addSubscribers(subscribers);
 
-    const updatedUsers = await group.getUsers({ attributes: ['id', 'email'] });
+    const updatedSubscribers = await group.getSubscribers({ attributes: ['id', 'email', 'subscribed'] });
     return successResponse(
       res,
-      { id: group.id, users: updatedUsers },
-      'Users added to group',
+      { id: group.id, subscribers: updatedSubscribers },
+      'Subscribers added to group',
       200
     );
   } catch (err) {
-    return errorResponse(res, err, err?.message || 'Failed to add users to group', 500);
+    return errorResponse(res, err, err?.message || 'Failed to add subscribers to group', 500);
   }
 }
 
 async function removeUsersFromGroup(req, res) {
   try {
     const { id } = req.params || {};
-    const { userIds = [] } = req.body || {};
-    if (!Array.isArray(userIds)) {
-      return errorResponse(res, { statusCode: 400 }, 'userIds must be an array', 400);
+    const { subscriberIds = [] } = req.body || {};
+    if (!Array.isArray(subscriberIds)) {
+      return errorResponse(res, { statusCode: 400 }, 'subscriberIds must be an array', 400);
     }
 
     const group = await NewsletterGroup.findByPk(id);
@@ -711,33 +711,33 @@ async function removeUsersFromGroup(req, res) {
       return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
     }
 
-    const users = await User.findAll({ where: { id: userIds } });
-    await group.removeUsers(users);
+    const subscribers = await MailSubscription.findAll({ where: { id: subscriberIds } });
+    await group.removeSubscribers(subscribers);
 
-    const updatedUsers = await group.getUsers({ attributes: ['id', 'email'] });
+    const updatedSubscribers = await group.getSubscribers({ attributes: ['id', 'email', 'subscribed'] });
     return successResponse(
       res,
-      { id: group.id, users: updatedUsers },
-      'Users removed from group',
+      { id: group.id, subscribers: updatedSubscribers },
+      'Subscribers removed from group',
       200
     );
   } catch (err) {
-    return errorResponse(res, err, err?.message || 'Failed to remove users from group', 500);
+    return errorResponse(res, err, err?.message || 'Failed to remove subscribers from group', 500);
   }
 }
 
 async function listUserGroups(req, res) {
   try {
-    const { userId } = req.params || {};
-    const user = await User.findByPk(userId, {
+    const { subscriberId } = req.params || {};
+    const subscriber = await MailSubscription.findByPk(subscriberId, {
       include: [{ model: NewsletterGroup, as: 'newsletterGroups' }],
     });
-    if (!user) {
-      return errorResponse(res, { statusCode: 404 }, 'User not found', 404);
+    if (!subscriber) {
+      return errorResponse(res, { statusCode: 404 }, 'Subscriber not found', 404);
     }
-    return successResponse(res, user.newsletterGroups, 'User groups listed', 200);
+    return successResponse(res, subscriber.newsletterGroups, 'Subscriber groups listed', 200);
   } catch (err) {
-    return errorResponse(res, err, err?.message || 'Failed to list user groups', 500);
+    return errorResponse(res, err, err?.message || 'Failed to list subscriber groups', 500);
   }
 }
 
@@ -745,19 +745,19 @@ async function listGroupUsers(req, res) {
   try {
     const { id } = req.params || {};
     const group = await NewsletterGroup.findByPk(id, {
-      include: [{ model: User, as: 'users', attributes: ['id', 'email'] }],
+      include: [{ model: MailSubscription, as: 'subscribers', attributes: ['id', 'email', 'subscribed'] }],
     });
     if (!group) {
       return errorResponse(res, { statusCode: 404 }, 'Group not found', 404);
     }
     return successResponse(
       res,
-      { id: group.id, name: group.name, users: group.users },
-      'Group users listed',
+      { id: group.id, name: group.name, subscribers: group.subscribers },
+      'Group subscribers listed',
       200
     );
   } catch (err) {
-    return errorResponse(res, err, err?.message || 'Failed to list group users', 500);
+    return errorResponse(res, err, err?.message || 'Failed to list group subscribers', 500);
   }
 }
 

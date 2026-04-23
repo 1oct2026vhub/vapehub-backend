@@ -24,11 +24,11 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   NewsletterGroup.associate = (models) => {
-    NewsletterGroup.belongsToMany(models.User, {
+    NewsletterGroup.belongsToMany(models.MailSubscription, {
       through: models.NewsletterGroupUser,
       foreignKey: 'group_id',
-      otherKey: 'user_id',
-      as: 'users',
+      otherKey: 'subscriber_id',
+      as: 'subscribers',
     });
   };
 

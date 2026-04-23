@@ -12,11 +12,11 @@ module.exports = (sequelize, DataTypes) => {
           key: 'id',
         },
       },
-      user_id: {
+      subscriber_id: {
         type: DataTypes.BIGINT,
         allowNull: false,
         references: {
-          model: 'users',
+          model: 'mail_subscription',
           key: 'id',
         },
       },
@@ -32,9 +32,9 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'group_id',
       as: 'group',
     });
-    NewsletterGroupUser.belongsTo(models.User, {
-      foreignKey: 'user_id',
-      as: 'user',
+    NewsletterGroupUser.belongsTo(models.MailSubscription, {
+      foreignKey: 'subscriber_id',
+      as: 'subscriber',
     });
   };
 
