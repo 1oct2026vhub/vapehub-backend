@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { MailSubscriptionSettings, MailSubscription } = require('../../../../models');
+const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser, User } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
 const utilsLogger = require('../../../../utils/logger');
@@ -8,6 +8,39 @@ const {
     validatePromotionalImages, 
     generateCampaignId 
 } = require('../helper/imageUpload.helper');
+const path = require('path');
+const fs = require('fs').promises;
+
+const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
+async function loadNewsletterTemplateById(id) {
+    if (!id || typeof id !== 'string' || id.includes('..') || id.includes('/') || id.includes('\\')) {
+        const err = new Error('Invalid template id');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, id);
+
+    const [metaRaw, htmlRaw] = await Promise.all([
+        fs.readFile(path.join(templateDir, 'meta.json'), 'utf8').catch(() => null),
+        fs.readFile(path.join(templateDir, 'body.html'), 'utf8').catch(() => null),
+    ]);
+
+    if (!metaRaw) {
+        const err = new Error('Template not found');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const meta = JSON.parse(metaRaw);
+
+    return {
+        id: meta.id || id,
+        name: meta.name,
+        subject: meta.subject,
+        html: htmlRaw || '',
+    };
+}
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -217,8 +250,10 @@ module.exports = {
                 ctaUrl,
                 selectedEmails = [],
                 sendToAll = false,
+                groupId = null,
                 frequency = null,
-                imageUrls = [] // Array of image URLs: [{url: 'image_url', alt: 'alt_text', isPrimary: boolean}]
+                imageUrls = [], // Array of image URLs: [{url: 'image_url', alt: 'alt_text', isPrimary: boolean}]
+                templateId
             } = req.body;
 
             // Handle both uploaded files and URL-based images
@@ -244,8 +279,41 @@ module.exports = {
             }
 
             // Validate required fields
-            if (!subject || !content) {
-                return errorResponse(res, null, 'Subject and content are required', 400);
+            if (!subject && !templateId) {
+                return errorResponse(res, {}, 'Either subject or templateId must be provided', 400);
+            }
+
+            if (!content && !templateId) {
+                return errorResponse(res, {}, 'Either content or templateId must be provided', 400);
+            }
+
+            // Resolve final subject and HTML content (template-based or raw content)
+            let effectiveSubject = subject || null;
+            let effectiveHtml = content || null;
+
+            if (templateId) {
+                try {
+                    const template = await loadNewsletterTemplateById(templateId);
+
+                    if (!effectiveSubject && template.subject) {
+                        effectiveSubject = template.subject;
+                    }
+
+                    if (template.html) {
+                        effectiveHtml = template.html;
+                    }
+                } catch (err) {
+                    const status = err.statusCode || 500;
+                    return errorResponse(res, err, err.message || 'Failed to load template', status);
+                }
+            }
+
+            if (!effectiveSubject) {
+                return errorResponse(res, {}, 'Subject is required (either in request or template)', 400);
+            }
+
+            if (!effectiveHtml) {
+                return errorResponse(res, {}, 'Email HTML content is empty even after applying template', 400);
             }
 
             // Get subscribers based on criteria with pagination for large datasets
@@ -295,6 +363,47 @@ module.exports = {
                 }
                 
                 logger.info(`Total subscribers fetched: ${subscribers.length}`);
+            } else if (groupId != null) {
+                // Send to subscribers who belong to a single newsletter group (by subscriber_id)
+                const parsedGroupId = Number(groupId);
+                if (!Number.isFinite(parsedGroupId) || parsedGroupId <= 0) {
+                    return errorResponse(res, null, 'groupId must be a positive number', 400);
+                }
+
+                // Load group membership (subscriber ids)
+                const memberships = await NewsletterGroupUser.findAll({
+                    where: { group_id: parsedGroupId },
+                    attributes: ['subscriber_id']
+                });
+
+                const subscriberIds = [...new Set(memberships.map(m => m.subscriber_id).filter(Boolean))];
+                if (subscriberIds.length === 0) {
+                    return errorResponse(res, null, 'No subscribers found in the specified group', 404);
+                }
+
+                // Resolve to active subscribers; chunk large IN lists
+                const SUBSCRIBER_ID_CHUNK_SIZE = 500;
+                for (let i = 0; i < subscriberIds.length; i += SUBSCRIBER_ID_CHUNK_SIZE) {
+                    const chunk = subscriberIds.slice(i, i + SUBSCRIBER_ID_CHUNK_SIZE);
+                    const chunkSubscribers = await MailSubscription.findAll({
+                        where: {
+                            id: chunk,
+                            subscribed: true,
+                            deletedAt: null
+                        },
+                        attributes: ['id', 'email', 'user_id']
+                    });
+                    subscribers = subscribers.concat(chunkSubscribers);
+                }
+
+                // De-dupe in case multiple subscription rows share email or user_id (safety)
+                const seen = new Set();
+                subscribers = subscribers.filter(s => {
+                    const key = s.user_id != null ? `u:${s.user_id}` : `e:${s.email}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
             } else if (selectedEmails && selectedEmails.length > 0) {
                 // Send to selected emails - handle large email lists in chunks
                 const EMAIL_CHUNK_SIZE = 500; // Process 500 emails at a time for database queries
@@ -316,11 +425,24 @@ module.exports = {
                     subscribers = subscribers.concat(chunkSubscribers);
                 }
             } else {
-                return errorResponse(res, null, 'Either sendToAll must be true or selectedEmails must be provided', 400);
+                return errorResponse(res, null, 'Either sendToAll must be true, groupId must be provided, or selectedEmails must be provided', 400);
             }
 
             if (subscribers.length === 0) {
                 return errorResponse(res, null, 'No subscribers found matching the criteria', 404);
+            }
+
+            // Resolve user first names once for token replacement in subject/content.
+            const userIds = [...new Set(subscribers.map(s => s.user_id).filter(id => id != null))];
+            const firstNameByUserId = new Map();
+            if (userIds.length > 0) {
+                const users = await User.findAll({
+                    where: { id: userIds },
+                    attributes: ['id', 'first_name']
+                });
+                users.forEach((user) => {
+                    firstNameByUserId.set(user.id, (user.first_name || '').trim());
+                });
             }
 
             logger.info(`Sending promotional email to ${subscribers.length} subscribers`);
@@ -342,27 +464,56 @@ module.exports = {
                 // Process current batch
                 const batchPromises = batch.map(async (subscriber) => {
                     try {
+                        const primaryEmailType = 'PROMOTIONAL_NEWSLETTER';
+                        const rawFirstName = firstNameByUserId.get(subscriber.user_id) || '';
+                        const firstName = rawFirstName
+                            ? rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1)
+                            : '';
+                        const personalizedSubject = String(effectiveSubject).replace(/\$\{first_name\}/g, firstName);
+                        const personalizedHtml = String(effectiveHtml).replace(/\$\{first_name\}/g, firstName);
                         const emailData = {
                             to: subscriber.email,
-                            emailTypes: 'PROMOTIONAL',
+                            emailTypes: primaryEmailType,
                             context: {
-                                subject: subject,
-                                content: content,
+                                subject: personalizedSubject,
+                                content: personalizedHtml,
                                 highlightText: highlightText,
                                 ctaText: ctaText,
                                 ctaUrl: ctaUrl,
                                 email: subscriber.email,
-                                images: finalImages // Pass S3 uploaded images to email template
+                                images: finalImages, // Pass S3 uploaded images to email template
+                                templateId
                             },
                             attachments: [] // No attachments needed, images are hosted on S3
                         };
 
-                        await sendEmail(
-                            emailData.to,
-                            emailData.emailTypes,
-                            emailData.context,
-                            emailData.attachments
-                        );
+                        try {
+                            await sendEmail(
+                                emailData.to,
+                                emailData.emailTypes,
+                                emailData.context,
+                                emailData.attachments
+                            );
+                        } catch (sendError) {
+                            // Some environments may not yet have PROMOTIONAL_NEWSLETTER configured.
+                            // Fallback keeps template-based campaigns deliverable.
+                            const shouldFallbackToPromotional =
+                                primaryEmailType === 'PROMOTIONAL_NEWSLETTER' &&
+                                (sendError?.message === 'Unknown email type' ||
+                                 sendError?.error?.message === 'Unknown email type');
+
+                            if (!shouldFallbackToPromotional) {
+                                throw sendError;
+                            }
+
+                            logger.warn(`Falling back to PROMOTIONAL email type for ${subscriber.email} due to missing PROMOTIONAL_NEWSLETTER config`);
+                            await sendEmail(
+                                emailData.to,
+                                'PROMOTIONAL',
+                                emailData.context,
+                                emailData.attachments
+                            );
+                        }
 
                         logger.info(`Promotional email sent successfully to: ${subscriber.email}`);
                         return { success: true, email: subscriber.email };

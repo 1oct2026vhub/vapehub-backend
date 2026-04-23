@@ -51,7 +51,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         }
 
         // Gmail one-click unsubscribe (RFC 8058). Requires HOST_URL to be public HTTPS URL.
-        const oneClickUnsubscribeTypes = ['PROMOTIONAL', 'PRODUCT_UPDATES'];
+        const oneClickUnsubscribeTypes = ['PROMOTIONAL', 'PROMOTIONAL_NEWSLETTER', 'PRODUCT_UPDATES'];
         if (oneClickUnsubscribeTypes.includes(emailType)) {
             const recipient = Array.isArray(to) ? to[0] : to;
             if (recipient && process.env.HOST_URL) {

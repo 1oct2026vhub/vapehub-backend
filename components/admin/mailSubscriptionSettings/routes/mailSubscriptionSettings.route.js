@@ -454,16 +454,17 @@ router.delete('/:id', [
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - subject
- *               - content
+ *             required: []
  *             properties:
  *               subject:
  *                 type: string
- *                 description: Email subject line
+ *                 description: Email subject line. Optional when templateId provides the subject.
  *               content:
  *                 type: string
- *                 description: Main email content (HTML supported)
+ *                 description: Main email content (HTML supported). Optional when templateId provides the HTML.
+ *               templateId:
+ *                 type: string
+ *                 description: Newsletter template id created via Beefree. When provided, the stored template HTML (and subject, if present) will be used.
  *               highlightText:
  *                 type: string
  *                 description: Highlighted text to display prominently
@@ -482,6 +483,9 @@ router.delete('/:id', [
  *                 items:
  *                   type: string
  *                 description: Array of specific email addresses to send to
+ *               groupId:
+ *                 type: integer
+ *                 description: Newsletter group id (from /api/admin/newsletter-templates/groups). Sends to active subscribers whose user_id is in this group.
  *               frequency:
  *                 type: string
  *                 enum: [daily, weekly, monthly]
@@ -508,6 +512,7 @@ router.delete('/:id', [
  *             ctaText: "Shop Now"
  *             ctaUrl: "https://example.com/sale"
  *             sendToAll: false
+ *             groupId: 12
  *             selectedEmails:
  *               - "subscriber1@example.com"
  *               - "subscriber2@example.com"
