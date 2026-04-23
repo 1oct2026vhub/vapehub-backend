@@ -847,7 +847,7 @@ router.get(
  *                     jobId: user-export-1704067200000-a3f9k2m
  *                     status: failed
  *                     downloadUrl: null
- *                     error: "S3 upload failed after 3 attempts: Network error"
+ *                     error: S3 upload failed after 3 attempts: Network error
  *                     totalRecords: 50000
  *                     format: excel
  *                     createdAt: 2024-01-01T10:00:00.000Z
