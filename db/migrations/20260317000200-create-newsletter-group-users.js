@@ -14,7 +14,7 @@ module.exports = {
         onUpdate: 'CASCADE',
       },
       subscriber_id: {
-        type: Sequelize.BIGINT,
+        type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'mail_subscription',
@@ -36,9 +36,9 @@ module.exports = {
     });
 
     await queryInterface.addConstraint('newsletter_group_users', {
-      fields: ['group_id', 'user_id'],
+      fields: ['group_id', 'subscriber_id'],
       type: 'unique',
-      name: 'newsletter_group_users_group_user_unique',
+      name: 'newsletter_group_users_group_subscriber_unique',
     });
   },
 

@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
         },
       },
       subscriber_id: {
-        type: DataTypes.BIGINT,
+        type: DataTypes.INTEGER,
         allowNull: false,
         references: {
           model: 'mail_subscription',
