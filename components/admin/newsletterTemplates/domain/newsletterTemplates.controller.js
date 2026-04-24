@@ -2,8 +2,6 @@
  * Stripo auth token proxy.
  * Keeps Stripo credentials only on the server.
  */
-const path = require('path');
-const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
 const { NewsletterGroup, MailSubscription } = require('../../../../models');
@@ -17,8 +15,7 @@ const {
   fetchDefaultTemplateIndustries,
   getProviderErrorMessage,
 } = require('../helper/stripo.helper');
-
-const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
+const newsletterTemplateStorage = require('../../../../library/newsletterTemplates/newsletterTemplateStorage');
 
 function slugify(name) {
   return String(name || '')
@@ -28,10 +25,6 @@ function slugify(name) {
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '') || 'template';
-}
-
-async function ensureTemplatesDir() {
-  await fs.mkdir(NEWSLETTER_TEMPLATES_DIR, { recursive: true });
 }
 
 function parseIntegerQueryArray(value) {
@@ -328,7 +321,7 @@ async function listDefaultTemplateIndustries(req, res) {
 }
 
 /**
- * Save newsletter template to files under newsletterTemplates/<id>/.
+ * Save newsletter template to S3 under {NEWSLETTER_TEMPLATES_S3_PREFIX}/<id>/.
  * Body: { name, subject, designJson, html, id? }
  */
 async function saveTemplate(req, res) {
@@ -347,27 +340,23 @@ async function saveTemplate(req, res) {
           : JSON.stringify(designJson);
     const htmlString = html == null ? '' : String(html);
 
-    await ensureTemplatesDir();
-
     let templateId = existingId;
     if (!templateId || typeof templateId !== 'string' || !/^[a-z0-9-]+$/.test(templateId)) {
       const slug = slugify(name);
       templateId = `${slug}-${uuidv4().slice(0, 8)}`;
     }
 
-    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, templateId);
-    await fs.mkdir(templateDir, { recursive: true });
-
     const now = new Date().toISOString();
 
-    // Keep createdAt stable across updates.
     let createdAt = now;
     try {
-      const oldMetaRaw = await fs.readFile(path.join(templateDir, 'meta.json'), 'utf8');
-      const oldMeta = JSON.parse(oldMetaRaw);
-      if (oldMeta?.createdAt) createdAt = oldMeta.createdAt;
+      const oldMetaRaw = await newsletterTemplateStorage.readPreviousMetaString(templateId);
+      if (oldMetaRaw) {
+        const oldMeta = JSON.parse(oldMetaRaw);
+        if (oldMeta?.createdAt) createdAt = oldMeta.createdAt;
+      }
     } catch {
-      // ignore
+      // ignore corrupt meta
     }
 
     const meta = {
@@ -379,12 +368,18 @@ async function saveTemplate(req, res) {
       updatedBy: req?.user?.id ?? null,
     };
 
-    await fs.writeFile(path.join(templateDir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
-    await fs.writeFile(path.join(templateDir, 'design.json'), designString, 'utf8');
-    await fs.writeFile(path.join(templateDir, 'body.html'), htmlString, 'utf8');
+    await newsletterTemplateStorage.writeTemplateParts(templateId, {
+      metaString: JSON.stringify(meta, null, 2),
+      designString,
+      htmlString,
+    });
 
     return successResponse(res, { id: templateId, name, subject }, 'Template saved', 200);
   } catch (err) {
+    const status = err.statusCode || 500;
+    if (status === 503) {
+      return errorResponse(res, err, err?.message || 'Storage is not configured', 503);
+    }
     return errorResponse(res, err, err?.message || 'Failed to save template', 500);
   }
 }
@@ -399,21 +394,14 @@ async function listTemplates(req, res) {
         ? Math.min(pageSizeRaw, 100)
         : 20;
 
-    await ensureTemplatesDir();
-    const entries = await fs.readdir(NEWSLETTER_TEMPLATES_DIR, { withFileTypes: true });
+    const templateIds = await newsletterTemplateStorage.listTemplateIds();
     const templates = [];
 
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const baseDir = path.join(NEWSLETTER_TEMPLATES_DIR, ent.name);
-      const metaPath = path.join(baseDir, 'meta.json');
+    for (const templateId of templateIds) {
       try {
-        const raw = await fs.readFile(metaPath, 'utf8');
-        const meta = JSON.parse(raw);
-        const [designRaw, htmlRaw] = await Promise.all([
-          fs.readFile(path.join(baseDir, 'design.json'), 'utf8').catch(() => null),
-          fs.readFile(path.join(baseDir, 'body.html'), 'utf8').catch(() => null),
-        ]);
+        const { metaRaw, designRaw, htmlRaw } = await newsletterTemplateStorage.readTemplateFull(templateId);
+        if (!metaRaw) continue;
+        const meta = JSON.parse(metaRaw);
 
         let parsedDesign = null;
         if (typeof designRaw === 'string') {
@@ -425,8 +413,8 @@ async function listTemplates(req, res) {
         }
 
         templates.push({
-          id: meta.id || ent.name,
-          name: meta.name || ent.name,
+          id: meta.id || templateId,
+          name: meta.name || templateId,
           subject: meta.subject || '',
           createdAt: meta.createdAt || null,
           updatedAt: meta.updatedAt || null,
@@ -435,8 +423,8 @@ async function listTemplates(req, res) {
         });
       } catch {
         templates.push({
-          id: ent.name,
-          name: ent.name,
+          id: templateId,
+          name: templateId,
           subject: '',
           createdAt: null,
           updatedAt: null,
@@ -470,6 +458,10 @@ async function listTemplates(req, res) {
       }
     );
   } catch (err) {
+    const status = err.statusCode || 500;
+    if (status === 503) {
+      return errorResponse(res, err, err?.message || 'Storage is not configured', 503);
+    }
     return errorResponse(res, err, err?.message || 'Failed to list templates', 500);
   }
 }
@@ -481,12 +473,7 @@ async function getTemplate(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'Invalid template id', 400);
     }
 
-    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, id);
-    const [metaRaw, designRaw, htmlRaw] = await Promise.all([
-      fs.readFile(path.join(templateDir, 'meta.json'), 'utf8').catch(() => null),
-      fs.readFile(path.join(templateDir, 'design.json'), 'utf8').catch(() => null),
-      fs.readFile(path.join(templateDir, 'body.html'), 'utf8').catch(() => null),
-    ]);
+    const { metaRaw, designRaw, htmlRaw } = await newsletterTemplateStorage.readTemplateFull(id);
 
     if (!metaRaw) {
       return errorResponse(res, { statusCode: 404 }, 'Template not found', 404);
@@ -518,6 +505,10 @@ async function getTemplate(req, res) {
       200
     );
   } catch (err) {
+    const status = err.statusCode || 500;
+    if (status === 503) {
+      return errorResponse(res, err, err?.message || 'Storage is not configured', 503);
+    }
     return errorResponse(res, err, err?.message || 'Failed to load template', 500);
   }
 }
@@ -529,13 +520,18 @@ async function deleteTemplate(req, res) {
       return errorResponse(res, { statusCode: 400 }, 'Invalid template id', 400);
     }
 
-    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, id);
-    await fs.rm(templateDir, { recursive: true, force: false });
+    const { metaRaw } = await newsletterTemplateStorage.readTemplateFull(id);
+    if (!metaRaw) {
+      return errorResponse(res, { statusCode: 404 }, 'Template not found', 404);
+    }
+
+    await newsletterTemplateStorage.deleteTemplateAllObjects(id);
 
     return successResponse(res, { id }, 'Template deleted', 200);
   } catch (err) {
-    if (err?.code === 'ENOENT') {
-      return errorResponse(res, { statusCode: 404 }, 'Template not found', 404);
+    const status = err.statusCode || 500;
+    if (status === 503) {
+      return errorResponse(res, err, err?.message || 'Storage is not configured', 503);
     }
     return errorResponse(res, err, err?.message || 'Failed to delete template', 500);
   }

@@ -8,39 +8,7 @@ const {
     validatePromotionalImages, 
     generateCampaignId 
 } = require('../helper/imageUpload.helper');
-const path = require('path');
-const fs = require('fs').promises;
-
-const NEWSLETTER_TEMPLATES_DIR = path.join(__dirname, '..', '..', '..', 'newsletterTemplates');
-async function loadNewsletterTemplateById(id) {
-    if (!id || typeof id !== 'string' || id.includes('..') || id.includes('/') || id.includes('\\')) {
-        const err = new Error('Invalid template id');
-        err.statusCode = 400;
-        throw err;
-    }
-
-    const templateDir = path.join(NEWSLETTER_TEMPLATES_DIR, id);
-
-    const [metaRaw, htmlRaw] = await Promise.all([
-        fs.readFile(path.join(templateDir, 'meta.json'), 'utf8').catch(() => null),
-        fs.readFile(path.join(templateDir, 'body.html'), 'utf8').catch(() => null),
-    ]);
-
-    if (!metaRaw) {
-        const err = new Error('Template not found');
-        err.statusCode = 404;
-        throw err;
-    }
-
-    const meta = JSON.parse(metaRaw);
-
-    return {
-        id: meta.id || id,
-        name: meta.name,
-        subject: meta.subject,
-        html: htmlRaw || '',
-    };
-}
+const { loadNewsletterTemplateById } = require('../../../../library/newsletterTemplates/newsletterTemplateStorage');
 
 module.exports = {
     // List all mail subscription settings with pagination
