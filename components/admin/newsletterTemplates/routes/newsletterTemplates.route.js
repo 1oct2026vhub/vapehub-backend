@@ -733,7 +733,7 @@ router.get(
  * /api/admin/newsletter-templates/templates:
  *   post:
  *     summary: Create or update a newsletter template
- *     description: Saves a Beefree-based newsletter template as files on disk (meta.json, design.json, body.html).
+ *     description: Saves a Beefree-based newsletter template to S3 (meta.json, design.json, body.html under NEWSLETTER_TEMPLATES_S3_PREFIX).
  *     tags:
  *       - Newsletter Templates
  *     security:
@@ -889,7 +889,7 @@ router.get('/templates/:id', [authMiddleware(true)], newsletterTemplatesControll
  * /api/admin/newsletter-templates/templates/{id}:
  *   delete:
  *     summary: Delete a newsletter template
- *     description: Permanently deletes the template folder and its files from disk.
+ *     description: Permanently deletes the template objects from S3 (meta.json, design.json, body.html).
  *     tags:
  *       - Newsletter Templates
  *     security:
