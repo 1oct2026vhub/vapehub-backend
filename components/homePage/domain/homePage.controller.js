@@ -21,6 +21,7 @@ const getEntityType = (type) => {
   if (type === 'blog') return 'blog_post';
   if (type === 'blog_category') return 'blog_category';
   if (type === 'product_variant') return 'product';
+  if (type === 'deal') return 'deals';
   return type;
 };
 
