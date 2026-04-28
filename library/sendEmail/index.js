@@ -7,6 +7,7 @@ const { errorResponse } = require("../../utils/responseUtils")
 const fs = require('fs/promises')
 const path = require('path')
 const Handlebars = require('handlebars')
+const { formatFromWithDisplayName } = require('./formatFromAddress')
 
 // Register Handlebars helpers
 Handlebars.registerHelper('eq', function(a, b) {
@@ -40,7 +41,7 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get data from config
         const emailConfig = constants.emailTypeData[emailType];
         const data = {
-            from: emailConfig.from,
+            from: formatFromWithDisplayName(emailConfig.from),
             to,
             subject: context.subject || (context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject),
             // subject: context.orderUniqueId ? `${emailConfig.subject} - #${context.orderUniqueId}` : emailConfig.subject,
