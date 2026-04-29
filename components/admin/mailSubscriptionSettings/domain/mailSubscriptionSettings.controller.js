@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
-const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser, User } = require('../../../../models');
+const { MailSubscriptionSettings, MailSubscription, NewsletterGroupUser, User, EmailCampaign } = require('../../../../models');
 const sendEmail = require('../../../../library/sendEmail');
 const logger = require('../../../../library/logger');
 const utilsLogger = require('../../../../utils/logger');
@@ -9,6 +9,35 @@ const {
     generateCampaignId 
 } = require('../helper/imageUpload.helper');
 const { loadNewsletterTemplateById } = require('../../../../library/newsletterTemplates/newsletterTemplateStorage');
+
+const EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT = 100;
+
+const resolveAudienceType = ({ sendToAll, groupId, selectedEmails }) => {
+    if (sendToAll) return 'all';
+    if (groupId != null) return 'group';
+    if (selectedEmails && selectedEmails.length > 0) return 'selected';
+    return 'selected';
+};
+
+const resolveCampaignStatus = (successful, failed) => {
+    if (failed === 0) return 'completed';
+    if (successful === 0) return 'failed';
+    return 'partial_failed';
+};
+
+const buildErrorSummary = (failedEmails = []) => {
+    const summaryMap = new Map();
+    failedEmails.forEach((failedEmail) => {
+        const message = String(failedEmail?.error || 'Unknown error').slice(0, 200);
+        summaryMap.set(message, (summaryMap.get(message) || 0) + 1);
+    });
+    return [...summaryMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([message, count]) => ({ message, count }));
+};
+
+const buildCampaignKey = () => `cmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -209,6 +238,7 @@ module.exports = {
 
     // Send promotional email to subscribers
     async sendPromotionalEmail(req, res) {
+        let campaign = null;
         try {
             const {
                 subject,
@@ -400,6 +430,27 @@ module.exports = {
                 return errorResponse(res, null, 'No subscribers found matching the criteria', 404);
             }
 
+            const audienceType = resolveAudienceType({ sendToAll, groupId, selectedEmails });
+            campaign = await EmailCampaign.create({
+                campaign_key: buildCampaignKey(),
+                type: 'promotional_newsletter',
+                status: 'sending',
+                subject: String(effectiveSubject),
+                template_id: templateId || null,
+                audience_type: audienceType,
+                audience_meta: {
+                    sendToAll: Boolean(sendToAll),
+                    groupId: groupId != null ? Number(groupId) : null,
+                    selectedEmailsCount: Array.isArray(selectedEmails) ? selectedEmails.length : 0,
+                    frequency: frequency || null,
+                },
+                total_recipients: subscribers.length,
+                sent_count: 0,
+                failed_count: 0,
+                initiated_by: req?.user?.id ?? null,
+                started_at: new Date(),
+            });
+
             // Resolve user first names once for token replacement in subject/content.
             const userIds = [...new Set(subscribers.map(s => s.user_id).filter(id => id != null))];
             const firstNameByUserId = new Map();
@@ -511,7 +562,18 @@ module.exports = {
 
             logger.info(`Promotional email campaign completed. Success: ${successful}, Failed: ${failed}`);
 
+            await campaign.update({
+                status: resolveCampaignStatus(successful, failed),
+                sent_count: successful,
+                failed_count: failed,
+                failed_emails_sample: failedEmails.slice(0, EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT),
+                error_summary: buildErrorSummary(failedEmails),
+                finished_at: new Date(),
+            });
+
             return successResponse(res, {
+                campaignId: campaign.id,
+                campaignKey: campaign.campaign_key,
                 totalSubscribers: subscribers.length,
                 successful: successful,
                 failed: failed,
@@ -525,13 +587,25 @@ module.exports = {
                     batchSize: 50,
                     delayBetweenBatches: '2 seconds',
                     totalProcessingTime: 'Varies based on subscriber count',
-                    imageStorage: 'S3 Cloud Storage'
+                    imageStorage: 'S3 Cloud Storage',
+                    campaignStatusTracking: 'enabled'
                 }
             }, 'Promotional emails sent successfully');
 
         } catch (error) {
             logger.error('Error sending promotional emails:', error);
             utilsLogger.logError(error);
+            if (campaign) {
+                try {
+                    await campaign.update({
+                        status: 'failed',
+                        finished_at: new Date(),
+                        error_summary: [{ message: String(error?.message || 'Unknown error').slice(0, 200), count: 1 }],
+                    });
+                } catch (campaignUpdateError) {
+                    logger.error('Failed to update email campaign status:', campaignUpdateError);
+                }
+            }
             return errorResponse(res, error, error.message);
         }
     },
