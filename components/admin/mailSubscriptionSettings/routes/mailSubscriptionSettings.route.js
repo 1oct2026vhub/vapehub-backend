@@ -9,11 +9,11 @@ const {
     updateMailSubscriptionSetting,
     deleteMailSubscriptionSetting,
     sendPromotionalEmail,
+    sendPromotionalEmailAsync,
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
-    deleteSubscriber,
-    testPromotionalEmail
+    deleteSubscriber
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
     uploadPromotionalImages,
@@ -565,6 +565,11 @@ router.post('/promotional/send', [
     authMiddleware(true),
     upload.array('images', 10) // Handle up to 10 image files
 ], sendPromotionalEmail);
+
+router.post('/promotional/send-async', [
+    authMiddleware(true),
+    upload.array('images', 10)
+], sendPromotionalEmailAsync);
 
 /**
  * @swagger
