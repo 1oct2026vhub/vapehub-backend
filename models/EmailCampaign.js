@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     class EmailCampaign extends Model {
         static associate(models) {
             this.belongsTo(models.User, { foreignKey: 'initiated_by', as: 'initiator' });
+            this.hasMany(models.EmailCampaignChunk, { foreignKey: 'email_campaign_id', as: 'chunks' });
         }
     }
 
@@ -84,6 +85,25 @@ module.exports = (sequelize, DataTypes) => {
         finished_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        delivery_mode: {
+            type: DataTypes.ENUM('sync', 'async_sqs'),
+            allowNull: false,
+            defaultValue: 'sync'
+        },
+        payload_json: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
+        chunks_total: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
+        chunks_done: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
         }
     }, {
         sequelize,
