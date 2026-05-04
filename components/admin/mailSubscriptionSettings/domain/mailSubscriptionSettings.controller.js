@@ -409,6 +409,102 @@ module.exports = {
         }
     },
 
+    // Get a single promotional campaign's status (admin polling endpoint).
+    // Returns the campaign metadata, lifecycle counts, a chunk-by-status
+    // breakdown, and a progress convenience block. Designed to be polled
+    // every few seconds by the admin UI while a campaign is in flight.
+    async getPromotionalCampaign(req, res) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isFinite(id) || id <= 0) {
+                return errorResponse(res, {}, 'Invalid campaign id', 400);
+            }
+
+            const campaign = await EmailCampaign.findByPk(id, {
+                attributes: [
+                    'id',
+                    'campaign_key',
+                    'subject',
+                    'status',
+                    'delivery_mode',
+                    'audience_type',
+                    'audience_meta',
+                    'total_recipients',
+                    'sent_count',
+                    'failed_count',
+                    'chunks_total',
+                    'chunks_done',
+                    'failed_emails_sample',
+                    'error_summary',
+                    'started_at',
+                    'finished_at',
+                    'createdAt'
+                ]
+            });
+
+            if (!campaign) {
+                return errorResponse(res, {}, 'Campaign not found', 404);
+            }
+
+            // Group chunks by status. Cheap thanks to the
+            // (email_campaign_id, status) composite index.
+            const sequelize = require('sequelize');
+            const breakdownRows = await EmailCampaignChunk.findAll({
+                where: { email_campaign_id: id },
+                attributes: [
+                    'status',
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+                ],
+                group: ['status'],
+                raw: true
+            });
+
+            const chunkBreakdown = { pending: 0, processing: 0, done: 0, failed: 0 };
+            for (const row of breakdownRows) {
+                if (row.status in chunkBreakdown) {
+                    chunkBreakdown[row.status] = Number(row.count) || 0;
+                }
+            }
+
+            const TERMINAL_STATUSES = new Set(['completed', 'partial_failed', 'failed']);
+            const IN_FLIGHT_STATUSES = new Set(['queued', 'sending']);
+            const isFinal = TERMINAL_STATUSES.has(campaign.status);
+            const isInFlight = IN_FLIGHT_STATUSES.has(campaign.status);
+            const total = Number(campaign.chunks_total) || 0;
+            const done = Number(campaign.chunks_done) || 0;
+            const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (isFinal ? 100 : 0);
+
+            return successResponse(
+                res,
+                {
+                    campaignId: campaign.id,
+                    campaignKey: campaign.campaign_key,
+                    subject: campaign.subject,
+                    status: campaign.status,
+                    deliveryMode: campaign.delivery_mode,
+                    audienceType: campaign.audience_type,
+                    audienceMeta: campaign.audience_meta,
+                    totalRecipients: campaign.total_recipients,
+                    sentCount: campaign.sent_count,
+                    failedCount: campaign.failed_count,
+                    chunksTotal: total,
+                    chunksDone: done,
+                    chunkBreakdown,
+                    progress: { percent, isFinal, isInFlight },
+                    failedEmailsSample: campaign.failed_emails_sample || [],
+                    errorSummary: campaign.error_summary || [],
+                    startedAt: campaign.started_at,
+                    finishedAt: campaign.finished_at,
+                    createdAt: campaign.createdAt
+                },
+                'Campaign status retrieved successfully'
+            );
+        } catch (error) {
+            logger.error('Error retrieving promotional campaign:', error);
+            return errorResponse(res, error, error.message || 'Failed to retrieve campaign');
+        }
+    },
+
     // Get all subscribers for admin selection
     async getAllSubscribers(req, res) {
         try {

@@ -9,6 +9,7 @@ const {
     updateMailSubscriptionSetting,
     deleteMailSubscriptionSetting,
     sendPromotionalEmailAsync,
+    getPromotionalCampaign,
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
@@ -445,6 +446,38 @@ router.post('/promotional/send-async', [
     authMiddleware(true),
     upload.array('images', 10)
 ], sendPromotionalEmailAsync);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/promotional/campaigns/{id}:
+ *   get:
+ *     summary: Get a promotional campaign's status (admin)
+ *     description: |
+ *       Returns the current status, counts and chunk breakdown for an
+ *       async promotional campaign. Designed for the admin UI to poll
+ *       (e.g. every 5s) while a campaign is in flight; stop polling once
+ *       `progress.isFinal` is `true`.
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: EmailCampaign id (returned from /promotional/send-async).
+ *     responses:
+ *       200:
+ *         description: Campaign status retrieved successfully
+ *       400:
+ *         description: Invalid id
+ *       404:
+ *         description: Campaign not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/promotional/campaigns/:id', [
+    authMiddleware(true)
+], getPromotionalCampaign);
 
 /**
  * @swagger
