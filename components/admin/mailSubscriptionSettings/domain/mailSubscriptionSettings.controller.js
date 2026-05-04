@@ -417,8 +417,8 @@ module.exports = {
                 );
             }
 
-            const rawChunk = parseInt(process.env.EMAIL_CAMPAIGN_CHUNK_SIZE || '50', 10);
-            const CHUNK_SIZE = Math.min(500, Math.max(1, Number.isFinite(rawChunk) ? rawChunk : 50));
+            const rawChunk = parseInt(process.env.EMAIL_CAMPAIGN_CHUNK_SIZE || '200', 10);
+            const CHUNK_SIZE = Math.min(500, Math.max(1, Number.isFinite(rawChunk) ? rawChunk : 200));
 
             const audienceType = resolveAudienceType({ sendToAll, groupId, selectedEmails });
             const payloadSnapshot = buildCampaignPayload({
@@ -475,8 +475,59 @@ module.exports = {
                 order: [['chunk_index', 'ASC']],
             });
 
-            const messages = createdChunks.map((c) => ({ campaignId: Number(campaign.id), chunkId: Number(c.id) }));
-            await enqueuePromotionalChunks(messages);
+            const messages = createdChunks.map((c) => ({
+                campaignId: Number(campaign.id),
+                chunkId: Number(c.id)
+            }));
+
+            const enqueueResult = await enqueuePromotionalChunks(messages);
+
+            // Catastrophic: nothing made it to SQS — fail fast, don't flip to "sending"
+            if (enqueueResult.enqueued === 0) {
+                await campaign.update({
+                    status: 'failed',
+                    finished_at: new Date(),
+                    error_summary: [{
+                        message: `SQS enqueue failed for all ${messages.length} chunks`,
+                        count: messages.length
+                    }],
+                });
+                return errorResponse(
+                    res,
+                    { failedItems: enqueueResult.failedItems.slice(0, 10) },
+                    'Failed to enqueue chunks to SQS',
+                    502
+                );
+            }
+
+            // Partial: mark un-enqueued chunks failed and pre-advance counters so the
+            // last successful worker can still finalize the campaign (chunks_done >= chunks_total).
+            if (enqueueResult.failed > 0) {
+                const failedChunkIds = enqueueResult.failedItems.map((f) => f.chunkId);
+
+                const failedChunkRows = await EmailCampaignChunk.findAll({
+                    where: { id: failedChunkIds },
+                    attributes: ['id', 'subscriber_ids']
+                });
+                const lostRecipients = failedChunkRows.reduce(
+                    (n, c) => n + (Array.isArray(c.subscriber_ids) ? c.subscriber_ids.length : 0),
+                    0
+                );
+
+                await EmailCampaignChunk.update(
+                    { status: 'failed', last_error: 'SQS enqueue failed' },
+                    { where: { id: failedChunkIds } }
+                );
+
+                await campaign.increment({
+                    chunks_done: failedChunkIds.length,
+                    failed_count: lostRecipients
+                });
+
+                logger.warn(
+                    `Promotional campaign ${campaign.id}: ${enqueueResult.failed}/${messages.length} chunks failed to enqueue (${lostRecipients} recipients lost)`
+                );
+            }
 
             await campaign.update({
                 status: 'sending',
@@ -489,7 +540,8 @@ module.exports = {
                     campaignId: campaign.id,
                     campaignKey: campaign.campaign_key,
                     queued: true,
-                    chunksEnqueued: messages.length,
+                    chunksEnqueued: enqueueResult.enqueued,
+                    chunksFailedToEnqueue: enqueueResult.failed,
                     chunkSize: CHUNK_SIZE,
                     totalSubscribers: subscribers.length,
                     subject,
