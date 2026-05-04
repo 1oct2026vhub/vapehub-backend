@@ -24,6 +24,10 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
             user: process.env.EMAIL_USERNAME,
             pass: process.env.EMAIL_PASSWORD
         },
+        pool: true,
+        maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 25),
+        maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 1000),
+        rateLimit: Number(process.env.SMTP_RATE_LIMIT || 50), // msgs/sec per process
         logger: logger.child({ child: 'nodemailer' }),
     });
 }
