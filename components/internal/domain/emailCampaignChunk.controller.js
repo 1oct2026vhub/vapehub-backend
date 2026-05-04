@@ -15,62 +15,95 @@ const {
     buildErrorSummary
 } = require('../../../library/promotionalEmail/campaignMetrics');
 
+// Inter-send pause inside a chunk to keep one worker under SMTP per-second caps.
+// With Nodemailer pool maxConnections = 25 and 50ms gap → ~20 sends/sec/worker ceiling.
+const SEND_GAP_MS = Math.max(0, Number(process.env.EMAIL_CHUNK_SEND_GAP_MS || 50));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function applyChunkCompletion(
     campaignId,
     chunkId,
     { sentDelta, failDelta, failedSamples, chunkRowStatus, lastError }
 ) {
+    // Atomically increment counters and mark the chunk row in one transaction.
+    // No SELECT ... FOR UPDATE: the arithmetic UPDATE is itself atomic, and we
+    // use a single short transaction only for chunk-row + counter atomicity.
     await sequelize.transaction(async (t) => {
-        const chunkRow = await EmailCampaignChunk.findByPk(chunkId, {
-            transaction: t,
-            lock: t.LOCK.UPDATE
-        });
-        if (!chunkRow || chunkRow.email_campaign_id !== Number(campaignId)) {
-            throw new Error('Chunk not found');
-        }
-
-        const campaign = await EmailCampaign.findByPk(campaignId, {
-            transaction: t,
-            lock: t.LOCK.UPDATE
-        });
-        if (!campaign) {
-            throw new Error('Campaign not found');
-        }
-
-        const newSent = campaign.sent_count + sentDelta;
-        const newFailed = campaign.failed_count + failDelta;
-        const newChunksDone = campaign.chunks_done + 1;
-
-        let failedSample = campaign.failed_emails_sample || [];
-        if (failedSamples.length) {
-            failedSample = [...failedSample, ...failedSamples].slice(0, EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT);
-        }
-
-        const patch = {
-            sent_count: newSent,
-            failed_count: newFailed,
-            chunks_done: newChunksDone,
-            failed_emails_sample: failedSample
-        };
-
-        if (newChunksDone >= campaign.chunks_total) {
-            patch.status = resolveCampaignStatus(newSent, newFailed);
-            patch.finished_at = new Date();
-            patch.error_summary = buildErrorSummary(
-                (failedSample || []).map((f) => ({ error: f.error || 'Unknown error' }))
-            );
-        }
-
-        await campaign.update(patch, { transaction: t });
-
-        await chunkRow.update(
+        const [chunkUpdated] = await EmailCampaignChunk.update(
             {
                 status: chunkRowStatus,
                 last_error: lastError || null
             },
-            { transaction: t }
+            {
+                where: { id: chunkId, email_campaign_id: Number(campaignId) },
+                transaction: t
+            }
         );
+        if (chunkUpdated === 0) {
+            throw new Error('Chunk not found or already finalized');
+        }
+
+        await EmailCampaign.increment(
+            {
+                sent_count: sentDelta,
+                failed_count: failDelta,
+                chunks_done: 1
+            },
+            { where: { id: campaignId }, transaction: t }
+        );
+
+        // Sample merge: only when this chunk actually produced failures.
+        // Successful chunks (the common case) skip this read-modify-write entirely.
+        if (failedSamples.length > 0) {
+            const c = await EmailCampaign.findByPk(campaignId, {
+                attributes: ['failed_emails_sample'],
+                transaction: t
+            });
+            const merged = [
+                ...((c && c.failed_emails_sample) || []),
+                ...failedSamples
+            ].slice(0, EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT);
+            await EmailCampaign.update(
+                { failed_emails_sample: merged },
+                { where: { id: campaignId }, transaction: t }
+            );
+        }
     });
+
+    // Final-state transition outside the tx, race-safe via WHERE-clause guard.
+    // Any number of workers can hit this; only the one matching `finished_at IS NULL`
+    // actually transitions the campaign.
+    const fresh = await EmailCampaign.findByPk(campaignId, {
+        attributes: [
+            'chunks_done',
+            'chunks_total',
+            'sent_count',
+            'failed_count',
+            'failed_emails_sample',
+            'finished_at'
+        ]
+    });
+
+    if (
+        fresh &&
+        fresh.finished_at == null &&
+        fresh.chunks_done >= fresh.chunks_total
+    ) {
+        const finalStatus = resolveCampaignStatus(fresh.sent_count, fresh.failed_count);
+        const errorSummary = buildErrorSummary(
+            (fresh.failed_emails_sample || []).map((f) => ({
+                error: f.error || 'Unknown error'
+            }))
+        );
+        await EmailCampaign.update(
+            {
+                status: finalStatus,
+                finished_at: new Date(),
+                error_summary: errorSummary
+            },
+            { where: { id: campaignId, finished_at: null } }
+        );
+    }
 }
 
 async function processEmailCampaignChunk(req, res) {
@@ -174,13 +207,18 @@ async function processEmailCampaignChunk(req, res) {
         let failed = 0;
         const failedEmails = [];
 
-        for (const subscriber of subscribers) {
+        for (let i = 0; i < subscribers.length; i++) {
+            const subscriber = subscribers[i];
             const result = await sendPromotionalToSubscriber(subscriber, firstNameByUserId, payload);
             if (result.success) {
                 successful += 1;
             } else {
                 failed += 1;
                 failedEmails.push({ email: result.email, error: result.error });
+            }
+
+            if (SEND_GAP_MS > 0 && i < subscribers.length - 1) {
+                await sleep(SEND_GAP_MS);
             }
         }
 
