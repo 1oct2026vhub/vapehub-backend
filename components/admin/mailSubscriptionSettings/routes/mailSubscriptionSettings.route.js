@@ -8,7 +8,6 @@ const {
     createMailSubscriptionSetting,
     updateMailSubscriptionSetting,
     deleteMailSubscriptionSetting,
-    sendPromotionalEmail,
     sendPromotionalEmailAsync,
     getAllSubscribers,
     getSubscriberStats,
@@ -441,130 +440,6 @@ router.delete('/:id', [
 ], deleteMailSubscriptionSetting);
 
 // Promotional Email Routes
-
-/**
- * @swagger
- * /api/admin/mail-subscription-settings/promotional/send:
- *   post:
- *     summary: Send promotional email to subscribers (admin)
- *     tags: [Admin - Mail Subscription Settings]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: []
- *             properties:
- *               subject:
- *                 type: string
- *                 description: Email subject line. Optional when templateId provides the subject.
- *               content:
- *                 type: string
- *                 description: Main email content (HTML supported). Optional when templateId provides the HTML.
- *               templateId:
- *                 type: string
- *                 description: Newsletter template id created via Beefree. When provided, the stored template HTML (and subject, if present) will be used.
- *               highlightText:
- *                 type: string
- *                 description: Highlighted text to display prominently
- *               ctaText:
- *                 type: string
- *                 description: Call-to-action button text
- *               ctaUrl:
- *                 type: string
- *                 description: Call-to-action button URL
- *               sendToAll:
- *                 type: boolean
- *                 default: false
- *                 description: Send to all subscribers
- *               selectedEmails:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Array of specific email addresses to send to
- *               groupId:
- *                 type: integer
- *                 description: Newsletter group id (from /api/admin/newsletter-templates/groups). Sends to active subscribers whose user_id is in this group.
- *               frequency:
- *                 type: string
- *                 enum: [daily, weekly, monthly]
- *                 description: Filter subscribers by email frequency preference
- *               images:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:
- *                       type: string
- *                       description: Image URL
- *                     alt:
- *                       type: string
- *                       description: Alt text for the image
- *                     isPrimary:
- *                       type: boolean
- *                       description: Whether this is the primary image
- *                 description: Array of promotional images to include in the email
- *           example:
- *             subject: "Special Offer - 20% Off Everything!"
- *             content: "<p>Don't miss our biggest sale of the year!</p>"
- *             highlightText: "20% OFF"
- *             ctaText: "Shop Now"
- *             ctaUrl: "https://example.com/sale"
- *             sendToAll: false
- *             groupId: 12
- *             selectedEmails:
- *               - "subscriber1@example.com"
- *               - "subscriber2@example.com"
- *             images: [
- *               {
- *                 "url": "https://example.com/image1.jpg",
- *                 "alt": "Special offer banner",
- *                 "isPrimary": true
- *               },
- *               {
- *                 "url": "https://example.com/image2.jpg",
- *                 "alt": "Product showcase"
- *               }
- *             ]
- *     responses:
- *       200:
- *         description: Promotional emails sent successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     totalSubscribers:
- *                       type: integer
- *                     successful:
- *                       type: integer
- *                     failed:
- *                       type: integer
- *                     subject:
- *                       type: string
- *                     sendToAll:
- *                       type: boolean
- *                     selectedEmails:
- *                       type: array
- *                 message:
- *                   type: string
- *       400:
- *         description: Validation error
- *       404:
- *         description: No subscribers found
- *       500:
- *         description: Server error
- */
-router.post('/promotional/send', [
-    authMiddleware(true),
-    upload.array('images', 10) // Handle up to 10 image files
-], sendPromotionalEmail);
 
 router.post('/promotional/send-async', [
     authMiddleware(true),
