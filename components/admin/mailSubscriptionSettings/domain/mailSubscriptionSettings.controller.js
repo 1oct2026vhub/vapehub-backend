@@ -14,15 +14,10 @@ const {
     serializeCampaignPayload
 } = require('../../../../library/promotionalEmail/campaignPayload');
 const { enqueuePromotionalChunks } = require('../../../../library/promotionalEmail/sqsEnqueue');
-
-const resolveAudienceType = ({ sendToAll, groupId, selectedEmails }) => {
-    if (sendToAll) return 'all';
-    if (groupId != null) return 'group';
-    if (selectedEmails && selectedEmails.length > 0) return 'selected';
-    return 'selected';
-};
-
-const buildCampaignKey = () => `cmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const {
+    resolveAudienceType,
+    buildCampaignKey
+} = require('../../../../library/promotionalEmail/campaignAudience');
 
 module.exports = {
     // List all mail subscription settings with pagination
