@@ -148,19 +148,24 @@ function redirectUrls() {
     }
     return {
         successUrl: `${frontendBase}/unsubscribe`,
+        invalidUrl: `${frontendBase}/invalid`,
     };
 }
 
 /**
  * Public unsubscribe from email link (GET or POST for RFC 8058 one-click).
  * Query `email` is preserved on one-click POST requests.
+ * When `source=app`, returns JSON (frontend/API); otherwise redirects to the storefront.
  */
 module.exports.publicUnsubscribeByEmail = async (req, res) => {
+    const source = req.query?.source ?? req.body?.source;
+    const isApp = source === "app";
+
     const { successUrl, invalidUrl } = redirectUrls();
     const fallbackInvalid = invalidUrl || "/invalid";
 
     try {
-        if (!successUrl || !invalidUrl) {
+        if (!isApp && (!successUrl || !invalidUrl)) {
             logger.warn("publicUnsubscribeByEmail: FRONTEND_URL is not set");
             return res.redirect(302, fallbackInvalid);
         }
@@ -169,7 +174,10 @@ module.exports.publicUnsubscribeByEmail = async (req, res) => {
         const trimmed = typeof rawEmail === "string" ? rawEmail.trim() : "";
 
         if (!trimmed || !validator.isEmail(trimmed)) {
-            return res.redirect(302, invalidUrl);
+            if (isApp) {
+                return errorResponse(res, { statusCode: 400 }, "Invalid email address", 400);
+            }
+            return res.redirect(302, invalidUrl || fallbackInvalid);
         }
 
         const sequelize = MailSubscription.sequelize;
@@ -182,15 +190,39 @@ module.exports.publicUnsubscribeByEmail = async (req, res) => {
         });
 
         if (!subscription) {
-            return res.redirect(302, invalidUrl);
+            if (isApp) {
+                return errorResponse(
+                    res,
+                    { statusCode: 404 },
+                    "Subscription not found for this email",
+                    404,
+                );
+            }
+            return res.redirect(302, invalidUrl || fallbackInvalid);
         }
 
         subscription.subscribed = false;
         await subscription.save();
 
-        return res.redirect(302, successUrl);
+        if (isApp) {
+            return successResponse(
+                res,
+                { email: subscription.email, subscribed: false, source: "app" },
+                "Successfully unsubscribed from promotional emails",
+            );
+        }
+
+        return res.redirect(302, successUrl || fallbackInvalid);
     } catch (error) {
         logger.error("publicUnsubscribeByEmail:", error);
+        if (isApp) {
+            return errorResponse(
+                res,
+                error,
+                error.message || "Unsubscribe failed",
+                error.statusCode || 500,
+            );
+        }
         return res.redirect(302, (redirectUrls().invalidUrl) || fallbackInvalid);
     }
 };

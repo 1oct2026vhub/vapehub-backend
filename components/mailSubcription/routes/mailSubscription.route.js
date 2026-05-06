@@ -63,7 +63,7 @@ router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail)
  *   get:
  *     tags:
  *       - MailSubscription
- *     summary: Unsubscribe via link (redirects to storefront)
+ *     summary: Unsubscribe (redirect to storefront, or JSON when source=app)
  *     parameters:
  *       - in: query
  *         name: email
@@ -71,13 +71,26 @@ router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail)
  *         schema:
  *           type: string
  *           format: email
+ *       - in: query
+ *         name: source
+ *         required: false
+ *         description: Use "app" for JSON response from frontend; omit for email-link redirects
+ *         schema:
+ *           type: string
+ *           enum: [app]
  *     responses:
+ *       200:
+ *         description: JSON success when source=app
+ *       400:
+ *         description: Invalid email when source=app
+ *       404:
+ *         description: Subscription not found when source=app
  *       302:
- *         description: Redirect to FRONTEND_URL/unsubscribe
+ *         description: Redirect to FRONTEND_URL/unsubscribe or FRONTEND_URL/invalid
  *   post:
  *     tags:
  *       - MailSubscription
- *     summary: One-click unsubscribe (RFC 8058)
+ *     summary: One-click unsubscribe (RFC 8058) or app JSON with source=app
  *     parameters:
  *       - in: query
  *         name: email
@@ -85,9 +98,17 @@ router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail)
  *         schema:
  *           type: string
  *           format: email
+ *       - in: query
+ *         name: source
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [app]
  *     responses:
+ *       200:
+ *         description: JSON success when source=app
  *       302:
- *         description: Redirect to FRONTEND_URL/success or FRONTEND_URL/invalid
+ *         description: Redirect when source is not app
  */
 /**
  * @swagger
