@@ -1,5 +1,8 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { MailSubscription, MailSubscriptionSettings, User } = require("../../../models");
+const { Op } = require("sequelize");
+const validator = require("validator");
+const logger = require("../../../library/logger");
 
 
 
@@ -137,6 +140,92 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+function redirectUrls() {
+    const frontendBase = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
+    if (!frontendBase) {
+        return { successUrl: null, invalidUrl: null };
+    }
+    return {
+        successUrl: `${frontendBase}/unsubscribe/?success=true`,
+        invalidUrl: `${frontendBase}/invalid`,
+    };
+}
+
+/**
+ * Public unsubscribe from email link (GET or POST for RFC 8058 one-click).
+ * Query `email` is preserved on one-click POST requests.
+ * When `source=app`, returns JSON (frontend/API); otherwise redirects to the storefront.
+ */
+module.exports.publicUnsubscribeByEmail = async (req, res) => {
+    const source = req.query?.source ?? req.body?.source;
+    const isApp = source === "app";
+
+    const { successUrl, invalidUrl } = redirectUrls();
+    const fallbackInvalid = invalidUrl || "/invalid";
+
+    try {
+        if (!isApp && (!successUrl || !invalidUrl)) {
+            logger.warn("publicUnsubscribeByEmail: FRONTEND_URL is not set");
+            return res.redirect(302, fallbackInvalid);
+        }
+
+        const rawEmail = req.query?.email ?? req.body?.email;
+        const trimmed = typeof rawEmail === "string" ? rawEmail.trim() : "";
+
+        if (!trimmed || !validator.isEmail(trimmed)) {
+            if (isApp) {
+                return errorResponse(res, { statusCode: 400 }, "Invalid email address", 400);
+            }
+            return res.redirect(302, invalidUrl || fallbackInvalid);
+        }
+
+        const sequelize = MailSubscription.sequelize;
+        const subscription = await MailSubscription.findOne({
+            where: sequelize.where(
+                sequelize.fn("LOWER", sequelize.col("email")),
+                Op.eq,
+                trimmed.toLowerCase(),
+            ),
+        });
+
+        if (!subscription) {
+            if (isApp) {
+                return errorResponse(
+                    res,
+                    { statusCode: 404 },
+                    "Subscription not found for this email",
+                    404,
+                );
+            }
+            return res.redirect(302, invalidUrl || fallbackInvalid);
+        }
+
+        subscription.subscribed = false;
+        await subscription.save();
+
+        if (isApp) {
+            return successResponse(
+                res,
+                { email: subscription.email, subscribed: false, source: "app" },
+                "Successfully unsubscribed from promotional emails",
+            );
+        }
+
+        return res.redirect(302, successUrl || fallbackInvalid);
+    } catch (error) {
+        logger.error("publicUnsubscribeByEmail:", error);
+        if (isApp) {
+            return errorResponse(
+                res,
+                error,
+                error.message || "Unsubscribe failed",
+                error.statusCode || 500,
+            );
+        }
+        return res.redirect(302, (redirectUrls().invalidUrl) || fallbackInvalid);
+    }
+};
 
 module.exports.getOneMailSubscriptionSetting = async (req, res, next) => {
     try {
