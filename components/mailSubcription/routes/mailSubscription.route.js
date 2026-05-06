@@ -54,6 +54,41 @@ router.post('/',
     mailSubscriptionController.createMailSubscription
 );
 
+router.get('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail);
+router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail);
+
+/**
+ * @swagger
+ * /api/mailSubscription/unsubscribe:
+ *   get:
+ *     tags:
+ *       - MailSubscription
+ *     summary: Unsubscribe via link (redirects to storefront)
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *     responses:
+ *       302:
+ *         description: Redirect to FRONTEND_URL/unsubscribe
+ *   post:
+ *     tags:
+ *       - MailSubscription
+ *     summary: One-click unsubscribe (RFC 8058)
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *     responses:
+ *       302:
+ *         description: Redirect to FRONTEND_URL/success or FRONTEND_URL/invalid
+ */
 /**
  * @swagger
  * /api/mailSubscription/{id}:

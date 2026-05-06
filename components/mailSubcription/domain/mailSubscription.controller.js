@@ -1,5 +1,8 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { MailSubscription, MailSubscriptionSettings, User } = require("../../../models");
+const { Op } = require("sequelize");
+const validator = require("validator");
+const logger = require("../../../library/logger");
 
 
 
@@ -137,6 +140,60 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
         return errorResponse(res, error, error.message);
     }
 }
+
+function redirectUrls() {
+    const frontendBase = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
+    if (!frontendBase) {
+        return { successUrl: null, invalidUrl: null };
+    }
+    return {
+        successUrl: `${frontendBase}/unsubscribe`,
+    };
+}
+
+/**
+ * Public unsubscribe from email link (GET or POST for RFC 8058 one-click).
+ * Query `email` is preserved on one-click POST requests.
+ */
+module.exports.publicUnsubscribeByEmail = async (req, res) => {
+    const { successUrl, invalidUrl } = redirectUrls();
+    const fallbackInvalid = invalidUrl || "/invalid";
+
+    try {
+        if (!successUrl || !invalidUrl) {
+            logger.warn("publicUnsubscribeByEmail: FRONTEND_URL is not set");
+            return res.redirect(302, fallbackInvalid);
+        }
+
+        const rawEmail = req.query?.email ?? req.body?.email;
+        const trimmed = typeof rawEmail === "string" ? rawEmail.trim() : "";
+
+        if (!trimmed || !validator.isEmail(trimmed)) {
+            return res.redirect(302, invalidUrl);
+        }
+
+        const sequelize = MailSubscription.sequelize;
+        const subscription = await MailSubscription.findOne({
+            where: sequelize.where(
+                sequelize.fn("LOWER", sequelize.col("email")),
+                Op.eq,
+                trimmed.toLowerCase(),
+            ),
+        });
+
+        if (!subscription) {
+            return res.redirect(302, invalidUrl);
+        }
+
+        subscription.subscribed = false;
+        await subscription.save();
+
+        return res.redirect(302, successUrl);
+    } catch (error) {
+        logger.error("publicUnsubscribeByEmail:", error);
+        return res.redirect(302, (redirectUrls().invalidUrl) || fallbackInvalid);
+    }
+};
 
 module.exports.getOneMailSubscriptionSetting = async (req, res, next) => {
     try {
