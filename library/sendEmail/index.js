@@ -91,18 +91,20 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         try {
             const text = await fs.readFile(textPath, 'utf8');
             const html = await fs.readFile(htmlPath, 'utf8');
-            data.text = Handlebars.compile(text)({ 
-                ...context, 
-                host: process.env.HOST_URL, 
-                FRONTEND_URL: process.env.FRONTEND_URL 
-            });
-            
-            data.html = Handlebars.compile(html)({ 
-                ...context, 
-                host: process.env.HOST_URL, 
-                FRONTEND_URL: process.env.FRONTEND_URL, 
+            const emailEncoded =
+                context.email != null && context.email !== ''
+                    ? encodeURIComponent(String(context.email))
+                    : '';
+            const templateContext = {
+                ...context,
+                host: process.env.HOST_URL,
+                FRONTEND_URL: process.env.FRONTEND_URL,
+                emailEncoded,
                 currentYear: new Date().getFullYear()
-            });
+            };
+            data.text = Handlebars.compile(text)(templateContext);
+
+            data.html = Handlebars.compile(html)(templateContext);
             // send email
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);
