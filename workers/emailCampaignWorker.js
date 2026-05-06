@@ -13,6 +13,13 @@
  *   API_BASE_URL                   e.g. https://api.example.com (no trailing slash)
  *   AWS_REGION + creds (env or instance role)
  *
+ * Optional — load JSON from AWS Secrets Manager at startup (fills only env keys still empty):
+ *   EMAIL_WORKER_SECRETS_ID        secret name or ARN (SecretId for GetSecretValue)
+ *   SECRETS_MANAGER_REGION         region for Secrets Manager API (defaults to AWS_REGION)
+ *
+ * SecretString must be JSON, e.g. { "EMAIL_CHUNK_INTERNAL_KEY": "...", "API_BASE_URL": "..." }
+ * (ECS task-def "secrets" injection does not require this — set env normally instead.)
+ *
  * Optional env (defaults shown):
  *   EMAIL_WORKER_CONCURRENCY              max in-flight POSTs (2)
  *   EMAIL_WORKER_MAX_MESSAGES             messages per receive, 1..10 (10)
@@ -31,12 +38,10 @@ require('../config/awsConfig'); // loads region + creds onto AWS.config
 const baseLogger = require('../library/logger');
 const logger = baseLogger.child({ component: 'email-campaign-worker' });
 
-// --- config ---
-
-const QUEUE_URL = process.env.EMAIL_CAMPAIGN_SQS_QUEUE_URL;
-const INTERNAL_KEY = process.env.EMAIL_CHUNK_INTERNAL_KEY;
-const API_BASE_URL = (process.env.API_BASE_URL || '').replace(/\/$/, '');
 const ENDPOINT_PATH = '/api/internal/email-campaigns/process-chunk';
+
+// --- config from env (Secrets Manager merge runs in main before these are used) ---
+
 
 const CONCURRENCY = Math.max(1, Number(process.env.EMAIL_WORKER_CONCURRENCY || 2));
 const MAX_MESSAGES = Math.min(10, Math.max(1, Number(process.env.EMAIL_WORKER_MAX_MESSAGES || 10)));
@@ -80,21 +85,68 @@ class Semaphore {
 }
 const limiter = new Semaphore(CONCURRENCY);
 
-// --- HTTP client ---
+/** Populated after loadWorkerSecretsFromAws + buildRuntimeClients in main(). */
+let queueUrl;
+/** Axios instance for internal chunk API — created after env/secret merge. */
+let http;
 
-const http = axios.create({
-    baseURL: API_BASE_URL,
-    timeout: HTTP_TIMEOUT_MS,
-    headers: {
-        'X-Internal-Job-Key': INTERNAL_KEY,
-        'Content-Type': 'application/json'
-    },
-    validateStatus: () => true
-});
+function buildRuntimeClients() {
+    const apiBase = (process.env.API_BASE_URL || '').replace(/\/$/, '');
+    const internalKey = process.env.EMAIL_CHUNK_INTERNAL_KEY || '';
+    queueUrl = process.env.EMAIL_CAMPAIGN_SQS_QUEUE_URL || '';
+
+    http = axios.create({
+        baseURL: apiBase,
+        timeout: HTTP_TIMEOUT_MS,
+        headers: {
+            'X-Internal-Job-Key': internalKey,
+            'Content-Type': 'application/json'
+        },
+        validateStatus: () => true
+    });
+}
 
 // --- SQS ---
 
 const sqs = new AWS.SQS();
+
+async function loadWorkerSecretsFromAws() {
+    const secretId = process.env.EMAIL_WORKER_SECRETS_ID;
+    if (!secretId) return;
+
+    const region = process.env.SECRETS_MANAGER_REGION || process.env.AWS_REGION;
+    if (!region) {
+        throw new Error(
+            'EMAIL_WORKER_SECRETS_ID is set but AWS_REGION or SECRETS_MANAGER_REGION is missing'
+        );
+    }
+
+    const client = new AWS.SecretsManager({ region });
+    const res = await client.getSecretValue({ SecretId: secretId }).promise();
+    if (!res.SecretString) {
+        throw new Error('Secrets Manager returned no SecretString');
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(res.SecretString);
+    } catch {
+        throw new Error('Worker secret SecretString must be JSON');
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Worker secret JSON must be a plain object');
+    }
+
+    for (const [key, val] of Object.entries(parsed)) {
+        if (val == null || val === '') continue;
+        const current = process.env[key];
+        if (current == null || current === '') {
+            process.env[key] = String(val);
+        }
+    }
+
+    logger.info({ secretId, region }, 'Merged worker secrets from AWS Secrets Manager');
+}
 
 // --- core ---
 
@@ -123,7 +175,7 @@ async function processOne(message) {
         if (res.status >= 200 && res.status < 300) {
             await sqs
                 .deleteMessage({
-                    QueueUrl: QUEUE_URL,
+                    QueueUrl: queueUrl,
                     ReceiptHandle: message.ReceiptHandle
                 })
                 .promise();
@@ -187,7 +239,7 @@ async function loop() {
         }
 
         const params = {
-            QueueUrl: QUEUE_URL,
+            QueueUrl: queueUrl,
             MaxNumberOfMessages: MAX_MESSAGES,
             WaitTimeSeconds: LONG_POLL_SEC
         };
@@ -254,9 +306,15 @@ process.on('unhandledRejection', (reason) => {
 
 function validateEnv() {
     const missing = [];
-    if (!QUEUE_URL) missing.push('EMAIL_CAMPAIGN_SQS_QUEUE_URL');
-    if (!INTERNAL_KEY) missing.push('EMAIL_CHUNK_INTERNAL_KEY');
-    if (!API_BASE_URL) missing.push('API_BASE_URL');
+    if (!(process.env.EMAIL_CAMPAIGN_SQS_QUEUE_URL || '').trim()) {
+        missing.push('EMAIL_CAMPAIGN_SQS_QUEUE_URL');
+    }
+    if (!(process.env.EMAIL_CHUNK_INTERNAL_KEY || '').trim()) {
+        missing.push('EMAIL_CHUNK_INTERNAL_KEY');
+    }
+    if (!(process.env.API_BASE_URL || '').trim()) {
+        missing.push('API_BASE_URL');
+    }
     if (missing.length) {
         // eslint-disable-next-line no-console
         console.error(`[email-campaign-worker] Missing required env: ${missing.join(', ')}`);
@@ -265,17 +323,22 @@ function validateEnv() {
 }
 
 async function main() {
+    await loadWorkerSecretsFromAws();
+    buildRuntimeClients();
     validateEnv();
+
+    const apiBaseLog = (process.env.API_BASE_URL || '').replace(/\/$/, '');
     logger.info(
         {
-            queue: QUEUE_URL,
-            apiBase: API_BASE_URL,
+            queue: queueUrl,
+            apiBase: apiBaseLog,
             concurrency: CONCURRENCY,
             maxMessages: MAX_MESSAGES,
             longPollSec: LONG_POLL_SEC,
             visibilityOverride: VISIBILITY_OVERRIDE,
             httpTimeoutMs: HTTP_TIMEOUT_MS,
-            backpressureFactor: BACKPRESSURE_FACTOR
+            backpressureFactor: BACKPRESSURE_FACTOR,
+            secretsFromArn: Boolean(process.env.EMAIL_WORKER_SECRETS_ID)
         },
         'Email campaign worker starting'
     );
