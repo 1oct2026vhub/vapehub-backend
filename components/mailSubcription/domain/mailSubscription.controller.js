@@ -147,7 +147,7 @@ function redirectUrls() {
         return { successUrl: null, invalidUrl: null };
     }
     return {
-        successUrl: `${frontendBase}/unsubscribe`,
+        successUrl: `${frontendBase}/unsubscribe/?success=true`,
         invalidUrl: `${frontendBase}/invalid`,
     };
 }

@@ -86,7 +86,7 @@ router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail)
  *       404:
  *         description: Subscription not found when source=app
  *       302:
- *         description: Redirect to FRONTEND_URL/unsubscribe or FRONTEND_URL/invalid
+ *         description: Success redirect to FRONTEND_URL/unsubscribe/?success=true; errors to FRONTEND_URL/invalid
  *   post:
  *     tags:
  *       - MailSubscription
@@ -108,7 +108,7 @@ router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail)
  *       200:
  *         description: JSON success when source=app
  *       302:
- *         description: Redirect when source is not app
+ *         description: Success to FRONTEND_URL/unsubscribe/?success=true; otherwise invalid (when source is not app)
  */
 /**
  * @swagger
