@@ -88,14 +88,32 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         // get template and replace content
         const textPath = path.join(templateDir, 'text.hbs');
         const htmlPath = path.join(templateDir, 'html.hbs');
+
+        let text;
+        let html;
         try {
-            const text = await fs.readFile(textPath, 'utf8');
-            const html = await fs.readFile(htmlPath, 'utf8');
+            text = await fs.readFile(textPath, 'utf8');
+            html = await fs.readFile(htmlPath, 'utf8');
+        } catch (error) {
+            throw {
+                message: "Email template file read failed",
+                status: 500,
+                emailType,
+                stage: 'template_read',
+                textPath,
+                htmlPath,
+                error: error.message,
+                code: error.code
+            }
+        }
+
+        let templateContext;
+        try {
             const emailEncoded =
                 context.email != null && context.email !== ''
                     ? encodeURIComponent(String(context.email))
                     : '';
-            const templateContext = {
+            templateContext = {
                 ...context,
                 host: process.env.HOST_URL,
                 FRONTEND_URL: process.env.FRONTEND_URL,
@@ -103,25 +121,45 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 currentYear: new Date().getFullYear()
             };
             data.text = Handlebars.compile(text)(templateContext);
-
             data.html = Handlebars.compile(html)(templateContext);
-            // send email
+        } catch (error) {
+            throw {
+                message: "Email template render failed",
+                status: 500,
+                emailType,
+                stage: 'template_render',
+                error: error.message
+            }
+        }
+
+        try {
             if (process.env.EMAIL_TEST_MODE === 'true') {
                 return await newEmail(data);
             } else {
                 return await transporter.sendMail(data);
             }
         } catch (error) {
-            logger.error(`Error reading email templates: ${error.message}`);
             throw {
-                message: "Error reading email templates",
+                message: "SMTP send failed",
                 status: 500,
                 emailType,
-                error: error.message
+                stage: 'smtp_send',
+                error: error.message,
+                code: error.code,
+                responseCode: error.responseCode
             }
         }
     } catch (error) {
-        logger.error(`Error in sendEmail: ${error.message}`);
+        logger.error('Error in sendEmail:', {
+            message: error?.message,
+            stage: error?.stage,
+            emailType: error?.emailType,
+            code: error?.code,
+            responseCode: error?.responseCode,
+            error: error?.error,
+            textPath: error?.textPath,
+            htmlPath: error?.htmlPath
+        });
         throw error;
     }
 }
