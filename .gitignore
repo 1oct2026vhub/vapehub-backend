@@ -9,8 +9,7 @@ serviceAccountKey.json
 temp
 uploads
 emails
-# Local planning notes, checklists, and chat handoffs (backend/docs)
-docs/
+
 package-lock.json
 yarn.lock
 # Snyk Security Extension - AI Rules (auto-generated)

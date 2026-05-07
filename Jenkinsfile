@@ -28,7 +28,7 @@ pipeline {
                     def server
                     def sshCredentials
 
-                    if (branchName == 'staging') {
+                    if (branchName == 'staging-v2') {
                         // Use deployment parameters
                         server = params.dev_server
                         sshCredentials = '5918cce5-91ae-41e6-aa94-bf269093dee1'
