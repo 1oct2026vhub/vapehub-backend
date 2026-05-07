@@ -11,7 +11,10 @@
  *   EMAIL_CAMPAIGN_SQS_QUEUE_URL   queue to consume
  *   EMAIL_CHUNK_INTERNAL_KEY       shared secret expected by /api/internal/...
  *   API_BASE_URL                   e.g. https://api.example.com (no trailing slash)
- *   AWS_REGION + creds (env or instance role)
+ *   AWS_REGION + creds (env keys via awsConfig, or Secrets Manager)
+ *
+ *   AWS_SQS_USE_EC2_INSTANCE_ROLE=true   EC2: SQS only uses instance metadata (see config/campaignSqsAwsOptions.js)
+ *   EMAIL_CAMPAIGN_AWS_REGION            optional when queue region != AWS_REGION
  *
  * Optional — load JSON from AWS Secrets Manager at startup (fills only env keys still empty):
  *   EMAIL_WORKER_SECRETS_ID        secret name or ARN (SecretId for GetSecretValue)
@@ -34,7 +37,8 @@ require('dotenv').config();
 
 const AWS = require('aws-sdk');
 const axios = require('axios');
-require('../config/awsConfig'); // loads region + creds onto AWS.config
+require('../config/awsConfig'); // global region + optional static keys for S3 / Secrets Manager
+const { getSqsClientConfig } = require('../config/campaignSqsAwsOptions');
 const baseLogger = require('../library/logger');
 const logger = baseLogger.child({ component: 'email-campaign-worker' });
 
@@ -106,9 +110,9 @@ function buildRuntimeClients() {
     });
 }
 
-// --- SQS ---
+// --- SQS (credentials isolated from awsConfig when AWS_SQS_USE_EC2_INSTANCE_ROLE=true) ---
 
-const sqs = new AWS.SQS();
+const sqs = new AWS.SQS(getSqsClientConfig());
 
 async function loadWorkerSecretsFromAws() {
     const secretId = process.env.EMAIL_WORKER_SECRETS_ID;

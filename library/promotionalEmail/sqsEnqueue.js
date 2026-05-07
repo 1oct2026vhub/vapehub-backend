@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 const logger = require('../logger');
 require('../../config/awsConfig');
+const { getSqsClientConfig } = require('../../config/campaignSqsAwsOptions');
 
 const SQS_BATCH_MAX = 10;
 const DEFAULT_CONCURRENCY = 5;
@@ -143,7 +144,7 @@ async function enqueuePromotionalChunks(items, options = {}) {
     );
     const maxAttempts = Math.max(1, Number(options.maxAttempts || DEFAULT_MAX_ATTEMPTS));
 
-    const sqs = new AWS.SQS();
+    const sqs = new AWS.SQS(getSqsClientConfig());
     const groups = chunkArray(items, SQS_BATCH_MAX);
 
     const tasks = groups.map((group) => () => sendOneBatch(sqs, queueUrl, group, maxAttempts));
