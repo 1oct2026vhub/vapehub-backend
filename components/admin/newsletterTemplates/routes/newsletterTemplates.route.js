@@ -886,6 +886,52 @@ router.get('/templates/:id', [authMiddleware(true)], newsletterTemplatesControll
 
 /**
  * @swagger
+ * /api/admin/newsletter-templates/templates/{id}/copy:
+ *   post:
+ *     summary: Copy a newsletter template
+ *     description: Duplicates a saved newsletter template into a new template id, preserving design and HTML.
+ *     tags:
+ *       - Newsletter Templates
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Source template id
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Optional name override for the copied template.
+ *               subject:
+ *                 type: string
+ *                 description: Optional subject override for the copied template.
+ *     responses:
+ *       201:
+ *         description: Template copied successfully
+ *       400:
+ *         description: Invalid template id
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to copy template
+ */
+router.post('/templates/:id/copy', [authMiddleware(true)], newsletterTemplatesController.copyTemplate);
+
+/**
+ * @swagger
  * /api/admin/newsletter-templates/templates/{id}:
  *   delete:
  *     summary: Delete a newsletter template
