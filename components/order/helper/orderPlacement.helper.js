@@ -24,7 +24,6 @@ const dealService = require('../../Cart/helper/deal.service');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 const logger = require("../../../library/logger");
 const constants = require("../../../config/constants");
-const shippingMethodLogger = require("../../../utils/shippingMethodLogger");
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
