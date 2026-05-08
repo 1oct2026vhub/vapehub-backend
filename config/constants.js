@@ -107,6 +107,11 @@ module.exports = {
             subject: 'Special Offer from VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
+        PROMOTIONAL_NEWSLETTER: {
+            folderName: 'promotional_newsletter',
+            subject: '',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
         ABANDONED_CART_REMINDER_1: {
             folderName: 'abandoned_cart/reminder_1',
             subject: 'Did you forget something? Complete your purchase | VapeHub',
