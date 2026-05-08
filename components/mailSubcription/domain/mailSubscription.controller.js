@@ -148,7 +148,7 @@ function redirectUrls() {
     }
     return {
         successUrl: `${frontendBase}/unsubscribe/?success=true`,
-        invalidUrl: `${frontendBase}/invalid`,
+        invalidUrl: `${frontendBase}/unsubscribe`,
     };
 }
 
@@ -162,7 +162,7 @@ module.exports.publicUnsubscribeByEmail = async (req, res) => {
     const isApp = source === "app";
 
     const { successUrl, invalidUrl } = redirectUrls();
-    const fallbackInvalid = invalidUrl || "/invalid";
+    const fallbackInvalid = invalidUrl || "/unsubscribe";
 
     try {
         if (!isApp && (!successUrl || !invalidUrl)) {
