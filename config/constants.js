@@ -17,6 +17,8 @@ module.exports = {
         INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
         PRODUCT_UPDATES: 'PRODUCT_UPDATES',
         PROMOTIONAL: 'PROMOTIONAL',
+        ABANDONED_CART_REMINDER_1: 'ABANDONED_CART_REMINDER_1',
+        ABANDONED_CART_REMINDER_2: 'ABANDONED_CART_REMINDER_2',
         PROMOTIONAL_NEWSLETTER: 'PROMOTIONAL_NEWSLETTER',
     },
     emailTypeData: {
@@ -103,6 +105,16 @@ module.exports = {
         PROMOTIONAL: {
             folderName: 'promotional_newsletter',
             subject: 'Special Offer from VapeHub! 🎉',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ABANDONED_CART_REMINDER_1: {
+            folderName: 'abandoned_cart/reminder_1',
+            subject: 'You left something behind | VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ABANDONED_CART_REMINDER_2: {
+            folderName: 'abandoned_cart/reminder_2',
+            subject: 'Complete your order with 10% off | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         PROMOTIONAL_NEWSLETTER: {

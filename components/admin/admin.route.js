@@ -47,6 +47,7 @@ router.use('/feature-content', require('./featureContent/routes/featureContent.r
 router.use('/settings', require('./settings/routes/settings.route'));
 router.use('/popularCategory', require('./popularCategory/routes/popularCategory.route'));
 router.use('/shopByCategory', require('./shopByCategory/routes/shopByCategory.route'));
+router.use('/abandoned-carts', require('./abandonedCart/routes/abandonedCart.route'));
 router.use('/newsletter-templates', require('./newsletterTemplates/routes/newsletterTemplates.route'));
 
 module.exports = router;
