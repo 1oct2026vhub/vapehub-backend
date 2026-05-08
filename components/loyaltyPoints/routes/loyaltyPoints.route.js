@@ -94,7 +94,18 @@ const loyaltyPointsValidator = require('../helper/loyaltyPoints.validator');
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/redemption', authenticateJWT, loyaltyPointsController.getUserRedemptionInfo);
+router.get(
+    '/redemption',
+    authenticateJWT,
+    (req, res, next) => {
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        res.set('Vary', 'Authorization');
+        next();
+    },
+    loyaltyPointsController.getUserRedemptionInfo
+);
 
 
 module.exports = router; 

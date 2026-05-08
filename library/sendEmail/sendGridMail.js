@@ -1,4 +1,5 @@
 const sendGrid = require('@sendgrid/mail');
+const { formatFromWithDisplayName } = require('./formatFromAddress');
 
 const generateMail = async (receiverMailId, subject, bodyHtmlData, templateId = undefined, attachments = []) => {
     try {
@@ -14,7 +15,7 @@ const generateMail = async (receiverMailId, subject, bodyHtmlData, templateId = 
 
         const sendMessage = {
             to: receiverMailId,
-            from: process.env.MAIL_ID,
+            from: formatFromWithDisplayName(process.env.MAIL_ID),
             subject: subject,
             attachments: formattedAttachments,
         };

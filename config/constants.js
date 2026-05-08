@@ -19,6 +19,7 @@ module.exports = {
         PROMOTIONAL: 'PROMOTIONAL',
         ABANDONED_CART_REMINDER_1: 'ABANDONED_CART_REMINDER_1',
         ABANDONED_CART_REMINDER_2: 'ABANDONED_CART_REMINDER_2',
+        PROMOTIONAL_NEWSLETTER: 'PROMOTIONAL_NEWSLETTER',
     },
     emailTypeData: {
         REGISTER: {
@@ -102,7 +103,7 @@ module.exports = {
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         PROMOTIONAL: {
-            folderName: 'promotional',
+            folderName: 'promotional_newsletter',
             subject: 'Special Offer from VapeHub! 🎉',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
