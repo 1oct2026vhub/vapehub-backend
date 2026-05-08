@@ -145,6 +145,7 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
       attributes: [
         'id',
         'createdAt',
+        'status',
         'first_email_sent_at',
         'second_email_sent_at',
         'recovered_at',
@@ -159,6 +160,7 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
       email2_sent: 0,
       recovered_orders: 0,
       cancelled_orders: 0,
+      superseded_orders: 0,
       recovered_revenue: 0
     };
 
@@ -175,6 +177,7 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
           email2_sent: 0,
           recovered_orders: 0,
           cancelled_orders: 0,
+          superseded_orders: 0,
           recovered_revenue: 0
         };
       }
@@ -198,6 +201,10 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
       if (plain.cancelled_at) {
         bucket.cancelled_orders += 1;
         totals.cancelled_orders += 1;
+      }
+      if (plain.status === 'superseded') {
+        bucket.superseded_orders += 1;
+        totals.superseded_orders += 1;
       }
 
       const revenue = parseFloat(plain.recovered_revenue || 0);

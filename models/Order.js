@@ -97,6 +97,13 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'SET NULL',
         onUpdate: 'CASCADE'
       });
+
+      this.hasOne(models.AbandonedCartFlow, {
+        foreignKey: 'order_id',
+        as: 'abandonedCartFlow',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
     }
 
     /**
@@ -138,7 +145,8 @@ module.exports = (sequelize, DataTypes) => {
                 where: {
                   order_id: instance.id,
                   recovered_at: null,
-                  cancelled_at: null
+                  cancelled_at: null,
+                  status: { [Op.in]: ['entered', 'email1_sent', 'email2_sent'] }
                 }
               });
 
