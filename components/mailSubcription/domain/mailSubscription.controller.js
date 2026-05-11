@@ -219,7 +219,14 @@ module.exports.publicUnsubscribeByEmail = async (req, res) => {
             await subscription.save({ transaction: t });
         });
 
-        if (isApp) {
+        if (isApp) {mail = String(subscriber.email ?? '');
+        const personalize = (str) =>
+          String(str)
+            .replace(/\$\{first_name\}/g, firstName)
+            .replace(/\{\{email\}\}/g, subscriberEmail);
+        const personalizedSubject = personalize(effectiveSubject);
+        const personalizedHtml = personalize(effectiveHtml);
+        That replaces e
             return successResponse(
                 res,
                 { email: subscription.email, subscribed: false, source: "app" },
