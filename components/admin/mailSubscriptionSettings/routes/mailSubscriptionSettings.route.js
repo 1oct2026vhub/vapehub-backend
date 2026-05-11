@@ -468,6 +468,22 @@ router.post('/promotional/send-async', [
  *     responses:
  *       200:
  *         description: Campaign status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     groupName:
+ *                       type: string
+ *                       nullable: true
+ *                       description: Newsletter group name when audience is a group; otherwise null.
  *       400:
  *         description: Invalid id
  *       404:

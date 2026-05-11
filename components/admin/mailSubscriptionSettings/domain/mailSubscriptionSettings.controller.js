@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const {
     MailSubscriptionSettings,
     MailSubscription,
+    NewsletterGroup,
     NewsletterGroupUser,
     User,
     EmailCampaign,
@@ -470,6 +471,15 @@ module.exports = {
             const done = Number(campaign.chunks_done) || 0;
             const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (isFinal ? 100 : 0);
 
+            let groupName = null;
+            if (campaign.audience_type === 'group' && campaign.audience_meta?.groupId != null) {
+                const gid = Number(campaign.audience_meta.groupId);
+                if (Number.isFinite(gid) && gid > 0) {
+                    const group = await NewsletterGroup.findByPk(gid, { attributes: ['name'] });
+                    groupName = group?.name ?? null;
+                }
+            }
+
             return successResponse(
                 res,
                 {
@@ -480,6 +490,7 @@ module.exports = {
                     deliveryMode: campaign.delivery_mode,
                     audienceType: campaign.audience_type,
                     audienceMeta: campaign.audience_meta,
+                    groupName,
                     totalRecipients: campaign.total_recipients,
                     sentCount: campaign.sent_count,
                     failedCount: campaign.failed_count,
