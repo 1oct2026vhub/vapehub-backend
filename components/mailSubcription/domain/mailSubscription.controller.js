@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { MailSubscription, MailSubscriptionSettings, User } = require("../../../models");
+const { MailSubscription, MailSubscriptionSettings, User, NewsletterGroupUser } = require("../../../models");
 const { Op } = require("sequelize");
 const validator = require("validator");
 const logger = require("../../../library/logger");
@@ -122,8 +122,17 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
         let newStatus = mailSubscription.subscribed;
         if (!isNewlyCreated) {
             newStatus = !mailSubscription.subscribed;
-            mailSubscription.subscribed = newStatus;
-            await mailSubscription.save();
+            const sequelize = MailSubscription.sequelize;
+            await sequelize.transaction(async (t) => {
+                if (newStatus === false) {
+                    await NewsletterGroupUser.destroy({
+                        where: { subscriber_id: mailSubscription.id },
+                        transaction: t,
+                    });
+                }
+                mailSubscription.subscribed = newStatus;
+                await mailSubscription.save({ transaction: t });
+            });
         }
 
         const action = newStatus ? 'subscribed' : 'unsubscribed';
@@ -201,10 +210,23 @@ module.exports.publicUnsubscribeByEmail = async (req, res) => {
             return res.redirect(302, invalidUrl || fallbackInvalid);
         }
 
-        subscription.subscribed = false;
-        await subscription.save();
+        await sequelize.transaction(async (t) => {
+            await NewsletterGroupUser.destroy({
+                where: { subscriber_id: subscription.id },
+                transaction: t,
+            });
+            subscription.subscribed = false;
+            await subscription.save({ transaction: t });
+        });
 
-        if (isApp) {
+        if (isApp) {mail = String(subscriber.email ?? '');
+        const personalize = (str) =>
+          String(str)
+            .replace(/\$\{first_name\}/g, firstName)
+            .replace(/\{\{email\}\}/g, subscriberEmail);
+        const personalizedSubject = personalize(effectiveSubject);
+        const personalizedHtml = personalize(effectiveHtml);
+        That replaces e
             return successResponse(
                 res,
                 { email: subscription.email, subscribed: false, source: "app" },

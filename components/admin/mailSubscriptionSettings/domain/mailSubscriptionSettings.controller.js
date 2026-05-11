@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const {
     MailSubscriptionSettings,
     MailSubscription,
+    NewsletterGroupUser,
     User,
     EmailCampaign,
     EmailCampaignChunk
@@ -760,8 +761,15 @@ module.exports = {
             if (!subscription) {
                 return errorResponse(res, null, 'Subscriber not found', 404);
             }
-            subscription.subscribed = false;
-            await subscription.save();
+            const sequelize = MailSubscription.sequelize;
+            await sequelize.transaction(async (t) => {
+                await NewsletterGroupUser.destroy({
+                    where: { subscriber_id: subscription.id },
+                    transaction: t,
+                });
+                subscription.subscribed = false;
+                await subscription.save({ transaction: t });
+            });
             return successResponse(res, {
                 id: subscription.id,
                 email: subscription.email,
