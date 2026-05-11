@@ -248,7 +248,7 @@ module.exports.getAbandonedCartByOrderId = async (req, res) => {
           model: Coupon,
           as: 'coupon',
           required: false,
-          attributes: ['id', 'code', 'discount_value', 'discount_type', 'expiry_date']
+          attributes: ['id', 'code', 'discount_value', 'discount_type', 'end_date']
         }
       ]
     });
