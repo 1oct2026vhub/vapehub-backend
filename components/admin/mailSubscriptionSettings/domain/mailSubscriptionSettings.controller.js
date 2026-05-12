@@ -20,6 +20,7 @@ const {
     resolveAudienceType,
     buildCampaignKey
 } = require('../../../../library/promotionalEmail/campaignAudience');
+const validator = require('validator');
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -512,144 +513,42 @@ module.exports = {
         }
     },
 
-    // List promotional campaigns for admin history views.
-    async getPromotionalCampaigns(req, res) {
+    // Create a subscriber from the admin panel so the origin can be audited.
+    async createSubscriber(req, res) {
         try {
-            const { Op } = require('sequelize');
-            const {
-                page = 1,
-                limit = 20,
-                status,
-                deliveryMode,
-                audienceType,
-                initiatedBy,
-                subject,
-                from,
-                to,
-                sortBy = 'createdAt',
-                sortOrder = 'DESC'
-            } = req.query;
+            const adminId = req?.user?.id;
+            const rawEmail = req.body?.email;
+            const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
 
-            const pageNumber = Math.max(1, parseInt(page, 10) || 1);
-            const parsedLimit = parseInt(limit, 10);
-            const pageSize = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 20;
-            const offset = (pageNumber - 1) * pageSize;
-
-            const validSortFields = {
-                createdAt: 'createdAt',
-                started_at: 'started_at',
-                finished_at: 'finished_at',
-                sent_count: 'sent_count',
-                failed_count: 'failed_count'
-            };
-            const safeSortField = validSortFields[String(sortBy)] || 'createdAt';
-            const safeSortOrder = String(sortOrder).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-
-            const where = { type: 'promotional_newsletter' };
-            if (status) where.status = status;
-            if (deliveryMode) where.delivery_mode = deliveryMode;
-            if (audienceType) where.audience_type = audienceType;
-            if (initiatedBy != null && initiatedBy !== '') {
-                const parsedInitiatedBy = Number(initiatedBy);
-                if (!Number.isFinite(parsedInitiatedBy) || parsedInitiatedBy <= 0) {
-                    return errorResponse(res, {}, 'initiatedBy must be a positive number', 400);
-                }
-                where.initiated_by = parsedInitiatedBy;
+            if (!email || !validator.isEmail(email)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid email address', 400);
             }
 
-            if (subject) {
-                where.subject = { [Op.like]: `%${String(subject).trim()}%` };
-            }
-
-            if (from || to) {
-                where.createdAt = {};
-                if (from) {
-                    const fromDate = new Date(from);
-                    if (Number.isNaN(fromDate.getTime())) {
-                        return errorResponse(res, {}, 'from must be a valid ISO date', 400);
-                    }
-                    where.createdAt[Op.gte] = fromDate;
-                }
-                if (to) {
-                    const toDate = new Date(to);
-                    if (Number.isNaN(toDate.getTime())) {
-                        return errorResponse(res, {}, 'to must be a valid ISO date', 400);
-                    }
-                    where.createdAt[Op.lte] = toDate;
-                }
-            }
-
-            const { count, rows } = await EmailCampaign.findAndCountAll({
-                where,
-                attributes: [
-                    'id',
-                    'campaign_key',
-                    'subject',
-                    'status',
-                    'delivery_mode',
-                    'audience_type',
-                    'audience_meta',
-                    'total_recipients',
-                    'sent_count',
-                    'failed_count',
-                    'chunks_total',
-                    'chunks_done',
-                    'started_at',
-                    'finished_at',
-                    'createdAt'
-                ],
-                include: [{
-                    model: User,
-                    as: 'initiator',
-                    attributes: ['id', 'first_name', 'last_name', 'email'],
-                    required: false
-                }],
-                order: [[safeSortField, safeSortOrder]],
-                limit: pageSize,
-                offset
+            const sequelize = MailSubscription.sequelize;
+            const existingSubscriber = await MailSubscription.findOne({
+                where: sequelize.where(
+                    sequelize.fn('LOWER', sequelize.col('email')),
+                    require('sequelize').Op.eq,
+                    email.toLowerCase()
+                )
             });
 
-            const campaigns = rows.map((campaign) => ({
-                campaignId: campaign.id,
-                campaignKey: campaign.campaign_key,
-                subject: campaign.subject,
-                status: campaign.status,
-                deliveryMode: campaign.delivery_mode,
-                audienceType: campaign.audience_type,
-                audienceMeta: campaign.audience_meta,
-                totalRecipients: campaign.total_recipients,
-                sentCount: campaign.sent_count,
-                failedCount: campaign.failed_count,
-                chunksTotal: campaign.chunks_total,
-                chunksDone: campaign.chunks_done,
-                startedAt: campaign.started_at,
-                finishedAt: campaign.finished_at,
-                createdAt: campaign.createdAt,
-                initiatedBy: campaign.initiator
-                    ? {
-                        id: campaign.initiator.id,
-                        name: `${campaign.initiator.first_name || ''} ${campaign.initiator.last_name || ''}`.trim(),
-                        email: campaign.initiator.email
-                    }
-                    : null
-            }));
+            if (existingSubscriber) {
+                return errorResponse(res, { statusCode: 400 }, 'Email already exists', 400);
+            }
 
-            return successResponse(
-                res,
-                {
-                    campaigns,
-                    pagination: {
-                        total: count,
-                        page: pageNumber,
-                        limit: pageSize,
-                        totalPages: Math.max(1, Math.ceil(count / pageSize))
-                    }
-                },
-                'Promotional campaigns retrieved successfully'
-            );
+            const subscriber = await MailSubscription.create({
+                email,
+                user_id: null,
+                subscribed: true,
+                created_by_type: 'admin',
+                created_by_admin_id: adminId || null
+            });
+
+            return successResponse(res, subscriber, 'Subscriber created successfully', 201);
         } catch (error) {
-            logger.error('Error retrieving promotional campaigns:', error);
-            return errorResponse(res, error, error.message || 'Failed to retrieve campaigns');
+            logger.error('Error creating subscriber:', error);
+            return errorResponse(res, error, error.message || 'Failed to create subscriber');
         }
     },
 
@@ -682,7 +581,7 @@ module.exports = {
 
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
-                attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
+                attributes: ['id', 'email', 'user_id', 'created_by_type', 'created_by_admin_id', 'createdAt', 'subscribed'],
                 order: [['createdAt', 'DESC'], ['id', 'ASC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset)

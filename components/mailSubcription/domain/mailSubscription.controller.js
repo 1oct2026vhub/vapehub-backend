@@ -37,8 +37,9 @@ module.exports.createMailSubscription = async (req, res, next) => {
         // else, set null for user_id
         const mailList = await MailSubscription.create({
             email,
-            ...(user_id ? user_id : null),
-            subscribed: true
+            user_id: user_id || null,
+            subscribed: true,
+            created_by_type: 'customer'
         });
         successResponse(res, mailList, 'Mail subscription added successfully', 200);
 
@@ -113,7 +114,8 @@ module.exports.toggleMailSubscription = async (req, res, next) => {
                 user_id: user_id,
                 email: user.email,
                 subscribed: true,
-                isDiscountUsed: true
+                isDiscountUsed: true,
+                created_by_type: 'customer'
             });
             isNewlyCreated = true;
         }
