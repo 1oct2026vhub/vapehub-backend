@@ -10,6 +10,7 @@ module.exports = {
       comment: 'Points actually redeemed for this order (debit on payment success)',
     });
   },
+  
 
   async down(queryInterface) {
     await queryInterface.removeColumn('orders', 'loyalty_points_used');
