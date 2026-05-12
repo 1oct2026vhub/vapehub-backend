@@ -12,7 +12,7 @@ const {
     getPromotionalCampaign,
     getAllSubscribers,
     getSubscriberStats,
-    unsubscribeSubscriber,
+    updateSubscriberSubscription,
     deleteSubscriber
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
@@ -236,9 +236,12 @@ router.get('/subscribers/stats', [
 
 /**
  * @swagger
- * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/unsubscribe:
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/subscription:
  *   patch:
- *     summary: Unsubscribe a subscriber (admin)
+ *     summary: Set subscriber mail subscription opt-in (admin)
+ *     description: |
+ *       Pass `subscribed: false` to unsubscribe (clears newsletter group memberships)
+ *       or `subscribed: true` to resubscribe (sets opt-in only; does not restore group memberships).
  *     tags: [Admin - Mail Subscription Settings]
  *     parameters:
  *       - in: path
@@ -247,9 +250,28 @@ router.get('/subscribers/stats', [
  *         schema:
  *           type: integer
  *         description: Mail subscription (subscriber) ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - subscribed
+ *             properties:
+ *               subscribed:
+ *                 type: boolean
+ *                 description: true to subscribe, false to unsubscribe
+ *           examples:
+ *             unsubscribe:
+ *               value:
+ *                 subscribed: false
+ *             subscribe:
+ *               value:
+ *                 subscribed: true
  *     responses:
  *       200:
- *         description: Subscriber unsubscribed successfully
+ *         description: Subscription state updated
  *         content:
  *           application/json:
  *             schema:
@@ -266,17 +288,18 @@ router.get('/subscribers/stats', [
  *                       type: string
  *                     subscribed:
  *                       type: boolean
- *                       example: false
  *                 message:
  *                   type: string
+ *       400:
+ *         description: Invalid body (subscribed missing or not boolean)
  *       404:
  *         description: Subscriber not found
  *       500:
  *         description: Server error
  */
-router.patch('/subscribers/:subscriberId/unsubscribe', [
+router.patch('/subscribers/:subscriberId/subscription', [
     authMiddleware(true)
-], unsubscribeSubscriber);
+], updateSubscriberSubscription);
 
 /**
  * @swagger

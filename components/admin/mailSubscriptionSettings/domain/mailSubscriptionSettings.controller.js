@@ -798,32 +798,70 @@ module.exports = {
         }
     },
 
-    // Unsubscribe a subscriber (admin) - sets subscribed = false
-    async unsubscribeSubscriber(req, res) {
+    /**
+     * Set mail subscription opt-in for a subscriber (admin).
+     * Unsubscribe clears newsletter group memberships; subscribe only sets the flag (no group restore).
+     */
+    async updateSubscriberSubscription(req, res) {
         try {
             const { subscriberId } = req.params;
+            const raw = req.body?.subscribed;
+            let nextSubscribed;
+            if (typeof raw === 'boolean') {
+                nextSubscribed = raw;
+            } else if (typeof raw === 'string') {
+                const n = raw.trim().toLowerCase();
+                if (['true', '1'].includes(n)) nextSubscribed = true;
+                else if (['false', '0'].includes(n)) nextSubscribed = false;
+                else {
+                    return errorResponse(res, { statusCode: 400 }, 'subscribed must be true or false', 400);
+                }
+            } else if (typeof raw === 'number' && (raw === 0 || raw === 1)) {
+                nextSubscribed = raw === 1;
+            } else {
+                return errorResponse(
+                    res,
+                    { statusCode: 400 },
+                    'subscribed is required in the body (boolean: true to subscribe, false to unsubscribe)',
+                    400
+                );
+            }
+
             const subscription = await MailSubscription.findOne({
                 where: { id: subscriberId, deletedAt: null }
             });
             if (!subscription) {
                 return errorResponse(res, null, 'Subscriber not found', 404);
             }
+
             const sequelize = MailSubscription.sequelize;
             await sequelize.transaction(async (t) => {
-                await NewsletterGroupUser.destroy({
-                    where: { subscriber_id: subscription.id },
-                    transaction: t,
-                });
-                subscription.subscribed = false;
+                if (nextSubscribed === false) {
+                    await NewsletterGroupUser.destroy({
+                        where: { subscriber_id: subscription.id },
+                        transaction: t
+                    });
+                }
+                subscription.subscribed = nextSubscribed;
                 await subscription.save({ transaction: t });
             });
-            return successResponse(res, {
-                id: subscription.id,
-                email: subscription.email,
-                subscribed: false
-            }, 'Subscriber unsubscribed successfully');
+
+            const message =
+                nextSubscribed === false
+                    ? 'Subscriber unsubscribed successfully'
+                    : 'Subscriber subscribed successfully';
+
+            return successResponse(
+                res,
+                {
+                    id: subscription.id,
+                    email: subscription.email,
+                    subscribed: nextSubscribed
+                },
+                message
+            );
         } catch (error) {
-            logger.error('Error unsubscribing subscriber:', error);
+            logger.error('Error updating subscriber subscription:', error);
             return errorResponse(res, error, error.message);
         }
     },
