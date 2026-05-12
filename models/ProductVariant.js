@@ -158,6 +158,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('active', 'inactive'),
       defaultValue: 'active'
     },
+    is_discontinued: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     alt_text: {
       type: DataTypes.STRING,
       allowNull: true
