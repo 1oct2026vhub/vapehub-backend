@@ -9,6 +9,8 @@ const { createGuestUser } = require('../helper/guestCheckout.helper');
 const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
+const constants = require('../../../config/constants');
+const { computeShippingAndLoyalty } = require('../../order/helper/loyaltyShippingPricing.helper');
 
 const assertNotDiscontinued = (product, variant) => {
     if (product?.is_discontinued) {
@@ -288,7 +290,7 @@ module.exports.checkout = async (req, res, next) => {
 module.exports.applyCoupon = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { couponCode, shippingMethodId, loyalty } = req.body;
+        const { couponCode, shippingMethodId, loyalty, points_to_redeem: rawPointsToRedeem } = req.body;
         let subTotal = 0;
         let total = 0;
         let totalItems = 0;
@@ -348,25 +350,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             totalItems += item.quantity;
         }
 
-        const shippingMethod = await ShippingMethod.findOne({
-            where: { 
-                id: shippingMethodId,
-                is_enabled: true  // Only allow enabled shipping methods
-            },
-            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
-        });
+        // Shipping method loaded after coupon/mail totals (see below)
 
-        if (shippingMethod) {
-            shippingCost = calculateShippingCost(shippingMethod, subTotal);
-            if (shippingCost === null) {
-                // Don't default to 0 - shipping method is not applicable
-                throw {
-                    statusCode: 400,
-                    message: "Selected shipping method is not available for this order"
-                };
-            }
-        }
-         
         // Calculate deals
         const deals = await dealService.getApplicableDeals(cart);
         const dealResult = dealService.calculateDealDiscounts(cart, deals);
@@ -718,58 +703,13 @@ module.exports.applyCoupon = async (req, res, next) => {
                 coupon_type = 'coupon';
             }
         }
-        if(loyalty){
-            const settings = await LoyaltyPointsSettings.findOne({
-                where: { status: true }
-            });
-            if(settings){
-                const user = await User.findOne({
-                    where: { id: userId }
-                });
-                if(user.loyalty_points >= settings.minimum_points_redemption && total >= parseFloat(settings.minimum_purchase_amount)){  // && total >= settings.minimum_purchase_amount
-                    const points = user.loyalty_points;
-                    const loyaltyAmount = parseFloat(settings.loyalty_amount);
-                    const loyaltyAmountType = settings.loyalty_amount_type;
-                    if(loyaltyAmountType === 'percentage'){
-                        loyaltyDiscount = (parseFloat(loyaltyAmount) / 100) * total;
-                        totalDiscount += parseFloat(loyaltyDiscount)
-                        // total = Math.max(0, total - loyaltyDiscount);
-                    }else{
-                        // Only apply loyalty discount if total is greater than loyalty amount
-                        if(total > parseFloat(loyaltyAmount)){
-                            // total = Math.max(0, total - loyaltyAmount);
-                            totalDiscount+=parseFloat(loyaltyAmount)
-                            loyaltyDiscount = loyaltyAmount;
-                        }else{
-                            // If total is less than or equal to loyalty amount, apply only the total
-                            loyaltyDiscount = total;
-                            // total = 0;
-                            totalDiscount = parseFloat(totalDiscount)
-                            throw {
-                                statusCode: 400,
-                                message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${total}).`
-                            };
-                        }
-                    }
-                    loyaltyDiscountType = loyaltyAmountType;
-                    loyaltyRedeem = true;
-                }
-                else{
-                    throw {
-                        statusCode: 400,
-                        message: `Minimum purchase amount of £${settings.minimum_purchase_amount} is not met.`
-                    }
-                }
-            }
-        }
-
         // Check for mail subscription discount (first purchase)
         let mailSubscriptionDiscount = 0;
         let mailSubscriptionDiscountType = null;
         let mailSubscriptionData = null;
         const user = await User.findOne({
             where: { id: userId },
-            attributes: ['id', 'email']
+            attributes: ['id', 'email', 'loyalty_points']
         });
 
         if (user && user.email) {
@@ -815,11 +755,53 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
         
-        // Apply totalDiscount to total before adding shippingCost
+        // Apply totalDiscount to total (coupon/referral/mail only — loyalty applied via computeShippingAndLoyalty)
         if (totalDiscount > 0) {
             total = Math.max(0, total - totalDiscount);
         }
-        total = parseFloat(Math.max(0, total).toFixed(2)) + shippingCost;
+        const merchandiseBeforeLoyalty = parseFloat(Math.max(0, total).toFixed(2));
+
+        const shippingMethod = shippingMethodId
+            ? await ShippingMethod.findOne({
+                where: { id: shippingMethodId, is_enabled: true },
+                attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+            })
+            : null;
+
+        const loyaltySettings = await LoyaltyPointsSettings.findOne({ where: { status: true } });
+        const pointsBalance = user ? parseInt(user.loyalty_points, 10) || 0 : 0;
+        let pointsRequested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
+        if (loyalty && pointsRequested === 0 && loyaltySettings) {
+            pointsRequested = pointsBalance;
+        }
+
+        const freeShipThreshold =
+            (constants.checkout && constants.checkout.FREE_SHIPPING_MERCHANDISE_GBP) || 30;
+
+        const pricing = computeShippingAndLoyalty({
+            merchandiseTotalAfterDealsCouponsMail: merchandiseBeforeLoyalty,
+            shippingMethod,
+            userLoyaltyPoints: pointsBalance,
+            pointsToRedeem: pointsRequested,
+            pointsValue: loyaltySettings ? parseFloat(loyaltySettings.points_value) || 0 : 0,
+            minimumPointsRedemption: loyaltySettings ? loyaltySettings.minimum_points_redemption : 0,
+            minimumPurchaseAmountForRedemption: loyaltySettings ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0 : 0,
+            freeShippingThresholdGbp: freeShipThreshold,
+        });
+
+        if (pricing.shippingCost === null && shippingMethod) {
+            throw {
+                statusCode: 400,
+                message: "Selected shipping method is not available for this order",
+            };
+        }
+
+        loyaltyDiscount = pricing.loyaltyDiscount;
+        loyaltyDiscountType = pricing.pointsUsed > 0 ? "points" : null;
+        loyaltyRedeem = pricing.pointsUsed > 0;
+        shippingCost = pricing.shippingCost === null ? 0 : pricing.shippingCost;
+        total = pricing.grandTotal !== null ? pricing.grandTotal : 0;
+        total = parseFloat(Math.max(0, total).toFixed(2));
         subTotal = parseFloat(Math.max(0, subTotal).toFixed(2));
         referral_value = Math.floor(referral_value * 100) / 100;
         discount_amount = Math.floor(discount_amount * 100) / 100;
@@ -883,6 +865,8 @@ module.exports.applyCoupon = async (req, res, next) => {
             loyalty_discount: loyaltyDiscount,
             loyalty_discount_type: loyaltyDiscountType,
             loyalty_redeem: loyaltyRedeem,
+            loyalty_points_used: pricing.pointsUsed,
+            payment_required: pricing.paymentRequired,
             mail_subscription_discount: mailSubscriptionDiscount,
             mail_subscription_discount_type: mailSubscriptionDiscountType,
             mail_subscription_data: mailSubscriptionData,
@@ -1639,6 +1623,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             useShippingAsBilling,
             payment_method,
             loyalty,
+            points_to_redeem,
             total,
             receive_promotions
         } = req.body;
@@ -1905,6 +1890,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                 useShippingAsBilling: useShippingAsBilling !== undefined ? useShippingAsBilling : true,
                 payment_method,
                 loyalty,
+                points_to_redeem,
                 total,
                 shipping_method_id,
                 // Pass enriched cart items directly - no Cart table query needed
