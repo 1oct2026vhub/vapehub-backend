@@ -20,6 +20,7 @@ const {
     resolveAudienceType,
     buildCampaignKey
 } = require('../../../../library/promotionalEmail/campaignAudience');
+const validator = require('validator');
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -512,6 +513,45 @@ module.exports = {
         }
     },
 
+    // Create a subscriber from the admin panel so the origin can be audited.
+    async createSubscriber(req, res) {
+        try {
+            const adminId = req?.user?.id;
+            const rawEmail = req.body?.email;
+            const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+
+            if (!email || !validator.isEmail(email)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid email address', 400);
+            }
+
+            const sequelize = MailSubscription.sequelize;
+            const existingSubscriber = await MailSubscription.findOne({
+                where: sequelize.where(
+                    sequelize.fn('LOWER', sequelize.col('email')),
+                    require('sequelize').Op.eq,
+                    email.toLowerCase()
+                )
+            });
+
+            if (existingSubscriber) {
+                return errorResponse(res, { statusCode: 400 }, 'Email already exists', 400);
+            }
+
+            const subscriber = await MailSubscription.create({
+                email,
+                user_id: null,
+                subscribed: true,
+                created_by_type: 'admin',
+                created_by_admin_id: adminId || null
+            });
+
+            return successResponse(res, subscriber, 'Subscriber created successfully', 201);
+        } catch (error) {
+            logger.error('Error creating subscriber:', error);
+            return errorResponse(res, error, error.message || 'Failed to create subscriber');
+        }
+    },
+
     // Get all subscribers for admin selection
     async getAllSubscribers(req, res) {
         try {
@@ -541,7 +581,7 @@ module.exports = {
 
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
-                attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
+                attributes: ['id', 'email', 'user_id', 'created_by_type', 'created_by_admin_id', 'createdAt', 'subscribed'],
                 order: [['createdAt', 'DESC'], ['id', 'ASC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset)
