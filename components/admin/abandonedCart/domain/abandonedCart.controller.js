@@ -155,7 +155,7 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
     });
 
     const totals = {
-      abandoned_carts: flows.length,
+      abandoned_carts: 0,
       email1_sent: 0,
       email2_sent: 0,
       recovered_orders: 0,
