@@ -728,6 +728,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0.0,
       comment: 'Loyalty discount amount applied to the order'
     },
+    loyalty_points_used: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Points redeemed on this order (debited on successful payment)',
+    },
     mailSubscription_discount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
