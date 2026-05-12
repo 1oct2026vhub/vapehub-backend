@@ -82,6 +82,7 @@ class SeoService {
 
       const updatedSeoMeta = await seoMeta.update({ noIndex });
       invalidateCachePattern('seo:*').catch(() => {});
+      invalidateCachePattern('sitemap:*').catch(() => {});
       this.logger.info({ entityType, entityId, noIndex }, 'Successfully updated noIndex for entity');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {
@@ -597,6 +598,7 @@ class SeoService {
       });
 
       invalidateCachePattern('seo:*').catch(() => {});
+      invalidateCachePattern('sitemap:*').catch(() => {});
       this.logger.info({ entityType, entityId, newSlug }, 'Successfully updated SEO slug');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {

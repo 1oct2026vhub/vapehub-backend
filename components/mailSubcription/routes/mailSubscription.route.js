@@ -54,6 +54,62 @@ router.post('/',
     mailSubscriptionController.createMailSubscription
 );
 
+router.get('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail);
+router.post('/unsubscribe', mailSubscriptionController.publicUnsubscribeByEmail);
+
+/**
+ * @swagger
+ * /api/mailSubscription/unsubscribe:
+ *   get:
+ *     tags:
+ *       - MailSubscription
+ *     summary: Unsubscribe (redirect to storefront, or JSON when source=app)
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *       - in: query
+ *         name: source
+ *         required: false
+ *         description: Use "app" for JSON response from frontend; omit for email-link redirects
+ *         schema:
+ *           type: string
+ *           enum: [app]
+ *     responses:
+ *       200:
+ *         description: JSON success when source=app
+ *       400:
+ *         description: Invalid email when source=app
+ *       404:
+ *         description: Subscription not found when source=app
+ *       302:
+ *         description: Success redirect to FRONTEND_URL/unsubscribe/?success=true; errors to FRONTEND_URL/invalid
+ *   post:
+ *     tags:
+ *       - MailSubscription
+ *     summary: One-click unsubscribe (RFC 8058) or app JSON with source=app
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *       - in: query
+ *         name: source
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [app]
+ *     responses:
+ *       200:
+ *         description: JSON success when source=app
+ *       302:
+ *         description: Success to FRONTEND_URL/unsubscribe/?success=true; otherwise invalid (when source is not app)
+ */
 /**
  * @swagger
  * /api/mailSubscription/{id}:

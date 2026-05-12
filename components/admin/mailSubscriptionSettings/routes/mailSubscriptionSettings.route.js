@@ -8,12 +8,12 @@ const {
     createMailSubscriptionSetting,
     updateMailSubscriptionSetting,
     deleteMailSubscriptionSetting,
-    sendPromotionalEmail,
+    sendPromotionalEmailAsync,
+    getPromotionalCampaign,
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
-    deleteSubscriber,
-    testPromotionalEmail
+    deleteSubscriber
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
     uploadPromotionalImages,
@@ -442,124 +442,42 @@ router.delete('/:id', [
 
 // Promotional Email Routes
 
+router.post('/promotional/send-async', [
+    authMiddleware(true),
+    upload.array('images', 10)
+], sendPromotionalEmailAsync);
+
 /**
  * @swagger
- * /api/admin/mail-subscription-settings/promotional/send:
- *   post:
- *     summary: Send promotional email to subscribers (admin)
+ * /api/admin/mail-subscription-settings/promotional/campaigns/{id}:
+ *   get:
+ *     summary: Get a promotional campaign's status (admin)
+ *     description: |
+ *       Returns the current status, counts and chunk breakdown for an
+ *       async promotional campaign. Designed for the admin UI to poll
+ *       (e.g. every 5s) while a campaign is in flight; stop polling once
+ *       `progress.isFinal` is `true`.
  *     tags: [Admin - Mail Subscription Settings]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - subject
- *               - content
- *             properties:
- *               subject:
- *                 type: string
- *                 description: Email subject line
- *               content:
- *                 type: string
- *                 description: Main email content (HTML supported)
- *               highlightText:
- *                 type: string
- *                 description: Highlighted text to display prominently
- *               ctaText:
- *                 type: string
- *                 description: Call-to-action button text
- *               ctaUrl:
- *                 type: string
- *                 description: Call-to-action button URL
- *               sendToAll:
- *                 type: boolean
- *                 default: false
- *                 description: Send to all subscribers
- *               selectedEmails:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Array of specific email addresses to send to
- *               frequency:
- *                 type: string
- *                 enum: [daily, weekly, monthly]
- *                 description: Filter subscribers by email frequency preference
- *               images:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:
- *                       type: string
- *                       description: Image URL
- *                     alt:
- *                       type: string
- *                       description: Alt text for the image
- *                     isPrimary:
- *                       type: boolean
- *                       description: Whether this is the primary image
- *                 description: Array of promotional images to include in the email
- *           example:
- *             subject: "Special Offer - 20% Off Everything!"
- *             content: "<p>Don't miss our biggest sale of the year!</p>"
- *             highlightText: "20% OFF"
- *             ctaText: "Shop Now"
- *             ctaUrl: "https://example.com/sale"
- *             sendToAll: false
- *             selectedEmails:
- *               - "subscriber1@example.com"
- *               - "subscriber2@example.com"
- *             images: [
- *               {
- *                 "url": "https://example.com/image1.jpg",
- *                 "alt": "Special offer banner",
- *                 "isPrimary": true
- *               },
- *               {
- *                 "url": "https://example.com/image2.jpg",
- *                 "alt": "Product showcase"
- *               }
- *             ]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: EmailCampaign id (returned from /promotional/send-async).
  *     responses:
  *       200:
- *         description: Promotional emails sent successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     totalSubscribers:
- *                       type: integer
- *                     successful:
- *                       type: integer
- *                     failed:
- *                       type: integer
- *                     subject:
- *                       type: string
- *                     sendToAll:
- *                       type: boolean
- *                     selectedEmails:
- *                       type: array
- *                 message:
- *                   type: string
+ *         description: Campaign status retrieved successfully
  *       400:
- *         description: Validation error
+ *         description: Invalid id
  *       404:
- *         description: No subscribers found
+ *         description: Campaign not found
  *       500:
  *         description: Server error
  */
-router.post('/promotional/send', [
-    authMiddleware(true),
-    upload.array('images', 10) // Handle up to 10 image files
-], sendPromotionalEmail);
+router.get('/promotional/campaigns/:id', [
+    authMiddleware(true)
+], getPromotionalCampaign);
 
 /**
  * @swagger

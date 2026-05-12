@@ -5,6 +5,12 @@ module.exports = (sequelize, DataTypes) => {
     class MailSubscription extends Model {
         static associate(models) {
             this.belongsTo(models.User, { foreignKey: 'user_id', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+            this.belongsToMany(models.NewsletterGroup, {
+                through: models.NewsletterGroupUser,
+                foreignKey: 'subscriber_id',
+                otherKey: 'group_id',
+                as: 'newsletterGroups',
+            });
         }
     }
 

@@ -26,23 +26,24 @@ async function createShipStationOrder(order) {
             throw new Error('Invalid order data: missing order or order_unique_id');
         }
 
-        if (!order.user || !order.user.email) {
-            throw new Error('Invalid order data: missing user or user email');
+        const customerEmail = order.user?.email || order.email;
+        if (!customerEmail) {
+            throw new Error('Invalid order data: missing customer email');
         }
 
         shipstationLogger.logInfo({
             type: 'create_order_start',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
-            user_email: order.user?.email
+            user_email: customerEmail
         });
 
         const shipStationOrder = {
             orderNumber: order.order_unique_id,
             orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
             orderStatus: 'awaiting_shipment',
-            customerUsername: order.user?.email,
-            customerEmail: order.email || order.user?.email,
+            customerUsername: customerEmail,
+            customerEmail,
             billTo: order.orderBillingAddress ? {
                 name: order.orderBillingAddress.last_name 
                     ? `${capitalizeName(order.orderBillingAddress.name)} ${capitalizeName(order.orderBillingAddress.last_name)}`.trim()
