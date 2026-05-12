@@ -3,6 +3,7 @@ const logger = require('../logger');
 
 /**
  * Send one promotional newsletter to a subscriber (same behaviour as legacy inline loop).
+ * Replaces `${first_name}`, `{{email}}`, and `{{emailEncoded}}` in subject and HTML body.
  * @param {{ id: number, email: string, user_id: number|null }} subscriber
  * @param {Map<number,string>} firstNameByUserId
  * @param {object} campaignFields from buildCampaignPayload / parseCampaignPayload
@@ -24,8 +25,16 @@ async function sendPromotionalToSubscriber(subscriber, firstNameByUserId, campai
         const firstName = rawFirstName
             ? rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1)
             : '';
-        const personalizedSubject = String(effectiveSubject).replace(/\$\{first_name\}/g, firstName);
-        const personalizedHtml = String(effectiveHtml).replace(/\$\{first_name\}/g, firstName);
+        const subscriberEmail = String(subscriber.email ?? '');
+        const emailEncoded =
+            subscriberEmail !== '' ? encodeURIComponent(subscriberEmail) : '';
+        const personalize = (str) =>
+            String(str)
+                .replace(/\$\{first_name\}/g, firstName)
+                .replace(/\{\{email\}\}/g, subscriberEmail)
+                .replace(/\{\{emailEncoded\}\}/g, emailEncoded);
+        const personalizedSubject = personalize(effectiveSubject);
+        const personalizedHtml = personalize(effectiveHtml);
         const context = {
             subject: personalizedSubject,
             content: personalizedHtml,
