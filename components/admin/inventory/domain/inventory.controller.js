@@ -15,20 +15,10 @@ const SUCCESSFUL_ORDER_STATUSES = [
   'completed'
 ];
 
-const parseIncludeDiscontinued = (req) => {
-  const value = req?.query?.include_discontinued;
-  return value === true || value === 'true' || value === 1 || value === '1';
-};
-
-const buildVariantDiscontinuedWhere = (req) => {
-  return parseIncludeDiscontinued(req) ? {} : { is_discontinued: false };
-};
-
 module.exports = {
   // Get inventory overview with summary statistics
   async getInventoryOverview(req, res) {
     try {
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
       const [
         totalVariants,
         inStockVariants,
@@ -38,22 +28,21 @@ module.exports = {
         recentMovements
       ] = await Promise.all([
         // Total variants count
-        ProductVariant.count({ where: variantBaseWhere }),
+        ProductVariant.count(),
         
         // In stock variants
         ProductVariant.count({
-          where: { ...variantBaseWhere, stock: { [Op.gt]: 0 } }
+          where: { stock: { [Op.gt]: 0 } }
         }),
         
         // Out of stock variants
         ProductVariant.count({
-          where: { ...variantBaseWhere, stock: 0 }
+          where: { stock: 0 }
         }),
         
         // Low stock variants - simplified approach
         ProductVariant.findAll({
           where: {
-            ...variantBaseWhere,
             stock: { [Op.gt]: 0 }
           },
           attributes: ['id', 'stock', 'low_stock_threshold']
@@ -63,7 +52,7 @@ module.exports = {
         
         // Total stock value - simplified approach
         ProductVariant.findAll({
-          where: { ...variantBaseWhere, stock: { [Op.gt]: 0 } },
+          where: { stock: { [Op.gt]: 0 } },
           attributes: ['id', 'stock', 'purchase_price', 'price']
         }).then(variants => {
           return variants.reduce((total, variant) => {
@@ -128,7 +117,6 @@ module.exports = {
 
       const offset = (page - 1) * limit;
       const whereClause = {};
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
 
       // Search filter
       if (search) {
@@ -153,14 +141,11 @@ module.exports = {
             break;
         }
       }
-      Object.assign(whereClause, variantBaseWhere);
 
       // Product filter
       if (product_id) {
         whereClause.product_id = product_id;
       }
-
-      Object.assign(whereClause, variantBaseWhere);
 
       const { count, rows } = await ProductVariant.findAndCountAll({
         where: whereClause,
@@ -186,10 +171,10 @@ module.exports = {
         inventory = inventory.filter(variant => variant.stock <= variant.low_stock_threshold);
         // Recalculate count for low stock items
         const lowStockCount = await ProductVariant.count({
-          where: { ...variantBaseWhere, stock: { [Op.gt]: 0 } }
+          where: { stock: { [Op.gt]: 0 } }
         }).then(async () => {
           const allVariants = await ProductVariant.findAll({
-            where: { ...variantBaseWhere, stock: { [Op.gt]: 0 } },
+            where: { stock: { [Op.gt]: 0 } },
             attributes: ['id', 'stock', 'low_stock_threshold']
           });
           return allVariants.filter(variant => variant.stock <= variant.low_stock_threshold).length;
@@ -912,7 +897,6 @@ module.exports = {
   async getInventoryAnalytics(req, res) {
     try {
       const { period = '30' } = req.query; // days
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - parseInt(period));
 
@@ -952,7 +936,6 @@ module.exports = {
         // Top products by stock value - simplified approach
         ProductVariant.findAll({
           where: {
-            ...variantBaseWhere,
             stock: { [Op.gt]: 0 }
           },
           attributes: ['id', 'stock', 'purchase_price', 'price'],
@@ -975,7 +958,6 @@ module.exports = {
         // Low stock alerts - simplified approach
         ProductVariant.findAll({
           where: {
-            ...variantBaseWhere,
             stock: { [Op.gt]: 0 }
           },
           attributes: ['id', 'stock', 'low_stock_threshold'],
@@ -1021,7 +1003,6 @@ module.exports = {
       const parsedPage = parseInt(page, 10);
       const parsedLimit = parseInt(limit, 10);
       const parsedOffset = (parsedPage - 1) * parsedLimit;
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
       
       // Build where clause for products
       const productWhereClause = {
@@ -1073,7 +1054,6 @@ module.exports = {
       // Fetch all variants for these products
       const allVariants = await ProductVariant.findAll({
         where: {
-          ...variantBaseWhere,
           product_id: { [Op.in]: productIds },
           deleted_at: null
         },
@@ -1196,7 +1176,6 @@ module.exports = {
     try {
       const { productId } = req.params;
       const { stock_status } = req.query;
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
 
       // Validate product exists
       const product = await Product.findOne({
@@ -1215,8 +1194,7 @@ module.exports = {
       // Build where clause for variants
       const variantWhereClause = {
         product_id: productId,
-        deleted_at: null,
-        ...variantBaseWhere
+        deleted_at: null
       };
 
       // Apply stock status filter
@@ -1402,7 +1380,6 @@ module.exports = {
       const { page = 1, limit = 20, search, stock_status } = req.query;
       const offset = (page - 1) * limit;
       const whereClause = {};
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
       const now = new Date();
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
@@ -1416,7 +1393,6 @@ module.exports = {
       }
       if (stock_status === 'in_stock') whereClause.stock = { [Op.gt]: 0 };
       if (stock_status === 'out_of_stock') whereClause.stock = 0;
-      Object.assign(whereClause, variantBaseWhere);
 
       // Fetch paginated variants with product and primary image
       const { count, rows: variants } = await ProductVariant.findAndCountAll({
@@ -1795,7 +1771,6 @@ module.exports = {
         sort_order = 'DESC',
         top_selling = false // New option for top selling products
       } = req.query;
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
 
       const offset = (page - 1) * limit;
       const now = new Date();
@@ -1842,7 +1817,6 @@ module.exports = {
       ] = await Promise.all([
         // Total variants count
         ProductVariant.count({
-          where: variantBaseWhere,
           include: [{
             model: Product,
             as: 'product',
@@ -1855,7 +1829,7 @@ module.exports = {
         
         // In stock variants
         ProductVariant.count({
-          where: { ...variantBaseWhere, stock: { [Op.gt]: 0 } },
+          where: { stock: { [Op.gt]: 0 } },
           include: [{
             model: Product,
             as: 'product',
@@ -1868,7 +1842,7 @@ module.exports = {
         
         // Out of stock variants
         ProductVariant.count({
-          where: { ...variantBaseWhere, stock: 0 },
+          where: { stock: 0 },
           include: [{
             model: Product,
             as: 'product',
@@ -1882,7 +1856,6 @@ module.exports = {
         // Low stock variants
         ProductVariant.findAll({
           where: {
-            ...variantBaseWhere,
             stock: { [Op.gt]: 0 }
           },
           include: [{
@@ -1973,9 +1946,6 @@ module.exports = {
           endDateLastMonth: endOfLastMonth
         };
         
-        if (!parseIncludeDiscontinued(req)) {
-          productWhereClause += ' AND pv.is_discontinued = 0';
-        }
         if (search) {
           productWhereClause += ' AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)';
           replacements.search = `%${search}%`;
@@ -2150,7 +2120,6 @@ module.exports = {
             LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
             WHERE pv.deleted_at IS NULL 
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
-            ${parseIncludeDiscontinued(req) ? '' : 'AND pv.is_discontinued = 0'}
             ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
             ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
             ORDER BY ${sort_by === 'name' ? 'p.name' : 'pv.' + sort_by} ${sort_order}
@@ -2191,7 +2160,6 @@ module.exports = {
             LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
             WHERE pv.deleted_at IS NULL 
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
-            ${parseIncludeDiscontinued(req) ? '' : 'AND pv.is_discontinued = 0'}
             ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
             ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
           `;
@@ -2456,7 +2424,6 @@ module.exports = {
     try {
       const { format = 'excel', days = 28 } = req.query;
       const numberOfDays = parseInt(days, 10) || 28; // N = number of days from request
-      const variantBaseWhere = buildVariantDiscontinuedWhere(req);
       
       // Calculate date range for last 28 days (fixed for standard formula)
       const now = new Date();
@@ -2495,7 +2462,6 @@ module.exports = {
       // Fetch all active variants with product information (including product creation date)
       const variants = await ProductVariant.findAll({
         where: {
-          ...variantBaseWhere,
           deleted_at: null,
           status: 'active'
         },

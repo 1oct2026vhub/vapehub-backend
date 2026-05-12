@@ -191,9 +191,6 @@ module.exports.createCart = async (req, res, next) => {
         if (!product) {
             throw { message: "Product not found", statusCode: 404 };
         }
-        if (product.is_discontinued) {
-            throw { message: `${product.name} is discontinued and cannot be purchased`, statusCode: 400 };
-        }
         
         let availableStock = product.stock_quantity || 0; // Fallback to product stock if no variant
         let variant = null; // Initialize variant variable
@@ -201,9 +198,6 @@ module.exports.createCart = async (req, res, next) => {
             variant = await ProductVariant.findByPk(variant_id);
             if (!variant || variant.product_id !== product_id) {
                 throw { message: `Variant not found or does not belong to the specified product`, statusCode: 404 };
-            }
-            if (variant.is_discontinued) {
-                throw { message: `${variant.slug || 'Selected variant'} is discontinued and cannot be purchased`, statusCode: 400 };
             }
             availableStock = variant.stock || 0; // Use variant stock if specified
         }
@@ -258,9 +252,6 @@ module.exports.updateCart = async (req, res, next) => {
         const cartItem = await Cart.findByPk(id, { include: includeClause });
         if (!cartItem) {
             throw { statusCode: 404, message: 'Cart item not found' };
-        }
-        if (cartItem.product?.is_discontinued || cartItem.variant?.is_discontinued) {
-            throw { message: 'This item is discontinued and cannot be purchased', statusCode: 400 };
         }
 
         // Validate quantity
@@ -379,20 +370,13 @@ module.exports.checkCartItemsStock = async (req, res, next) => {
             const availableStock = variant ? variant.stock : (product.stock_quantity || 0);
             // Check if item is out of stock
             let isOutOfStock = false;
-            if (
-                product?.is_discontinued ||
-                variant?.is_discontinued ||
-                availableStock == 0 ||
-                (variant && variant.stock_status == 'out_of_stock')
-            ) {
+            if(availableStock == 0 || (variant && variant.stock_status == 'out_of_stock')){
                 isOutOfStock = true;
             }
             // Check if requested quantity exceeds available stock
             const isQuantityExceeded = cart.quantity > availableStock;
             let message = '';
-            if (product?.is_discontinued || variant?.is_discontinued) {
-                message = `Variant is discontinued`;
-            } else if (isOutOfStock) {
+            if (isOutOfStock) {
                 message = `Varient is out of stock`;    //${variant ? variant.slug : product.name}
             } else if (isQuantityExceeded) {
                 message = `Only ${availableStock} item(s) available in stock for ${variant ? variant.slug : product.name}`;
@@ -467,12 +451,6 @@ module.exports.calculateDealsForGuestCart = async (req, res, next) => {
                     statusCode: 404 
                 };
             }
-            if (product.is_discontinued) {
-                throw {
-                    message: `${product.name} is discontinued and cannot be purchased`,
-                    statusCode: 400
-                };
-            }
 
             let variant = null;
             if (variant_id) {
@@ -499,17 +477,11 @@ module.exports.calculateDealsForGuestCart = async (req, res, next) => {
                         statusCode: 404 
                     };
                 }
-                if (variant.is_discontinued) {
-                    throw {
-                        message: `${variant.slug || 'Selected variant'} is discontinued and cannot be purchased`,
-                        statusCode: 400
-                    };
-                }
             }
 
             // Check stock availability
             const availableStock = variant ? variant.stock : product.stock_quantity || 0;
-            const out_of_stock = product?.is_discontinued || (variant ? (variant.is_discontinued || variant.stock <= 0 || variant.stock_status == 'out_of_stock') : false);
+            const out_of_stock = variant ? variant.stock <= 0 || variant.stock_status == 'out_of_stock' : false;
 
             // Create cart-like object for deal calculations
             return {

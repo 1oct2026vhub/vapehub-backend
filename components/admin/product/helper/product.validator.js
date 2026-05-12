@@ -28,9 +28,6 @@ const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('is_discontinued')
-        .optional()
-        .isBoolean().withMessage('is_discontinued must be a boolean'),
     check('category_ids')
         .optional()
         .isArray({ min: 1 }).withMessage('Category IDs must be an array with at least one item')
@@ -90,9 +87,6 @@ const updateProductValidations = [
             return true;
         }),
     check('description').optional().isString().withMessage('Description must be a string'),
-    check('is_discontinued')
-        .optional()
-        .isBoolean().withMessage('is_discontinued must be a boolean'),
     check('category_ids')
         .optional()
         .custom((value) => {
