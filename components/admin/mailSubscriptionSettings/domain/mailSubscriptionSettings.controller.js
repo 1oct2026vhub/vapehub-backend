@@ -828,6 +828,33 @@ module.exports = {
         }
     },
 
+    // Resubscribe a previously unsubscribed subscriber (admin) — sets subscribed = true.
+    // Newsletter group memberships are not restored (same as customer toggle).
+    async resubscribeSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            const sequelize = MailSubscription.sequelize;
+            await sequelize.transaction(async (t) => {
+                subscription.subscribed = true;
+                await subscription.save({ transaction: t });
+            });
+            return successResponse(res, {
+                id: subscription.id,
+                email: subscription.email,
+                subscribed: true
+            }, 'Subscriber resubscribed successfully');
+        } catch (error) {
+            logger.error('Error resubscribing subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    },
+
     // Delete a subscriber (admin) - soft-deletes the subscriber record
     async deleteSubscriber(req, res) {
         try {

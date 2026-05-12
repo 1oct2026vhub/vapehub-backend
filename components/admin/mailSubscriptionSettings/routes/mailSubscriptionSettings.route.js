@@ -13,6 +13,7 @@ const {
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
+    resubscribeSubscriber,
     deleteSubscriber
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
@@ -277,6 +278,50 @@ router.get('/subscribers/stats', [
 router.patch('/subscribers/:subscriberId/unsubscribe', [
     authMiddleware(true)
 ], unsubscribeSubscriber);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/subscribe:
+ *   patch:
+ *     summary: Resubscribe a subscriber (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: subscriberId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Mail subscription (subscriber) ID
+ *     responses:
+ *       200:
+ *         description: Subscriber resubscribed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     email:
+ *                       type: string
+ *                     subscribed:
+ *                       type: boolean
+ *                       example: true
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Subscriber not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/subscribers/:subscriberId/subscribe', [
+    authMiddleware(true)
+], resubscribeSubscriber);
 
 /**
  * @swagger
