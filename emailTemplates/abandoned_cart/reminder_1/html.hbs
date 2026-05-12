@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.10);
+            overflow: hidden;
+        }
+
+        .header {
+            border-radius: 14px;
+            border: 1px solid #ffffff;
+            background: linear-gradient(90deg, #083122 0%, #035335 50%, #083122 100%);
+            box-shadow: -1px 4px 24px 0 rgba(0, 0, 0, 0.24);
+            text-align: center;
+            padding: 32px 0 16px 0;
+        }
+
+        .logo {
+            max-width: 160px;
+            margin-bottom: 10px;
+            height: auto;
+        }
+
+        .content {
+            padding: 32px 24px 24px 24px;
+            line-height: 1.6;
+        }
+
+        .title {
+            margin: 0 0 14px;
+            font-size: 32px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        p {
+            margin: 0 0 14px;
+            font-size: 16px;
+            color: #374151;
+        }
+
+        .cta-wrapper {
+            margin: 26px 0 20px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            text-decoration: none;
+            background: linear-gradient(135deg, #2e8b57 0%, #3cb371 100%);
+            color: #ffffff !important;
+            font-weight: 700;
+            font-size: 16px;
+            padding: 12px 20px;
+            border-radius: 6px;
+        }
+
+        .support-box {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: 15px;
+            color: #374151;
+            margin-top: 10px;
+        }
+
+        .footer {
+            background: #f2f6f9;
+            text-align: center;
+            padding: 24px 10px;
+            border-top: 1px solid #e0e6ed;
+            font-size: 13px;
+            color: #888;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #2e8b57;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        @media (max-width: 650px) {
+            .email-container {
+                margin: 10px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <a href="{{FRONTEND_URL}}">
+                <img src="{{host}}/public/images/logo.png" alt="VapeHub Logo" class="logo" />
+            </a>
+        </div>
+
+        <div class="content">
+            <h1 class="title">Did you forget something?</h1>
+            <p>Hi {{customerName}},</p>
+            <p>It looks like you left something behind.</p>
+            <p>Your items are still waiting in your cart, and you are just a few clicks away from completing your purchase. We have saved everything for you so you can pick up right where you left off.</p>
+            <p>Click below to continue your checkout:</p>
+
+            <div class="cta-wrapper">
+                <a class="cta-button" href="{{ctaUrl}}">Complete Your Purchase</a>
+            </div>
+
+            <div class="support-box">
+                If you need any help or have questions, simply reply to this email - our customer support team is happy to assist you.
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Need help with your order? Our customer service team is here to assist you.</p>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                <p style="font-weight: bold; margin-bottom: 10px;">Customer Services</p>
+                <p>Email us: <a href="mailto:customerservices@vapehub.co.uk">customerservices@vapehub.co.uk</a></p>
+                <p>Call us: <a href="tel:07508373773">07508 373773</a></p>
+            </div>
+            <p>&copy; {{currentYear}} VapeHub. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

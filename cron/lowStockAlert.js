@@ -11,6 +11,7 @@ cron.schedule('0 * * * *', async () => {
     // Find all low stock variants (stock > 0 and stock <= low_stock_threshold) and out of stock variants (stock = 0)
     const lowStockVariants = await ProductVariant.findAll({
       where: {
+        is_discontinued: false,
         stock: { [Op.gte]: 0 } // Changed from Op.gt to Op.gte to include stock = 0
       },
       include: [{
@@ -18,6 +19,7 @@ cron.schedule('0 * * * *', async () => {
         as: 'product',
         attributes: ['name'],
         where: {
+          is_discontinued: false,
           deletedAt: null // Only include non-soft deleted products
         }
       }]

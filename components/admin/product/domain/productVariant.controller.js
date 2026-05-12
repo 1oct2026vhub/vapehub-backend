@@ -455,6 +455,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         description: variant.description,
         alt_text: variant.alt_text,
         status: variant.status || 'active',
+        is_discontinued: variant.is_discontinued ?? false,
         updated_by
     }, { transaction });
 
@@ -495,6 +496,7 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
     await ProductVariant.update({
         ...updateData,
         price,
+        ...(updateData.is_discontinued !== undefined && { is_discontinued: updateData.is_discontinued }),
         ...(updateData.sku !== undefined && { sku: updateData.sku }),
         updated_by
     }, {

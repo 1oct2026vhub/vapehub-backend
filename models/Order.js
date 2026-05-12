@@ -97,6 +97,13 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'SET NULL',
         onUpdate: 'CASCADE'
       });
+
+      this.hasOne(models.AbandonedCartFlow, {
+        foreignKey: 'order_id',
+        as: 'abandonedCartFlow',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
     }
 
     /**
@@ -127,7 +134,34 @@ module.exports = (sequelize, DataTypes) => {
       try {
         // Only proceed if status has changed
         if (instance.changed('status')) {
+          const previousStatus = instance.previous('status');
           const newStatus = instance.status;
+
+          // Mark abandoned-cart flows as recovered when pending orders progress.
+          const recoveryStatuses = ['processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed'];
+          if (previousStatus === 'pending' && recoveryStatuses.includes(newStatus)) {
+            try {
+              const abandonedFlow = await sequelize.models.AbandonedCartFlow.findOne({
+                where: {
+                  order_id: instance.id,
+                  recovered_at: null,
+                  cancelled_at: null,
+                  status: { [Op.in]: ['entered', 'email1_sent', 'email2_sent'] }
+                }
+              });
+
+              if (abandonedFlow) {
+                await abandonedFlow.update({
+                  recovered_at: new Date(),
+                  recovered_revenue: instance.total,
+                  status: 'recovered',
+                  last_error: null
+                });
+              }
+            } catch (recoveryError) {
+              logger.error('Error updating abandoned cart recovery:', recoveryError);
+            }
+          }
           
           // Check stock levels when order status changes to processing
           if (newStatus === 'processing') {
@@ -727,6 +761,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 0.0,
       comment: 'Loyalty discount amount applied to the order'
+    },
+    loyalty_points_used: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Points redeemed on this order (debited on successful payment)',
     },
     mailSubscription_discount: {
       type: DataTypes.DECIMAL(10, 2),
