@@ -407,6 +407,143 @@ module.exports = {
         }
     },
 
+    async getPromotionalCampaigns(req, res) {
+        try {
+            const {
+                page = 1,
+                limit = 20,
+                status,
+                deliveryMode,
+                audienceType,
+                initiatedBy,
+                subject,
+                from,
+                to,
+                sortBy = 'createdAt',
+                sortOrder = 'DESC'
+            } = req.query;
+
+            const { Op } = require('sequelize');
+
+            const allowedSort = ['createdAt', 'started_at', 'finished_at', 'sent_count', 'failed_count'];
+            const sortColumn = allowedSort.includes(sortBy) ? sortBy : null;
+            if (!sortColumn) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid sortBy', 400);
+            }
+
+            const orderUpper = String(sortOrder).toUpperCase();
+            if (!['ASC', 'DESC'].includes(orderUpper)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid sortOrder', 400);
+            }
+
+            const validStatuses = ['queued', 'sending', 'completed', 'partial_failed', 'failed'];
+            if (status !== undefined && status !== '' && !validStatuses.includes(status)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid status filter', 400);
+            }
+
+            const validDelivery = ['sync', 'async_sqs'];
+            if (deliveryMode !== undefined && deliveryMode !== '' && !validDelivery.includes(deliveryMode)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid deliveryMode filter', 400);
+            }
+
+            const validAudience = ['all', 'group', 'selected'];
+            if (audienceType !== undefined && audienceType !== '' && !validAudience.includes(audienceType)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid audienceType filter', 400);
+            }
+
+            const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+            const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+            const offset = (pageNum - 1) * limitNum;
+
+            const where = {
+                type: 'promotional_newsletter'
+            };
+
+            if (status) {
+                where.status = status;
+            }
+            if (deliveryMode) {
+                where.delivery_mode = deliveryMode;
+            }
+            if (audienceType) {
+                where.audience_type = audienceType;
+            }
+
+            const initiatorId = parseInt(initiatedBy, 10);
+            if (initiatedBy !== undefined && initiatedBy !== '') {
+                if (!Number.isFinite(initiatorId)) {
+                    return errorResponse(res, { statusCode: 400 }, 'Invalid initiatedBy', 400);
+                }
+                where.initiated_by = initiatorId;
+            }
+
+            if (subject && String(subject).trim()) {
+                const term = `%${String(subject).trim()}%`;
+                where.subject = { [Op.like]: term };
+            }
+
+            if (from || to) {
+                where.createdAt = {};
+                if (from) {
+                    const fromDate = new Date(from);
+                    if (Number.isNaN(fromDate.getTime())) {
+                        return errorResponse(res, { statusCode: 400 }, 'Invalid from date', 400);
+                    }
+                    where.createdAt[Op.gte] = fromDate;
+                }
+                if (to) {
+                    const toDate = new Date(to);
+                    if (Number.isNaN(toDate.getTime())) {
+                        return errorResponse(res, { statusCode: 400 }, 'Invalid to date', 400);
+                    }
+                    where.createdAt[Op.lte] = toDate;
+                }
+            }
+
+            const { count, rows } = await EmailCampaign.findAndCountAll({
+                where,
+                attributes: [
+                    'id',
+                    'campaign_key',
+                    'subject',
+                    'status',
+                    'delivery_mode',
+                    'audience_type',
+                    'audience_meta',
+                    'total_recipients',
+                    'sent_count',
+                    'failed_count',
+                    'chunks_total',
+                    'chunks_done',
+                    'initiated_by',
+                    'started_at',
+                    'finished_at',
+                    'createdAt'
+                ],
+                order: [[sortColumn, orderUpper]],
+                limit: limitNum,
+                offset
+            });
+
+            return successResponse(
+                res,
+                {
+                    campaigns: rows,
+                    pagination: {
+                        total: count,
+                        page: pageNum,
+                        limit: limitNum,
+                        total_pages: Math.ceil(count / limitNum)
+                    }
+                },
+                'Campaign history retrieved successfully'
+            );
+        } catch (error) {
+            logger.error('Error listing promotional campaigns:', error);
+            return errorResponse(res, error, error.message || 'Failed to list campaigns');
+        }
+    },
+
     // Get a single promotional campaign's status (admin polling endpoint).
     // Returns the campaign metadata, lifecycle counts, a chunk-by-status
     // breakdown, and a progress convenience block. Designed to be polled
