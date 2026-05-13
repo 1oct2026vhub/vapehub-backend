@@ -212,16 +212,24 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 where: { id: order.user_id }
                             });
 
-                            if(parseFloat(user.loyalty_points) >= parseFloat(settings.minimum_points_redemption)){  // && total >= settings.minimum_purchase_amount
-                                const redeemedPoints = user.loyalty_points;
+                            let debitPoints = parseInt(order.loyalty_points_used, 10) || 0;
+                            const pv = parseFloat(settings.points_value) || 0;
+                            if (debitPoints <= 0 && parseFloat(order.loyalty_discount || 0) > 0 && pv > 0) {
+                                debitPoints = Math.floor(parseFloat(order.loyalty_discount) / pv);
+                            }
+                            if (debitPoints <= 0) {
+                                debitPoints = parseInt(settings.minimum_points_redemption, 10) || 0;
+                            }
+
+                            if(debitPoints > 0 && parseFloat(user.loyalty_points) >= debitPoints){
                                 await user.update({
-                                    loyalty_points: sequelize.literal(`loyalty_points - ${settings.minimum_points_redemption}`)
+                                    loyalty_points: sequelize.literal(`GREATEST(0, loyalty_points - ${debitPoints})`)
                                 });
                                 // Add loyalty points redemption history
                                 await LoyaltyPointsHistory.create({
                                     user_id: user.id,
                                     type: 'redeemed',
-                                    points: Math.abs(redeemedPoints),
+                                    points: debitPoints,
                                     order_id: order.id || null,
                                     description: 'Points redeemed',
                                     timestamp: new Date()
