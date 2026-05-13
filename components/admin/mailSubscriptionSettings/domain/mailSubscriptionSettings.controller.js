@@ -2,6 +2,8 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const {
     MailSubscriptionSettings,
     MailSubscription,
+    NewsletterGroup,
+    NewsletterGroupUser,
     User,
     EmailCampaign,
     EmailCampaignChunk
@@ -18,6 +20,7 @@ const {
     resolveAudienceType,
     buildCampaignKey
 } = require('../../../../library/promotionalEmail/campaignAudience');
+const validator = require('validator');
 
 module.exports = {
     // List all mail subscription settings with pagination
@@ -404,6 +407,143 @@ module.exports = {
         }
     },
 
+    async getPromotionalCampaigns(req, res) {
+        try {
+            const {
+                page = 1,
+                limit = 20,
+                status,
+                deliveryMode,
+                audienceType,
+                initiatedBy,
+                subject,
+                from,
+                to,
+                sortBy = 'createdAt',
+                sortOrder = 'DESC'
+            } = req.query;
+
+            const { Op } = require('sequelize');
+
+            const allowedSort = ['createdAt', 'started_at', 'finished_at', 'sent_count', 'failed_count'];
+            const sortColumn = allowedSort.includes(sortBy) ? sortBy : null;
+            if (!sortColumn) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid sortBy', 400);
+            }
+
+            const orderUpper = String(sortOrder).toUpperCase();
+            if (!['ASC', 'DESC'].includes(orderUpper)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid sortOrder', 400);
+            }
+
+            const validStatuses = ['queued', 'sending', 'completed', 'partial_failed', 'failed'];
+            if (status !== undefined && status !== '' && !validStatuses.includes(status)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid status filter', 400);
+            }
+
+            const validDelivery = ['sync', 'async_sqs'];
+            if (deliveryMode !== undefined && deliveryMode !== '' && !validDelivery.includes(deliveryMode)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid deliveryMode filter', 400);
+            }
+
+            const validAudience = ['all', 'group', 'selected'];
+            if (audienceType !== undefined && audienceType !== '' && !validAudience.includes(audienceType)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid audienceType filter', 400);
+            }
+
+            const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+            const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+            const offset = (pageNum - 1) * limitNum;
+
+            const where = {
+                type: 'promotional_newsletter'
+            };
+
+            if (status) {
+                where.status = status;
+            }
+            if (deliveryMode) {
+                where.delivery_mode = deliveryMode;
+            }
+            if (audienceType) {
+                where.audience_type = audienceType;
+            }
+
+            const initiatorId = parseInt(initiatedBy, 10);
+            if (initiatedBy !== undefined && initiatedBy !== '') {
+                if (!Number.isFinite(initiatorId)) {
+                    return errorResponse(res, { statusCode: 400 }, 'Invalid initiatedBy', 400);
+                }
+                where.initiated_by = initiatorId;
+            }
+
+            if (subject && String(subject).trim()) {
+                const term = `%${String(subject).trim()}%`;
+                where.subject = { [Op.like]: term };
+            }
+
+            if (from || to) {
+                where.createdAt = {};
+                if (from) {
+                    const fromDate = new Date(from);
+                    if (Number.isNaN(fromDate.getTime())) {
+                        return errorResponse(res, { statusCode: 400 }, 'Invalid from date', 400);
+                    }
+                    where.createdAt[Op.gte] = fromDate;
+                }
+                if (to) {
+                    const toDate = new Date(to);
+                    if (Number.isNaN(toDate.getTime())) {
+                        return errorResponse(res, { statusCode: 400 }, 'Invalid to date', 400);
+                    }
+                    where.createdAt[Op.lte] = toDate;
+                }
+            }
+
+            const { count, rows } = await EmailCampaign.findAndCountAll({
+                where,
+                attributes: [
+                    'id',
+                    'campaign_key',
+                    'subject',
+                    'status',
+                    'delivery_mode',
+                    'audience_type',
+                    'audience_meta',
+                    'total_recipients',
+                    'sent_count',
+                    'failed_count',
+                    'chunks_total',
+                    'chunks_done',
+                    'initiated_by',
+                    'started_at',
+                    'finished_at',
+                    'createdAt'
+                ],
+                order: [[sortColumn, orderUpper]],
+                limit: limitNum,
+                offset
+            });
+
+            return successResponse(
+                res,
+                {
+                    campaigns: rows,
+                    pagination: {
+                        total: count,
+                        page: pageNum,
+                        limit: limitNum,
+                        total_pages: Math.ceil(count / limitNum)
+                    }
+                },
+                'Campaign history retrieved successfully'
+            );
+        } catch (error) {
+            logger.error('Error listing promotional campaigns:', error);
+            return errorResponse(res, error, error.message || 'Failed to list campaigns');
+        }
+    },
+
     // Get a single promotional campaign's status (admin polling endpoint).
     // Returns the campaign metadata, lifecycle counts, a chunk-by-status
     // breakdown, and a progress convenience block. Designed to be polled
@@ -469,6 +609,15 @@ module.exports = {
             const done = Number(campaign.chunks_done) || 0;
             const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (isFinal ? 100 : 0);
 
+            let groupName = null;
+            if (campaign.audience_type === 'group' && campaign.audience_meta?.groupId != null) {
+                const gid = Number(campaign.audience_meta.groupId);
+                if (Number.isFinite(gid) && gid > 0) {
+                    const group = await NewsletterGroup.findByPk(gid, { attributes: ['name'] });
+                    groupName = group?.name ?? null;
+                }
+            }
+
             return successResponse(
                 res,
                 {
@@ -479,6 +628,7 @@ module.exports = {
                     deliveryMode: campaign.delivery_mode,
                     audienceType: campaign.audience_type,
                     audienceMeta: campaign.audience_meta,
+                    groupName,
                     totalRecipients: campaign.total_recipients,
                     sentCount: campaign.sent_count,
                     failedCount: campaign.failed_count,
@@ -497,6 +647,45 @@ module.exports = {
         } catch (error) {
             logger.error('Error retrieving promotional campaign:', error);
             return errorResponse(res, error, error.message || 'Failed to retrieve campaign');
+        }
+    },
+
+    // Create a subscriber from the admin panel so the origin can be audited.
+    async createSubscriber(req, res) {
+        try {
+            const adminId = req?.user?.id;
+            const rawEmail = req.body?.email;
+            const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+
+            if (!email || !validator.isEmail(email)) {
+                return errorResponse(res, { statusCode: 400 }, 'Invalid email address', 400);
+            }
+
+            const sequelize = MailSubscription.sequelize;
+            const existingSubscriber = await MailSubscription.findOne({
+                where: sequelize.where(
+                    sequelize.fn('LOWER', sequelize.col('email')),
+                    require('sequelize').Op.eq,
+                    email.toLowerCase()
+                )
+            });
+
+            if (existingSubscriber) {
+                return errorResponse(res, { statusCode: 400 }, 'Email already exists', 400);
+            }
+
+            const subscriber = await MailSubscription.create({
+                email,
+                user_id: null,
+                subscribed: true,
+                created_by_type: 'admin',
+                created_by_admin_id: adminId || null
+            });
+
+            return successResponse(res, subscriber, 'Subscriber created successfully', 201);
+        } catch (error) {
+            logger.error('Error creating subscriber:', error);
+            return errorResponse(res, error, error.message || 'Failed to create subscriber');
         }
     },
 
@@ -529,7 +718,7 @@ module.exports = {
 
             const { count, rows: subscribers } = await MailSubscription.findAndCountAll({
                 where: whereClause,
-                attributes: ['id', 'email', 'user_id', 'createdAt', 'subscribed'],
+                attributes: ['id', 'email', 'user_id', 'created_by_type', 'created_by_admin_id', 'createdAt', 'subscribed'],
                 order: [['createdAt', 'DESC'], ['id', 'ASC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset)
@@ -619,8 +808,15 @@ module.exports = {
             if (!subscription) {
                 return errorResponse(res, null, 'Subscriber not found', 404);
             }
-            subscription.subscribed = false;
-            await subscription.save();
+            const sequelize = MailSubscription.sequelize;
+            await sequelize.transaction(async (t) => {
+                await NewsletterGroupUser.destroy({
+                    where: { subscriber_id: subscription.id },
+                    transaction: t,
+                });
+                subscription.subscribed = false;
+                await subscription.save({ transaction: t });
+            });
             return successResponse(res, {
                 id: subscription.id,
                 email: subscription.email,
@@ -628,6 +824,33 @@ module.exports = {
             }, 'Subscriber unsubscribed successfully');
         } catch (error) {
             logger.error('Error unsubscribing subscriber:', error);
+            return errorResponse(res, error, error.message);
+        }
+    },
+
+    // Resubscribe a previously unsubscribed subscriber (admin) — sets subscribed = true.
+    // Newsletter group memberships are not restored (same as customer toggle).
+    async resubscribeSubscriber(req, res) {
+        try {
+            const { subscriberId } = req.params;
+            const subscription = await MailSubscription.findOne({
+                where: { id: subscriberId, deletedAt: null }
+            });
+            if (!subscription) {
+                return errorResponse(res, null, 'Subscriber not found', 404);
+            }
+            const sequelize = MailSubscription.sequelize;
+            await sequelize.transaction(async (t) => {
+                subscription.subscribed = true;
+                await subscription.save({ transaction: t });
+            });
+            return successResponse(res, {
+                id: subscription.id,
+                email: subscription.email,
+                subscribed: true
+            }, 'Subscriber resubscribed successfully');
+        } catch (error) {
+            logger.error('Error resubscribing subscriber:', error);
             return errorResponse(res, error, error.message);
         }
     },
