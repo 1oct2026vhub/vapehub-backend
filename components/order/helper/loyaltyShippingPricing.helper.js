@@ -3,6 +3,50 @@ const { calculateShippingCost } = require('../../shippingMethod/helper/shippingM
 const round2 = (n) => parseFloat(Math.max(0, Number(n) || 0).toFixed(2));
 
 /**
+ * Derive £ cap for loyalty this checkout and £ per point, from LoyaltyPointsSettings.
+ *
+ * - percentage: cap £ discount at min(redeemableGbp, merchandise × loyalty_amount%).
+ *   Points still convert with points_value as £ per point (debit granularity).
+ * - fixed + loyalty_amount + points_value ≥ 1: treat as block — loyalty_amount £ per points_value points
+ *   → £/point = loyalty_amount / points_value (e.g. £2 / 10 = 0.2).
+ * - fixed + loyalty_amount + 0 < points_value < 1: treat points_value as £/point and cap £ discount at loyalty_amount.
+ * - otherwise: points_value = £ per point; cap = redeemableGbp.
+ */
+function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue, merchandise, redeemableGbp) {
+  const laRaw = parseFloat(loyaltyAmount);
+  const la = Number.isFinite(laRaw) ? laRaw : 0;
+  const pvRaw = parseFloat(pointsValue) || 0;
+  const type = String(loyaltyAmountType || '').toLowerCase();
+
+  let capGbp = redeemableGbp;
+  let gbpPerPoint = 0;
+
+  if (type === 'percentage') {
+    if (la <= 0) {
+      capGbp = redeemableGbp;
+    } else {
+      const pct = Math.min(100, Math.max(0, la));
+      const pctOff = round2((merchandise * pct) / 100);
+      capGbp = round2(Math.min(redeemableGbp, pctOff));
+    }
+    gbpPerPoint = pvRaw;
+  } else if (type === 'fixed') {
+    if (la > 0 && pvRaw >= 1) {
+      gbpPerPoint = la / pvRaw;
+    } else if (la > 0 && pvRaw > 0 && pvRaw < 1) {
+      gbpPerPoint = pvRaw;
+      capGbp = round2(Math.min(redeemableGbp, la));
+    } else {
+      gbpPerPoint = pvRaw;
+    }
+  } else {
+    gbpPerPoint = pvRaw;
+  }
+
+  return { capGbp: round2(capGbp), gbpPerPoint };
+}
+
+/**
  * Merchandise total is after deals, coupons/referral, and mail subscription — before loyalty points.
  * Shipping: free when merchandise >= freeShippingThresholdGbp; otherwise use shipping method rules.
  * Points may redeem against merchandise plus paid shipping (full checkout up to M + S when S is known).
@@ -13,6 +57,8 @@ function computeShippingAndLoyalty({
   userLoyaltyPoints,
   pointsToRedeem,
   pointsValue,
+  loyaltyAmountType,
+  loyaltyAmount,
   minimumPointsRedemption,
   minimumPurchaseAmountForRedemption,
   freeShippingThresholdGbp,
@@ -35,7 +81,14 @@ function computeShippingAndLoyalty({
   /** Max £ discount from points: full checkout when shipping is known; merchandise only if shipping invalid. */
   const redeemableGbp = ship === null ? merchandise : round2(merchandise + ship);
 
-  const pv = parseFloat(pointsValue) || 0;
+  const { capGbp, gbpPerPoint: pv } = resolveLoyaltyMoneyParams(
+    loyaltyAmountType,
+    loyaltyAmount,
+    pointsValue,
+    merchandise,
+    redeemableGbp
+  );
+
   let pointsUsed = 0;
   let loyaltyDiscount = 0;
 
@@ -50,7 +103,7 @@ function computeShippingAndLoyalty({
     merchandise >= minPurchase;
 
   if (canRedeemPoints) {
-    const maxGbp = redeemableGbp;
+    const maxGbp = capGbp;
     const maxPoints = Math.floor(maxGbp / pv);
     pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
     loyaltyDiscount = round2(pointsUsed * pv);
@@ -77,5 +130,6 @@ function computeShippingAndLoyalty({
 
 module.exports = {
   computeShippingAndLoyalty,
+  resolveLoyaltyMoneyParams,
   round2,
 };
