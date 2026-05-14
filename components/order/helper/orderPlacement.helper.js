@@ -595,6 +595,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         userLoyaltyPoints: pointsBalance,
         pointsToRedeem: pointsRequested,
         pointsValue: loyaltySettings ? parseFloat(loyaltySettings.points_value) || 0 : 0,
+        loyaltyAmountType: loyaltySettings ? loyaltySettings.loyalty_amount_type : null,
+        loyaltyAmount: loyaltySettings ? parseFloat(loyaltySettings.loyalty_amount) : 0,
         minimumPointsRedemption: loyaltySettings ? loyaltySettings.minimum_points_redemption : 0,
         minimumPurchaseAmountForRedemption: loyaltySettings ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0 : 0,
         freeShippingThresholdGbp: freeShipThreshold,
