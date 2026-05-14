@@ -792,10 +792,31 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
+    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const successRef = String(order.order_code || orderCode || '');
+    const successAmountRaw =
+      order.total != null && order.total !== ''
+        ? parseFloat(order.total)
+        : calculatedTotal;
+    const successAmount = Number.isFinite(successAmountRaw)
+      ? successAmountRaw
+      : calculatedTotal;
+    const amountQuery = parseFloat(Math.max(0, successAmount).toFixed(2)).toFixed(2);
+
+    const payment_success_url =
+      !paymentRequired && frontendBase && successRef
+        ? `${frontendBase}/payment-success/?orderCode=${encodeURIComponent(
+            successRef
+          )}&transactionId=${encodeURIComponent(successRef)}&amount=${encodeURIComponent(
+            amountQuery
+          )}&currency=GBP`
+        : null;
+
     return {
         order_code: order.order_code,
         worldpay_url: paymentRequired && payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
         payment_required: paymentRequired,
+        payment_success_url,
         loyalty_points_used: loyaltyPointsUsed,
         order_details: {
             order_id: order.id,
