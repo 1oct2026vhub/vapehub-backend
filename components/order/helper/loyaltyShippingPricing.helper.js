@@ -5,7 +5,7 @@ const round2 = (n) => parseFloat(Math.max(0, Number(n) || 0).toFixed(2));
 /**
  * Merchandise total is after deals, coupons/referral, and mail subscription — before loyalty points.
  * Shipping: free when merchandise >= freeShippingThresholdGbp; otherwise use shipping method rules.
- * Points redeem only against merchandise (not shipping when shipping is paid).
+ * Points may redeem against merchandise plus paid shipping (full checkout up to M + S when S is known).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -31,6 +31,10 @@ function computeShippingAndLoyalty({
     }
   }
 
+  const ship = shippingCost;
+  /** Max £ discount from points: full checkout when shipping is known; merchandise only if shipping invalid. */
+  const redeemableGbp = ship === null ? merchandise : round2(merchandise + ship);
+
   const pv = parseFloat(pointsValue) || 0;
   let pointsUsed = 0;
   let loyaltyDiscount = 0;
@@ -46,16 +50,17 @@ function computeShippingAndLoyalty({
     merchandise >= minPurchase;
 
   if (canRedeemPoints) {
-    const maxGbp = merchandise;
+    const maxGbp = redeemableGbp;
     const maxPoints = Math.floor(maxGbp / pv);
     pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
     loyaltyDiscount = round2(pointsUsed * pv);
-    loyaltyDiscount = Math.min(loyaltyDiscount, merchandise);
+    loyaltyDiscount = Math.min(loyaltyDiscount, maxGbp);
   }
 
-  const payableMerchandise = round2(merchandise - loyaltyDiscount);
-  const ship = shippingCost;
-  const grandTotal = ship === null ? null : round2(payableMerchandise + ship);
+  const discountOnMerchandise = Math.min(loyaltyDiscount, merchandise);
+  const payableMerchandise = round2(merchandise - discountOnMerchandise);
+
+  const grandTotal = ship === null ? null : round2(redeemableGbp - loyaltyDiscount);
   const paymentRequired = grandTotal !== null && grandTotal > 0;
 
   return {
