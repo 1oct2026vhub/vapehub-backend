@@ -15,6 +15,43 @@ const SUCCESSFUL_ORDER_STATUSES = [
   'completed'
 ];
 
+const parseIncludeDiscontinued = (req) => {
+  const value = req?.query?.include_discontinued;
+  return value === 'true' || value === true || value === '1';
+};
+
+const applyActiveInventoryVariantFilter = (where = {}, req, { stock_status } = {}) => {
+  if (stock_status === 'discontinued') {
+    return { ...where, is_discontinued: true };
+  }
+  if (parseIncludeDiscontinued(req)) {
+    return where;
+  }
+  return { ...where, is_discontinued: false };
+};
+
+const publishedProductIncludeWhere = (req, extra = {}) => {
+  const base = {
+    deletedAt: null,
+    status: 'published',
+    ...extra
+  };
+  if (!parseIncludeDiscontinued(req)) {
+    base.is_discontinued = false;
+  }
+  return base;
+};
+
+const sqlActiveInventoryDiscontinuedClause = (req, { stock_status } = {}) => {
+  if (stock_status === 'discontinued') {
+    return ' AND pv.is_discontinued = 1 AND p.is_discontinued = 1';
+  }
+  if (parseIncludeDiscontinued(req)) {
+    return '';
+  }
+  return ' AND pv.is_discontinued = 0 AND p.is_discontinued = 0';
+};
+
 module.exports = {
   // Get inventory overview with summary statistics
   async getInventoryOverview(req, res) {
@@ -28,23 +65,25 @@ module.exports = {
         recentMovements
       ] = await Promise.all([
         // Total variants count
-        ProductVariant.count(),
+        ProductVariant.count({
+          where: applyActiveInventoryVariantFilter({}, req)
+        }),
         
         // In stock variants
         ProductVariant.count({
-          where: { stock: { [Op.gt]: 0 } }
+          where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req)
         }),
         
         // Out of stock variants
         ProductVariant.count({
-          where: { stock: 0 }
+          where: applyActiveInventoryVariantFilter({ stock: 0 }, req)
         }),
         
         // Low stock variants - simplified approach
         ProductVariant.findAll({
-          where: {
+          where: applyActiveInventoryVariantFilter({
             stock: { [Op.gt]: 0 }
-          },
+          }, req),
           attributes: ['id', 'stock', 'low_stock_threshold']
         }).then(variants => {
           return variants.filter(variant => variant.stock <= variant.low_stock_threshold).length;
@@ -52,7 +91,7 @@ module.exports = {
         
         // Total stock value - simplified approach
         ProductVariant.findAll({
-          where: { stock: { [Op.gt]: 0 } },
+          where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req),
           attributes: ['id', 'stock', 'purchase_price', 'price']
         }).then(variants => {
           return variants.reduce((total, variant) => {
@@ -139,6 +178,8 @@ module.exports = {
             // We'll handle low stock filtering in the controller logic
             whereClause.stock = { [Op.gt]: 0 };
             break;
+          case 'discontinued':
+            break;
         }
       }
 
@@ -147,8 +188,10 @@ module.exports = {
         whereClause.product_id = product_id;
       }
 
+      const variantWhere = applyActiveInventoryVariantFilter(whereClause, req, { stock_status });
+
       const { count, rows } = await ProductVariant.findAndCountAll({
-        where: whereClause,
+        where: variantWhere,
         include: [
           {
             model: Product,
@@ -171,10 +214,10 @@ module.exports = {
         inventory = inventory.filter(variant => variant.stock <= variant.low_stock_threshold);
         // Recalculate count for low stock items
         const lowStockCount = await ProductVariant.count({
-          where: { stock: { [Op.gt]: 0 } }
+          where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req)
         }).then(async () => {
           const allVariants = await ProductVariant.findAll({
-            where: { stock: { [Op.gt]: 0 } },
+            where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req),
             attributes: ['id', 'stock', 'low_stock_threshold']
           });
           return allVariants.filter(variant => variant.stock <= variant.low_stock_threshold).length;
@@ -935,15 +978,17 @@ module.exports = {
 
         // Top products by stock value - simplified approach
         ProductVariant.findAll({
-          where: {
+          where: applyActiveInventoryVariantFilter({
             stock: { [Op.gt]: 0 }
-          },
+          }, req),
           attributes: ['id', 'stock', 'purchase_price', 'price'],
           include: [
             {
               model: Product,
               as: 'product',
-              attributes: ['id', 'name']
+              attributes: ['id', 'name'],
+              where: publishedProductIncludeWhere(req),
+              required: true
             }
           ],
           order: [['stock', 'DESC']],
@@ -957,15 +1002,17 @@ module.exports = {
 
         // Low stock alerts - simplified approach
         ProductVariant.findAll({
-          where: {
+          where: applyActiveInventoryVariantFilter({
             stock: { [Op.gt]: 0 }
-          },
+          }, req),
           attributes: ['id', 'stock', 'low_stock_threshold'],
           include: [
             {
               model: Product,
               as: 'product',
-              attributes: ['id', 'name']
+              attributes: ['id', 'name'],
+              where: publishedProductIncludeWhere(req),
+              required: true
             }
           ],
           order: [['stock', 'ASC']],
@@ -1053,10 +1100,10 @@ module.exports = {
 
       // Fetch all variants for these products
       const allVariants = await ProductVariant.findAll({
-        where: {
+        where: applyActiveInventoryVariantFilter({
           product_id: { [Op.in]: productIds },
           deleted_at: null
-        },
+        }, req),
         attributes: ['id', 'product_id', 'stock', 'low_stock_threshold']
       });
 
@@ -1210,12 +1257,16 @@ module.exports = {
             // We'll handle low stock filtering after fetching
             variantWhereClause.stock = { [Op.gt]: 0 };
             break;
+          case 'discontinued':
+            break;
         }
       }
 
+      const variantWhere = applyActiveInventoryVariantFilter(variantWhereClause, req, { stock_status });
+
       // Fetch variants
       const variants = await ProductVariant.findAll({
-        where: variantWhereClause,
+        where: variantWhere,
         include: [
           {
             model: ProductVariantImage,
@@ -1394,14 +1445,18 @@ module.exports = {
       if (stock_status === 'in_stock') whereClause.stock = { [Op.gt]: 0 };
       if (stock_status === 'out_of_stock') whereClause.stock = 0;
 
+      const variantWhere = applyActiveInventoryVariantFilter(whereClause, req, { stock_status });
+
       // Fetch paginated variants with product and primary image
       const { count, rows: variants } = await ProductVariant.findAndCountAll({
-        where: whereClause,
+        where: variantWhere,
         include: [
           {
             model: Product,
             as: 'product',
-            attributes: ['id', 'name']
+            attributes: ['id', 'name'],
+            where: publishedProductIncludeWhere(req),
+            required: !parseIncludeDiscontinued(req) && stock_status !== 'discontinued'
           },
           {
             model: ProductVariantImage,
@@ -1572,6 +1627,9 @@ module.exports = {
         productWhereClause += ' AND p.brand_id = :brandId';
         replacements.brandId = brand_id;
       }
+      if (!parseIncludeDiscontinued(req)) {
+        productWhereClause += ' AND p.is_discontinued = 0';
+      }
 
       // Use direct SQL query for maximum performance
       let sqlQuery;
@@ -1596,7 +1654,7 @@ module.exports = {
             AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
             AND o.updatedAt >= :startDate 
             AND o.updatedAt <= :endDate
-          WHERE 1=1 ${productWhereClause}
+          WHERE 1=1 ${productWhereClause}${!parseIncludeDiscontinued(req) ? ' AND pv.is_discontinued = 0' : ''}
           GROUP BY pv.id, p.name, pv.slug, pvi.image_url, p.category_id, p.brand_id, pv.stock, pv.low_stock_threshold
         `;
       } else {
@@ -1817,54 +1875,47 @@ module.exports = {
       ] = await Promise.all([
         // Total variants count
         ProductVariant.count({
+          where: applyActiveInventoryVariantFilter({}, req),
           include: [{
             model: Product,
             as: 'product',
-            where: { 
-              deletedAt: null,
-              status: 'published'
-            }
+            where: publishedProductIncludeWhere(req),
+            required: true
           }]
         }),
         
         // In stock variants
         ProductVariant.count({
-          where: { stock: { [Op.gt]: 0 } },
+          where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req),
           include: [{
             model: Product,
             as: 'product',
-            where: { 
-              deletedAt: null,
-              status: 'published'
-            }
+            where: publishedProductIncludeWhere(req),
+            required: true
           }]
         }),
         
         // Out of stock variants
         ProductVariant.count({
-          where: { stock: 0 },
+          where: applyActiveInventoryVariantFilter({ stock: 0 }, req),
           include: [{
             model: Product,
             as: 'product',
-            where: { 
-              deletedAt: null,
-              status: 'published'
-            }
+            where: publishedProductIncludeWhere(req),
+            required: true
           }]
         }),
         
         // Low stock variants
         ProductVariant.findAll({
-          where: {
+          where: applyActiveInventoryVariantFilter({
             stock: { [Op.gt]: 0 }
-          },
+          }, req),
           include: [{
             model: Product,
             as: 'product',
-            where: { 
-              deletedAt: null,
-              status: 'published'
-            }
+            where: publishedProductIncludeWhere(req),
+            required: true
           }],
           attributes: ['id', 'stock', 'low_stock_threshold']
         }).then(variants => {
@@ -1917,8 +1968,12 @@ module.exports = {
             // We'll handle low stock filtering in JavaScript
             whereClause.stock = { [Op.gt]: 0 };
             break;
+          case 'discontinued':
+            break;
         }
       }
+
+      const variantWhereBase = applyActiveInventoryVariantFilter(whereClause, req, { stock_status });
 
       // Handle sorting for name field (which is in the Product table)
       let orderClause;
@@ -1949,6 +2004,11 @@ module.exports = {
         if (search) {
           productWhereClause += ' AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)';
           replacements.search = `%${search}%`;
+        }
+        if (stock_status === 'discontinued') {
+          productWhereClause += ' AND pv.is_discontinued = 1 AND p.is_discontinued = 1';
+        } else if (!parseIncludeDiscontinued(req)) {
+          productWhereClause += ' AND pv.is_discontinued = 0 AND p.is_discontinued = 0';
         }
         if (stock_status === 'in_stock') {
           productWhereClause += ' AND pv.stock > 0';
@@ -2013,16 +2073,13 @@ module.exports = {
       } else if (stock_status === 'low_stock') {
         // Fetch all variants that match the base criteria (no pagination)
         const allVariants = await ProductVariant.findAll({
-          where: whereClause,
+          where: variantWhereBase,
           include: [
             {
               model: Product,
               as: 'product',
               attributes: ['id', 'name', 'slug'],
-              where: { 
-                deletedAt: null,
-                status: 'published'
-              }
+              where: publishedProductIncludeWhere(req)
             },
             {
               model: ProductVariantImage,
@@ -2122,6 +2179,7 @@ module.exports = {
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
             ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
             ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
+            ${sqlActiveInventoryDiscontinuedClause(req, { stock_status })}
             ORDER BY ${sort_by === 'name' ? 'p.name' : 'pv.' + sort_by} ${sort_order}
             LIMIT :limit OFFSET :offset
           `;
@@ -2162,6 +2220,7 @@ module.exports = {
             AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
             ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
             ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
+            ${sqlActiveInventoryDiscontinuedClause(req, { stock_status })}
           `;
           
           const countResult = await sequelize.query(countSql, {
@@ -2173,16 +2232,13 @@ module.exports = {
         } else {
           // Use normal Sequelize for non-search queries
           result = await ProductVariant.findAndCountAll({
-            where: whereClause,
+            where: variantWhereBase,
             include: [
               {
                 model: Product,
                 as: 'product',
                 attributes: ['id', 'name', 'slug'],
-                where: { 
-                  deletedAt: null,
-                  status: 'published'
-                }
+                where: publishedProductIncludeWhere(req)
               },
               {
                 model: ProductVariantImage,
@@ -2461,19 +2517,16 @@ module.exports = {
 
       // Fetch all active variants with product information (including product creation date)
       const variants = await ProductVariant.findAll({
-        where: {
+        where: applyActiveInventoryVariantFilter({
           deleted_at: null,
           status: 'active'
-        },
+        }, req),
         include: [
           {
             model: Product,
             as: 'product',
             attributes: ['id', 'name', 'createdAt'], // Include createdAt for age calculation
-            where: {
-              deletedAt: null,
-              status: 'published'
-            },
+            where: publishedProductIncludeWhere(req),
             required: true
           },
           {

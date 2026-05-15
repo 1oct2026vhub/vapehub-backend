@@ -964,6 +964,7 @@ module.exports.createProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            is_discontinued,
             category_ids,
             brand_ids,
             linked_product_ids
@@ -1120,6 +1121,7 @@ module.exports.createProduct = async (req, res, next) => {
                 vg_ratio,
                 vaping_style,
                 bottle_size,
+                is_discontinued,
                 updated_by
             },
             { transaction }
@@ -1173,7 +1175,6 @@ module.exports.createProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${product.id}`).catch(() => {});
 
         // Fetch and return the created product with related models
@@ -1259,6 +1260,7 @@ module.exports.updateProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            is_discontinued,
             redirect_url,
             category_ids,
             brand_ids,
@@ -1484,6 +1486,9 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (bottle_size !== undefined) {
             updatedFields.bottle_size = bottle_size;
+        }
+        if (is_discontinued !== undefined) {
+            updatedFields.is_discontinued = is_discontinued;
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
@@ -1843,7 +1848,7 @@ module.exports.updateProduct = async (req, res, next) => {
                     {
                         model: ProductVariant,
                         as: "variants",
-                        attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
+                        attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold', 'is_discontinued']
                     }
                 ],
                 transaction
@@ -1909,7 +1914,6 @@ module.exports.updateProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
@@ -2016,7 +2020,6 @@ module.exports.deleteProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
         logger.info(`Product ID ${id} deleted successfully`);
 
@@ -2105,7 +2108,6 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
             invalidateCachePattern('products:*').catch(() => {});
             invalidateCachePattern('product:new:*').catch(() => {});
             invalidateCachePattern('category:products:*').catch(() => {});
-            invalidateCachePattern('sitemap:*').catch(() => {});
             invalidateCache(deletedProducts.map(p => `product:detail:${p.id}`)).catch(() => {});
         }
 
