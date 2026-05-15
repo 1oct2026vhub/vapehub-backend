@@ -144,6 +144,10 @@ module.exports = {
         'return_received',
         'refunded'
     ],
+    checkout: {
+        /** Merchandise subtotal (after deals/coupons/mail, before loyalty) at or above this gets free shipping. */
+        FREE_SHIPPING_MERCHANDISE_GBP: 30,
+    },
     attributes: {
         types: {
             SELECT: 'select',

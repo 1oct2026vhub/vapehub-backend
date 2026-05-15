@@ -49,7 +49,8 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 /**
  * Merchandise total is after deals, coupons/referral, and mail subscription — before loyalty points.
  * Shipping: free when merchandise >= freeShippingThresholdGbp; otherwise use shipping method rules.
- * Points may redeem against merchandise plus paid shipping (full checkout up to M + S when S is known).
+ * Points redeem against merchandise only when shipping is paid (< threshold); when shipping is free,
+ * merchandise is the full redeemable amount (shipping is already £0).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -78,15 +79,17 @@ function computeShippingAndLoyalty({
   }
 
   const ship = shippingCost;
-  /** Max £ discount from points: full checkout when shipping is known; merchandise only if shipping invalid. */
-  const redeemableGbp = ship === null ? merchandise : round2(merchandise + ship);
+  const checkoutGbp = ship === null ? null : round2(merchandise + ship);
+  /** Sub-£30: points cover merchandise only; paid shipping stays on the card total. */
+  const loyaltyRedeemableGbp =
+    ship === null ? merchandise : eligibleFreeShipping ? round2(merchandise + ship) : merchandise;
 
   const { capGbp, gbpPerPoint: pv } = resolveLoyaltyMoneyParams(
     loyaltyAmountType,
     loyaltyAmount,
     pointsValue,
     merchandise,
-    redeemableGbp
+    loyaltyRedeemableGbp
   );
 
   let pointsUsed = 0;
@@ -113,13 +116,14 @@ function computeShippingAndLoyalty({
   const discountOnMerchandise = Math.min(loyaltyDiscount, merchandise);
   const payableMerchandise = round2(merchandise - discountOnMerchandise);
 
-  const grandTotal = ship === null ? null : round2(redeemableGbp - loyaltyDiscount);
+  const grandTotal = checkoutGbp === null ? null : round2(checkoutGbp - loyaltyDiscount);
   const paymentRequired = grandTotal !== null && grandTotal > 0;
 
   return {
     merchandiseTotal: merchandise,
     eligibleFreeShipping,
     shippingCost: ship,
+    loyaltyRedeemableGbp,
     pointsUsed,
     loyaltyDiscount,
     grandTotal,
