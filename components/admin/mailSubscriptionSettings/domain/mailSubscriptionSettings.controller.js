@@ -671,7 +671,16 @@ module.exports = {
             });
 
             if (existingSubscriber) {
-                return errorResponse(res, { statusCode: 400 }, 'Email already exists', 400);
+                if (existingSubscriber.subscribed === true) {
+                    return errorResponse(res, { statusCode: 400 }, 'Email is already subscribed', 400);
+                }
+                await existingSubscriber.update({
+                    subscribed: true,
+                    created_by_type: 'admin',
+                    created_by_admin_id: adminId || null
+                });
+                await existingSubscriber.reload();
+                return successResponse(res, existingSubscriber, 'Subscriber re-subscribed successfully', 200);
             }
 
             const subscriber = await MailSubscription.create({
