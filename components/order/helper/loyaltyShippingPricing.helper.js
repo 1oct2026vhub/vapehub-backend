@@ -4,13 +4,6 @@ const round2 = (n) => parseFloat(Math.max(0, Number(n) || 0).toFixed(2));
 
 /**
  * Derive £ cap for loyalty this checkout and £ per point, from LoyaltyPointsSettings.
- *
- * - percentage: cap £ discount at min(redeemableGbp, merchandise × loyalty_amount%).
- *   Points still convert with points_value as £ per point (debit granularity).
- * - fixed + loyalty_amount + points_value ≥ 1: treat as block — loyalty_amount £ per points_value points
- *   → £/point = loyalty_amount / points_value (e.g. £2 / 10 = 0.2).
- * - fixed + loyalty_amount + 0 < points_value < 1: treat points_value as £/point and cap £ discount at loyalty_amount.
- * - otherwise: points_value = £ per point; cap = redeemableGbp.
  */
 function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue, merchandise, redeemableGbp) {
   const laRaw = parseFloat(loyaltyAmount);
@@ -47,10 +40,9 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 }
 
 /**
- * Merchandise total is after deals, coupons/referral, and mail subscription — before loyalty points.
- * Shipping: free when merchandise >= freeShippingThresholdGbp; otherwise use shipping method rules.
- * Points redeem against merchandise only when shipping is paid (< threshold); when shipping is free,
- * merchandise is the full redeemable amount (shipping is already £0).
+ * Merchandise after deals/coupons/mail, before loyalty.
+ * Shipping free when merchandise >= threshold; else paid via shipping method.
+ * Sub-threshold: points redeem merchandise only (shipping stays on card total).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -80,7 +72,6 @@ function computeShippingAndLoyalty({
 
   const ship = shippingCost;
   const checkoutGbp = ship === null ? null : round2(merchandise + ship);
-  /** Sub-£30: points cover merchandise only; paid shipping stays on the card total. */
   const loyaltyRedeemableGbp =
     ship === null ? merchandise : eligibleFreeShipping ? round2(merchandise + ship) : merchandise;
 
