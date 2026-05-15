@@ -23,6 +23,10 @@ const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./
 const dealService = require('../../Cart/helper/deal.service');
 const { computeShippingAndLoyalty } = require('./loyaltyShippingPricing.helper');
 const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
+const {
+    buildPaymentSuccessRedirectUrl,
+    generatePaymentReference,
+} = require('./paymentSuccessUrl.helper');
 const logger = require("../../../library/logger");
 const constants = require("../../../config/constants");
 const axios = require('axios');
@@ -649,15 +653,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             throw new Error("Failed to process payment with Viva Wallet: " + error.message);
         }
     } else if (paymentRequired && payMethod === "Worldpay") {
-        const generateTransactionReference = () => {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < 16; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        };
-        orderCode = generateTransactionReference();
+        orderCode = generatePaymentReference();
 
         const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
         const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
@@ -699,7 +695,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                         countryCode: countryCode
                     },
                     resultURLs: {
-                        successURL: `${process.env.FRONTEND_URL}/payment-success?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
+                        successURL: buildPaymentSuccessRedirectUrl(orderCode, calculatedTotal),
                         failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
                         errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
                         cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
@@ -734,7 +730,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             throw new Error(worldpayMessage || 'Failed to process payment with Worldpay');
         }
     } else if (!paymentRequired) {
-        orderCode = `PTS-${orderUniqueId}`;
+        orderCode = generatePaymentReference();
         worldpayResponse = {};
     }
 
@@ -869,31 +865,16 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
-    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
-    const successRef = String(order.order_code || orderCode || '');
-    const successAmountRaw =
-      order.total != null && order.total !== ''
-        ? parseFloat(order.total)
-        : calculatedTotal;
-    const successAmount = Number.isFinite(successAmountRaw)
-      ? successAmountRaw
-      : calculatedTotal;
-    const amountQuery = parseFloat(Math.max(0, successAmount).toFixed(2)).toFixed(2);
-
-    const payment_success_url =
-      !paymentRequired && frontendBase && successRef
-        ? `${frontendBase}/payment-success/?orderCode=${encodeURIComponent(
-            successRef
-          )}&transactionId=${encodeURIComponent(successRef)}&amount=${encodeURIComponent(
-            amountQuery
-          )}&currency=GBP`
+    const redirect_url = !paymentRequired
+        ? buildPaymentSuccessRedirectUrl(order.order_code, order.total)
         : null;
 
     return {
         order_code: order.order_code,
         worldpay_url: paymentRequired && payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
         payment_required: paymentRequired,
-        payment_success_url,
+        redirect_url,
+        payment_success_url: redirect_url,
         loyalty_points_used: loyaltyPointsUsed,
         order_details: {
             order_id: order.id,

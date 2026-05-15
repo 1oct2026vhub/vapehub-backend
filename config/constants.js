@@ -18,8 +18,6 @@ module.exports = {
         PRODUCT_UPDATES: 'PRODUCT_UPDATES',
         PROMOTIONAL: 'PROMOTIONAL',
         PROMOTIONAL_NEWSLETTER: 'PROMOTIONAL_NEWSLETTER',
-        ABANDONED_CART_REMINDER_1: 'ABANDONED_CART_REMINDER_1',
-        ABANDONED_CART_REMINDER_2: 'ABANDONED_CART_REMINDER_2',
     },
     emailTypeData: {
         REGISTER: {
@@ -112,16 +110,6 @@ module.exports = {
             subject: '',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
-        ABANDONED_CART_REMINDER_1: {
-            folderName: 'abandoned_cart/reminder_1',
-            subject: 'Did you forget something? Complete your purchase | VapeHub',
-            from: process.env.EMAIL_NO_REPLY_SENDER,
-        },
-        ABANDONED_CART_REMINDER_2: {
-            folderName: 'abandoned_cart/reminder_2',
-            subject: 'Complete your order with 10% off | VapeHub',
-            from: process.env.EMAIL_NO_REPLY_SENDER,
-        },
     },
     orderStatus: {
         //   0 for pending 1 for successful 2 for returned 3 for payment_failed 4 for canceled
@@ -157,7 +145,6 @@ module.exports = {
         'refunded'
     ],
     checkout: {
-        /** Merchandise subtotal (after deals/coupons/mail, before loyalty) at or above this gets free shipping. */
         FREE_SHIPPING_MERCHANDISE_GBP: 30,
     },
     attributes: {
