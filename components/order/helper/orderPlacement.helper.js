@@ -23,15 +23,14 @@ const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./
 const dealService = require('../../Cart/helper/deal.service');
 const { computeShippingAndLoyalty } = require('./loyaltyShippingPricing.helper');
 const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
-const {
-    buildPaymentSuccessRedirectUrl,
-    generatePaymentReference,
-} = require('./paymentSuccessUrl.helper');
 const logger = require("../../../library/logger");
 const constants = require("../../../config/constants");
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-
+const {
+    buildPaymentSuccessRedirectUrl,
+    generatePaymentReference,
+} = require('./paymentSuccessUrl.helper');
 /**
  * Core order placement logic - returns order data without sending HTTP response
  * @param {number} user_id - User ID
