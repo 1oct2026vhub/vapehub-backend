@@ -496,6 +496,7 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
     await ProductVariant.update({
         ...updateData,
         price,
+        ...(updateData.is_discontinued !== undefined && { is_discontinued: updateData.is_discontinued }),
         ...(updateData.sku !== undefined && { sku: updateData.sku }),
         updated_by
     }, {
