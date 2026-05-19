@@ -119,6 +119,10 @@ const commonValidations = {
                 throw new Error('Status must be either active or inactive');
             })
             .default('active'),
+        body('is_discontinued')
+            .optional()
+            .isBoolean()
+            .withMessage('is_discontinued must be a boolean'),
         body('alt_text')
             .optional()
             .isString()
@@ -744,6 +748,10 @@ const bulkUpdateVariantsMultipleValidator = [
         .optional()
         .isIn(['active', 'inactive'])
         .withMessage('Status must be either active or inactive'),
+    body('variants.*.is_discontinued')
+        .optional()
+        .isBoolean()
+        .withMessage('is_discontinued must be a boolean'),
     body('variants.*.stock_status')
         .optional()
         .isIn(['in_stock', 'out_of_stock', 'low_stock'])

@@ -346,7 +346,8 @@ module.exports.listAllProducts = async (req, res, next) => {
                     "stock",
                     "low_stock_threshold",
                     "stock_status",
-                    "status"
+                    "status",
+                    "is_discontinued"
                 ],
                 include: [
                     {
@@ -583,7 +584,7 @@ module.exports.getProductById = async (req, res, next) => {
                     attributes: [
                         "id", "product_id", "slug", "price", "regular_price", "discount_price",
                         "purchase_price", "weight", "length", "width", "height", "description","sku",
-                        "barcode", "stock", "low_stock_threshold", "stock_status", "status"
+                        "barcode", "stock", "low_stock_threshold", "stock_status", "status", "is_discontinued"
                     ],
                     include: [
                         {
@@ -849,7 +850,8 @@ module.exports.getProductByIdOriginal = async (req, res, next) => {
                         "stock",
                         "low_stock_threshold",
                         "stock_status",
-                        "status"
+                        "status",
+                        "is_discontinued"
                     ],
                     include: [
                         {
