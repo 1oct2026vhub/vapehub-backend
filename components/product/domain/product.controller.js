@@ -1872,7 +1872,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.createdAt, p.updatedAt
+                p.is_discontinued, p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2025,7 +2025,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const variantsQuery = `
             SELECT 
                 id, product_id, slug, price, regular_price, discount_price,
-                stock, stock_status, status, low_stock_threshold, description,
+                stock, stock_status, is_discontinued, status, low_stock_threshold, description,
                 created_at, updated_at
             FROM product_variants
             WHERE product_id = :product_id 
@@ -2163,6 +2163,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             discount_price: variant.discount_price,
             stock: variant.stock,
             stock_status: variant.stock_status,
+            is_discontinued: Boolean(variant.is_discontinued),
             status: variant.status,
             low_stock_threshold: variant.low_stock_threshold,
             description: variant.description,
@@ -2322,6 +2323,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                                 description: va.term.description || null,
                                 stock_status: variant.stock_status,
                                 is_in_stock: variant.stock > 0,
+                                is_discontinued: Boolean(variant.is_discontinued),
                                 variant_slugs: []
                             });
                         }
@@ -2336,6 +2338,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         if (variant.stock > 0 && !termData.is_in_stock) {
                             termData.is_in_stock = true;
                             termData.stock_status = variant.stock_status;
+                        }
+                        if (!variant.is_discontinued) {
+                            termData.is_discontinued = false;
                         }
                     }
                 }
@@ -2588,6 +2593,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 status: variant.status,
                 description: variant.description,
                 is_in_stock: variant.stock > 0,
+                is_discontinued: Boolean(variant.is_discontinued),
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
@@ -2716,6 +2722,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 name: product.name,
                 slug: product.slug,
                 description: product.description, // Use direct description from SQL result
+                is_discontinued: Boolean(product.is_discontinued),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 key_highlights: keyHighlights,

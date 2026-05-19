@@ -213,7 +213,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, 
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style, 
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 
-          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt, 
+          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt, 
           p.updatedAt, p.deletedAt,
           MIN(pv.price) as min_variant_price,
           COUNT(DISTINCT pv.id) as variant_count
@@ -302,7 +302,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       // Variants with attributes and images
       sequelize.query(`
         SELECT 
-          pv.id, pv.product_id, pv.slug, pv.price, pv.status, pv.stock, pv.stock_status,
+          pv.id, pv.product_id, pv.slug, pv.price, pv.status, pv.stock, pv.stock_status, pv.is_discontinued,
           pva.attribute_id, pva.term_id,
           a.name as attribute_name, a.type as attribute_type,
           at.name as term_name, at.slug as term_slug,
@@ -471,6 +471,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
             status: variant.status,
             stock: variant.stock,
             stock_status: variant.stock_status,
+            is_discontinued: Boolean(variant.is_discontinued),
             variantAttributes: [],
             variantImages: []
           });
