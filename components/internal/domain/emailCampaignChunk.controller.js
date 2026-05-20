@@ -10,6 +10,10 @@ const logger = require('../../../library/logger');
 const { parseCampaignPayload } = require('../../../library/promotionalEmail/campaignPayload');
 const { sendPromotionalToSubscriber } = require('../../../library/promotionalEmail/sendPromotionalToSubscriber');
 const {
+    claimCampaignSend,
+    releaseCampaignSend
+} = require('../../../library/promotionalEmail/campaignSendIdempotency');
+const {
     EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT,
     resolveCampaignStatus,
     buildErrorSummary
@@ -244,14 +248,35 @@ async function processEmailCampaignChunk(req, res) {
 
         let successful = 0;
         let failed = 0;
+        let skippedDuplicate = 0;
         const failedEmails = [];
 
         for (let i = 0; i < subscribers.length; i++) {
             const subscriber = subscribers[i];
+
+            const claim = await claimCampaignSend(campaignId, subscriber.id);
+            if (claim === 'unavailable') {
+                await releaseProcessingChunkToPending(campaignId, chunkId);
+                return errorResponse(
+                    res,
+                    {},
+                    'Send idempotency store unavailable — retry later',
+                    503
+                );
+            }
+            if (claim === 'skip') {
+                skippedDuplicate += 1;
+                if (SEND_GAP_MS > 0 && i < subscribers.length - 1) {
+                    await sleep(SEND_GAP_MS);
+                }
+                continue;
+            }
+
             const result = await sendPromotionalToSubscriber(subscriber, firstNameByUserId, payload);
             if (result.success) {
                 successful += 1;
             } else {
+                await releaseCampaignSend(campaignId, subscriber.id);
                 failed += 1;
                 failedEmails.push({ email: result.email, error: result.error });
             }
@@ -292,7 +317,8 @@ async function processEmailCampaignChunk(req, res) {
                 campaignId,
                 chunkId,
                 successful,
-                failed
+                failed,
+                skippedDuplicate
             },
             'Chunk processed'
         );
