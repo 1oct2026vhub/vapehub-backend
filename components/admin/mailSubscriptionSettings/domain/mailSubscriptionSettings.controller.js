@@ -253,7 +253,7 @@ module.exports = {
                 );
             }
 
-            const rawChunk = parseInt(process.env.EMAIL_CAMPAIGN_CHUNK_SIZE || '200', 10);
+            const rawChunk = parseInt(process.env.EMAIL_CAMPAIGN_CHUNK_SIZE || '100', 10);
             const CHUNK_SIZE = Math.min(500, Math.max(1, Number.isFinite(rawChunk) ? rawChunk : 200));
 
             const audienceType = resolveAudienceType({ sendToAll, groupId, selectedEmails });
