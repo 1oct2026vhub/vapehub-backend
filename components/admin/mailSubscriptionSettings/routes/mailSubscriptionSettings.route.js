@@ -223,6 +223,7 @@ router.get('/subscribers', [
  *                       type: integer
  *                     recentSubscribers:
  *                       type: integer
+ *                       description: Subscribers created in the last 24 hours (subscribed, not deleted)
  *                     frequencyStats:
  *                       type: object
  *                       additionalProperties:
