@@ -1657,10 +1657,20 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             };
         }
 
-        if (!shipping_method_id || !shipping_address || !payment_method || !total) {
+        const totalProvided =
+            total !== undefined && total !== null && total !== '';
+
+        if (!shipping_method_id || !shipping_address || !payment_method || !totalProvided) {
             throw {
                 statusCode: 400,
                 message: 'Shipping method, shipping address, payment method, and total are required'
+            };
+        }
+
+        if (Number.isNaN(Number(total)) || Number(total) < 0) {
+            throw {
+                statusCode: 400,
+                message: 'Total must be a non-negative number'
             };
         }
 

@@ -29,6 +29,9 @@ const {
     buildPaymentSuccessRedirectUrl,
     generatePaymentReference,
 } = require('./paymentSuccessUrl.helper');
+const { computeShippingAndLoyalty } = require('./loyaltyShippingPricing.helper');
+const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
+
 /**
  * Core order placement logic - returns order data without sending HTTP response
  * @param {number} user_id - User ID
@@ -854,6 +857,13 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     const redirect_url = !paymentRequired
         ? buildPaymentSuccessRedirectUrl(order.order_code, order.total)
         : null;
+
+    if (!paymentRequired && !redirect_url) {
+        throw {
+            statusCode: 500,
+            message: 'Points-only checkout is not configured (FRONTEND_URL missing or invalid order reference)',
+        };
+    }
 
     return {
         order_code: order.order_code,
