@@ -19,7 +19,7 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
       capGbp = redeemableGbp;
     } else {
       const pct = Math.min(100, Math.max(0, la));
-      const pctOff = round2((merchandise * pct) / 100);
+      const pctOff = round2((redeemableGbp * pct) / 100);
       capGbp = round2(Math.min(redeemableGbp, pctOff));
     }
     gbpPerPoint = pvRaw;
@@ -42,7 +42,7 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 /**
  * Merchandise after deals/coupons/mail, before loyalty.
  * Shipping free when merchandise >= threshold; else paid via shipping method.
- * Sub-threshold: points redeem merchandise only (shipping stays on card total).
+ * Points may redeem against the full checkout total (merchandise + shipping).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -72,8 +72,7 @@ function computeShippingAndLoyalty({
 
   const ship = shippingCost;
   const checkoutGbp = ship === null ? null : round2(merchandise + ship);
-  const loyaltyRedeemableGbp =
-    ship === null ? merchandise : eligibleFreeShipping ? round2(merchandise + ship) : merchandise;
+  const loyaltyRedeemableGbp = checkoutGbp === null ? merchandise : checkoutGbp;
 
   const { capGbp, gbpPerPoint: pv } = resolveLoyaltyMoneyParams(
     loyaltyAmountType,
