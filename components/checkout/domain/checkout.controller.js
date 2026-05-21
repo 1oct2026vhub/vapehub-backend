@@ -10,7 +10,7 @@ const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper')
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 const constants = require('../../../config/constants');
-const { computeShippingAndLoyalty } = require('../../order/helper/loyaltyShippingPricing.helper');
+const loyaltyShippingPricing = require('../../order/helper/loyaltyShippingPricing.helper');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -761,7 +761,11 @@ module.exports.applyCoupon = async (req, res, next) => {
         const freeShipThreshold =
             (constants.checkout && constants.checkout.FREE_SHIPPING_MERCHANDISE_GBP) || 30;
 
-        const pricing = computeShippingAndLoyalty({
+        if (typeof loyaltyShippingPricing.computeShippingAndLoyalty !== 'function') {
+            throw new Error('loyaltyShippingPricing.computeShippingAndLoyalty is not available');
+        }
+
+        const pricing = loyaltyShippingPricing.computeShippingAndLoyalty({
             merchandiseTotalAfterDealsCouponsMail: merchandiseBeforeLoyalty,
             shippingMethod,
             userLoyaltyPoints: pointsBalance,

@@ -21,7 +21,7 @@ const {
 } = require("../../../models");
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
-const { computeShippingAndLoyalty } = require('./loyaltyShippingPricing.helper');
+const loyaltyShippingPricing = require('./loyaltyShippingPricing.helper');
 const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
 const logger = require("../../../library/logger");
 const constants = require("../../../config/constants");
@@ -594,7 +594,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     const freeShipThreshold =
         (constants.checkout && constants.checkout.FREE_SHIPPING_MERCHANDISE_GBP) || 30;
 
-    const pricing = computeShippingAndLoyalty({
+    const pricing = loyaltyShippingPricing.computeShippingAndLoyalty({
         merchandiseTotalAfterDealsCouponsMail: merchandiseBeforeLoyalty,
         shippingMethod,
         userLoyaltyPoints: pointsBalance,
