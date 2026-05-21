@@ -1,5 +1,9 @@
 // Your router setup
 const router = require("express").Router();
+const { check } = require("express-validator");
+const authMiddleware = require("../../library/middleware/authMiddleware");
+const { validateRequest } = require("../../utils/validationMiddleware");
+const { createSubscriber } = require("./mailSubscriptionSettings/domain/mailSubscriptionSettings.controller");
 
 router.get("/", (req, res) => {
     res.send("Vape Hub restricted requests");
@@ -40,6 +44,12 @@ router.use('/inventory', require('./inventory/routes/inventory.route'));
 router.use('/shipStation', require('./shipStation/routes/shipStation.route'));
 router.use('/shipStationWebhook', require('./shipStationWebhook/routes/shipStationWebhook.route'));
 router.use('/loyalty-points', require('./loyaltyPoints/routes/loyaltyPoints.route'));
+router.post('/mailSubscription', [
+    authMiddleware(true),
+    validateRequest([
+        check('email').isEmail().withMessage("Invalid email").notEmpty().withMessage("email is required"),
+    ])
+], createSubscriber);
 router.use('/mail-subscription-settings', require('./mailSubscriptionSettings/routes/mailSubscriptionSettings.route'));
 router.use('/contactus', require('./contactus/routes/contactus.route'));
 router.use('/welcome-content', require('./welcomeContent/routes/welcomeContent.route'));
@@ -47,7 +57,6 @@ router.use('/feature-content', require('./featureContent/routes/featureContent.r
 router.use('/settings', require('./settings/routes/settings.route'));
 router.use('/popularCategory', require('./popularCategory/routes/popularCategory.route'));
 router.use('/shopByCategory', require('./shopByCategory/routes/shopByCategory.route'));
-router.use('/abandoned-carts', require('./abandonedCart/routes/abandonedCart.route'));
 router.use('/newsletter-templates', require('./newsletterTemplates/routes/newsletterTemplates.route'));
 
 module.exports = router;
