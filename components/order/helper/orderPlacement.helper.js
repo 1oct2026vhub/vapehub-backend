@@ -19,10 +19,10 @@ const {
     Category,
     sequelize
 } = require("../../../models");
-const constants = require('../../../config/constants');
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
+const constants = require('../../../config/constants');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
