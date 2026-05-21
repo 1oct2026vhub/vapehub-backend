@@ -455,6 +455,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         description: variant.description,
         alt_text: variant.alt_text,
         status: variant.status || 'active',
+        is_discontinued: variant.is_discontinued === true,
         updated_by
     }, { transaction });
 
@@ -495,6 +496,7 @@ const updateVariantRecord = async (variantId, updateData, updated_by, transactio
     await ProductVariant.update({
         ...updateData,
         price,
+        ...(updateData.is_discontinued !== undefined && { is_discontinued: updateData.is_discontinued }),
         ...(updateData.sku !== undefined && { sku: updateData.sku }),
         updated_by
     }, {
@@ -1483,7 +1485,7 @@ module.exports.getProductVariants = async (req, res) => {
             where: { product_id },
             attributes: [
                 'id', 'product_id', 'slug', 'price', 'regular_price', 'discount_price',
-                'purchase_price', 'stock', 'stock_status', 'status', 'barcode','sku',
+                'purchase_price', 'stock', 'stock_status', 'status', 'is_discontinued', 'barcode','sku',
                 'weight', 'length', 'width', 'height', 'description', 'created_at', 'updated_at', 'low_stock_threshold'
             ],
             include: [
@@ -1696,6 +1698,7 @@ module.exports.listAllVariants = async (req, res) => {
                     'height',
                     'barcode',
                     'status',
+                    'is_discontinued',
                     'description',
                     'created_at',
                     'updated_at',
@@ -1741,6 +1744,7 @@ module.exports.getVariantById = async (req, res) => {
                 'height',
                 'barcode',
                 'status',
+                'is_discontinued',
                 'description',
                 'created_at',
                 'updated_at',

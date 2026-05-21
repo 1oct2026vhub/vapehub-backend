@@ -14,11 +14,6 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'user_id',
         as: 'user'
       });
-
-      OrderAddress.belongsTo(models.User, {
-        foreignKey: 'updated_by',
-        as: 'updatedBy'
-      });
     }
   }
 

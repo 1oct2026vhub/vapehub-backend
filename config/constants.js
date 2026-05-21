@@ -156,6 +156,9 @@ module.exports = {
         'return_received',
         'refunded'
     ],
+    checkout: {
+        FREE_SHIPPING_MERCHANDISE_GBP: 30,
+    },
     attributes: {
         types: {
             SELECT: 'select',
