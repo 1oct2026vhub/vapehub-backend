@@ -24,12 +24,10 @@ const BATCH_LIMIT = 500;
  *   2. Worker A dies (OOM, ECS pre-empt, network drop, SIGKILL during
  *      deploy) before `applyChunkCompletion` runs.
  *   3. SQS visibility timeout expires and the message is redelivered to
- *      Worker B. The redelivered POST hits the controller's atomic
- *      claim, which fails because the chunk is `processing`, not
- *      `pending`. The handler returns 200 with `skipped: true`, so
- *      Worker B calls `DeleteMessage` and the chunk is silently
- *      orphaned in `processing` forever — the campaign never finalises
- *      because `chunks_done` cannot reach `chunks_total`.
+ *      Worker B. The redelivered POST hits the atomic claim but the chunk is
+ *      still `processing`, not `pending`. The controller returns **503** and
+ *      the worker does **not** delete the SQS message, so visibility can expire
+ *      again until the chunk completes or this cron resets a truly stale row.
  *
  * Strategy: every few minutes, find chunks in `processing` whose
  * `updatedAt` is older than STALE_MINUTES.

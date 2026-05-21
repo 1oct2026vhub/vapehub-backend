@@ -137,7 +137,6 @@ module.exports = (sequelize, DataTypes) => {
           const previousStatus = instance.previous('status');
           const newStatus = instance.status;
 
-          // Mark abandoned-cart flows as recovered when pending orders progress.
           const recoveryStatuses = ['processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed'];
           if (previousStatus === 'pending' && recoveryStatuses.includes(newStatus)) {
             try {
@@ -162,7 +161,7 @@ module.exports = (sequelize, DataTypes) => {
               logger.error('Error updating abandoned cart recovery:', recoveryError);
             }
           }
-          
+
           // Check stock levels when order status changes to processing
           if (newStatus === 'processing') {
             try {

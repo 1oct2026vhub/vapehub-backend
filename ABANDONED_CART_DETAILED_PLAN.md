@@ -128,7 +128,8 @@
    - pending + 24h + second not sent
    - generate unique coupon before send
 3. **48h auto-canceller**
-   - pending + 48h + not cancelled
+   - pending order `createdAt` + 48h + flow not recovered/cancelled/superseded
+   - sets order `cancel` and flow `cancelled_at` (independent of email2 timing)
 
 ### Per-Record Safety
 - Re-check current order status before each action.
@@ -175,8 +176,8 @@
 - `emails_sent_2`
 - `recovered_orders`
 - `recovered_revenue`
-- `recovery_rate`
-- `auto_cancelled_orders`
+- `recovery_rate` (percent: `recovered_orders / abandoned_carts`)
+- `cancelled_orders` (flows with `cancelled_at`, includes auto-cancel and supersede)
 
 ### Metric Definition (lock this)
 - Recommend: `abandoned_carts = count(flows entered)`.

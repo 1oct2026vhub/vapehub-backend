@@ -763,7 +763,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
     }, { transaction });
 
-    // Registered users only: one active pending checkout — supersede older pendings + flows.
     if (user_id) {
         const olderPendingOrders = await Order.findAll({
             where: {
@@ -777,10 +776,12 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         });
 
         const supersededMessage = `Superseded by new checkout order_id=${order.id}`;
+        const supersededAt = new Date();
         for (const row of olderPendingOrders) {
             await AbandonedCartFlow.update(
                 {
                     status: 'superseded',
+                    cancelled_at: supersededAt,
                     last_error: supersededMessage
                 },
                 {
@@ -802,7 +803,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
-    // Track abandoned-cart lifecycle only for non-temporary registered users.
     const registeredUser = user_id
         ? await User.findOne({
             where: {
@@ -826,17 +826,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             transaction
         });
     }
-    // Track abandoned-cart lifecycle from order creation time.
-    await AbandonedCartFlow.findOrCreate({
-        where: { order_id: order.id },
-        defaults: {
-            user_id: user_id || null,
-            order_unique_id: order.order_unique_id || null,
-            customer_email: order.email || null,
-            status: 'entered'
-        },
-        transaction
-    });
 
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 

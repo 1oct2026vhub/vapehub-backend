@@ -10,6 +10,10 @@ const logger = require('../../../library/logger');
 const { parseCampaignPayload } = require('../../../library/promotionalEmail/campaignPayload');
 const { sendPromotionalToSubscriber } = require('../../../library/promotionalEmail/sendPromotionalToSubscriber');
 const {
+    claimCampaignSend,
+    releaseCampaignSend
+} = require('../../../library/promotionalEmail/campaignSendIdempotency');
+const {
     EMAIL_CAMPAIGN_FAILED_SAMPLE_LIMIT,
     resolveCampaignStatus,
     buildErrorSummary
@@ -18,7 +22,28 @@ const {
 // Inter-send pause inside a chunk to keep one worker under SMTP per-second caps.
 // With Nodemailer pool maxConnections = 25 and 50ms gap → ~20 sends/sec/worker ceiling.
 const SEND_GAP_MS = Math.max(0, Number(process.env.EMAIL_CHUNK_SEND_GAP_MS || 50));
+/** Touch chunk row every N sends so stale recovery cron does not reset long healthy runs (0 = off). */
+const HEARTBEAT_EVERY = Math.max(0, Number(process.env.EMAIL_CHUNK_HEARTBEAT_EVERY || 25));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function releaseProcessingChunkToPending(campaignId, chunkId) {
+    const [n] = await EmailCampaignChunk.update(
+        { status: 'pending' },
+        {
+            where: {
+                id: chunkId,
+                email_campaign_id: Number(campaignId),
+                status: 'processing'
+            }
+        }
+    );
+    if (n > 0) {
+        logger.warn(
+            { campaignId, chunkId },
+            'Released processing chunk back to pending after handler error'
+        );
+    }
+}
 
 async function applyChunkCompletion(
     campaignId,
@@ -107,9 +132,12 @@ async function applyChunkCompletion(
 }
 
 async function processEmailCampaignChunk(req, res) {
+    let claimedThisRequest = false;
+    let campaignId;
+    let chunkId;
     try {
-        const campaignId = Number(req.body?.campaignId);
-        const chunkId = Number(req.body?.chunkId);
+        campaignId = Number(req.body?.campaignId);
+        chunkId = Number(req.body?.chunkId);
         if (!Number.isFinite(campaignId) || !Number.isFinite(chunkId)) {
             return errorResponse(res, {}, 'campaignId and chunkId are required', 400);
         }
@@ -135,12 +163,27 @@ async function processEmailCampaignChunk(req, res) {
             if (reloaded?.status === 'done') {
                 return successResponse(res, { deduped: true, campaignId, chunkId }, 'Chunk already processed');
             }
-            return successResponse(
-                res,
-                { skipped: true, status: reloaded?.status },
-                'Chunk is not pending (likely in progress elsewhere)'
-            );
+            if (reloaded?.status === 'failed') {
+                return successResponse(
+                    res,
+                    { deduped: true, campaignId, chunkId, terminalFailed: true },
+                    'Chunk already failed'
+                );
+            }
+            // processing: do not ack SQS — another worker or same chunk still in flight.
+            // pending: rare race; retry.
+            if (reloaded?.status === 'processing') {
+                return errorResponse(
+                    res,
+                    {},
+                    'Chunk already being processed — retry later',
+                    503
+                );
+            }
+            return errorResponse(res, {}, 'Chunk is not pending for claim — retry later', 503);
         }
+
+        claimedThisRequest = true;
 
         await EmailCampaignChunk.increment('attempts', { where: { id: chunkId } });
 
@@ -205,16 +248,54 @@ async function processEmailCampaignChunk(req, res) {
 
         let successful = 0;
         let failed = 0;
+        let skippedDuplicate = 0;
         const failedEmails = [];
 
         for (let i = 0; i < subscribers.length; i++) {
             const subscriber = subscribers[i];
+
+            const claim = await claimCampaignSend(campaignId, subscriber.id);
+            if (claim === 'unavailable') {
+                await releaseProcessingChunkToPending(campaignId, chunkId);
+                return errorResponse(
+                    res,
+                    {},
+                    'Send idempotency store unavailable — retry later',
+                    503
+                );
+            }
+            if (claim === 'skip') {
+                skippedDuplicate += 1;
+                if (SEND_GAP_MS > 0 && i < subscribers.length - 1) {
+                    await sleep(SEND_GAP_MS);
+                }
+                continue;
+            }
+
             const result = await sendPromotionalToSubscriber(subscriber, firstNameByUserId, payload);
             if (result.success) {
                 successful += 1;
             } else {
+                await releaseCampaignSend(campaignId, subscriber.id);
                 failed += 1;
                 failedEmails.push({ email: result.email, error: result.error });
+            }
+
+            if (
+                HEARTBEAT_EVERY > 0 &&
+                (i + 1) % HEARTBEAT_EVERY === 0 &&
+                i < subscribers.length - 1
+            ) {
+                await EmailCampaignChunk.update(
+                    { updatedAt: new Date() },
+                    {
+                        where: {
+                            id: chunkId,
+                            email_campaign_id: campaignId,
+                            status: 'processing'
+                        }
+                    }
+                );
             }
 
             if (SEND_GAP_MS > 0 && i < subscribers.length - 1) {
@@ -236,11 +317,19 @@ async function processEmailCampaignChunk(req, res) {
                 campaignId,
                 chunkId,
                 successful,
-                failed
+                failed,
+                skippedDuplicate
             },
             'Chunk processed'
         );
     } catch (error) {
+        if (claimedThisRequest && chunkId != null && campaignId != null) {
+            try {
+                await releaseProcessingChunkToPending(campaignId, chunkId);
+            } catch (releaseErr) {
+                logger.error({ releaseErr, campaignId, chunkId }, 'Failed to release chunk to pending');
+            }
+        }
         logger.error('processEmailCampaignChunk error:', error);
         return errorResponse(res, error, error.message || 'Chunk processing failed', 500);
     }

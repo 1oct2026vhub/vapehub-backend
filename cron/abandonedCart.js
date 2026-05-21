@@ -134,7 +134,11 @@ const sendFirstReminder = async () => {
   const cutoff = new Date(Date.now() - HOURS_2);
   const flows = await AbandonedCartFlow.findAll({
     where: {
-      first_email_sent_at: null
+      status: 'entered',
+      first_email_sent_at: null,
+      second_email_sent_at: null,
+      cancelled_at: null,
+      recovered_at: null
     },
     include: [{
       model: Order,
@@ -180,7 +184,7 @@ const sendFirstReminder = async () => {
 
       await flow.update({
         first_email_sent_at: new Date(),
-        status: flow.second_email_sent_at ? flow.status : 'email1_sent',
+        status: 'email1_sent',
         last_error: null
       });
     } catch (error) {
@@ -194,15 +198,18 @@ const sendSecondReminder = async () => {
   const cutoff = new Date(Date.now() - HOURS_24);
   const flows = await AbandonedCartFlow.findAll({
     where: {
-      second_email_sent_at: null
+      status: 'email1_sent',
+      first_email_sent_at: { [Op.lte]: cutoff },
+      second_email_sent_at: null,
+      cancelled_at: null,
+      recovered_at: null
     },
     include: [{
       model: Order,
       as: 'order',
       required: true,
       where: {
-        status: constants.orderStatus.PENDING,
-        createdAt: { [Op.lte]: cutoff }
+        status: constants.orderStatus.PENDING
       },
       include: [{
         model: User,
@@ -259,7 +266,11 @@ const sendSecondReminder = async () => {
 const autoCancelPendingOrders = async () => {
   const cutoff = new Date(Date.now() - HOURS_48);
   const flows = await AbandonedCartFlow.findAll({
-    where: { cancelled_at: null },
+    where: {
+      cancelled_at: null,
+      recovered_at: null,
+      status: { [Op.notIn]: ['cancelled', 'superseded', 'recovered'] }
+    },
     include: [{
       model: Order,
       as: 'order',
@@ -275,7 +286,7 @@ const autoCancelPendingOrders = async () => {
         where: { is_temporary: false },
         attributes: ['id']
       }],
-      attributes: ['id', 'status']
+      attributes: ['id', 'status', 'createdAt']
     }]
   });
 
