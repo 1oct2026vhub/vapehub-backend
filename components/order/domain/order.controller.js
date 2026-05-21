@@ -329,7 +329,7 @@ module.exports.placeOrder = async (req, res, next) => {
         
         return successResponse(res, {
             message: "Order placed successfully",
-            ...orderResult,
+            data: orderResult
         }, "Success");
     } catch (error) {
         await transaction.rollback();
