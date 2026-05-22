@@ -6,8 +6,8 @@ const logger = require('../library/logger');
 // require('./cleanupExportFiles'); // Cleanup old export files from S3
 // require('./couponExpiration');
 // require('./trustpilotInvitations');
+// require('./recoverStuckEmailCampaignChunks'); // Unstick orphaned email_campaign_chunks rows
 // require('./cleanupTemporaryUsers');
-
 logger.info('All cron jobs initialized successfully');
 
 module.exports = {

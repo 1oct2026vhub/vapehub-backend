@@ -22,7 +22,7 @@ const errorResponse = (res, error, message, statusCode) => {
     if (!statusCode) {
         statusCode = error?.statusCode ? error.statusCode : 500;
     }
-    const errorData = error.errors ? error.errors : error;
+    const errorData = (error && error.errors) ? error.errors : (error || {});
     res.status(statusCode).json({
         success: false,
         message: resolvedMessage,

@@ -11,7 +11,9 @@
     "dev": "nodemon bin/www",
     "migrate": "sequelize-cli db:migrate",
     "migrate:deploy": "sequelize-cli db:migrate:undo:all && sequelize-cli db:migrate",
-    "seed": "sequelize-cli db:seed:all"
+    "seed": "sequelize-cli db:seed:all",
+    "worker:email-campaign": "node workers/emailCampaignWorker.js",
+    "worker:email-campaign:dev": "nodemon workers/emailCampaignWorker.js"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
@@ -21,10 +23,13 @@
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.3.1",
     "express-session": "^1.18.1",
     "express-validator": "^7.2.1",
     "handlebars": "^4.7.8",
+    "he": "^1.2.0",
     "helmet": "^8.0.0",
+    "html-to-text": "^9.0.5",
     "ioredis": "^5.10.0",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",

@@ -3,10 +3,10 @@ const { SeoMeta, Product, Category, Brand, BlogCategory, Blog, Deal } = require(
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const logger = require('../../../../library/logger');
 const seoService = require('./seo.service');
-const { cacheOrFetch, invalidateCachePattern } = require('../../../../library/cache');
+const { invalidateCachePattern } = require('../../../../library/cache');
 
 const seoController = {
-  // Get SEO metadata by entity type and optional entity ID (cached)
+  // Get SEO metadata by entity type and optional entity ID
   async getSeoMeta(req, res) {
     try {
       const { entityType, entityId } = req.params;
@@ -16,70 +16,64 @@ const seoController = {
         return errorResponse(res, { message: 'Either entityId or slug is required for non-page entities' }, 'Bad Request', 400);
       }
 
-      const cacheKey = `seo:admin:${entityType}:${entityId ?? slug ?? ''}`;
+      let whereClause = { entityType };
+      if (entityType !== 'page') {
+        if (entityId) whereClause.entityId = entityId;
+        else if (slug) whereClause.slug = slug;
+      } else if (slug) {
+        whereClause.slug = slug;
+      }
 
-      const data = await cacheOrFetch(cacheKey, async () => {
-        let whereClause = { entityType };
-        if (entityType !== 'page') {
-          if (entityId) whereClause.entityId = entityId;
-          else if (slug) whereClause.slug = slug;
-        } else if (slug) {
-          whereClause.slug = slug;
-        }
-
-        const seoMeta = await SeoMeta.findOne({ where: whereClause });
-        if (!seoMeta) return null;
-
-        let health = null;
-        try {
-          const identifier = entityType === 'page' ? seoMeta.slug : (entityId ?? seoMeta.entityId);
-          health = await seoService.checkSeoHealth(entityType, identifier);
-        } catch (err) {
-          logger.error({ error: err, entityType, entityId: entityType === 'page' ? seoMeta.slug : entityId }, 'Error getting SEO health check');
-        }
-
-        let entityName = null;
-        let entityData = null;
-        switch (entityType) {
-          case 'product':
-            entityData = await Product.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
-            entityName = entityData?.name;
-            break;
-          case 'category':
-            entityData = await Category.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
-            entityName = entityData?.name;
-            break;
-          case 'brand':
-            entityData = await Brand.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
-            entityName = entityData?.name;
-            break;
-          case 'blog_category':
-            entityData = await BlogCategory.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
-            entityName = entityData?.name;
-            break;
-          case 'blog_post':
-            entityData = await Blog.findByPk(seoMeta.entityId, { attributes: ['id', 'title', 'slug'] });
-            entityName = entityData?.title;
-            break;
-          case 'deals':
-            entityData = await Deal.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
-            entityName = entityData?.name;
-            break;
-          case 'page':
-            entityName = seoMeta.slug;
-            break;
-        }
-
-        return {
-          seoMeta: seoMeta.toJSON ? seoMeta.toJSON() : seoMeta,
-          health,
-          entityName
-        };
-      }, 120);
-
-      if (!data) {
+      const seoMeta = await SeoMeta.findOne({ where: whereClause });
+      if (!seoMeta) {
         return errorResponse(res, { message: 'SEO metadata not found' }, 'Not Found', 404);
       }
+
+      let health = null;
+      try {
+        const identifier = entityType === 'page' ? seoMeta.slug : (entityId ?? seoMeta.entityId);
+        health = await seoService.checkSeoHealth(entityType, identifier);
+      } catch (err) {
+        logger.error({ error: err, entityType, entityId: entityType === 'page' ? seoMeta.slug : entityId }, 'Error getting SEO health check');
+      }
+
+      let entityName = null;
+      let entityData = null;
+      switch (entityType) {
+        case 'product':
+          entityData = await Product.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
+          entityName = entityData?.name;
+          break;
+        case 'category':
+          entityData = await Category.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
+          entityName = entityData?.name;
+          break;
+        case 'brand':
+          entityData = await Brand.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
+          entityName = entityData?.name;
+          break;
+        case 'blog_category':
+          entityData = await BlogCategory.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
+          entityName = entityData?.name;
+          break;
+        case 'blog_post':
+          entityData = await Blog.findByPk(seoMeta.entityId, { attributes: ['id', 'title', 'slug'] });
+          entityName = entityData?.title;
+          break;
+        case 'deals':
+          entityData = await Deal.findByPk(seoMeta.entityId, { attributes: ['id', 'name', 'slug'] });
+          entityName = entityData?.name;
+          break;
+        case 'page':
+          entityName = seoMeta.slug;
+          break;
+      }
+
+      const data = {
+        seoMeta: seoMeta.toJSON ? seoMeta.toJSON() : seoMeta,
+        health,
+        entityName
+      };
 
       return successResponse(res, data, 'SEO metadata retrieved successfully');
     } catch (error) {
@@ -158,6 +152,7 @@ const seoController = {
       });
 
       invalidateCachePattern('seo:*').catch(() => {});
+      invalidateCachePattern('sitemap:*').catch(() => {});
       return successResponse(res, { seoMeta }, `SEO metadata ${created ? 'created' : 'updated'} successfully`);
     } catch (error) {
       console.log(error);

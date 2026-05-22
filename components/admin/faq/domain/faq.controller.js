@@ -107,7 +107,6 @@ const getFaqById = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const createFaq = async (req, res, next) => {
-    const transaction = await FAQ.sequelize.transaction();
     try {
         const { entity_type, entity_id, question, answer } = req.body;
         const updated_by = req.user?.id ?? null;
@@ -118,12 +117,10 @@ const createFaq = async (req, res, next) => {
             question,
             answer,
             updated_by
-        }, { transaction });
+        });
 
-        await transaction.commit();
         return successResponse(res, faq, 'FAQ created successfully', 201);
     } catch (error) {
-        await transaction.rollback();
         logger.error('Create FAQ Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -136,7 +133,6 @@ const createFaq = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const updateFaq = async (req, res, next) => {
-    const transaction = await FAQ.sequelize.transaction();
     try {
         const { id } = req.params;
         const { entity_type, entity_id, question, answer } = req.body;
@@ -144,18 +140,15 @@ const updateFaq = async (req, res, next) => {
 
         const faq = await FAQ.findByPk(id);
         if (!faq) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'FAQ not found' }, 'FAQ not found', 404);
         }
 
         const updateData = { entity_type, entity_id, question, answer };
         if (updated_by != null) updateData.updated_by = updated_by;
-        await faq.update(updateData, { transaction });
+        await faq.update(updateData);
 
-        await transaction.commit();
         return successResponse(res, faq, 'FAQ updated successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Update FAQ Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -168,22 +161,17 @@ const updateFaq = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const deleteFaq = async (req, res, next) => {
-    const transaction = await FAQ.sequelize.transaction();
     try {
         const { id } = req.params;
         const faq = await FAQ.findByPk(id);
 
         if (!faq) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'FAQ not found' }, 'FAQ not found', 404);
         }
 
-        await faq.destroy({ transaction });
-
-        await transaction.commit();
+        await faq.destroy();
         return successResponse(res, null, 'FAQ deleted successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Delete FAQ Error:', error);
         return errorResponse(res, error, error.message);
     }
@@ -196,7 +184,6 @@ const deleteFaq = async (req, res, next) => {
  * @param {Function} next - Express next middleware function
  */
 const restoreFaq = async (req, res, next) => {
-    const transaction = await FAQ.sequelize.transaction();
     try {
         const { id } = req.params;
         const updated_by = req.user?.id ?? null;
@@ -207,22 +194,18 @@ const restoreFaq = async (req, res, next) => {
         });
 
         if (!faq) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'FAQ not found' }, 'FAQ not found', 404);
         }
 
         if (!faq.deletedAt) {
-            await transaction.rollback();
             return errorResponse(res, { message: 'FAQ is not deleted' }, 'FAQ is not deleted', 400);
         }
 
-        await faq.restore({ transaction });
-        if (updated_by != null) await faq.update({ updated_by }, { transaction });
+        await faq.restore();
+        if (updated_by != null) await faq.update({ updated_by });
 
-        await transaction.commit();
         return successResponse(res, faq, 'FAQ restored successfully');
     } catch (error) {
-        await transaction.rollback();
         logger.error('Restore FAQ Error:', error);
         return errorResponse(res, error, error.message);
     }

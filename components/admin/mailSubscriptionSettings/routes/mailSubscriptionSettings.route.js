@@ -8,12 +8,14 @@ const {
     createMailSubscriptionSetting,
     updateMailSubscriptionSetting,
     deleteMailSubscriptionSetting,
-    sendPromotionalEmail,
+    sendPromotionalEmailAsync,
+    getPromotionalCampaign,
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
+    resubscribeSubscriber,
     deleteSubscriber,
-    testPromotionalEmail
+    getPromotionalCampaigns,
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
     uploadPromotionalImages,
@@ -221,6 +223,7 @@ router.get('/subscribers', [
  *                       type: integer
  *                     recentSubscribers:
  *                       type: integer
+ *                       description: Subscribers created in the last 24 hours (subscribed, not deleted)
  *                     frequencyStats:
  *                       type: object
  *                       additionalProperties:
@@ -277,6 +280,50 @@ router.get('/subscribers/stats', [
 router.patch('/subscribers/:subscriberId/unsubscribe', [
     authMiddleware(true)
 ], unsubscribeSubscriber);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/subscribe:
+ *   patch:
+ *     summary: Resubscribe a subscriber (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: subscriberId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Mail subscription (subscriber) ID
+ *     responses:
+ *       200:
+ *         description: Subscriber resubscribed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     email:
+ *                       type: string
+ *                     subscribed:
+ *                       type: boolean
+ *                       example: true
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Subscriber not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/subscribers/:subscriberId/subscribe', [
+    authMiddleware(true)
+], resubscribeSubscriber);
 
 /**
  * @swagger
@@ -442,89 +489,32 @@ router.delete('/:id', [
 
 // Promotional Email Routes
 
+router.post('/promotional/send-async', [
+    authMiddleware(true),
+    upload.array('images', 10)
+], sendPromotionalEmailAsync);
+
 /**
  * @swagger
- * /api/admin/mail-subscription-settings/promotional/send:
- *   post:
- *     summary: Send promotional email to subscribers (admin)
+ * /api/admin/mail-subscription-settings/promotional/campaigns/{id}:
+ *   get:
+ *     summary: Get a promotional campaign's status (admin)
+ *     description: |
+ *       Returns the current status, counts and chunk breakdown for an
+ *       async promotional campaign. Designed for the admin UI to poll
+ *       (e.g. every 5s) while a campaign is in flight; stop polling once
+ *       `progress.isFinal` is `true`.
  *     tags: [Admin - Mail Subscription Settings]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - subject
- *               - content
- *             properties:
- *               subject:
- *                 type: string
- *                 description: Email subject line
- *               content:
- *                 type: string
- *                 description: Main email content (HTML supported)
- *               highlightText:
- *                 type: string
- *                 description: Highlighted text to display prominently
- *               ctaText:
- *                 type: string
- *                 description: Call-to-action button text
- *               ctaUrl:
- *                 type: string
- *                 description: Call-to-action button URL
- *               sendToAll:
- *                 type: boolean
- *                 default: false
- *                 description: Send to all subscribers
- *               selectedEmails:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Array of specific email addresses to send to
- *               frequency:
- *                 type: string
- *                 enum: [daily, weekly, monthly]
- *                 description: Filter subscribers by email frequency preference
- *               images:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     url:
- *                       type: string
- *                       description: Image URL
- *                     alt:
- *                       type: string
- *                       description: Alt text for the image
- *                     isPrimary:
- *                       type: boolean
- *                       description: Whether this is the primary image
- *                 description: Array of promotional images to include in the email
- *           example:
- *             subject: "Special Offer - 20% Off Everything!"
- *             content: "<p>Don't miss our biggest sale of the year!</p>"
- *             highlightText: "20% OFF"
- *             ctaText: "Shop Now"
- *             ctaUrl: "https://example.com/sale"
- *             sendToAll: false
- *             selectedEmails:
- *               - "subscriber1@example.com"
- *               - "subscriber2@example.com"
- *             images: [
- *               {
- *                 "url": "https://example.com/image1.jpg",
- *                 "alt": "Special offer banner",
- *                 "isPrimary": true
- *               },
- *               {
- *                 "url": "https://example.com/image2.jpg",
- *                 "alt": "Product showcase"
- *               }
- *             ]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: EmailCampaign id (returned from /promotional/send-async).
  *     responses:
  *       200:
- *         description: Promotional emails sent successfully
+ *         description: Campaign status retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -532,34 +522,104 @@ router.delete('/:id', [
  *               properties:
  *                 success:
  *                   type: boolean
+ *                 message:
+ *                   type: string
  *                 data:
  *                   type: object
  *                   properties:
- *                     totalSubscribers:
- *                       type: integer
- *                     successful:
- *                       type: integer
- *                     failed:
- *                       type: integer
- *                     subject:
+ *                     groupName:
  *                       type: string
- *                     sendToAll:
- *                       type: boolean
- *                     selectedEmails:
- *                       type: array
- *                 message:
- *                   type: string
+ *                       nullable: true
+ *                       description: Newsletter group name when audience is a group; otherwise null.
  *       400:
- *         description: Validation error
+ *         description: Invalid id
  *       404:
- *         description: No subscribers found
+ *         description: Campaign not found
  *       500:
  *         description: Server error
  */
-router.post('/promotional/send', [
-    authMiddleware(true),
-    upload.array('images', 10) // Handle up to 10 image files
-], sendPromotionalEmail);
+router.get('/promotional/campaigns/:id', [
+    authMiddleware(true)
+], getPromotionalCampaign);
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/promotional/campaigns:
+ *   get:
+ *     summary: List promotional campaigns (admin)
+ *     description: Returns paginated campaign history for async promotional sends.
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [queued, sending, completed, partial_failed, failed]
+ *       - in: query
+ *         name: deliveryMode
+ *         schema:
+ *           type: string
+ *           enum: [sync, async_sqs]
+ *       - in: query
+ *         name: audienceType
+ *         schema:
+ *           type: string
+ *           enum: [all, group, selected]
+ *       - in: query
+ *         name: initiatedBy
+ *         schema:
+ *           type: integer
+ *         description: Filter campaigns initiated by a specific admin user id.
+ *       - in: query
+ *         name: subject
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive subject contains filter.
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Lower bound for createdAt (ISO datetime).
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Upper bound for createdAt (ISO datetime).
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, started_at, finished_at, sent_count, failed_count]
+ *           default: createdAt
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *     responses:
+ *       200:
+ *         description: Campaign history retrieved successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.get('/promotional/campaigns', [
+    authMiddleware(true)
+], getPromotionalCampaigns);
 
 /**
  * @swagger

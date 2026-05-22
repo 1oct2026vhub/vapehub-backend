@@ -1,8 +1,23 @@
 const router = require("express").Router();
 const { check, query, param } = require("express-validator");
 const { validateRequest } = require("../../../utils/validationMiddleware");
+const rateLimit = require('express-rate-limit');
 
 const authController = require('../domain/auth.controller')
+
+const authLoginLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // per-IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authPasswordLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // stricter for password reset flows
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 /**
  * @swagger
@@ -40,7 +55,7 @@ const authController = require('../domain/auth.controller')
  *       500:
  *         description: Internal server error
  */
-router.post("/login", authController.login);
+router.post("/login", authLoginLimiter, authController.login);
 
 /**
  * @swagger
@@ -107,8 +122,9 @@ router.post("/login", authController.login);
  *         description: Internal server error
  */
 router.post('/register',
+  authLoginLimiter,
   validateRequest([
-    check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required").normalizeEmail(),
+    check("email").isEmail().withMessage("Invalid Email").notEmpty().withMessage("Email is required"),
     check("password").notEmpty().withMessage("Password is required").isLength({ min: 8 }).withMessage("Password must be at least 8 characters").matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/).withMessage("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"),
     check("phone").notEmpty().withMessage("Phone is required").custom((value) => {
         if (!value || value.trim() === '') {
@@ -231,11 +247,10 @@ router.get("/verify-email",
  *                   type: string
  *                   example: Something went wrong.
  */
-router.post('/forgot-password', validateRequest([
+router.post('/forgot-password', authPasswordLimiter, validateRequest([
   check('email')
     .isEmail()
-    .withMessage('Please provide a valid email address.')
-    .normalizeEmail(),
+    .withMessage('Please provide a valid email address.'),
 ]), authController.forgotPassword);
 
 /**
@@ -272,6 +287,7 @@ router.post('/forgot-password', validateRequest([
    *         description: Internal server error
    */
 router.post('/reset-password',
+  authPasswordLimiter,
   validateRequest([
     check('token').isString().notEmpty().withMessage('Token is required in query params'),
     check("password").notEmpty().withMessage("Password is required").isLength({ min: 8 }).withMessage("Password must be at least 8 characters").matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/).withMessage("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"),
