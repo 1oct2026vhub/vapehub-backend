@@ -16,6 +16,7 @@ const {
     MailSubscriptionSettings,
     Brand,
     Category,
+    AbandonedCartFlow,
     sequelize
 } = require("../../../models");
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
