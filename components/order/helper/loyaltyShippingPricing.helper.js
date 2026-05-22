@@ -5,7 +5,7 @@ const round2 = (n) => parseFloat(Math.max(0, Number(n) || 0).toFixed(2));
 /**
  * Derive £ cap for loyalty this checkout and £ per point, from LoyaltyPointsSettings.
  */
-function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue, merchandise, redeemableGbp) {
+function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue, redeemableGbp) {
   const laRaw = parseFloat(loyaltyAmount);
   const la = Number.isFinite(laRaw) ? laRaw : 0;
   const pvRaw = parseFloat(pointsValue) || 0;
@@ -41,7 +41,6 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 
 /**
  * Merchandise after deals/coupons/mail, before loyalty.
- * Shipping free when merchandise >= threshold; else paid via shipping method.
  * Points may redeem against the full checkout total (merchandise + shipping).
  */
 function computeShippingAndLoyalty({
@@ -78,7 +77,6 @@ function computeShippingAndLoyalty({
     loyaltyAmountType,
     loyaltyAmount,
     pointsValue,
-    merchandise,
     loyaltyRedeemableGbp
   );
 
@@ -103,9 +101,6 @@ function computeShippingAndLoyalty({
     loyaltyDiscount = Math.min(loyaltyDiscount, maxGbp);
   }
 
-  const discountOnMerchandise = Math.min(loyaltyDiscount, merchandise);
-  const payableMerchandise = round2(merchandise - discountOnMerchandise);
-
   const grandTotal = checkoutGbp === null ? null : round2(checkoutGbp - loyaltyDiscount);
   const paymentRequired = grandTotal !== null && grandTotal > 0;
 
@@ -118,7 +113,7 @@ function computeShippingAndLoyalty({
     loyaltyDiscount,
     grandTotal,
     paymentRequired,
-    payableMerchandise,
+    payableMerchandise: round2(Math.max(0, merchandise - Math.min(loyaltyDiscount, merchandise))),
   };
 }
 

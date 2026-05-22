@@ -14,7 +14,6 @@ const {
     LoyaltyPointsSettings,
     MailSubscription,
     MailSubscriptionSettings,
-    AbandonedCartFlow,
     Brand,
     Category,
     sequelize
@@ -23,14 +22,16 @@ const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./
 const dealService = require('../../Cart/helper/deal.service');
 const loyaltyShippingPricing = require('./loyaltyShippingPricing.helper');
 const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
-const logger = require("../../../library/logger");
-const constants = require("../../../config/constants");
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
 const {
     buildPaymentSuccessRedirectUrl,
     generatePaymentReference,
 } = require('./paymentSuccessUrl.helper');
+const constants = require('../../../config/constants');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
+
+const GATEWAY_HTTP_TIMEOUT_MS = 20000;
+
 /**
  * Core order placement logic - returns order data without sending HTTP response
  * @param {number} user_id - User ID
@@ -48,7 +49,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         shipping_address, 
         billing_address, 
         useShippingAsBilling, 
-        payment_method,
+        payment_method, 
         loyalty,
         points_to_redeem: rawPointsToRedeem,
         total,
@@ -58,7 +59,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     // Use a mutable copy of shipping method id so we don't reassign a destructured const
     let shippingMethodId = initialShippingMethodId;
-
     const pointsToRedeemRequest = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
 
     // Update user's receive_promotions preference if provided
@@ -531,7 +531,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     const user = await User.findOne({
         where: { id: user_id },
-        attributes: ['id', 'email', 'loyalty_points'],
+        attributes: ['id', 'email'],
         transaction
     });
     
@@ -577,15 +577,20 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             is_enabled: true,
         },
         attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
-        transaction
+        transaction,
     });
 
     const loyaltySettings = await LoyaltyPointsSettings.findOne({
         where: { status: true },
-        transaction
+        transaction,
     });
 
-    const pointsBalance = user ? parseInt(user.loyalty_points, 10) || 0 : 0;
+    const userForLoyalty = await User.findOne({
+        where: { id: user_id },
+        attributes: ['id', 'email', 'loyalty_points'],
+        transaction,
+    });
+    const pointsBalance = userForLoyalty ? parseInt(userForLoyalty.loyalty_points, 10) || 0 : 0;
     let pointsRequested = pointsToRedeemRequest;
     if (loyalty && pointsRequested === 0 && loyaltySettings) {
         pointsRequested = pointsBalance;
@@ -603,7 +608,9 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         loyaltyAmountType: loyaltySettings ? loyaltySettings.loyalty_amount_type : null,
         loyaltyAmount: loyaltySettings ? parseFloat(loyaltySettings.loyalty_amount) : 0,
         minimumPointsRedemption: loyaltySettings ? loyaltySettings.minimum_points_redemption : 0,
-        minimumPurchaseAmountForRedemption: loyaltySettings ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0 : 0,
+        minimumPurchaseAmountForRedemption: loyaltySettings
+            ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0
+            : 0,
         freeShippingThresholdGbp: freeShipThreshold,
     });
 
@@ -629,15 +636,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     calculatedTotal = pricing.grandTotal !== null ? pricing.grandTotal : 0;
     calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
-
     const paymentRequired = pricing.paymentRequired;
 
-    // Generate order unique ID (needed for internal points-only order reference before gateway calls)
-    const randomDigit = Math.floor(Math.random() * 10);
-    const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-    const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
-
-    // Payment processing
     let orderCode = 0;
     let worldpayResponse = {};
 
@@ -657,9 +657,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
         const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
 
-        // Use billing address from billingAddrs (which may be same as shipping if useShippingAsBilling is true)
         const billingAddrForPayment = useShippingAsBilling ? shipping_address : (billing_address || shipping_address);
-        
+
         let countryCode = (billingAddrForPayment.country || shipping_address.country || 'GB').toUpperCase();
         if (countryCode.length !== 2) {
             countryCode = 'GB';
@@ -669,10 +668,11 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             worldpayResponse = await axios({
                 method: 'POST',
                 url: `${process.env.WORLDPAY_URL}/payment_pages`,
+                timeout: GATEWAY_HTTP_TIMEOUT_MS,
                 headers: {
                     'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
                     'User-Agent': 'string',
-                    'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`
+                    'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`,
                 },
                 data: {
                     transactionReference: orderCode,
@@ -680,7 +680,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                     narrative: { line1: 'VapeHub Order' },
                     value: {
                         currency: 'GBP',
-                        amount: Math.round(calculatedTotal * 100)
+                        amount: Math.round(calculatedTotal * 100),
                     },
                     description: 'VapeHub Order',
                     billingAddressName: billingAddrForPayment.first_name,
@@ -691,34 +691,31 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                         postalCode: billingAddrForPayment.post_code,
                         city: billingAddrForPayment.city,
                         state: billingAddrForPayment.region,
-                        countryCode: countryCode
+                        countryCode: countryCode,
                     },
                     resultURLs: {
                         successURL: buildPaymentSuccessRedirectUrl(orderCode, calculatedTotal),
                         failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
                         errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
                         cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`
+                        expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
                     },
-                }
+                },
             });
 
             if (!worldpayResponse.data) {
                 throw new Error('No response data from Worldpay');
             }
         } catch (error) {
-            // Log as much detail as possible so we can debug cryptic payloads like {"a":"$@1","f":"","b":"..."}
             console.error('Worldpay payment_pages error status:', error.response?.status);
             console.error('Worldpay payment_pages error data:', error.response?.data);
 
-            // Try to surface a useful message if Worldpay sends one in a different shape
             let worldpayMessage;
             const data = error.response?.data;
 
             if (typeof data === 'string') {
                 worldpayMessage = data;
             } else if (data && typeof data === 'object') {
-                // Common patterns: { message }, { error: { message } }, or { a: 'CODE', b: 'traceId' }
                 worldpayMessage =
                     data.message ||
                     data.error?.message ||
@@ -733,7 +730,10 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         worldpayResponse = {};
     }
 
-    // Create Order
+    const randomDigit = Math.floor(Math.random() * 10);
+    const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+    const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
+
     const order = await Order.create({
         user_id,
         coupon_id: coupon && coupon_count_flag ? coupon.id : null,
@@ -762,81 +762,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         loyalty_points_used: loyaltyPointsUsed,
         mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
     }, { transaction });
-
-    // Registered users only: one active pending checkout — supersede older pendings + flows.
-    if (user_id) {
-        const olderPendingOrders = await Order.findAll({
-            where: {
-                user_id,
-                status: constants.orderStatus.PENDING,
-                id: { [Op.ne]: order.id }
-            },
-            attributes: ['id'],
-            transaction,
-            lock: true
-        });
-
-        const supersededMessage = `Superseded by new checkout order_id=${order.id}`;
-        for (const row of olderPendingOrders) {
-            await AbandonedCartFlow.update(
-                {
-                    status: 'superseded',
-                    last_error: supersededMessage
-                },
-                {
-                    where: {
-                        order_id: row.id,
-                        status: { [Op.notIn]: ['recovered', 'cancelled', 'superseded'] }
-                    },
-                    transaction
-                }
-            );
-
-            const previousPending = await Order.findByPk(row.id, { transaction, lock: true });
-            if (previousPending && previousPending.status === constants.orderStatus.PENDING) {
-                await previousPending.update(
-                    { status: constants.orderStatus.CANCEL },
-                    { transaction }
-                );
-            }
-        }
-    }
-
-    // Track abandoned-cart lifecycle only for non-temporary registered users.
-    const registeredUser = user_id
-        ? await User.findOne({
-            where: {
-                id: user_id,
-                is_temporary: false
-            },
-            attributes: ['id'],
-            transaction
-        })
-        : null;
-
-    if (registeredUser) {
-        await AbandonedCartFlow.findOrCreate({
-            where: { order_id: order.id },
-            defaults: {
-                user_id: user_id || null,
-                order_unique_id: order.order_unique_id || null,
-                customer_email: order.email || null,
-                status: 'entered'
-            },
-            transaction
-        });
-    }
-    // Track abandoned-cart lifecycle from order creation time.
-    await AbandonedCartFlow.findOrCreate({
-        where: { order_id: order.id },
-        defaults: {
-            user_id: user_id || null,
-            order_unique_id: order.order_unique_id || null,
-            customer_email: order.email || null,
-            status: 'entered'
-        },
-        transaction
-    });
 
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
@@ -888,7 +813,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             order_items: orderDetails,
             pricing: {
                 subtotal: subTotal,
-                // Reflect the same shipping cost as stored on the order
                 shipping_cost: shippingCostUsed,
                 deals_discount: dealsDiscount,
                 coupon_discount: coupon ? discount : 0,
@@ -897,11 +821,11 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                 loyalty_points_used: loyaltyPointsUsed,
                 mail_subscription_discount: mailSubscriptionDiscount,
                 mail_subscription_discount_type: mailSubscriptionDiscountType,
-                total: calculatedTotal
+                total: calculatedTotal,
             },
             shipping: { address: shippingAddrs },
-            billing: { address: billingAddrs }
-        }
+            billing: { address: billingAddrs },
+        },
     };
 };
 

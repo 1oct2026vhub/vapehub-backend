@@ -9,8 +9,8 @@ const { createGuestUser } = require('../helper/guestCheckout.helper');
 const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
-const constants = require('../../../config/constants');
 const loyaltyShippingPricing = require('../../order/helper/loyaltyShippingPricing.helper');
+const constants = require('../../../config/constants');
 
 /**
  * Get entity name based on entity type and entity ID
@@ -333,7 +333,13 @@ module.exports.applyCoupon = async (req, res, next) => {
             totalItems += item.quantity;
         }
 
-        // Shipping method loaded after coupon/mail totals (see below)
+        const shippingMethod = await ShippingMethod.findOne({
+            where: { 
+                id: shippingMethodId,
+                is_enabled: true  // Only allow enabled shipping methods
+            },
+            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+        });
 
         // Calculate deals
         const deals = await dealService.getApplicableDeals(cart);
@@ -692,7 +698,7 @@ module.exports.applyCoupon = async (req, res, next) => {
         let mailSubscriptionData = null;
         const user = await User.findOne({
             where: { id: userId },
-            attributes: ['id', 'email', 'loyalty_points']
+            attributes: ['id', 'email']
         });
 
         if (user && user.email) {
@@ -738,21 +744,16 @@ module.exports.applyCoupon = async (req, res, next) => {
             }
         }
         
-        // Apply totalDiscount to total (coupon/referral/mail only — loyalty applied via computeShippingAndLoyalty)
-        if (totalDiscount > 0) {
-            total = Math.max(0, total - totalDiscount);
-        }
-        const merchandiseBeforeLoyalty = parseFloat(Math.max(0, total).toFixed(2));
-
-        const shippingMethod = shippingMethodId
-            ? await ShippingMethod.findOne({
-                where: { id: shippingMethodId, is_enabled: true },
-                attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
-            })
-            : null;
+        const merchandiseBeforeLoyalty = parseFloat(
+            Math.max(0, totalDiscount > 0 ? total - totalDiscount : total).toFixed(2)
+        );
 
         const loyaltySettings = await LoyaltyPointsSettings.findOne({ where: { status: true } });
-        const pointsBalance = user ? parseInt(user.loyalty_points, 10) || 0 : 0;
+        const pointsUser = await User.findOne({
+            where: { id: userId },
+            attributes: ['id', 'loyalty_points'],
+        });
+        const pointsBalance = pointsUser ? parseInt(pointsUser.loyalty_points, 10) || 0 : 0;
         let pointsRequested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
         if (loyalty && pointsRequested === 0 && loyaltySettings) {
             pointsRequested = pointsBalance;
@@ -760,10 +761,6 @@ module.exports.applyCoupon = async (req, res, next) => {
 
         const freeShipThreshold =
             (constants.checkout && constants.checkout.FREE_SHIPPING_MERCHANDISE_GBP) || 30;
-
-        if (typeof loyaltyShippingPricing.computeShippingAndLoyalty !== 'function') {
-            throw new Error('loyaltyShippingPricing.computeShippingAndLoyalty is not available');
-        }
 
         const pricing = loyaltyShippingPricing.computeShippingAndLoyalty({
             merchandiseTotalAfterDealsCouponsMail: merchandiseBeforeLoyalty,
@@ -774,19 +771,21 @@ module.exports.applyCoupon = async (req, res, next) => {
             loyaltyAmountType: loyaltySettings ? loyaltySettings.loyalty_amount_type : null,
             loyaltyAmount: loyaltySettings ? parseFloat(loyaltySettings.loyalty_amount) : 0,
             minimumPointsRedemption: loyaltySettings ? loyaltySettings.minimum_points_redemption : 0,
-            minimumPurchaseAmountForRedemption: loyaltySettings ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0 : 0,
+            minimumPurchaseAmountForRedemption: loyaltySettings
+                ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0
+                : 0,
             freeShippingThresholdGbp: freeShipThreshold,
         });
 
         if (pricing.shippingCost === null && shippingMethod) {
             throw {
                 statusCode: 400,
-                message: "Selected shipping method is not available for this order",
+                message: 'Selected shipping method is not available for this order',
             };
         }
 
         loyaltyDiscount = pricing.loyaltyDiscount;
-        loyaltyDiscountType = pricing.pointsUsed > 0 ? "points" : null;
+        loyaltyDiscountType = pricing.pointsUsed > 0 ? 'points' : null;
         loyaltyRedeem = pricing.pointsUsed > 0;
         shippingCost = pricing.shippingCost === null ? 0 : pricing.shippingCost;
         total = pricing.grandTotal !== null ? pricing.grandTotal : 0;
@@ -1609,7 +1608,6 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             useShippingAsBilling,
             payment_method,
             loyalty,
-            points_to_redeem,
             total,
             receive_promotions
         } = req.body;
@@ -1875,7 +1873,6 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                 useShippingAsBilling: useShippingAsBilling !== undefined ? useShippingAsBilling : true,
                 payment_method,
                 loyalty,
-                points_to_redeem,
                 total,
                 shipping_method_id,
                 // Pass enriched cart items directly - no Cart table query needed
