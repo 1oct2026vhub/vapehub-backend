@@ -642,7 +642,7 @@ const fetchProducts = async (query, status = 'published') => {
           p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity,
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
-          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt,
+          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
           p.updatedAt, p.deletedAt,
           COALESCE(order_stats.order_count, 0) as order_count,
           COALESCE(price_stats.min_price, 0) as min_price
@@ -787,7 +787,7 @@ const fetchProducts = async (query, status = 'published') => {
           pv.regular_price, pv.price, pv.discount_price, pv.purchase_price,
           pv.weight, pv.length, pv.width, pv.height,
           pv.description, pv.barcode,
-          pv.stock, pv.low_stock_threshold, pv.stock_status,
+          pv.stock, pv.low_stock_threshold, pv.stock_status, pv.is_discontinued,
           pv.status, pv.updated_by, pv.created_at, pv.updated_at, pv.deleted_at
         FROM product_variants pv
         WHERE pv.product_id IN (:productIds)
@@ -1085,6 +1085,7 @@ const fetchProducts = async (query, status = 'published') => {
         stock: v.stock,
         low_stock_threshold: v.low_stock_threshold,
         stock_status: v.stock_status,
+        is_discontinued: Boolean(v.is_discontinued),
         status: v.status,
         updated_by: v.updated_by,
         created_at: v.created_at,

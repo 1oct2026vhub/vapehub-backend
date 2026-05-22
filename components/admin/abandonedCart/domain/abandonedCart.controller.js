@@ -155,7 +155,7 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
     });
 
     const totals = {
-      abandoned_carts: flows.length,
+      abandoned_carts: 0,
       email1_sent: 0,
       email2_sent: 0,
       recovered_orders: 0,
@@ -212,12 +212,20 @@ module.exports.getAbandonedCartSummary = async (req, res) => {
       totals.recovered_revenue += revenue;
     }
 
+    const recoveryRate =
+      totals.abandoned_carts > 0
+        ? Number(((totals.recovered_orders / totals.abandoned_carts) * 100).toFixed(2))
+        : 0;
+
     return successResponse(
       res,
       {
         period,
         range: { start_date: startDate, end_date: endDate },
-        totals,
+        totals: {
+          ...totals,
+          recovery_rate: recoveryRate
+        },
         performance: Object.values(buckets)
       },
       'Abandoned cart summary fetched successfully'

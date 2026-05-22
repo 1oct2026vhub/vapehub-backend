@@ -513,6 +513,65 @@ async function getTemplate(req, res) {
   }
 }
 
+async function copyTemplate(req, res) {
+  try {
+    const { id } = req.params || {};
+    const { name, subject } = req.body || {};
+
+    if (!id || typeof id !== 'string' || id.includes('..') || id.includes('/') || id.includes('\\')) {
+      return errorResponse(res, { statusCode: 400 }, 'Invalid template id', 400);
+    }
+
+    const { metaRaw, designRaw, htmlRaw } = await newsletterTemplateStorage.readTemplateFull(id);
+    if (!metaRaw) {
+      return errorResponse(res, { statusCode: 404 }, 'Template not found', 404);
+    }
+
+    const sourceMeta = JSON.parse(metaRaw);
+    const sourceName = String(sourceMeta?.name || '').trim() || id;
+    const sourceSubject = typeof sourceMeta?.subject === 'string' ? sourceMeta.subject : '';
+
+    const copiedName = String(name || '').trim() || `${sourceName} (copy)`;
+    const copiedSubject = typeof subject === 'string' ? subject : sourceSubject;
+    const copiedId = `${slugify(copiedName)}-${uuidv4().slice(0, 8)}`;
+    const now = new Date().toISOString();
+
+    const copiedMeta = {
+      id: copiedId,
+      name: copiedName,
+      subject: copiedSubject,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: req?.user?.id ?? null,
+      copiedFrom: id,
+    };
+
+    await newsletterTemplateStorage.writeTemplateParts(copiedId, {
+      metaString: JSON.stringify(copiedMeta, null, 2),
+      designString: typeof designRaw === 'string' ? designRaw : '{}',
+      htmlString: typeof htmlRaw === 'string' ? htmlRaw : '',
+    });
+
+    return successResponse(
+      res,
+      {
+        id: copiedId,
+        name: copiedName,
+        subject: copiedSubject,
+        copiedFrom: id,
+      },
+      'Template copied',
+      201
+    );
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status === 503) {
+      return errorResponse(res, err, err?.message || 'Storage is not configured', 503);
+    }
+    return errorResponse(res, err, err?.message || 'Failed to copy template', 500);
+  }
+}
+
 async function deleteTemplate(req, res) {
   try {
     const { id } = req.params || {};
@@ -768,6 +827,7 @@ module.exports = {
   saveTemplate,
   listTemplates,
   getTemplate,
+  copyTemplate,
   deleteTemplate,
   createGroup,
   listGroups,

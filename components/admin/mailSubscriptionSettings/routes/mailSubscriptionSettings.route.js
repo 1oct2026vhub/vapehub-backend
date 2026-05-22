@@ -13,7 +13,9 @@ const {
     getAllSubscribers,
     getSubscriberStats,
     unsubscribeSubscriber,
-    deleteSubscriber
+    resubscribeSubscriber,
+    deleteSubscriber,
+    getPromotionalCampaigns,
 } = require('../domain/mailSubscriptionSettings.controller');
 const {
     uploadPromotionalImages,
@@ -221,6 +223,7 @@ router.get('/subscribers', [
  *                       type: integer
  *                     recentSubscribers:
  *                       type: integer
+ *                       description: Subscribers created in the last 24 hours (subscribed, not deleted)
  *                     frequencyStats:
  *                       type: object
  *                       additionalProperties:
@@ -277,6 +280,50 @@ router.get('/subscribers/stats', [
 router.patch('/subscribers/:subscriberId/unsubscribe', [
     authMiddleware(true)
 ], unsubscribeSubscriber);
+
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/subscribers/{subscriberId}/subscribe:
+ *   patch:
+ *     summary: Resubscribe a subscriber (admin)
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: path
+ *         name: subscriberId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Mail subscription (subscriber) ID
+ *     responses:
+ *       200:
+ *         description: Subscriber resubscribed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     email:
+ *                       type: string
+ *                     subscribed:
+ *                       type: boolean
+ *                       example: true
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Subscriber not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/subscribers/:subscriberId/subscribe', [
+    authMiddleware(true)
+], resubscribeSubscriber);
 
 /**
  * @swagger
@@ -468,6 +515,22 @@ router.post('/promotional/send-async', [
  *     responses:
  *       200:
  *         description: Campaign status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     groupName:
+ *                       type: string
+ *                       nullable: true
+ *                       description: Newsletter group name when audience is a group; otherwise null.
  *       400:
  *         description: Invalid id
  *       404:
@@ -478,6 +541,85 @@ router.post('/promotional/send-async', [
 router.get('/promotional/campaigns/:id', [
     authMiddleware(true)
 ], getPromotionalCampaign);
+/**
+ * @swagger
+ * /api/admin/mail-subscription-settings/promotional/campaigns:
+ *   get:
+ *     summary: List promotional campaigns (admin)
+ *     description: Returns paginated campaign history for async promotional sends.
+ *     tags: [Admin - Mail Subscription Settings]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [queued, sending, completed, partial_failed, failed]
+ *       - in: query
+ *         name: deliveryMode
+ *         schema:
+ *           type: string
+ *           enum: [sync, async_sqs]
+ *       - in: query
+ *         name: audienceType
+ *         schema:
+ *           type: string
+ *           enum: [all, group, selected]
+ *       - in: query
+ *         name: initiatedBy
+ *         schema:
+ *           type: integer
+ *         description: Filter campaigns initiated by a specific admin user id.
+ *       - in: query
+ *         name: subject
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive subject contains filter.
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Lower bound for createdAt (ISO datetime).
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Upper bound for createdAt (ISO datetime).
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, started_at, finished_at, sent_count, failed_count]
+ *           default: createdAt
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *     responses:
+ *       200:
+ *         description: Campaign history retrieved successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.get('/promotional/campaigns', [
+    authMiddleware(true)
+], getPromotionalCampaigns);
 
 /**
  * @swagger

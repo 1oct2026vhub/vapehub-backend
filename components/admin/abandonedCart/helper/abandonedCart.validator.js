@@ -2,6 +2,15 @@ const { query, param } = require('express-validator');
 
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly'];
 const EMAIL_STATUSES = ['none', 'email1_sent', 'email2_sent'];
+const FLOW_STATUSES = [
+  'entered',
+  'email1_sent',
+  'email2_sent',
+  'recovered',
+  'cancelled',
+  'failed',
+  'superseded'
+];
 
 const listAbandonedCartsValidation = [
   query('page')
@@ -13,6 +22,11 @@ const listAbandonedCartsValidation = [
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('Limit must be between 1 and 100'),
+
+  query('status')
+    .optional()
+    .isIn(FLOW_STATUSES)
+    .withMessage(`status must be one of: ${FLOW_STATUSES.join(', ')}`),
 
   query('email_status')
     .optional()

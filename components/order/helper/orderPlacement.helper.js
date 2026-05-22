@@ -763,6 +763,70 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
     }, { transaction });
 
+    if (user_id) {
+        const olderPendingOrders = await Order.findAll({
+            where: {
+                user_id,
+                status: constants.orderStatus.PENDING,
+                id: { [Op.ne]: order.id }
+            },
+            attributes: ['id'],
+            transaction,
+            lock: true
+        });
+
+        const supersededMessage = `Superseded by new checkout order_id=${order.id}`;
+        const supersededAt = new Date();
+        for (const row of olderPendingOrders) {
+            await AbandonedCartFlow.update(
+                {
+                    status: 'superseded',
+                    cancelled_at: supersededAt,
+                    last_error: supersededMessage
+                },
+                {
+                    where: {
+                        order_id: row.id,
+                        status: { [Op.notIn]: ['recovered', 'cancelled', 'superseded'] }
+                    },
+                    transaction
+                }
+            );
+
+            const previousPending = await Order.findByPk(row.id, { transaction, lock: true });
+            if (previousPending && previousPending.status === constants.orderStatus.PENDING) {
+                await previousPending.update(
+                    { status: constants.orderStatus.CANCEL },
+                    { transaction }
+                );
+            }
+        }
+    }
+
+    const registeredUser = user_id
+        ? await User.findOne({
+            where: {
+                id: user_id,
+                is_temporary: false
+            },
+            attributes: ['id'],
+            transaction
+        })
+        : null;
+
+    if (registeredUser) {
+        await AbandonedCartFlow.findOrCreate({
+            where: { order_id: order.id },
+            defaults: {
+                user_id: user_id || null,
+                order_unique_id: order.order_unique_id || null,
+                customer_email: order.email || null,
+                status: 'entered'
+            },
+            transaction
+        });
+    }
+
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
     if (!paymentRequired) {

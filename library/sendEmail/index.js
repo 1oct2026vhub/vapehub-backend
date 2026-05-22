@@ -17,9 +17,12 @@ Handlebars.registerHelper('eq', function(a, b) {
 let transporter;
 
 if (process.env.EMAIL_TEST_MODE !== 'true') {
+    const smtpPort = Number(process.env.EMAIL_PORT) || 2525;
     transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT || 2525,
+        port: smtpPort,
+        // SMTPS on 465, STARTTLS on 587/2525. Defensive against later port changes.
+        secure: smtpPort === 465,
         auth: {
             user: process.env.EMAIL_USERNAME,
             pass: process.env.EMAIL_PASSWORD
@@ -28,7 +31,20 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
         maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 25),
         maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 1000),
         rateLimit: Number(process.env.SMTP_RATE_LIMIT || 50), // msgs/sec per process
+        // Drop dead-feeling sockets before SendGrid/Postfix peer does.
+        // Nodemailer defaults are too generous (socket=10min, conn=2min, greet=30s).
+        connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT_MS || 15000),
+        greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+        socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 30000),
         logger: logger.child({ child: 'nodemailer' }),
+    });
+
+    // Surface pool-level errors that aren't tied to an in-flight sendMail call.
+    // Without this, a stray emit could become an unhandled rejection.
+    transporter.on('error', (err) => {
+        logger.error({
+            err: { message: err?.message, code: err?.code, responseCode: err?.responseCode },
+        }, 'SMTP pool error');
     });
 }
 
