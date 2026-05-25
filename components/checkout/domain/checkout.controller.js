@@ -871,6 +871,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             loyalty_discount_type: loyaltyDiscountType,
             loyalty_redeem: loyaltyRedeem,
             loyalty_points_used: pricing.pointsUsed,
+            is_payment_required: pricing.paymentRequired && total > 0,
             payment_required: pricing.paymentRequired && total > 0,
             mail_subscription_discount: mailSubscriptionDiscount,
             mail_subscription_discount_type: mailSubscriptionDiscountType,

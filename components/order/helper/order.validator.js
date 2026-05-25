@@ -117,6 +117,11 @@ exports.validatePlaceOrder = [
     .optional()
     .isInt({ min: 0 })
     .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];
 
 exports.validateOrderId = [
@@ -271,4 +276,9 @@ exports.validateGuestPlaceOrder = [
     .optional()
     .isInt({ min: 0 })
     .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];
