@@ -638,11 +638,12 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     calculatedTotal = pricing.grandTotal !== null ? pricing.grandTotal : 0;
     calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
     const paymentRequired = pricing.paymentRequired;
+    const skipPayment = !paymentRequired || calculatedTotal <= 0;
 
     let orderCode = 0;
     let worldpayResponse = {};
 
-    if (paymentRequired && payMethod === "VivaWallet") {
+    if (!skipPayment && payMethod === "VivaWallet") {
         try {
             const accessToken = await getVivaAccessToken();
             orderCode = await createVivaOrder(accessToken, calculatedTotal);
@@ -652,7 +653,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         } catch (error) {
             throw new Error("Failed to process payment with Viva Wallet: " + error.message);
         }
-    } else if (paymentRequired && payMethod === "Worldpay") {
+    } else if (!skipPayment && payMethod === "Worldpay") {
         orderCode = generatePaymentReference();
 
         const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
@@ -726,7 +727,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
             throw new Error(worldpayMessage || 'Failed to process payment with Worldpay');
         }
-    } else if (!paymentRequired) {
+    } else if (skipPayment) {
         orderCode = generatePaymentReference();
         worldpayResponse = {};
     }
@@ -744,7 +745,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         order_billing_address_id: billingAddrs.id,
         shipping_method_id: shippingMethodId ? shippingMethodId : null,
         order_unique_id: orderUniqueId,
-        order_code: !paymentRequired
+        order_code: skipPayment
             ? String(orderCode)
             : (payMethod === "Worldpay" ? orderCode : parseInt(String(orderCode), 10).toString()),
         // Store the actual shipping cost that was applied to this order
@@ -830,7 +831,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
-    if (!paymentRequired) {
+    if (skipPayment) {
         await finalizePointsOnlyOrder(order.id, transaction);
     }
 
@@ -854,14 +855,14 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
-    const redirect_url = !paymentRequired
+    const redirect_url = skipPayment
         ? buildPaymentSuccessRedirectUrl(order.order_code, order.total)
         : null;
 
     return {
         order_code: order.order_code,
-        worldpay_url: paymentRequired && payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
-        payment_required: paymentRequired,
+        worldpay_url: !skipPayment && payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
+        payment_required: !skipPayment,
         redirect_url,
         payment_success_url: redirect_url,
         loyalty_points_used: loyaltyPointsUsed,
@@ -870,7 +871,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             order_unique_id: order.order_unique_id,
             order_code: order.order_code,
             status: order.status,
-            payment_required: paymentRequired,
+            payment_required: !skipPayment,
             redirect_url,
             payment_success_url: redirect_url,
             total: calculatedTotal,
