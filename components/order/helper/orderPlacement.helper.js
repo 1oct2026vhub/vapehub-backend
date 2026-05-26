@@ -881,6 +881,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         redirect_url,
         payment_success_url: redirect_url,
         loyalty_points_used: loyaltyPointsUsed,
+        ...loyaltyShippingPricing.loyaltyPricingResponseFields(pricing),
         order_details: {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -902,6 +903,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                 referral_discount: referralDiscount,
                 loyalty_discount: loyaltyDiscount,
                 loyalty_points_used: loyaltyPointsUsed,
+                ...loyaltyShippingPricing.loyaltyPricingResponseFields(pricing),
                 mail_subscription_discount: mailSubscriptionDiscount,
                 mail_subscription_discount_type: mailSubscriptionDiscountType,
                 total: calculatedTotal,

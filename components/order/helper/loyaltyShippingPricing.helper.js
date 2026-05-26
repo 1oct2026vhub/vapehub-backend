@@ -2,8 +2,23 @@ const { calculateShippingCost } = require('../../shippingMethod/helper/shippingM
 
 const round2 = (n) => parseFloat(Math.max(0, Number(n) || 0).toFixed(2));
 
+/** Default: every 10 points → next tier (overridden by minimum_points_redemption when set). */
+const DEFAULT_POINTS_PER_PERCENT_TIER = 10;
+
 /**
- * Derive £ cap for loyalty this checkout and £ per point, from LoyaltyPointsSettings.
+ * Tiered percentage: floor(points / pointsPerTier) × percentPerTier = % off checkout.
+ * Example: 10 pts → 3%, 40 pts → 12% (with percentPerTier = 3).
+ */
+function computeTieredPercentFromPoints(pointsUsed, pointsPerTier, percentPerTier) {
+  const pts = Math.max(0, Math.floor(Number(pointsUsed) || 0));
+  const block = Math.max(1, Math.floor(Number(pointsPerTier) || 0) || DEFAULT_POINTS_PER_PERCENT_TIER);
+  const perBlock = Math.max(0, parseFloat(percentPerTier) || 0);
+  const blocks = Math.floor(pts / block);
+  return Math.min(100, blocks * perBlock);
+}
+
+/**
+ * Derive £ cap and £ per point for fixed (and legacy) loyalty types.
  */
 function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue, redeemableGbp) {
   const laRaw = parseFloat(loyaltyAmount);
@@ -15,13 +30,7 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
   let gbpPerPoint = 0;
 
   if (type === 'percentage') {
-    if (la <= 0) {
-      capGbp = redeemableGbp;
-    } else {
-      const pct = Math.min(100, Math.max(0, la));
-      const pctOff = round2((redeemableGbp * pct) / 100);
-      capGbp = round2(Math.min(redeemableGbp, pctOff));
-    }
+    // Percentage uses tiered points → % in computeShippingAndLoyalty (not a flat % of checkout here).
     gbpPerPoint = pvRaw;
   } else if (type === 'fixed') {
     if (la > 0 && pvRaw >= 1) {
@@ -43,8 +52,12 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
  * Merchandise after deals/coupons/mail, before loyalty.
  * Points may redeem against the full checkout total (merchandise + shipping).
  *
- * @param {boolean} [fullRedemption] - When true (loyalty + use full balance), ceil points
- *   needed to cover capGbp; discount still capped at capGbp (surplus point value absorbed).
+ * Percentage type: every `pointsPerTier` points (default 10, or minimum_points_redemption) grants
+ * `loyalty_amount` % off the checkout (e.g. 10 pts → 3%, 40 pts → 12%).
+ *
+ * Fixed type: unchanged — points × points_value capped by loyalty_amount £.
+ *
+ * @param {boolean} [fullRedemption] - loyalty + use full balance (all points requested for tier %).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -77,6 +90,16 @@ function computeShippingAndLoyalty({
   const checkoutGbp = ship === null ? null : round2(merchandise + ship);
   const loyaltyRedeemableGbp = checkoutGbp === null ? merchandise : checkoutGbp;
 
+  const type = String(loyaltyAmountType || '').toLowerCase();
+  const isPercentageTier = type === 'percentage';
+
+  const requested = Math.max(0, Math.floor(Number(pointsToRedeem) || 0));
+  const minRedeem = parseInt(minimumPointsRedemption, 10) || 0;
+  const minPurchase = parseFloat(minimumPurchaseAmountForRedemption) || 0;
+  const pointsPerTier =
+    minRedeem >= 1 ? minRedeem : DEFAULT_POINTS_PER_PERCENT_TIER;
+  const percentPerTier = parseFloat(loyaltyAmount) || 0;
+
   const { capGbp, gbpPerPoint: pv } = resolveLoyaltyMoneyParams(
     loyaltyAmountType,
     loyaltyAmount,
@@ -86,29 +109,51 @@ function computeShippingAndLoyalty({
 
   let pointsUsed = 0;
   let loyaltyDiscount = 0;
-
-  const requested = Math.max(0, Math.floor(Number(pointsToRedeem) || 0));
-  const minRedeem = parseInt(minimumPointsRedemption, 10) || 0;
-  const minPurchase = parseFloat(minimumPurchaseAmountForRedemption) || 0;
-
-  const canRedeemPoints =
-    requested > 0 &&
-    pv > 0 &&
-    userLoyaltyPoints >= minRedeem &&
-    merchandise >= minPurchase;
-
+  let loyaltyPercentApplied = 0;
   let loyaltySurplusAbsorbedGbp = 0;
 
-  if (canRedeemPoints) {
-    const maxGbp = capGbp;
-    const rawPointsForTotal = maxGbp / pv;
-    const maxPoints = fullRedemption
-      ? Math.ceil(rawPointsForTotal - 1e-9)
-      : Math.floor(rawPointsForTotal);
+  let canRedeemPoints = false;
 
-    pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
-    loyaltyDiscount = round2(Math.min(pointsUsed * pv, maxGbp));
-    loyaltySurplusAbsorbedGbp = round2(Math.max(0, pointsUsed * pv - loyaltyDiscount));
+  if (isPercentageTier) {
+    canRedeemPoints =
+      requested > 0 &&
+      percentPerTier > 0 &&
+      userLoyaltyPoints >= minRedeem &&
+      merchandise >= minPurchase &&
+      Math.floor(Math.min(requested, userLoyaltyPoints) / pointsPerTier) >= 1;
+  } else {
+    canRedeemPoints =
+      requested > 0 &&
+      pv > 0 &&
+      userLoyaltyPoints >= minRedeem &&
+      merchandise >= minPurchase;
+  }
+
+  if (canRedeemPoints) {
+    if (isPercentageTier) {
+      pointsUsed = Math.min(requested, userLoyaltyPoints);
+      loyaltyPercentApplied = computeTieredPercentFromPoints(
+        pointsUsed,
+        pointsPerTier,
+        percentPerTier
+      );
+      loyaltyDiscount = round2((loyaltyRedeemableGbp * loyaltyPercentApplied) / 100);
+      loyaltyDiscount = Math.min(loyaltyDiscount, loyaltyRedeemableGbp);
+
+      if (fullRedemption && loyaltyPercentApplied >= 100) {
+        loyaltyDiscount = loyaltyRedeemableGbp;
+      }
+    } else {
+      const maxGbp = capGbp;
+      const rawPointsForTotal = maxGbp / pv;
+      const maxPoints = fullRedemption
+        ? Math.ceil(rawPointsForTotal - 1e-9)
+        : Math.floor(rawPointsForTotal);
+
+      pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
+      loyaltyDiscount = round2(Math.min(pointsUsed * pv, maxGbp));
+      loyaltySurplusAbsorbedGbp = round2(Math.max(0, pointsUsed * pv - loyaltyDiscount));
+    }
   }
 
   const grandTotal = checkoutGbp === null ? null : round2(checkoutGbp - loyaltyDiscount);
@@ -121,6 +166,9 @@ function computeShippingAndLoyalty({
     loyaltyRedeemableGbp,
     pointsUsed,
     loyaltyDiscount,
+    loyaltyPercentApplied: isPercentageTier ? loyaltyPercentApplied : null,
+    loyaltyPointsPerTier: isPercentageTier ? pointsPerTier : null,
+    loyaltyPercentPerTier: isPercentageTier ? percentPerTier : null,
     loyaltySurplusAbsorbedGbp,
     grandTotal,
     paymentRequired,
@@ -128,8 +176,99 @@ function computeShippingAndLoyalty({
   };
 }
 
+/**
+ * API payload for loyalty program settings + user balance (admin-driven tier rules).
+ * @param {object} settings - LoyaltyPointsSettings row
+ * @param {number} userPoints
+ * @param {{ merchandiseTotal?: number }} [options]
+ */
+function buildLoyaltyRedemptionInfo(settings, userPoints = 0, options = {}) {
+  if (!settings) return null;
+
+  const pts = Math.max(0, parseInt(userPoints, 10) || 0);
+  const minRedeem = parseInt(settings.minimum_points_redemption, 10) || 0;
+  const minPurchase = parseFloat(settings.minimum_purchase_amount) || 0;
+  const type = String(settings.loyalty_amount_type || '').toLowerCase();
+  const pointsPerTier =
+    minRedeem >= 1 ? minRedeem : DEFAULT_POINTS_PER_PERCENT_TIER;
+  const percentPerTier = parseFloat(settings.loyalty_amount) || 0;
+
+  const merchandise =
+    options.merchandiseTotal != null
+      ? round2(options.merchandiseTotal)
+      : null;
+  const hasEnoughPoints = pts >= minRedeem;
+  const meetsMinimumOrder =
+    merchandise === null || merchandise >= minPurchase;
+  const tiersAtBalance =
+    type === 'percentage' ? Math.floor(pts / pointsPerTier) : 0;
+
+  const base = {
+    user_points: pts,
+    minimum_points_required: minRedeem,
+    minimum_order_value_to_redeem: minPurchase,
+    can_redeem: hasEnoughPoints && meetsMinimumOrder,
+    has_enough_points: hasEnoughPoints,
+    meets_minimum_order_value: meetsMinimumOrder,
+    points_needed: Math.max(0, minRedeem - pts),
+    loyalty_amount_type: type || null,
+    points_value: settings.points_value,
+    min_amount_for_loyalty_points: settings.min_amount_for_loyalty_points,
+    amount_divisor: settings.amount_divisor,
+  };
+
+  if (type === 'percentage') {
+    const maxPercent = computeTieredPercentFromPoints(
+      pts,
+      pointsPerTier,
+      percentPerTier
+    );
+    return {
+      ...base,
+      redemption_type: 'percentage',
+      redemption_model: 'tiered',
+      percent_per_tier: percentPerTier,
+      points_per_tier: pointsPerTier,
+      redemption_amount: percentPerTier,
+      max_percent_at_balance: maxPercent,
+      tiers_at_balance: tiersAtBalance,
+    };
+  }
+
+  if (type === 'fixed') {
+    return {
+      ...base,
+      redemption_type: 'fixed',
+      redemption_model: 'fixed',
+      redemption_amount: parseFloat(settings.loyalty_amount) || 0,
+    };
+  }
+
+  return {
+    ...base,
+    redemption_type: 'none',
+    redemption_model: 'none',
+    redemption_amount: 0,
+  };
+}
+
+/** Snippet for apply-coupon / order responses after computeShippingAndLoyalty. */
+function loyaltyPricingResponseFields(pricing) {
+  if (!pricing) return {};
+  return {
+    loyalty_percent_applied: pricing.loyaltyPercentApplied,
+    loyalty_points_per_tier: pricing.loyaltyPointsPerTier,
+    loyalty_percent_per_tier: pricing.loyaltyPercentPerTier,
+    loyalty_redeemable_gbp: pricing.loyaltyRedeemableGbp,
+  };
+}
+
 module.exports = {
   computeShippingAndLoyalty,
   resolveLoyaltyMoneyParams,
+  computeTieredPercentFromPoints,
+  buildLoyaltyRedemptionInfo,
+  loyaltyPricingResponseFields,
   round2,
+  DEFAULT_POINTS_PER_PERCENT_TIER,
 };

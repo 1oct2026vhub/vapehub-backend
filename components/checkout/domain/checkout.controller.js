@@ -229,32 +229,10 @@ module.exports.checkout = async (req, res, next) => {
         }
 
         if (loyaltySettings && user) {
-            const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
-            const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
-            let redemptionAmount = 0;
-            let redemptionType = 'none';
-
-            if (canRedeem) {
-                if (loyaltySettings.loyalty_amount_type === 'percentage') {
-                    redemptionAmount = loyaltySettings.loyalty_amount;
-                    redemptionType = 'percentage';
-                } else {
-                    redemptionAmount = loyaltySettings.loyalty_amount;
-                    redemptionType = 'fixed';
-                }
-            }
-
-            loyaltyRedemptionInfo = {
-                user_points: user.loyalty_points || 0,
-                minimum_points_required: loyaltySettings.minimum_points_redemption,
-                can_redeem: canRedeem,
-                points_needed: pointsNeeded,
-                redemption_amount: redemptionAmount,
-                redemption_type: redemptionType,
-                points_value: loyaltySettings.points_value,
-                min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
-                amount_divisor: loyaltySettings.amount_divisor
-            };
+            loyaltyRedemptionInfo = loyaltyShippingPricing.buildLoyaltyRedemptionInfo(
+                loyaltySettings,
+                user.loyalty_points || 0
+            );
         }
 
         total = parseFloat(Math.max(0, total).toFixed(2));
@@ -873,6 +851,14 @@ module.exports.applyCoupon = async (req, res, next) => {
             loyalty_discount_type: loyaltyDiscountType,
             loyalty_redeem: loyaltyRedeem,
             loyalty_points_used: pricing.pointsUsed,
+            ...loyaltyShippingPricing.loyaltyPricingResponseFields(pricing),
+            loyalty_redemption_info: loyaltySettings
+                ? loyaltyShippingPricing.buildLoyaltyRedemptionInfo(
+                    loyaltySettings,
+                    pointsBalance,
+                    { merchandiseTotal: merchandiseBeforeLoyalty }
+                )
+                : null,
             is_payment_required: pricing.paymentRequired && total > 0,
             payment_required: pricing.paymentRequired && total > 0,
             mail_subscription_discount: mailSubscriptionDiscount,
@@ -1527,32 +1513,11 @@ module.exports.guestCheckout = async (req, res, next) => {
             });
 
             if (loyaltySettings && user) {
-                const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
-                const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
-                let redemptionAmount = 0;
-                let redemptionType = 'none';
-
-                if (canRedeem) {
-                    if (loyaltySettings.loyalty_amount_type === 'percentage') {
-                        redemptionAmount = loyaltySettings.loyalty_amount;
-                        redemptionType = 'percentage';
-                    } else {
-                        redemptionAmount = loyaltySettings.loyalty_amount;
-                        redemptionType = 'fixed';
-                    }
-                }
-
-                loyaltyRedemptionInfo = {
-                    user_points: user.loyalty_points || 0,
-                    minimum_points_required: loyaltySettings.minimum_points_redemption,
-                    can_redeem: canRedeem,
-                    points_needed: pointsNeeded,
-                    redemption_amount: redemptionAmount,
-                    redemption_type: redemptionType,
-                    points_value: loyaltySettings.points_value,
-                    min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
-                    amount_divisor: loyaltySettings.amount_divisor
-                };
+                loyaltyRedemptionInfo = loyaltyShippingPricing.buildLoyaltyRedemptionInfo(
+                    loyaltySettings,
+                    user.loyalty_points || 0,
+                    { merchandiseTotal: subTotal }
+                );
             }
 
             total = parseFloat(Math.max(0, total).toFixed(2));
@@ -1843,32 +1808,10 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
         });
 
         if (loyaltySettings && user) {
-            const canRedeem = user.loyalty_points >= loyaltySettings.minimum_points_redemption;
-            const pointsNeeded = Math.max(0, loyaltySettings.minimum_points_redemption - user.loyalty_points);
-            let redemptionAmount = 0;
-            let redemptionType = 'none';
-
-            if (canRedeem) {
-                if (loyaltySettings.loyalty_amount_type === 'percentage') {
-                    redemptionAmount = loyaltySettings.loyalty_amount;
-                    redemptionType = 'percentage';
-                } else {
-                    redemptionAmount = loyaltySettings.loyalty_amount;
-                    redemptionType = 'fixed';
-                }
-            }
-
-            loyaltyRedemptionInfo = {
-                user_points: user.loyalty_points || 0,
-                minimum_points_required: loyaltySettings.minimum_points_redemption,
-                can_redeem: canRedeem,
-                points_needed: pointsNeeded,
-                redemption_amount: redemptionAmount,
-                redemption_type: redemptionType,
-                points_value: loyaltySettings.points_value,
-                min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
-                amount_divisor: loyaltySettings.amount_divisor
-            };
+            loyaltyRedemptionInfo = loyaltyShippingPricing.buildLoyaltyRedemptionInfo(
+                loyaltySettings,
+                user.loyalty_points || 0
+            );
         }
 
         const checkoutSummary = {
