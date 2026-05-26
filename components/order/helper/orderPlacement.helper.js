@@ -594,7 +594,8 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     });
     const pointsBalance = userForLoyalty ? parseInt(userForLoyalty.loyalty_points, 10) || 0 : 0;
     let pointsRequested = pointsToRedeemRequest;
-    if (loyalty && pointsRequested === 0 && loyaltySettings) {
+    const useFullBalanceRedemption = Boolean(loyalty && pointsToRedeemRequest === 0);
+    if (useFullBalanceRedemption && loyaltySettings) {
         pointsRequested = pointsBalance;
     }
 
@@ -614,6 +615,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0
             : 0,
         freeShippingThresholdGbp: freeShipThreshold,
+        fullRedemption: useFullBalanceRedemption,
     });
 
     if (pricing.shippingCost === null && shippingMethod) {

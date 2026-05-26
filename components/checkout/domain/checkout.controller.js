@@ -772,7 +772,8 @@ module.exports.applyCoupon = async (req, res, next) => {
         });
         const pointsBalance = pointsUser ? parseInt(pointsUser.loyalty_points, 10) || 0 : 0;
         let pointsRequested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
-        if (loyalty && pointsRequested === 0 && loyaltySettings) {
+        const useFullBalanceRedemption = Boolean(loyalty && pointsRequested === 0);
+        if (useFullBalanceRedemption && loyaltySettings) {
             pointsRequested = pointsBalance;
         }
 
@@ -792,6 +793,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0
                 : 0,
             freeShippingThresholdGbp: freeShipThreshold,
+            fullRedemption: useFullBalanceRedemption,
         });
 
         if (pricing.shippingCost === null && shippingMethod) {

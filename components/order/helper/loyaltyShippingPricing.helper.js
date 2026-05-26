@@ -42,6 +42,9 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 /**
  * Merchandise after deals/coupons/mail, before loyalty.
  * Points may redeem against the full checkout total (merchandise + shipping).
+ *
+ * @param {boolean} [fullRedemption] - When true (loyalty + use full balance), ceil points
+ *   needed to cover capGbp; discount still capped at capGbp (surplus point value absorbed).
  */
 function computeShippingAndLoyalty({
   merchandiseTotalAfterDealsCouponsMail,
@@ -54,6 +57,7 @@ function computeShippingAndLoyalty({
   minimumPointsRedemption,
   minimumPurchaseAmountForRedemption,
   freeShippingThresholdGbp,
+  fullRedemption = false,
 }) {
   const merchandise = round2(merchandiseTotalAfterDealsCouponsMail);
   const threshold = Number(freeShippingThresholdGbp) || 30;
@@ -93,12 +97,18 @@ function computeShippingAndLoyalty({
     userLoyaltyPoints >= minRedeem &&
     merchandise >= minPurchase;
 
+  let loyaltySurplusAbsorbedGbp = 0;
+
   if (canRedeemPoints) {
     const maxGbp = capGbp;
-    const maxPoints = Math.floor(maxGbp / pv);
+    const rawPointsForTotal = maxGbp / pv;
+    const maxPoints = fullRedemption
+      ? Math.ceil(rawPointsForTotal - 1e-9)
+      : Math.floor(rawPointsForTotal);
+
     pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
-    loyaltyDiscount = round2(pointsUsed * pv);
-    loyaltyDiscount = Math.min(loyaltyDiscount, maxGbp);
+    loyaltyDiscount = round2(Math.min(pointsUsed * pv, maxGbp));
+    loyaltySurplusAbsorbedGbp = round2(Math.max(0, pointsUsed * pv - loyaltyDiscount));
   }
 
   const grandTotal = checkoutGbp === null ? null : round2(checkoutGbp - loyaltyDiscount);
@@ -111,6 +121,7 @@ function computeShippingAndLoyalty({
     loyaltyRedeemableGbp,
     pointsUsed,
     loyaltyDiscount,
+    loyaltySurplusAbsorbedGbp,
     grandTotal,
     paymentRequired,
     payableMerchandise: round2(Math.max(0, merchandise - Math.min(loyaltyDiscount, merchandise))),
