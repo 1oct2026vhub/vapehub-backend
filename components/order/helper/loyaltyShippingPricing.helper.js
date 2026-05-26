@@ -17,6 +17,17 @@ function computeTieredPercentFromPoints(pointsUsed, pointsPerTier, percentPerTie
   return Math.min(100, blocks * perBlock);
 }
 
+/** Minimum points burned to achieve a given tiered % (ignores incomplete trailing blocks). */
+function pointsRequiredForTieredPercent(percentApplied, pointsPerTier, percentPerTier) {
+  const pct = Math.max(0, Math.min(100, parseFloat(percentApplied) || 0));
+  if (pct <= 0) return 0;
+  const block = Math.max(1, Math.floor(Number(pointsPerTier) || 0) || DEFAULT_POINTS_PER_PERCENT_TIER);
+  const perBlock = Math.max(0, parseFloat(percentPerTier) || 0);
+  if (perBlock <= 0) return 0;
+  const tiersNeeded = Math.ceil(pct / perBlock);
+  return tiersNeeded * block;
+}
+
 /**
  * Derive £ cap and £ per point for fixed (and legacy) loyalty types.
  */
@@ -131,12 +142,18 @@ function computeShippingAndLoyalty({
 
   if (canRedeemPoints) {
     if (isPercentageTier) {
-      pointsUsed = Math.min(requested, userLoyaltyPoints);
+      const candidatePoints = Math.min(requested, userLoyaltyPoints);
       loyaltyPercentApplied = computeTieredPercentFromPoints(
-        pointsUsed,
+        candidatePoints,
         pointsPerTier,
         percentPerTier
       );
+      const pointsForAppliedPercent = pointsRequiredForTieredPercent(
+        loyaltyPercentApplied,
+        pointsPerTier,
+        percentPerTier
+      );
+      pointsUsed = Math.min(candidatePoints, pointsForAppliedPercent);
       loyaltyDiscount = round2((loyaltyRedeemableGbp * loyaltyPercentApplied) / 100);
       loyaltyDiscount = Math.min(loyaltyDiscount, loyaltyRedeemableGbp);
 
@@ -267,6 +284,7 @@ module.exports = {
   computeShippingAndLoyalty,
   resolveLoyaltyMoneyParams,
   computeTieredPercentFromPoints,
+  pointsRequiredForTieredPercent,
   buildLoyaltyRedemptionInfo,
   loyaltyPricingResponseFields,
   round2,
