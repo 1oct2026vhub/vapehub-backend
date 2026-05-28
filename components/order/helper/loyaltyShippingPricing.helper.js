@@ -66,7 +66,8 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
  * Percentage type: every `pointsPerTier` points (default 10, or minimum_points_redemption) grants
  * `loyalty_amount` % off the checkout (e.g. 10 pts → 3%, 40 pts → 12%).
  *
- * Fixed type: unchanged — points × points_value capped by loyalty_amount £.
+ * Fixed type: block based — every `minimum_points_redemption` points grants
+ * `loyalty_amount` GBP discount. Only the minimum blocks needed are consumed.
  *
  * @param {boolean} [fullRedemption] - loyalty + use full balance (all points requested for tier %).
  */
@@ -75,7 +76,7 @@ function computeShippingAndLoyalty({
   shippingMethod,
   userLoyaltyPoints,
   pointsToRedeem,
-  pointsValue,
+  pointsValue: _pointsValue,
   loyaltyAmountType,
   loyaltyAmount,
   minimumPointsRedemption,
@@ -111,13 +112,6 @@ function computeShippingAndLoyalty({
     minRedeem >= 1 ? minRedeem : DEFAULT_POINTS_PER_PERCENT_TIER;
   const percentPerTier = parseFloat(loyaltyAmount) || 0;
 
-  const { capGbp, gbpPerPoint: pv } = resolveLoyaltyMoneyParams(
-    loyaltyAmountType,
-    loyaltyAmount,
-    pointsValue,
-    loyaltyRedeemableGbp
-  );
-
   let pointsUsed = 0;
   let loyaltyDiscount = 0;
   let loyaltyPercentApplied = 0;
@@ -133,27 +127,28 @@ function computeShippingAndLoyalty({
       merchandise >= minPurchase &&
       Math.floor(Math.min(requested, userLoyaltyPoints) / pointsPerTier) >= 1;
   } else {
+    const pointsPerBlock = Math.max(1, minRedeem || 0);
+    const discountPerBlock = Math.max(0, parseFloat(loyaltyAmount) || 0);
     canRedeemPoints =
       requested > 0 &&
-      pv > 0 &&
+      discountPerBlock > 0 &&
       userLoyaltyPoints >= minRedeem &&
-      merchandise >= minPurchase;
+      merchandise >= minPurchase &&
+      Math.floor(Math.min(requested, userLoyaltyPoints) / pointsPerBlock) >= 1;
   }
 
   if (canRedeemPoints) {
     if (isPercentageTier) {
       const candidatePoints = Math.min(requested, userLoyaltyPoints);
-      loyaltyPercentApplied = computeTieredPercentFromPoints(
-        candidatePoints,
-        pointsPerTier,
-        percentPerTier
-      );
-      const pointsForAppliedPercent = pointsRequiredForTieredPercent(
-        loyaltyPercentApplied,
-        pointsPerTier,
-        percentPerTier
-      );
-      pointsUsed = Math.min(candidatePoints, pointsForAppliedPercent);
+      const pointsPerTierSafe = Math.max(1, pointsPerTier);
+      const percentPerTierSafe = Math.max(0, percentPerTier);
+      const maxTiersByPoints = Math.floor(candidatePoints / pointsPerTierSafe);
+      const neededPercent = loyaltyRedeemableGbp > 0 ? 100 : 0;
+      const tiersNeededForTotal = Math.ceil(neededPercent / percentPerTierSafe);
+      const tiersToUse = Math.max(0, Math.min(maxTiersByPoints, tiersNeededForTotal));
+
+      pointsUsed = tiersToUse * pointsPerTierSafe;
+      loyaltyPercentApplied = Math.min(100, tiersToUse * percentPerTierSafe);
       loyaltyDiscount = round2((loyaltyRedeemableGbp * loyaltyPercentApplied) / 100);
       loyaltyDiscount = Math.min(loyaltyDiscount, loyaltyRedeemableGbp);
 
@@ -161,15 +156,17 @@ function computeShippingAndLoyalty({
         loyaltyDiscount = loyaltyRedeemableGbp;
       }
     } else {
-      const maxGbp = capGbp;
-      const rawPointsForTotal = maxGbp / pv;
-      const maxPoints = fullRedemption
-        ? Math.ceil(rawPointsForTotal - 1e-9)
-        : Math.floor(rawPointsForTotal);
+      const pointsPerBlock = Math.max(1, minRedeem || 0);
+      const discountPerBlock = Math.max(0, parseFloat(loyaltyAmount) || 0);
+      const candidatePoints = Math.min(requested, userLoyaltyPoints);
+      const maxBlocksByPoints = Math.floor(candidatePoints / pointsPerBlock);
+      const blocksNeededForTotal = Math.ceil(loyaltyRedeemableGbp / discountPerBlock);
+      const blocksToUse = Math.max(0, Math.min(maxBlocksByPoints, blocksNeededForTotal));
 
-      pointsUsed = Math.min(requested, userLoyaltyPoints, maxPoints);
-      loyaltyDiscount = round2(Math.min(pointsUsed * pv, maxGbp));
-      loyaltySurplusAbsorbedGbp = round2(Math.max(0, pointsUsed * pv - loyaltyDiscount));
+      pointsUsed = blocksToUse * pointsPerBlock;
+      const rawFixedDiscount = blocksToUse * discountPerBlock;
+      loyaltyDiscount = round2(Math.min(rawFixedDiscount, loyaltyRedeemableGbp));
+      loyaltySurplusAbsorbedGbp = round2(Math.max(0, rawFixedDiscount - loyaltyDiscount));
     }
   }
 
