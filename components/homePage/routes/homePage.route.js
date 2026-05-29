@@ -266,9 +266,12 @@ router.post("/banner-images",
  *                       redirect_url:
  *                         type: string
  *                         description: Present when entity_type is redirect
+ *                       description:
+ *                         type: string
+ *                         description: Description of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
  *                       name:
  *                         type: string
- *                         description: Name of the category, brand, blog_category, or deal (when applicable)
+ *                         description: Name of the category, brand, or blog_category (if entity_type is category, brand, or blog_category)
  *                       banners:
  *                         type: array
  *                         description: Array of entity banners (if entity_type is brand, category, or deal)

@@ -31,29 +31,25 @@ class SeoService {
    * Get SEO metadata for a specific entity (cached)
    * @param {string} entityType - Type of entity (product, category, brand, blog_category, blog_post)
    * @param {string} slug - URL slug
-   * @param {Object} [options]
-   * @param {boolean} [options.excludeDescription=false] - Omit description fields (smaller payload)
    * @returns {Promise<Object|null>} SEO metadata as plain object, or null if not found
    */
-  async getSeoMeta(entityType, slug, options = {}) {
+  async getSeoMeta(entityType, slug) {
     try {
-      const { excludeDescription = false } = options;
-      const cacheKey = excludeDescription
-        ? `seo:meta:light:${entityType}:${slug || ''}`
-        : `seo:meta:${entityType}:${slug || ''}`;
-
-      const queryOptions = { where: { entityType, slug } };
-      if (excludeDescription) {
-        queryOptions.attributes = { exclude: ['description', 'description_text'] };
-      }
+      const cacheKey = `seo:meta:${entityType}:${slug || ''}`;
 
       const data = await cacheOrFetch(cacheKey, async () => {
-        const seoMeta = await this.models.SeoMeta.findOne(queryOptions);
+        // this.logger.info({ entityType, slug }, 'Getting SEO metadata');
+
+        const seoMeta = await this.models.SeoMeta.findOne({
+          where: { entityType, slug }
+        });
 
         if (!seoMeta) {
+          // this.logger.warn({ entityType, slug }, 'SEO metadata not found');
           return null;
         }
 
+        // this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
         return seoMeta.toJSON ? seoMeta.toJSON() : seoMeta;
       }, 300);
 
