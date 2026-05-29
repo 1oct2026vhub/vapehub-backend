@@ -1460,7 +1460,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (categoryIds.length > 0) {
             const categories = await Category.findAll({
                 where: { id: { [Op.in]: categoryIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'slug']
             });
             categoryMap = new Map(categories.map(cat => [cat.id, cat]));
         }
@@ -1473,7 +1473,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (brandIds.length > 0) {
             const brands = await Brand.findAll({
                 where: { id: { [Op.in]: brandIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'slug']
             });
             brandMap = new Map(brands.map(brand => [brand.id, brand]));
         }
@@ -1486,7 +1486,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (blogCategoryIds.length > 0) {
             const blogCategories = await BlogCategory.findAll({
                 where: { id: { [Op.in]: blogCategoryIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'slug']
             });
             blogCategoryMap = new Map(blogCategories.map(bc => [bc.id, bc]));
         }
@@ -1499,7 +1499,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (dealIds.length > 0) {
             const deals = await Deal.findAll({
                 where: { id: { [Op.in]: dealIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'slug']
             });
             dealMap = new Map(deals.map(deal => [deal.id, deal]));
         }
@@ -1521,7 +1521,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
                 getEntityType(slugRelations[0].entity_type),
-                slugRelations[0].slug
+                slugRelations[0].slug,
+                { excludeDescription: true }
             );
 
             const response = {
@@ -1531,29 +1532,26 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 seo: seoData
             };
 
-            // Add category description and name if entity is category (using pre-fetched category)
+            // Add category name if entity is category (using pre-fetched category)
             if (slugRelations[0].entity_type === 'category') {
                 const category = categoryMap.get(slugRelations[0].entity_id);
                 if (category) {
-                    response.description = category.description;
                     response.name = category.name;
                 }
             }
 
-            // Add brand description and name if entity is brand (using pre-fetched brand)
+            // Add brand name if entity is brand (using pre-fetched brand)
             if (slugRelations[0].entity_type === 'brand') {
                 const brand = brandMap.get(slugRelations[0].entity_id);
                 if (brand) {
-                    response.description = brand.description;
                     response.name = brand.name;
                 }
             }
 
-            // Add blog category description and name if entity is blog_category (using pre-fetched blog category)
+            // Add blog category name if entity is blog_category (using pre-fetched blog category)
             if (slugRelations[0].entity_type === 'blog_category') {
                 const blogCategory = blogCategoryMap.get(slugRelations[0].entity_id);
                 if (blogCategory) {
-                    response.description = blogCategory.description;
                     response.name = blogCategory.name;
                 } else {
                     // Blog category is soft-deleted (slug relation exists but category not found)
@@ -1566,11 +1564,10 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 }
             }
 
-            // Add deal description and name if entity is deal (using pre-fetched deal)
+            // Add deal name if entity is deal (using pre-fetched deal)
             if (slugRelations[0].entity_type === 'deal') {
                 const deal = dealMap.get(slugRelations[0].entity_id);
                 if (deal) {
-                    response.description = deal.description;
                     response.name = deal.name;
                 }
             }
@@ -1628,29 +1625,26 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         item.redirect_url = redirectMap.get(relation.slug);
                     }
                     
-                    // Add category description and name if entity is category
+                    // Add category name if entity is category
                     if (relation.entity_type === 'category') {
                         const category = categoryMap.get(relation.entity_id);
                         if (category) {
-                            item.description = category.description;
                             item.name = category.name;
                         }
                     }
                     
-                    // Add brand description and name if entity is brand
+                    // Add brand name if entity is brand
                     if (relation.entity_type === 'brand') {
                         const brand = brandMap.get(relation.entity_id);
                         if (brand) {
-                            item.description = brand.description;
                             item.name = brand.name;
                         }
                     }
                     
-                    // Add blog category description and name if entity is blog_category
+                    // Add blog category name if entity is blog_category
                     if (relation.entity_type === 'blog_category') {
                         const blogCategory = blogCategoryMap.get(relation.entity_id);
                         if (blogCategory) {
-                            item.description = blogCategory.description;
                             item.name = blogCategory.name;
                         } else if (!redirectMap.has(relation.slug)) {
                             // Blog category is soft-deleted and no redirect - skip this item
@@ -1658,11 +1652,10 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         }
                     }
                     
-                    // Add deal description and name if entity is deal
+                    // Add deal name if entity is deal
                     if (relation.entity_type === 'deal') {
                         const deal = dealMap.get(relation.entity_id);
                         if (deal) {
-                            item.description = deal.description;
                             item.name = deal.name;
                         }
                     }
@@ -1786,29 +1779,26 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     entity_id: relation.entity_id
                 };
                 
-                // Add category description and name if entity is category
+                // Add category name if entity is category
                 if (relation.entity_type === 'category') {
                     const category = categoryMap.get(relation.entity_id);
                     if (category) {
-                        item.description = category.description;
                         item.name = category.name;
                     }
                 }
                 
-                // Add brand description and name if entity is brand
+                // Add brand name if entity is brand
                 if (relation.entity_type === 'brand') {
                     const brand = brandMap.get(relation.entity_id);
                     if (brand) {
-                        item.description = brand.description;
                         item.name = brand.name;
                     }
                 }
                 
-                // Add blog category description and name if entity is blog_category
+                // Add blog category name if entity is blog_category
                 if (relation.entity_type === 'blog_category') {
                     const blogCategory = blogCategoryMap.get(relation.entity_id);
                     if (blogCategory) {
-                        item.description = blogCategory.description;
                         item.name = blogCategory.name;
                     } else if (!redirectMap.has(relation.slug)) {
                         // Blog category is soft-deleted and no redirect - return error
@@ -1819,11 +1809,10 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     }
                 }
                 
-                // Add deal description and name if entity is deal
+                // Add deal name if entity is deal
                 if (relation.entity_type === 'deal') {
                     const deal = dealMap.get(relation.entity_id);
                     if (deal) {
-                        item.description = deal.description;
                         item.name = deal.name;
                     }
                 }
