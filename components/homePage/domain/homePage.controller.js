@@ -8,6 +8,7 @@ const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
 const logger = require("../../../utils/logger");
 const { cacheOrFetch } = require('../../../library/cache');
+const { toMetaDescription } = require('../../../utils/seoTextUtils');
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -1521,7 +1522,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
                 getEntityType(slugRelations[0].entity_type),
-                slugRelations[0].slug
+                slugRelations[0].slug,
+                { descriptionMode: 'meta' }
             );
 
             const response = {
@@ -1928,7 +1930,8 @@ module.exports.getSlugRelationsOriginal = async (req, res, next) => {
         if (slugArray.length === 1) {
             const seoData = await seoService.getSeoMeta(
                 getEntityType(slugRelations[0].entity_type),
-                slugRelations[0].slug
+                slugRelations[0].slug,
+                { descriptionMode: 'meta' }
             );
 
             const response = {
@@ -2814,41 +2817,6 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
 };
 
 /**
- * Remove HTML tags and clean formatting from text content, optimized for SEO
- * @param {string} text - Text content that may contain HTML and formatting
- * @param {number} maxLength - Maximum character length (default: 160 for SEO)
- * @returns {string|null} Clean text without HTML tags and formatting or null if input is null/undefined
- */
-const removeHtmlTags = (text, maxLength = 160) => {
-    if (!text) return null;
-    
-    // Remove HTML tags
-    let cleanText = text.replace(/<[^>]*>/g, '');
-    
-    // Replace multiple newlines with single space
-    cleanText = cleanText.replace(/\n+/g, ' ');
-    
-    // Replace multiple spaces with single space
-    cleanText = cleanText.replace(/\s+/g, ' ');
-    
-    // Trim whitespace
-    cleanText = cleanText.trim();
-    
-    // Truncate to SEO-optimal length (160 characters)
-    if (cleanText && cleanText.length > maxLength) {
-        cleanText = cleanText.substring(0, maxLength).trim();
-        // Ensure we don't cut words in the middle - find last space
-        const lastSpace = cleanText.lastIndexOf(' ');
-        if (lastSpace > maxLength * 0.8) { // Only if we're not cutting too much
-            cleanText = cleanText.substring(0, lastSpace);
-        }
-        cleanText += '...';
-    }
-    
-    return cleanText || null;
-};
-
-/**
  * Fetch entity data based on entity_type (Fallback method)
  * @param {string} entity_type - The type of entity
  * @param {number} entity_id - The ID of the entity
@@ -2868,7 +2836,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
                         entity_type: 'category',
                         entity_id: category.id,
                         name: category.name,
-                        description: removeHtmlTags(category.description),
+                        description: toMetaDescription(category.description),
                         logo_url: category.logo_url
                     };
                 }
@@ -2883,7 +2851,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
                         entity_type: 'brand',
                         entity_id: brand.id,
                         name: brand.name,
-                        description: removeHtmlTags(brand.description),
+                        description: toMetaDescription(brand.description),
                         logo_url: brand.logo_url
                     };
                 }
@@ -2905,7 +2873,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
                         entity_type: 'product',
                         entity_id: product.id,
                         name: product.name,
-                        description: removeHtmlTags(product.description),
+                        description: toMetaDescription(product.description),
                         logo_url: product.ProductImages && product.ProductImages.length > 0 
                             ? product.ProductImages[0].image_url 
                             : null
@@ -2932,7 +2900,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
                 if (productVariant && productVariant.product) {
                     // Use variant description or product name
                     const variantDescription = productVariant.description || productVariant.product.description;
-                    const cleanDescription = removeHtmlTags(variantDescription);
+                    const cleanDescription = toMetaDescription(variantDescription);
                     
                     entityData = {
                         entity_type: 'product_variant',
@@ -2982,7 +2950,7 @@ const getEntityDataByType = async (entity_type, entity_id) => {
                 });
                 if (blog) {
                     // Use content as description, removing HTML tags and limiting to 160 chars for SEO
-                    const description = removeHtmlTags(blog.content, 160);
+                    const description = toMetaDescription(blog.content, 160);
                     
                     entityData = {
                         entity_type: entity_type,
