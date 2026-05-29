@@ -2,7 +2,6 @@ const { Op } = require('sequelize');
 const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
 const { cacheOrFetch, invalidateCachePattern } = require('../../../../library/cache');
-const { toMetaDescription } = require('../../../../utils/seoTextUtils');
 
 // SEO Health Status Constants
 const SEO_HEALTH_STATUS = {
@@ -32,41 +31,26 @@ class SeoService {
    * Get SEO metadata for a specific entity (cached)
    * @param {string} entityType - Type of entity (product, category, brand, blog_category, blog_post)
    * @param {string} slug - URL slug
-   * @param {Object} [options]
-   * @param {'full'|'meta'|'none'} [options.descriptionMode='full'] - full: raw fields; meta: truncated plain-text description; none: omit description fields
    * @returns {Promise<Object|null>} SEO metadata as plain object, or null if not found
    */
-  async getSeoMeta(entityType, slug, options = {}) {
+  async getSeoMeta(entityType, slug) {
     try {
-      const { descriptionMode = 'full' } = options;
-
-      const cacheKey = descriptionMode === 'meta'
-        ? `seo:meta:snippet:${entityType}:${slug || ''}`
-        : descriptionMode === 'none'
-          ? `seo:meta:light:${entityType}:${slug || ''}`
-          : `seo:meta:${entityType}:${slug || ''}`;
-
-      const queryOptions = { where: { entityType, slug } };
-      if (descriptionMode === 'none') {
-        queryOptions.attributes = { exclude: ['description', 'description_text'] };
-      } else if (descriptionMode === 'meta') {
-        queryOptions.attributes = { exclude: ['description_text'] };
-      }
+      const cacheKey = `seo:meta:${entityType}:${slug || ''}`;
 
       const data = await cacheOrFetch(cacheKey, async () => {
-        const seoMeta = await this.models.SeoMeta.findOne(queryOptions);
+        // this.logger.info({ entityType, slug }, 'Getting SEO metadata');
+
+        const seoMeta = await this.models.SeoMeta.findOne({
+          where: { entityType, slug }
+        });
 
         if (!seoMeta) {
+          // this.logger.warn({ entityType, slug }, 'SEO metadata not found');
           return null;
         }
 
-        const json = seoMeta.toJSON ? seoMeta.toJSON() : seoMeta;
-
-        if (descriptionMode === 'meta') {
-          json.description = toMetaDescription(json.description);
-        }
-
-        return json;
+        // this.logger.info({ entityType, slug }, 'Successfully retrieved SEO metadata');
+        return seoMeta.toJSON ? seoMeta.toJSON() : seoMeta;
       }, 300);
 
       return data;
