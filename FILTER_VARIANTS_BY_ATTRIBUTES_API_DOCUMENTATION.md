@@ -4,9 +4,7 @@
 The `filterVariantsByAttributes` function is an optimized API endpoint that filters product variants based on attribute terms or variant slugs. It returns detailed product information along with filtered variants, available attribute terms, and comprehensive product metadata.
 
 **Endpoint:** `POST /api/product/filter-variants`  
-**Location:** `backend/components/product/domain/product.controller.js`
-
-**Product description:** Long HTML descriptions are **not** returned by this endpoint. Fetch them once per product page load via `GET /api/product/{id}/description`.
+**Location:** `backend/components/product/domain/product.controller.js` (lines 1717-2517)
 
 ---
 
@@ -154,6 +152,7 @@ Calculates stock statistics:
      - Primary and all images
      - Attributes with full details
      - Product categories and brands
+     - Product description
 
 ### Phase 16: Filtered Attribute Terms Preparation (Lines 2394-2459)
 1. **Build Filtered Attribute Terms Response**
@@ -184,6 +183,7 @@ Assembles final response with:
       "id": 123,
       "name": "Product Name",
       "slug": "product-slug",
+      "description": "Product description",
       "created_at": "2024-01-01T00:00:00.000Z",
       "updated_at": "2024-01-01T00:00:00.000Z",
       "category": {
@@ -377,6 +377,7 @@ Assembles final response with:
             "slug": "brand-slug"
           }
         ],
+        "product_description": "Product description text"
       }
     ],
     "available_terms": [
