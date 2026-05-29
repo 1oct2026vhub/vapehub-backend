@@ -593,6 +593,15 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         transaction,
     });
     const pointsBalance = userForLoyalty ? parseInt(userForLoyalty.loyalty_points, 10) || 0 : 0;
+
+    loyaltyShippingPricing.assertLoyaltyPointsToRedeem({
+        loyalty: Boolean(loyalty),
+        rawPointsToRedeem,
+        userPointsBalance: pointsBalance,
+        minimumPointsRedemption: loyaltySettings?.minimum_points_redemption,
+        loyaltyProgramActive: Boolean(loyaltySettings),
+    });
+
     let pointsRequested = pointsToRedeemRequest;
     const useFullBalanceRedemption = Boolean(loyalty && pointsToRedeemRequest === 0);
     if (useFullBalanceRedemption && loyaltySettings) {

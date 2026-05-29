@@ -749,6 +749,15 @@ module.exports.applyCoupon = async (req, res, next) => {
             attributes: ['id', 'loyalty_points'],
         });
         const pointsBalance = pointsUser ? parseInt(pointsUser.loyalty_points, 10) || 0 : 0;
+
+        loyaltyShippingPricing.assertLoyaltyPointsToRedeem({
+            loyalty: Boolean(loyalty),
+            rawPointsToRedeem,
+            userPointsBalance: pointsBalance,
+            minimumPointsRedemption: loyaltySettings?.minimum_points_redemption,
+            loyaltyProgramActive: Boolean(loyaltySettings),
+        });
+
         let pointsRequested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
         const useFullBalanceRedemption = Boolean(loyalty && pointsRequested === 0);
         if (useFullBalanceRedemption && loyaltySettings) {
@@ -1596,6 +1605,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             useShippingAsBilling,
             payment_method,
             loyalty,
+            points_to_redeem,
             total,
             receive_promotions
         } = req.body;
@@ -1841,6 +1851,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                 useShippingAsBilling: useShippingAsBilling !== undefined ? useShippingAsBilling : true,
                 payment_method,
                 loyalty,
+                points_to_redeem,
                 total,
                 shipping_method_id,
                 // Pass enriched cart items directly - no Cart table query needed

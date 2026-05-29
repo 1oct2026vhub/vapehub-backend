@@ -266,6 +266,45 @@ function buildLoyaltyRedemptionInfo(settings, userPoints = 0, options = {}) {
   };
 }
 
+/**
+ * Validate explicit loyalty redemption request (before full-balance expansion).
+ * @throws {{ statusCode: number, message: string }}
+ */
+function assertLoyaltyPointsToRedeem({
+  loyalty,
+  rawPointsToRedeem,
+  userPointsBalance,
+  minimumPointsRedemption,
+  loyaltyProgramActive = true,
+}) {
+  if (!loyalty || !loyaltyProgramActive) return;
+
+  const requested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
+
+  // loyalty=true + points_to_redeem=0 => use full balance (no explicit amount check)
+  if (requested === 0) return;
+
+  const balance = Math.max(0, parseInt(userPointsBalance, 10) || 0);
+  const minRedeem = Math.max(0, parseInt(minimumPointsRedemption, 10) || 0);
+
+  if (requested > balance) {
+    throw {
+      statusCode: 400,
+      message:
+        balance === 0
+          ? 'You have no loyalty points available to redeem'
+          : `You only have ${balance} loyalty points available`,
+    };
+  }
+
+  if (minRedeem > 0 && requested < minRedeem) {
+    throw {
+      statusCode: 400,
+      message: `Minimum ${minRedeem} points required to redeem loyalty points`,
+    };
+  }
+}
+
 /** Snippet for apply-coupon / order responses after computeShippingAndLoyalty. */
 function loyaltyPricingResponseFields(pricing) {
   if (!pricing) return {};
@@ -283,6 +322,7 @@ module.exports = {
   computeTieredPercentFromPoints,
   pointsRequiredForTieredPercent,
   buildLoyaltyRedemptionInfo,
+  assertLoyaltyPointsToRedeem,
   loyaltyPricingResponseFields,
   round2,
   DEFAULT_POINTS_PER_PERCENT_TIER,
