@@ -23,7 +23,7 @@ const buildCanonicalUrl = (slug) => {
     return `${baseUrl}/${normalizedSlug}`;
 };
 
-const stripHtmlForSeoDescription = (text, maxLength = 160) => {
+const stripHtmlForSeoDescription = (text, maxLength) => {
     if (!text || typeof text !== 'string') return null;
 
     let cleanText = text
