@@ -23,6 +23,34 @@ const buildCanonicalUrl = (slug) => {
     return `${baseUrl}/${normalizedSlug}`;
 };
 
+const stripHtmlForSeoDescription = (text, maxLength = 160) => {
+    if (!text || typeof text !== 'string') return null;
+
+    let cleanText = text
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!cleanText) return null;
+
+    if (cleanText.length > maxLength) {
+        cleanText = cleanText.substring(0, maxLength).trim();
+        const lastSpace = cleanText.lastIndexOf(' ');
+        if (lastSpace > maxLength * 0.8) {
+            cleanText = cleanText.substring(0, lastSpace);
+        }
+        cleanText += '...';
+    }
+
+    return cleanText;
+};
+
 const ensureProductSeoMeta = async ({
     productId,
     productName,
@@ -41,7 +69,7 @@ const ensureProductSeoMeta = async ({
         entityType: 'product',
         entityId: productId,
         title: productName || normalizedSlug,
-        description: productDescription || null,
+        description: stripHtmlForSeoDescription(productDescription),
         slug: normalizedSlug,
         canonicalUrl: buildCanonicalUrl(normalizedSlug),
         noIndex: productStatus !== 'published'
