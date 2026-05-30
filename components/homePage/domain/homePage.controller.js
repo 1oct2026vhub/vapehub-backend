@@ -2819,7 +2819,7 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
  * @param {number} maxLength - Maximum character length (default: 160 for SEO)
  * @returns {string|null} Clean text without HTML tags and formatting or null if input is null/undefined
  */
-const removeHtmlTags = (text, maxLength = 160) => {
+const removeHtmlTags = (text, maxLength) => {
     if (!text) return null;
     
     // Remove HTML tags
