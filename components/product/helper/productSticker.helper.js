@@ -286,14 +286,32 @@ function normalizeStickerDefaultsPayload(body) {
   };
 }
 
+function attachStickerToProductList(products) {
+  if (!Array.isArray(products)) return products;
+  return products.map((product) => ({
+    ...product,
+    sticker: formatProductStickerResponse(product),
+  }));
+}
+
+/** SQL fragment for product listing queries */
+const PRODUCT_STICKER_SELECT_SQL = `
+  p.sticker_name,
+  p.sticker_background_color,
+  p.sticker_active_from,
+  p.sticker_active_until,
+  p.sticker_source`;
+
 module.exports = {
   DEFAULT_STICKER_CONFIG,
+  PRODUCT_STICKER_SELECT_SQL,
   getProductStickerDefaults,
   bustProductStickerDefaultsCache,
   clearProductStickerFields,
   parseStickerInput,
   isStickerCurrentlyActive,
   formatProductStickerResponse,
+  attachStickerToProductList,
   applyAutoNewSticker,
   applyAutoNewFlavoursSticker,
   applyAutoNewFlavoursStickerForAttributeIds,

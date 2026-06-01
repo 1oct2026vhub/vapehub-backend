@@ -3,6 +3,7 @@ const { sequelize, Product, Category, Brand, ProductImage, ProductAttributeTerm,
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCachePattern } = require('../../../library/cache');
+const { formatProductStickerResponse } = require('./productSticker.helper');
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -16,7 +17,12 @@ async function getTrendingProducts(limit = 10) {
         p.slug, 
         p.sku,
         p.price, 
-        p.discount_price, 
+        p.discount_price,
+        p.sticker_name,
+        p.sticker_background_color,
+        p.sticker_active_from,
+        p.sticker_active_until,
+        p.sticker_source,
         COUNT(DISTINCT o.id) AS order_count
       FROM 
         products p
@@ -30,7 +36,9 @@ async function getTrendingProducts(limit = 10) {
         AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
       GROUP BY 
-        p.id, p.name, p.slug, p.sku, p.price, p.discount_price
+        p.id, p.name, p.slug, p.sku, p.price, p.discount_price,
+        p.sticker_name, p.sticker_background_color,
+        p.sticker_active_from, p.sticker_active_until, p.sticker_source
       ORDER BY 
         order_count DESC
       LIMIT :limit
@@ -39,7 +47,10 @@ async function getTrendingProducts(limit = 10) {
     type: sequelize.QueryTypes.SELECT,
   });
 
-  return trendingProducts;
+  return trendingProducts.map((row) => ({
+    ...row,
+    sticker: formatProductStickerResponse(row),
+  }));
 }
 // Helper function to generate unique filename
 const generateUniqueFileName = (originalName) => {
@@ -644,6 +655,8 @@ const fetchProducts = async (query, status = 'published') => {
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt,
           p.updatedAt, p.deletedAt,
+          p.sticker_name, p.sticker_background_color,
+          p.sticker_active_from, p.sticker_active_until, p.sticker_source,
           COALESCE(order_stats.order_count, 0) as order_count,
           COALESCE(price_stats.min_price, 0) as min_price
         FROM products p
@@ -1252,7 +1265,8 @@ const fetchProducts = async (query, status = 'published') => {
            const thirtyDaysAgo = new Date();
            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
            return new Date(product.createdAt) >= thirtyDaysAgo;
-         })() : false
+         })() : false,
+        sticker: formatProductStickerResponse(product),
       };
     });
     // Build base product filter conditions for SQL queries
@@ -1877,7 +1891,7 @@ function getMinPriceVariant(product) {
 
 // Cached wrapper for product listing (reduces DB load; invalidate with invalidateCachePattern('products:*') on admin product changes)
 const fetchProductsCached = async (query, status = 'published') => {
-  const cacheKey = `products:list:${JSON.stringify({
+  const cacheKey = `products:list:v2:${JSON.stringify({
     sort_by: query.sort_by,
     order: query.order,
     limit: query.limit,

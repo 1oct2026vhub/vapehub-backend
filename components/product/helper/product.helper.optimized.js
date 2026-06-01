@@ -19,6 +19,7 @@ const { Op, Sequelize } = require('sequelize');
 const { Product, ProductVariant, Category, Brand, ProductAttributeTerm, ProductImage, Deal, DealProduct, Attribute, AttributeTerm, ProductVariantAttribute, ProductVariantImage } = require('../../../models');
 const { sequelize } = require('../../../models');
 const stockStatus = require('../../../config/constants').productVariants.stockStatus;
+const { formatProductStickerResponse } = require('./productSticker.helper');
 
 const fetchProductsOptimized = async (query, status = 'published') => {
   try {
@@ -215,6 +216,8 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.createdAt, 
           p.updatedAt, p.deletedAt,
+          p.sticker_name, p.sticker_background_color,
+          p.sticker_active_from, p.sticker_active_until, p.sticker_source,
           MIN(pv.price) as min_variant_price,
           COUNT(DISTINCT pv.id) as variant_count
         FROM products p
@@ -680,6 +683,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
           return new Date(product.createdAt) >= thirtyDaysAgo;
         })() : false,
+        sticker: formatProductStickerResponse(product),
         Categories: productCategoriesData.map(pc => ({
           id: pc.id,
           name: pc.name,
