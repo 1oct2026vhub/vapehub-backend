@@ -10,6 +10,14 @@ const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
+const {
+    clearProductStickerFields,
+    parseStickerInput,
+    formatProductStickerResponse,
+    applyAutoNewSticker,
+    applyAutoNewFlavoursSticker,
+    isFlavourAttributeName,
+} = require('../../../product/helper/productSticker.helper');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -507,7 +515,8 @@ module.exports.getProductById = async (req, res, next) => {
                     'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
-                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt',
+                    'sticker_name', 'sticker_background_color', 'sticker_active_from', 'sticker_active_until', 'sticker_source'
                 ]
             }),
             
@@ -739,10 +748,11 @@ module.exports.getProductById = async (req, res, next) => {
             }
         }
 
-        // Add puff count to the product response
+        // Add puff count and sticker to the product response
         let productResponse = {
             ...productData,
-            puff_count: puffCount
+            puff_count: puffCount,
+            sticker: formatProductStickerResponse(productData),
         };
 
         // When product is deleted, attach redirect details from Redirect table if any
@@ -994,10 +1004,24 @@ module.exports.createProduct = async (req, res, next) => {
             bottle_size,
             category_ids,
             brand_ids,
-            linked_product_ids
+            linked_product_ids,
+            sticker,
+            clear_sticker
         } = req.body;
 
         const { id: updated_by } = req.user;
+
+        let stickerFields = {};
+        try {
+            if (clear_sticker === true || sticker === null) {
+                stickerFields = clearProductStickerFields();
+            } else if (sticker && typeof sticker === 'object') {
+                stickerFields = parseStickerInput(sticker);
+            }
+        } catch (stickerError) {
+            await transaction.rollback();
+            return errorResponse(res, { message: stickerError.message }, stickerError.message, 400);
+        }
 
         // Clean the name and slug
         const cleanName = name.trim();
@@ -1148,10 +1172,15 @@ module.exports.createProduct = async (req, res, next) => {
                 vg_ratio,
                 vaping_style,
                 bottle_size,
-                updated_by
+                updated_by,
+                ...stickerFields
             },
             { transaction }
         );
+
+        if (!stickerFields.sticker_source && clear_sticker !== true && !sticker) {
+            await applyAutoNewSticker(product, transaction);
+        }
 
         // Create category associations
         if (category_ids && category_ids.length > 0) {
@@ -1227,7 +1256,10 @@ module.exports.createProduct = async (req, res, next) => {
             ]
         });
 
-        return successResponse(res, newProduct, "Product created successfully", 201);
+        const productJson = newProduct.toJSON();
+        productJson.sticker = formatProductStickerResponse(productJson);
+
+        return successResponse(res, productJson, "Product created successfully", 201);
     } catch (error) {
         await transaction.rollback();
         console.log(error);
@@ -1290,7 +1322,9 @@ module.exports.updateProduct = async (req, res, next) => {
             redirect_url,
             category_ids,
             brand_ids,
-            linked_product_ids
+            linked_product_ids,
+            sticker,
+            clear_sticker
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -1515,6 +1549,19 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
+        }
+
+        if (clear_sticker === true || sticker === null) {
+            Object.assign(updatedFields, clearProductStickerFields());
+        } else if (sticker !== undefined) {
+            try {
+                if (sticker && typeof sticker === 'object') {
+                    Object.assign(updatedFields, parseStickerInput(sticker));
+                }
+            } catch (stickerError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: stickerError.message }, stickerError.message, 400);
+            }
         }
 
         updatedFields.updated_by = updated_by;
@@ -1962,7 +2009,9 @@ module.exports.updateProduct = async (req, res, next) => {
         }
 
         // Include redirect information in response if product is deleted
-        let responseData = updatedProduct;
+        let responseData = updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct;
+        responseData.sticker = formatProductStickerResponse(responseData);
+
         if (updatedProduct.deletedAt) {
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'product', slug: updatedProduct.slug, status: 'active' },
@@ -1970,7 +2019,7 @@ module.exports.updateProduct = async (req, res, next) => {
             });
             if (redirect) {
                 responseData = {
-                    ...(updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct),
+                    ...responseData,
                     redirect: {
                         redirect_url: redirect.url_to,
                         old_path: redirect.sources,
@@ -3100,6 +3149,8 @@ const processAttributeRow = async ({ product_slug, attribute_slug, term_slugs, i
                     used_in_variation: used_in_variation === 'true' || used_in_variation === true,
                     updated_by
                 });
+            } else if (isFlavourAttributeName(attribute.name)) {
+                await applyAutoNewFlavoursSticker(product.id);
             }
         }
 

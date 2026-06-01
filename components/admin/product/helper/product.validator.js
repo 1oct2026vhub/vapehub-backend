@@ -24,6 +24,32 @@ const getLinkedProductsValidation = [
     check('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
 ];
 
+const productStickerValidation = [
+    body('clear_sticker').optional().isBoolean().withMessage('clear_sticker must be a boolean'),
+    body('sticker').optional({ nullable: true }).custom((value, { req }) => {
+        if (value === null) return true;
+        if (req.body.clear_sticker === true) return true;
+        if (value === undefined) return true;
+        if (typeof value !== 'object' || Array.isArray(value)) {
+            throw new Error('sticker must be an object');
+        }
+        return true;
+    }),
+    body('sticker.name')
+        .if((value, { req }) => req.body.sticker && typeof req.body.sticker === 'object')
+        .isString().trim().notEmpty().withMessage('sticker.name is required')
+        .isLength({ max: 64 }),
+    body('sticker.background_color')
+        .if((value, { req }) => req.body.sticker && typeof req.body.sticker === 'object')
+        .matches(/^#[0-9A-Fa-f]{6}$/).withMessage('sticker.background_color must be #RRGGBB'),
+    body('sticker.active_until')
+        .if((value, { req }) => req.body.sticker && typeof req.body.sticker === 'object')
+        .isISO8601().withMessage('sticker.active_until must be a valid ISO8601 date'),
+    body('sticker.active_from')
+        .optional({ nullable: true })
+        .isISO8601().withMessage('sticker.active_from must be a valid ISO8601 date'),
+];
+
 const createProductValidation = [
     check('name').isString().withMessage('Name must be a string').notEmpty().withMessage('Name is required'),
     check('slug').isString().withMessage('Slug must be a string').notEmpty().withMessage('Slug is required'),
@@ -70,6 +96,7 @@ const createProductValidation = [
             }
             return true;
         }),
+    ...productStickerValidation,
 ];
 
 const updateProductValidations = [
@@ -141,6 +168,7 @@ const updateProductValidations = [
             if (value.length > 500) throw new Error('redirect_url must be at most 500 characters');
             return true;
         }),
+    ...productStickerValidation,
 ];
 
 const productImageValidation = [

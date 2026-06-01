@@ -132,7 +132,32 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(500),
       allowNull: true,
       comment: 'URL to redirect to when product is soft-deleted'
-    }
+    },
+    sticker_name: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      comment: 'Product card sticker label text',
+    },
+    sticker_background_color: {
+      type: DataTypes.STRING(7),
+      allowNull: true,
+      comment: 'Product card sticker background hex colour',
+    },
+    sticker_active_from: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Sticker visible from (UTC)',
+    },
+    sticker_active_until: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Sticker visible until (UTC)',
+    },
+    sticker_source: {
+      type: DataTypes.ENUM('manual', 'auto_new', 'auto_new_flavours'),
+      allowNull: true,
+      comment: 'How sticker was set; manual prevents auto overwrite',
+    },
   }, {
     sequelize,
     modelName: 'Product',
