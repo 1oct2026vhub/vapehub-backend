@@ -883,6 +883,165 @@ const handleSentForAuthorization = async (order, webhookData) => {
     }
 };
 
+const finalizePaidOrder = async ({
+    order,
+    referenceNumber,
+    amount,
+    currency,
+    source,
+    metadata = {}
+}) => {
+    const transaction = await sequelize.transaction();
+    try {
+        const lockedOrder = await Order.findOne({
+            where: { id: order.id },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (!lockedOrder) {
+            throw new Error('Order not found during payment finalization');
+        }
+
+        if (
+            ['processing', 'shipped', 'delivered', 'completed'].includes(lockedOrder.status) &&
+            lockedOrder.ordered
+        ) {
+            await transaction.commit();
+            return { noOp: true, order: lockedOrder };
+        }
+
+        await lockedOrder.update(
+            {
+                status: 'processing',
+                ordered: true
+            },
+            { transaction }
+        );
+
+        const existingTransaction = await sequelize.models.Transaction.findOne({
+            where: {
+                orderId: lockedOrder.id,
+                userId: lockedOrder.user_id
+            },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (existingTransaction) {
+            await existingTransaction.update(
+                {
+                    paymentMethod: 'worldpay',
+                    transactionType: 'PURCHASE',
+                    amount,
+                    currency,
+                    status: 'COMPLETED',
+                    referenceNumber,
+                    notes: 'Payment completed successfully',
+                    metadata: {
+                        ...(existingTransaction.metadata || {}),
+                        ...metadata,
+                        source
+                    }
+                },
+                { transaction }
+            );
+        } else {
+            await sequelize.models.Transaction.create(
+                {
+                    userId: lockedOrder.user_id,
+                    orderId: lockedOrder.id,
+                    paymentMethod: 'worldpay',
+                    transactionType: 'PURCHASE',
+                    amount,
+                    currency,
+                    status: 'COMPLETED',
+                    referenceNumber,
+                    notes: 'Payment completed successfully',
+                    metadata: {
+                        ...metadata,
+                        source
+                    }
+                },
+                { transaction }
+            );
+        }
+
+        const additionalInfo = JSON.stringify({
+            source,
+            referenceNumber,
+            amount,
+            currency,
+            ...metadata
+        });
+
+        const existingOrderLog = await sequelize.models.OrderLog.findOne({
+            where: {
+                order_id: lockedOrder.id,
+                user_id: lockedOrder.user_id,
+                status: 'processing'
+            },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+        });
+
+        if (existingOrderLog) {
+            await existingOrderLog.update(
+                {
+                    status: 'processing',
+                    label: 'Payment Successful via Worldpay',
+                    additional_info: additionalInfo
+                },
+                { transaction }
+            );
+        } else {
+            await sequelize.models.OrderLog.create(
+                {
+                    order_id: lockedOrder.id,
+                    user_id: lockedOrder.user_id,
+                    status: 'processing',
+                    label: 'Payment Successful via Worldpay',
+                    additional_info: additionalInfo
+                },
+                { transaction }
+            );
+        }
+
+        await transaction.commit();
+        return { noOp: false, order: lockedOrder };
+    } catch (error) {
+        await transaction.rollback();
+        throw error;
+    }
+};
+
+const POST_PAYMENT_MARKER_STATUS = 'post_payment_processed';
+
+const hasPostPaymentProcessed = async (orderId, userId) => {
+    const marker = await sequelize.models.OrderLog.findOne({
+        where: {
+            order_id: orderId,
+            user_id: userId,
+            status: POST_PAYMENT_MARKER_STATUS
+        }
+    });
+
+    return Boolean(marker);
+};
+
+const markPostPaymentProcessed = async (order, source) => {
+    await sequelize.models.OrderLog.create({
+        order_id: order.id,
+        user_id: order.user_id,
+        status: POST_PAYMENT_MARKER_STATUS,
+        label: 'Post payment side effects processed',
+        additional_info: JSON.stringify({
+            source,
+            processedAt: new Date().toISOString()
+        })
+    });
+};
+
 const handleSentForSettlement = async (order, webhookData) => {
     try {
         // Convert amount from pence to pounds
@@ -891,62 +1050,23 @@ const handleSentForSettlement = async (order, webhookData) => {
             webhookData.eventDetails.amount.currencyCode
         );
 
-        // Update order status to processing
-        // await order.update({ status: 'processing' });
-        
-
-        // Create order log for successful payment
-        const existingOrderLog = await sequelize.models.OrderLog.findOne({
-            where: {
-                order_id: order.id,
-                user_id: order.user_id,
-                status: 'processing'
+        await finalizePaidOrder({
+            order,
+            referenceNumber: webhookData.eventDetails.transactionReference,
+            amount: convertedAmount.value,
+            currency: convertedAmount.currencyCode,
+            source: 'webhook:settlement',
+            metadata: {
+                eventId: webhookData.eventId,
+                eventTimestamp: webhookData.eventTimestamp,
+                eventDate: webhookData.eventDetails.date,
+                transactionId: webhookData.eventDetails.transactionReference,
+                downstreamReference: webhookData.eventDetails.downstreamReference,
+                type: webhookData.eventDetails.type,
+                classification: webhookData.eventDetails.classification,
+                paymentLink: webhookData.eventDetails._links?.payment?.href
             }
         });
-
-        if (existingOrderLog) {
-            // Update existing order log
-            await existingOrderLog.update({
-                // status: 'processing',
-                // label: 'Payment Successful via Worldpay',
-                additional_info: JSON.stringify({
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    transactionId: webhookData.eventDetails.transactionReference,
-                    downstreamReference: webhookData.eventDetails.downstreamReference,
-                    amount: convertedAmount.value,
-                    currency: convertedAmount.currencyCode,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                })
-            });
-
-            
-        } else {
-            // Create new order log
-            await sequelize.models.OrderLog.create({
-                order_id: order.id,
-                user_id: order.user_id,
-                status: 'processing',
-                label: 'Payment Successful via Worldpay',
-                additional_info: JSON.stringify({
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    transactionId: webhookData.eventDetails.transactionReference,
-                    downstreamReference: webhookData.eventDetails.downstreamReference,
-                    amount: convertedAmount.value,
-                    currency: convertedAmount.currencyCode,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                })
-            });
-
-            
-        }
 
         
 
@@ -1133,61 +1253,6 @@ const handleSentForSettlement = async (order, webhookData) => {
         //         url: `/order-details/${order.id}`
         //     });
         // }
-
-        // Check for existing transaction
-        const existingTransaction = await sequelize.models.Transaction.findOne({
-            where: {
-                orderId: order.id,
-                userId: order.user_id,
-                status: 'COMPLETED'
-            }
-        });
-
-        if (existingTransaction) {
-            // Update existing transaction
-            await existingTransaction.update({
-                paymentMethod: 'worldpay',
-                transactionType: 'PURCHASE',
-                amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode,
-                status: 'COMPLETED',
-                referenceNumber: webhookData.eventDetails.transactionReference,
-                notes: 'Payment completed successfully',
-                metadata: {
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                }
-            });
-
-            
-        } else {
-            // Create new transaction record
-            await sequelize.models.Transaction.create({
-                userId: order.user_id,
-                orderId: order.id,
-                paymentMethod: 'worldpay',
-                transactionType: 'PURCHASE',
-                amount: convertedAmount.value,
-                currency: convertedAmount.currencyCode,
-                status: 'COMPLETED',
-                referenceNumber: webhookData.eventDetails.transactionReference,
-                notes: 'Payment completed successfully',
-                metadata: {
-                    eventId: webhookData.eventId,
-                    eventTimestamp: webhookData.eventTimestamp,
-                    eventDate: webhookData.eventDetails.date,
-                    type: webhookData.eventDetails.type,
-                    classification: webhookData.eventDetails.classification,
-                    paymentLink: webhookData.eventDetails._links?.payment?.href
-                }
-            });
-
-            
-        }
 
         // Create success notification
         // await createNotification({
@@ -2128,8 +2193,8 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             return errorResponse(res, {}, 'Order not found in database', 404);
         }
 
-        // Idempotency guard: skip re-processing once order is already in a finalized paid/fulfillment flow
-        if (['processing', 'shipped', 'delivered', 'completed'].includes(order.status)) {
+        const alreadyPostProcessed = await hasPostPaymentProcessed(order.id, order.user_id);
+        if (alreadyPostProcessed) {
             return successResponse(res, {
                 message: "payment already processed",
                 data: {
@@ -2147,61 +2212,19 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             }, "Success");
         }
 
-        // Update order status to processing and set ordered to true
-        await order.update({ 
-            status: 'processing',
-            ordered: true
-        });
-
-        // Create order log for successful payment
-        const existingOrderLog = await sequelize.models.OrderLog.findOne({
-            where: {
-                order_id: order.id,
-                user_id: order.user_id,
-                status: 'processing'
+        const finalizationResult = await finalizePaidOrder({
+            order,
+            referenceNumber: orderCode,
+            amount,
+            currency,
+            source: 'api:payment-success',
+            metadata: {
+                endpoint: '/api/payment/worldpay/payment-success'
             }
         });
 
-        if (existingOrderLog) {
-            // Update existing order log
-            await existingOrderLog.update({
-                status: 'processing',
-                label: 'Payment Successful via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
-            });
-        } else {
-            // Create new order log
-            await sequelize.models.OrderLog.create({
-                order_id: order.id,
-                user_id: order.user_id,
-                status: 'processing',
-                label: 'Payment Successful via Worldpay',
-                // additional_info: JSON.stringify({
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     transactionId: webhookData.eventDetails.transactionReference,
-                //     downstreamReference: webhookData.eventDetails.downstreamReference,
-                //     amount: convertedAmount.value,
-                //     currency: convertedAmount.currencyCode,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // })
-            });
-
-        }
+        order.status = finalizationResult.order.status;
+        order.ordered = finalizationResult.order.ordered;
 
         for (const item of order.orderItems) {
             if (item.variant) {
@@ -2215,7 +2238,7 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                     updateData.stock_status = 'out_of_stock';
                 }
 
-                await ProductVariant.update(
+                const [updatedVariantRows] = await ProductVariant.update(
                     updateData,
                     {
                         where: {
@@ -2224,9 +2247,13 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         }
                     }
                 );
+
+                if (updatedVariantRows === 0) {
+                    throw new Error(`Stock update conflict for variant ${item.variant.id} on order ${order.id}`);
+                }
             } else {
                 // Update product stock
-                await Product.update(
+                const [updatedProductRows] = await Product.update(
                     { stock_quantity: sequelize.literal(`stock_quantity - ${item.quantity}`) },
                     { 
                         where: { 
@@ -2235,6 +2262,10 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
                         }
                     }
                 );
+
+                if (updatedProductRows === 0) {
+                    throw new Error(`Stock update conflict for product ${item.product_id} on order ${order.id}`);
+                }
             }
         }
 
@@ -2592,57 +2623,6 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             });
         }
 
-        // Check for existing transaction
-        const existingTransaction = await sequelize.models.Transaction.findOne({
-            where: {
-                orderId: order.id,
-                userId: order.user_id,
-                status: 'COMPLETED'
-            }
-        });
-
-        if (existingTransaction) {
-            // Update existing transaction
-            await existingTransaction.update({
-                paymentMethod: 'worldpay',
-                transactionType: 'PURCHASE',
-                amount: amount,
-                currency: currency,
-                status: 'COMPLETED',
-                referenceNumber: orderCode,
-                notes: 'Payment completed successfully',
-                // metadata: {
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // }
-            });
-        } else {
-            // Create new transaction record
-            await sequelize.models.Transaction.create({
-                userId: order.user_id,
-                orderId: order.id,
-                paymentMethod: 'worldpay',
-                transactionType: 'PURCHASE',
-                amount: amount,
-                currency: currency,
-                status: 'COMPLETED',
-                referenceNumber: orderCode,
-                notes: 'Payment completed successfully',
-                // metadata: {
-                //     eventId: webhookData.eventId,
-                //     eventTimestamp: webhookData.eventTimestamp,
-                //     eventDate: webhookData.eventDetails.date,
-                //     type: webhookData.eventDetails.type,
-                //     classification: webhookData.eventDetails.classification,
-                //     paymentLink: webhookData.eventDetails._links?.payment?.href
-                // }
-            });
-        }
-
         // Create success notification
         await createNotification({
             userId: order.user_id,
@@ -2806,6 +2786,8 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             // Log the error but don't fail the payment
             // The order processing should continue even if email fails
         }
+
+        await markPostPaymentProcessed(order, 'api:payment-success');
 
         return successResponse(res, {
             message: "payment successfull",
