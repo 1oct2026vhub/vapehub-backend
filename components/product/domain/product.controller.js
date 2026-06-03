@@ -6,7 +6,7 @@ const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceV
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
-const { cacheOrFetch } = require('../../../library/cache');
+const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -1131,6 +1131,42 @@ module.exports.getProductByid = async (req, res, next) => {
     }
 }
 
+module.exports.getProductDescription = async (req, res, next) => {
+    try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:description:${productId}`, async () => {
+            const productResult = await Product.sequelize.query(`
+                SELECT p.id, p.description, p.updatedAt
+                FROM products p
+                WHERE p.id = :product_id
+                AND p.status = 'published'
+                AND p.deletedAt IS NULL
+            `, {
+                replacements: { product_id: productId },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!productResult.length) {
+                return null;
+            }
+
+            const product = productResult[0];
+            return {
+                product_id: product.id,
+                description: product.description,
+                updated_at: product.updatedAt
+            };
+        }, 300);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Product description fetched successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
@@ -1330,6 +1366,8 @@ module.exports.updateProduct = async (req, res, next) => {
             await ProductImage.bulkCreate(imageRecords, { transaction });
         }
         await transaction.commit();
+
+        await invalidateCache([`product:detail:${id}`, `product:description:${id}`]);
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
@@ -1876,6 +1914,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
                 p.is_discontinued, p.createdAt, p.updatedAt
+                p.id, p.name, p.slug, p.price, p.discount_price,
+                p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2445,7 +2485,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             name: brand.name,
             slug: brand.slug
         })) : [];
-        const product_description = product.description;
 
         // Extract puff count based on filtered attribute terms or largest from all
         let puffCount = null;
@@ -2624,8 +2663,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 created_at: variant.created_at,
                 updated_at: variant.updated_at,
                 product_categories: all_product_categories,
-                product_brands: all_product_brands,
-                product_description
+                product_brands: all_product_brands
             };
         });
         // Prepare product images (OPTIMIZED)

@@ -28,7 +28,7 @@
  *   EMAIL_WORKER_MAX_MESSAGES             messages per receive, 1..10 (10)
  *   EMAIL_WORKER_LONG_POLL_SECONDS        SQS WaitTimeSeconds, 0..20 (20)
  *   EMAIL_WORKER_VISIBILITY_OVERRIDE      override queue VisibilityTimeout (sec)
- *   EMAIL_WORKER_HTTP_TIMEOUT_MS          axios timeout (180000)
+ *   EMAIL_WORKER_HTTP_TIMEOUT_MS          axios timeout (600000 — 10m; chunky SMTP + gaps)
  *   EMAIL_WORKER_SHUTDOWN_GRACE_MS        SIGTERM grace period (30000)
  *   EMAIL_WORKER_BACKPRESSURE_FACTOR      pause receives while inflight >= concurrency * factor (2)
  */
@@ -53,7 +53,7 @@ const LONG_POLL_SEC = Math.min(20, Math.max(0, Number(process.env.EMAIL_WORKER_L
 const VISIBILITY_OVERRIDE = process.env.EMAIL_WORKER_VISIBILITY_OVERRIDE
     ? Math.max(0, Number(process.env.EMAIL_WORKER_VISIBILITY_OVERRIDE))
     : null;
-const HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.EMAIL_WORKER_HTTP_TIMEOUT_MS || 180000));
+const HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.EMAIL_WORKER_HTTP_TIMEOUT_MS || 600000));
 const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.EMAIL_WORKER_SHUTDOWN_GRACE_MS || 30000));
 const BACKPRESSURE_FACTOR = Math.max(1, Number(process.env.EMAIL_WORKER_BACKPRESSURE_FACTOR || 2));
 
@@ -162,6 +162,36 @@ function parseBody(body) {
     }
 }
 
+/**
+ * Delete SQS only when the chunk reached a terminal success state on the API.
+ * Do not delete on in-progress / ambiguous responses (message must redrive).
+ * @param {import('axios').AxiosResponse} res
+ */
+function shouldDeleteChunkSqsMessage(res) {
+    if (res.status < 200 || res.status >= 300) return false;
+    const body = res.data;
+    if (!body || body.success !== true) return false;
+    const d = body.data && typeof body.data === 'object' ? body.data : {};
+    if (d.deduped === true) return true;
+    if (
+        typeof d.successful === 'number' &&
+        typeof d.failed === 'number' &&
+        Number.isFinite(d.successful) &&
+        Number.isFinite(d.failed)
+    ) {
+        return true;
+    }
+    if (
+        typeof d.sent === 'number' &&
+        typeof d.failed === 'number' &&
+        Number.isFinite(d.sent) &&
+        Number.isFinite(d.failed)
+    ) {
+        return true;
+    }
+    return false;
+}
+
 async function processOne(message) {
     const parsed = parseBody(message.Body);
     if (!parsed || !Number.isFinite(parsed.campaignId) || !Number.isFinite(parsed.chunkId)) {
@@ -176,7 +206,7 @@ async function processOne(message) {
     const { campaignId, chunkId } = parsed;
     try {
         const res = await http.post(ENDPOINT_PATH, { campaignId, chunkId });
-        if (res.status >= 200 && res.status < 300) {
+        if (shouldDeleteChunkSqsMessage(res)) {
             await sqs
                 .deleteMessage({
                     QueueUrl: queueUrl,
@@ -186,7 +216,7 @@ async function processOne(message) {
             processedOk += 1;
             logger.info(
                 { campaignId, chunkId, status: res.status },
-                'Chunk processed; SQS message deleted'
+                'Chunk completed or deduped; SQS message deleted'
             );
         } else {
             processedFail += 1;
@@ -197,7 +227,7 @@ async function processOne(message) {
                     status: res.status,
                     response: typeof res.data === 'object' ? res.data : String(res.data).slice(0, 500)
                 },
-                'Internal endpoint returned non-2xx — leaving message for redrive'
+                'Chunk not finalized — leaving SQS message for redrive'
             );
         }
     } catch (err) {
