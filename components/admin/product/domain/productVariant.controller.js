@@ -455,7 +455,6 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         description: variant.description,
         alt_text: variant.alt_text,
         status: variant.status || 'active',
-        is_discontinued: variant.is_discontinued ?? false,
         is_discontinued: variant.is_discontinued === true,
         updated_by
     }, { transaction });
