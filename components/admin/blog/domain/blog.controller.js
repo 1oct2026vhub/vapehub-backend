@@ -8,6 +8,7 @@ const slugManager = new SlugManager(SlugRelation);
 const seoService = require('../../seo/domain/seo.service');
 
 const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
+const { replaceInlineBase64ImagesWithS3Urls } = require("../helper/blogContent.helper");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -217,7 +218,8 @@ module.exports.createBlog = async (req, res) => {
             timeout: 30000
         });
 
-        const { title, content, slug, published_at, alt_text } = req.body;
+        const { title, slug, published_at, alt_text } = req.body;
+        const content = await replaceInlineBase64ImagesWithS3Urls(req.body.content);
         const categories = req.body.categories ? 
             req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
         const tags = req.body.tags ? 
@@ -334,7 +336,10 @@ module.exports.updateBlog = async (req, res) => {
     const transaction = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { title, content, slug, categories, tags, published_at, alt_text, redirect_url } = req.body;
+        const { title, slug, categories, tags, published_at, alt_text, redirect_url } = req.body;
+        const content = req.body.content
+            ? await replaceInlineBase64ImagesWithS3Urls(req.body.content)
+            : undefined;
         const { id: updated_by } = req.user;
         const status = req.body.status;
         const blog = await Blog.findByPk(id, { transaction, paranoid: false });
@@ -471,9 +476,16 @@ module.exports.updateBlog = async (req, res) => {
         }
         return successResponse(res, responseData, "Blog post updated successfully");
     } catch (error) {
-        console.log("error", error);
-        await transaction.rollback();
-        return errorResponse(res, error, error.message);
+        console.error('Blog update error:', error);
+        if (transaction) {
+            try {
+                await transaction.rollback();
+            } catch (rollbackError) {
+                console.error('Blog update rollback error:', rollbackError);
+            }
+        }
+        const statusCode = error.name === 'SequelizeUniqueConstraintError' ? 409 : 500;
+        return errorResponse(res, error, error.message || 'Failed to update blog post', statusCode);
     }
 };
 
