@@ -132,15 +132,15 @@ const fetchCategoryProducts = async (categoryId, query) => {
         const productsQuery = `
             SELECT 
                 p.id, p.updated_by, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt,
+                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt,
                 p.updatedAt, p.deletedAt,
                 COALESCE(order_stats.order_count, 0) as order_count,
                 -- Get min variant price and image
                 (SELECT MIN(pv.price) FROM product_variants pv 
-                 WHERE pv.product_id = p.id AND pv.status = 'active' AND pv.price > 0) as min_price,
+                 WHERE pv.product_id = p.id AND pv.status = 'active' AND pv.is_discontinued = 0 AND pv.price > 0) as min_price,
                 (SELECT pvi.image_url FROM product_variant_images pvi 
                  JOIN product_variants pv2 ON pvi.variant_id = pv2.id 
-                 WHERE pv2.product_id = p.id AND pv2.status = 'active' 
+                 WHERE pv2.product_id = p.id AND pv2.status = 'active' AND pv2.is_discontinued = 0
                  AND pvi.deleted_at IS NULL
                  ORDER BY pvi.is_primary DESC LIMIT 1) as variant_image,
                 -- Get primary product image
@@ -180,6 +180,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 (SELECT COUNT(*) FROM product_variants pv_stock 
                  WHERE pv_stock.product_id = p.id 
                  AND pv_stock.status = 'active' 
+                 AND pv_stock.is_discontinued = 0
                  AND pv_stock.stock > 0 
                  AND pv_stock.stock_status = 'in_stock' 
                  AND pv_stock.price IS NOT NULL 
@@ -398,13 +399,14 @@ const fetchCategoryProducts = async (categoryId, query) => {
                     stock_quantity: product.stock_quantity,
                     puff_count: puffCount,
                     is_new: isNewProduct,
+                    is_discontinued: Boolean(product.is_discontinued),
                     status: product.status,
                     createdAt: product.createdAt,
                     updatedAt: product.updatedAt,
                     deletedAt: product.deletedAt,
                     flavor_count: parseInt(product.flavor_count) || 0,
                     flavors: [], // Will be populated from productAttributeTerms if needed
-                    out_of_stock: !(parseInt(product.in_stock_variants_count) > 0), // EXACT fetchProducts logic
+                    out_of_stock: Boolean(product.is_discontinued) || !(parseInt(product.in_stock_variants_count) > 0),
                     order_count: product.order_count ? parseInt(product.order_count) : 0, // Add order count for popularity
                     ProductImages: productImagesMap.get(product.id) || [], // Add ProductImages array like fetchProducts
                     min_price_variant: {

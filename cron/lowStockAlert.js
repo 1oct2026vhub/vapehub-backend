@@ -11,19 +11,23 @@ cron.schedule('0 * * * *', async () => {
     // Find all low stock variants (stock > 0 and stock <= low_stock_threshold) and out of stock variants (stock = 0)
     const lowStockVariants = await ProductVariant.findAll({
       where: {
-        stock: { [Op.gte]: 0 } // Changed from Op.gt to Op.gte to include stock = 0
+        stock: { [Op.gte]: 0 }, // Changed from Op.gt to Op.gte to include stock = 0
+        is_discontinued: false
       },
       include: [{
         model: Product,
         as: 'product',
         attributes: ['name'],
         where: {
-          deletedAt: null // Only include non-soft deleted products
+          deletedAt: null, // Only include non-soft deleted products
+          is_discontinued: false
         }
       }]
     });
     // Filter in JS for variants where stock <= low_stock_threshold (includes out of stock)
-    const lowStockVariantsFiltered = lowStockVariants.filter(v => v.stock <= v.low_stock_threshold);
+    const lowStockVariantsFiltered = lowStockVariants.filter(
+      v => v.stock <= v.low_stock_threshold && !v.is_discontinued && !v.product?.is_discontinued
+    );
     // Calculate last 28 days sales for each low stock variant
     const lowStockList = await Promise.all(lowStockVariantsFiltered.map(async (v) => {
       const twentyEightDaysAgo = moment().tz(process.env.UK_TIMEZONE || 'Europe/London').subtract(28, 'days').startOf('day');
