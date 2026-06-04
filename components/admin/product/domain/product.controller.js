@@ -346,7 +346,8 @@ module.exports.listAllProducts = async (req, res, next) => {
                     "stock",
                     "low_stock_threshold",
                     "stock_status",
-                    "status"
+                    "status",
+                    "is_discontinued"
                 ],
                 include: [
                     {
@@ -504,7 +505,7 @@ module.exports.getProductById = async (req, res, next) => {
                 logging: false,
                 attributes: [
                     'id', 'updated_by', 'name', 'slug', 'description', 'price', 'discount_price', 
-                    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 
+                    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity',  'is_discontinued',
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
                     'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
@@ -583,7 +584,7 @@ module.exports.getProductById = async (req, res, next) => {
                     attributes: [
                         "id", "product_id", "slug", "price", "regular_price", "discount_price",
                         "purchase_price", "weight", "length", "width", "height", "description","sku",
-                        "barcode", "stock", "low_stock_threshold", "stock_status", "status"
+                        "barcode", "stock", "low_stock_threshold", "stock_status", "status", "is_discontinued"
                     ],
                     include: [
                         {
@@ -849,7 +850,8 @@ module.exports.getProductByIdOriginal = async (req, res, next) => {
                         "stock",
                         "low_stock_threshold",
                         "stock_status",
-                        "status"
+                        "status",
+                        "is_discontinued"
                     ],
                     include: [
                         {
@@ -992,6 +994,7 @@ module.exports.createProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            is_discontinued,
             category_ids,
             brand_ids,
             linked_product_ids
@@ -1148,6 +1151,7 @@ module.exports.createProduct = async (req, res, next) => {
                 vg_ratio,
                 vaping_style,
                 bottle_size,
+                is_discontinued,
                 updated_by
             },
             { transaction }
@@ -1201,7 +1205,6 @@ module.exports.createProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${product.id}`).catch(() => {});
 
         // Fetch and return the created product with related models
@@ -1287,6 +1290,7 @@ module.exports.updateProduct = async (req, res, next) => {
             vg_ratio,
             vaping_style,
             bottle_size,
+            is_discontinued,
             redirect_url,
             category_ids,
             brand_ids,
@@ -1512,6 +1516,9 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (bottle_size !== undefined) {
             updatedFields.bottle_size = bottle_size;
+        }
+        if (is_discontinued !== undefined) {
+            updatedFields.is_discontinued = is_discontinued;
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
@@ -1871,7 +1878,7 @@ module.exports.updateProduct = async (req, res, next) => {
                     {
                         model: ProductVariant,
                         as: "variants",
-                        attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold']
+                        attributes: ['id', 'price', 'stock', 'discount_price', 'stock_status', 'low_stock_threshold', 'is_discontinued']
                     }
                 ],
                 transaction
@@ -1937,7 +1944,6 @@ module.exports.updateProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
@@ -2044,7 +2050,6 @@ module.exports.deleteProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCachePattern('sitemap:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
         logger.info(`Product ID ${id} deleted successfully`);
 
@@ -2133,7 +2138,6 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
             invalidateCachePattern('products:*').catch(() => {});
             invalidateCachePattern('product:new:*').catch(() => {});
             invalidateCachePattern('category:products:*').catch(() => {});
-            invalidateCachePattern('sitemap:*').catch(() => {});
             invalidateCache(deletedProducts.map(p => `product:detail:${p.id}`)).catch(() => {});
         }
 
