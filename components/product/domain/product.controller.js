@@ -1914,8 +1914,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
                 p.is_discontinued, p.createdAt, p.updatedAt
-                p.id, p.name, p.slug, p.price, p.discount_price,
-                p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
