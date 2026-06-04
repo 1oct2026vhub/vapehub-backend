@@ -4,6 +4,29 @@ const path = require('path');
 const { Blog } = require('../../../../models');
 const { Op } = require('sequelize');
 
+const MB = 1024 * 1024;
+const BLOG_CONTENT_MAX_MB = parseInt(process.env.BLOG_CONTENT_MAX_MB || '10', 10);
+const BLOG_IMAGE_MAX_MB = parseInt(process.env.BLOG_IMAGE_MAX_MB || '5', 10);
+const BLOG_IMAGE_FILE_SIZE_LIMIT = BLOG_IMAGE_MAX_MB * MB;
+const BLOG_CONTENT_FIELD_SIZE_LIMIT = BLOG_CONTENT_MAX_MB * MB;
+const BLOG_MAX_NON_FILE_FIELDS = 50;
+
+const contentTooLargeMessage = () =>
+    `Blog content exceeds the maximum size of ${BLOG_CONTENT_MAX_MB}MB. Remove large pasted images or save again after images are uploaded.`;
+
+const assertContentWithinSizeLimit = (value) => {
+    if (value == null || value === '') {
+        return;
+    }
+    const sizeBytes = Buffer.byteLength(String(value), 'utf8');
+    if (sizeBytes > BLOG_CONTENT_FIELD_SIZE_LIMIT) {
+        const sizeMb = (sizeBytes / MB).toFixed(1);
+        throw new Error(
+            `Blog content is ${sizeMb}MB, which exceeds the maximum allowed size of ${BLOG_CONTENT_MAX_MB}MB.`
+        );
+    }
+};
+
 const blogIdValidation = [
     param('id')
         .isInt()
@@ -23,6 +46,7 @@ const blogValidation = [
             if (!value || value.trim() === '') {
                 throw new Error('Content is required');
             }
+            assertContentWithinSizeLimit(value);
             return true;
         }),
     
@@ -95,6 +119,7 @@ const blogUpdateValidation = [
             if (!value || value.trim().length === 0) {
                 throw new Error('Content cannot be empty');
             }
+            assertContentWithinSizeLimit(value);
             return true;
         }),
     
@@ -252,9 +277,19 @@ const filterValidations = [
 
 // Configure multer storage
 const storage = multer.memoryStorage(); // Using memory storage for S3 upload
-const BLOG_IMAGE_FILE_SIZE_LIMIT = 20 * 1024 * 1024;   // 20MB featured image
-const BLOG_CONTENT_FIELD_SIZE_LIMIT = 20 * 1024 * 1024; // 20MB content field
-const BLOG_MAX_NON_FILE_FIELDS = 50;
+
+const multerLimitMessage = (err) => {
+    switch (err.code) {
+        case 'LIMIT_FIELD_VALUE':
+            return contentTooLargeMessage();
+        case 'LIMIT_FILE_SIZE':
+            return `Featured image exceeds the maximum allowed size of ${BLOG_IMAGE_MAX_MB}MB.`;
+        case 'LIMIT_FIELD_COUNT':
+            return `Too many form fields (maximum ${BLOG_MAX_NON_FILE_FIELDS}).`;
+        default:
+            return err.message;
+    }
+};
 // Update upload validation with storage and more specific file types
 const uploadValidation = multer({
     storage: storage,
@@ -285,16 +320,17 @@ const uploadValidation = multer({
 const uploadFileValidation = (req, res, next) => {
     uploadValidation(req, res, (err) => {
         if (err instanceof multer.MulterError) {
-            return res.status(400).json({
+            const msg = multerLimitMessage(err);
+            return res.status(413).json({
                 success: false,
-                message: "File upload error",
-                errors: [{ msg: err.message }]
+                message: msg,
+                errors: [{ path: err.field || 'content', msg }]
             });
         } else if (err) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid file",
-                errors: [{ msg: err.message }]
+                message: err.message || 'Invalid file',
+                errors: [{ path: 'image', msg: err.message }]
             });
         }
         next();
@@ -306,5 +342,7 @@ module.exports = {
     blogValidation,
     blogUpdateValidation,
     filterValidations,
-    uploadFileValidation
+    uploadFileValidation,
+    BLOG_CONTENT_MAX_MB,
+    BLOG_IMAGE_MAX_MB,
 };

@@ -72,6 +72,16 @@ app.use((req, res, next) => {
 const bodyLimit = process.env.BODY_LIMIT || '10mb';
 app.use(express.json({ limit: bodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({
+            success: false,
+            message: `Request body is too large. Maximum allowed size is ${bodyLimit}.`,
+            errors: [{ path: 'body', msg: err.message }],
+        });
+    }
+    next(err);
+});
 // 4. Authentication middleware (uncomment if needed)
 app.use(passport.initialize());
 passportConfig(passport);
