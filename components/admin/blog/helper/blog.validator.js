@@ -252,8 +252,8 @@ const filterValidations = [
 
 // Configure multer storage
 const storage = multer.memoryStorage(); // Using memory storage for S3 upload
-const BLOG_IMAGE_FILE_SIZE_LIMIT = 10 * 1024 * 1024;   // 10MB featured image
-const BLOG_CONTENT_FIELD_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB content field
+const BLOG_IMAGE_FILE_SIZE_LIMIT = 20 * 1024 * 1024;   // 20MB featured image
+const BLOG_CONTENT_FIELD_SIZE_LIMIT = 20 * 1024 * 1024; // 20MB content field
 const BLOG_MAX_NON_FILE_FIELDS = 50;
 // Update upload validation with storage and more specific file types
 const uploadValidation = multer({
