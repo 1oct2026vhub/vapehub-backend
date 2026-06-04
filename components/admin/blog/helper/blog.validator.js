@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const { Blog } = require('../../../../models');
 const { Op } = require('sequelize');
-
+// blog content size
 const MB = 1024 * 1024;
 const BLOG_CONTENT_MAX_MB = parseInt(process.env.BLOG_CONTENT_MAX_MB || '10', 10);
 const BLOG_IMAGE_MAX_MB = parseInt(process.env.BLOG_IMAGE_MAX_MB || '5', 10);
