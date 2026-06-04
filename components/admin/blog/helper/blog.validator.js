@@ -12,7 +12,7 @@ const BLOG_CONTENT_FIELD_SIZE_LIMIT = BLOG_CONTENT_MAX_MB * MB;
 const BLOG_MAX_NON_FILE_FIELDS = 50;
 
 const contentTooLargeMessage = () =>
-    `Blog content exceeds the maximum size of ${BLOG_CONTENT_MAX_MB}MB. Remove large pasted images or save again after images are uploaded.`;
+    `Blog content exceeds the maximum size of ${BLOG_CONTENT_MAX_MB}MB. Remove large pasted images and save again after images are uploaded.`;
 
 const assertContentWithinSizeLimit = (value) => {
     if (value == null || value === '') {
