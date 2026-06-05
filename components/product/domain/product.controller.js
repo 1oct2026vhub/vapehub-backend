@@ -6,7 +6,7 @@ const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceV
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
-const { cacheOrFetch } = require('../../../library/cache');
+const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -214,7 +214,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt
+                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY p.createdAt DESC, p.${sort_by} ${order}
@@ -341,7 +341,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Variants query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, price, discount_price, stock, stock_status, status
+                    id, product_id, price, discount_price, stock, stock_status, status, is_discontinued
                 FROM product_variants
                 WHERE product_id IN (:productIds) AND status = 'active'
             `, {
@@ -555,12 +555,14 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Get variants with images
             const variants = (variantsMap.get(product.id) || []).map(variant => ({
                 ...variant,
+                is_discontinued: Boolean(variant.is_discontinued),
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
             // Check stock status
-            const hasInStockVariant = variants.some(variant =>
+            const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
+                !variant.is_discontinued &&
                 variant.stock > 0 &&
                 variant.stock_status === 'in_stock' &&
                 variant.price !== null &&
@@ -645,6 +647,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 is_new: isNewProduct,
+                is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
                 Categories: categoriesMap.get(product.id) || [],
@@ -654,7 +657,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 deals: dealsMap.get(product.id) || [],
                 flavors: flavorTerms,
                 flavor_count: flavorTerms.length,
-                out_of_stock: !hasInStockVariant,
+                out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
                 min_price_variant: minPriceVariant,
                 // Add review data and statistics
                 reviews: processedReviews,
@@ -1128,6 +1131,42 @@ module.exports.getProductByid = async (req, res, next) => {
     }
 }
 
+module.exports.getProductDescription = async (req, res, next) => {
+    try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:description:${productId}`, async () => {
+            const productResult = await Product.sequelize.query(`
+                SELECT p.id, p.description, p.updatedAt
+                FROM products p
+                WHERE p.id = :product_id
+                AND p.status = 'published'
+                AND p.deletedAt IS NULL
+            `, {
+                replacements: { product_id: productId },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!productResult.length) {
+                return null;
+            }
+
+            const product = productResult[0];
+            return {
+                product_id: product.id,
+                description: product.description,
+                updated_at: product.updatedAt
+            };
+        }, 300);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Product description fetched successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.createProduct = async (req, res, next) => {
     const transaction = await Product.sequelize.transaction();
     try {
@@ -1327,6 +1366,8 @@ module.exports.updateProduct = async (req, res, next) => {
             await ProductImage.bulkCreate(imageRecords, { transaction });
         }
         await transaction.commit();
+
+        await invalidateCache([`product:detail:${id}`, `product:description:${id}`]);
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
@@ -2442,7 +2483,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             name: brand.name,
             slug: brand.slug
         })) : [];
-        const product_description = product.description;
 
         // Extract puff count based on filtered attribute terms or largest from all
         let puffCount = null;
@@ -2621,8 +2661,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 created_at: variant.created_at,
                 updated_at: variant.updated_at,
                 product_categories: all_product_categories,
-                product_brands: all_product_brands,
-                product_description
+                product_brands: all_product_brands
             };
         });
         // Prepare product images (OPTIMIZED)
