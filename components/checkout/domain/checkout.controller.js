@@ -10,6 +10,21 @@ const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper')
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
+const assertNotDiscontinued = (product, variant) => {
+    if (product?.is_discontinued) {
+        throw {
+            statusCode: 400,
+            message: `${product.name || 'This product'} is discontinued and cannot be purchased`
+        };
+    }
+    if (variant?.is_discontinued) {
+        throw {
+            statusCode: 400,
+            message: `${variant.slug || 'This variant'} is discontinued and cannot be purchased`
+        };
+    }
+};
+
 /**
  * Get entity name based on entity type and entity ID
  * @param {string} entityType - The type of entity (product, brand, category)
@@ -88,8 +103,8 @@ module.exports.checkout = async (req, res, next) => {
                 where: { user_id: userId },
                 include: [
                     { model: User, attributes: ["id", "first_name", "last_name", "email", "phone"], as: "user" },
-                    { model: Product, attributes: ["id", "name", "price", "discount_price", "stock_quantity"], as: "product", paranoid: false },
-                    { model: ProductVariant, attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"], as: "variant", paranoid: false }
+                    { model: Product, attributes: ["id", "name", "price", "discount_price", "stock_quantity", "is_discontinued"], as: "product", paranoid: false },
+                    { model: ProductVariant, attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at", "is_discontinued"], as: "variant", paranoid: false }
                 ]
             }),
             ShippingMethod.findAll({
@@ -116,6 +131,7 @@ module.exports.checkout = async (req, res, next) => {
                 const variantName = item.variant?.slug || `Variant ID: ${item.variant_id}` || 'Unknown variant';
                 return errorResponse(res, {}, `The selected variant ${variantName} for product ${productName} is no longer available. Please update your cart before proceeding to checkout.`, 404);
             }
+            assertNotDiscontinued(item.product, item.variant);
             // Validate quantity
             if (item.quantity !== undefined && item.quantity < 1) {
                 throw { message: `Quantity for ${item.product.name} must be at least 1`, statusCode: 400 };
@@ -290,7 +306,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 },
                 {
                     model: Product,
-                    attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                    attributes: ["id", "name", "price", "discount_price", "stock_quantity", "is_discontinued"],
                     as: "product",
                     include: [
                         {
@@ -309,7 +325,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 },
                 {
                     model: ProductVariant,
-                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"],
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "is_discontinued"],
                     as: "variant"
                 }
             ]
@@ -327,6 +343,7 @@ module.exports.applyCoupon = async (req, res, next) => {
             if (!item.variant) {
                 return errorResponse(res, {}, `Variant for product ${item.product?.name || 'Unknown'} is not found`, 404);
             }
+            assertNotDiscontinued(item.product, item.variant);
             subTotal += item.quantity * item.variant.price;
             totalItems += item.quantity;
         }
@@ -909,7 +926,7 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
 
             const product = await Product.findOne({
                 where: { id: product_id },
-                attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                attributes: ["id", "name", "price", "discount_price", "stock_quantity", "is_discontinued"],
                 include: [
                     {
                         model: Brand,
@@ -933,12 +950,13 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                     message: `Product with ID ${product_id} not found`
                 };
             }
+            assertNotDiscontinued(product, null);
 
             let variant = null;
             if (variant_id) {
                 variant = await ProductVariant.findOne({
                     where: { id: variant_id },
-                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock"],
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "is_discontinued"],
                     paranoid: false
                 });
 
@@ -948,6 +966,7 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                         message: `Variant for product ${product.name} is not found`
                     };
                 }
+                assertNotDiscontinued(product, variant);
             } else {
                 // Use product price if no variant
                 variant = { price: product.price };
@@ -1358,13 +1377,13 @@ module.exports.guestCheckout = async (req, res, next) => {
                     },
                     {
                         model: Product,
-                        attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                        attributes: ["id", "name", "price", "discount_price", "stock_quantity", "is_discontinued"],
                         as: "product",
                         paranoid: false
                     },
                     {
                         model: ProductVariant,
-                        attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
+                        attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at", "is_discontinued"],
                         as: "variant",
                         paranoid: false
                     }
@@ -1402,6 +1421,7 @@ module.exports.guestCheckout = async (req, res, next) => {
                         message: `The selected variant ${variantName} for product ${productName} is no longer available. Please update your cart before proceeding to checkout.`
                     };
                 }
+                assertNotDiscontinued(item.product, item.variant);
                 // Validate quantity
                 if (item.quantity !== undefined && item.quantity < 1) {
                     throw { message: `Quantity for ${item.product.name} must be at least 1`, statusCode: 400 };
@@ -1676,7 +1696,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
 
             const product = await Product.findOne({
                 where: { id: product_id },
-                attributes: ["id", "name", "price", "discount_price", "stock_quantity"],
+                attributes: ["id", "name", "price", "discount_price", "stock_quantity", "is_discontinued"],
                 include: [
                     {
                         model: Brand,
@@ -1700,12 +1720,13 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                     message: `Product with ID ${product_id} not found`
                 };
             }
+            assertNotDiscontinued(product, null);
 
             let variant = null;
             if (variant_id) {
                 variant = await ProductVariant.findOne({
                     where: { id: variant_id },
-                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at"],
+                    attributes: ["id", "product_id", "slug", "price", "discount_price", "purchase_price", "stock", "status", "stock_status", "deleted_at", "is_discontinued"],
                     paranoid: false
                 });
 
@@ -1715,6 +1736,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
                         message: `Variant for product ${product.name} is not found`
                     };
                 }
+                assertNotDiscontinued(product, variant);
 
                 if (variant.deleted_at) {
                     throw {

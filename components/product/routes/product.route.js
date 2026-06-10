@@ -123,6 +123,9 @@ const path = require("path");
  *                           updated_at:
  *                             type: string
  *                             format: date-time
+ *                           is_discontinued:
+ *                             type: boolean
+ *                             description: Whether the product is marked discontinued
  *                           Category:
  *                             type: object
  *                           Brand:
@@ -147,6 +150,9 @@ const path = require("path");
  *                                   type: integer
  *                                 stock_status:
  *                                   type: string
+ *                                 is_discontinued:
+ *                                   type: boolean
+ *                                   description: Whether this variant is marked discontinued
  *                                 variantAttributes:
  *                                   type: array
  *                                   items:
@@ -1364,6 +1370,9 @@ router.get('/:id/description',
  *                           type: string
  *                         slug:
  *                           type: string
+ *                         is_discontinued:
+ *                           type: boolean
+ *                           description: Whether the product is marked discontinued
  *                     variants:
  *                       type: array
  *                       items:
@@ -1385,6 +1394,9 @@ router.get('/:id/description',
  *                             type: string
  *                           is_in_stock:
  *                             type: boolean
+ *                           is_discontinued:
+ *                             type: boolean
+ *                             description: Whether this variant is marked discontinued
  *                           primary_image:
  *                             type: object
  *                             nullable: true
@@ -1446,6 +1458,9 @@ router.get('/:id/description',
  *                                   type: string
  *                                 is_in_stock:
  *                                   type: boolean
+ *                                 is_discontinued:
+ *                                   type: boolean
+ *                                   description: True when all variants for this term are discontinued
  *                     stock_summary:
  *                       type: object
  *                       properties:

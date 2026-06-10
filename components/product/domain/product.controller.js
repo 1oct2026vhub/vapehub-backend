@@ -218,6 +218,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
+                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY p.createdAt DESC, p.${sort_by} ${order}
@@ -344,7 +345,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Variants query - only essential fields
             Product.sequelize.query(`
                 SELECT 
-                    id, product_id, price, discount_price, stock, stock_status, status
+                    id, product_id, price, discount_price, stock, stock_status, status, is_discontinued
                 FROM product_variants
                 WHERE product_id IN (:productIds) AND status = 'active'
             `, {
@@ -558,12 +559,14 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Get variants with images
             const variants = (variantsMap.get(product.id) || []).map(variant => ({
                 ...variant,
+                is_discontinued: Boolean(variant.is_discontinued),
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
             // Check stock status
-            const hasInStockVariant = variants.some(variant =>
+            const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
+                !variant.is_discontinued &&
                 variant.stock > 0 &&
                 variant.stock_status === 'in_stock' &&
                 variant.price !== null &&
@@ -649,6 +652,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 puff_count: puffCount,
                 is_new: isNewProduct,
                 sticker: formatProductStickerResponse(product),
+                is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
                 Categories: categoriesMap.get(product.id) || [],
@@ -658,7 +662,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 deals: dealsMap.get(product.id) || [],
                 flavors: flavorTerms,
                 flavor_count: flavorTerms.length,
-                out_of_stock: !hasInStockVariant,
+                out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
                 min_price_variant: minPriceVariant,
                 // Add review data and statistics
                 reviews: processedReviews,
@@ -1922,10 +1926,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // 1. Get product basic info with raw SQL (MUST run first for validation)
         const productResult = await Product.sequelize.query(`
             SELECT 
-                p.id, p.name, p.slug, p.price, p.discount_price,
-                p.createdAt, p.updatedAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
+                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
+                p.is_discontinued, p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2078,7 +2082,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const variantsQuery = `
             SELECT 
                 id, product_id, slug, price, regular_price, discount_price,
-                stock, stock_status, status, low_stock_threshold, description,
+                stock, stock_status, is_discontinued, status, low_stock_threshold, description,
                 created_at, updated_at
             FROM product_variants
             WHERE product_id = :product_id 
@@ -2216,6 +2220,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             discount_price: variant.discount_price,
             stock: variant.stock,
             stock_status: variant.stock_status,
+            is_discontinued: Boolean(variant.is_discontinued),
             status: variant.status,
             low_stock_threshold: variant.low_stock_threshold,
             description: variant.description,
@@ -2375,6 +2380,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                                 description: va.term.description || null,
                                 stock_status: variant.stock_status,
                                 is_in_stock: variant.stock > 0,
+                                is_discontinued: Boolean(variant.is_discontinued),
                                 variant_slugs: []
                             });
                         }
@@ -2389,6 +2395,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                         if (variant.stock > 0 && !termData.is_in_stock) {
                             termData.is_in_stock = true;
                             termData.stock_status = variant.stock_status;
+                        }
+                        if (!variant.is_discontinued) {
+                            termData.is_discontinued = false;
                         }
                     }
                 }
@@ -2640,6 +2649,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 status: variant.status,
                 description: variant.description,
                 is_in_stock: variant.stock > 0,
+                is_discontinued: Boolean(variant.is_discontinued),
                 primary_image: primaryImage ? {
                     id: primaryImage.id,
                     url: primaryImage.image_url,
@@ -2766,6 +2776,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 id: product.id,
                 name: product.name,
                 slug: product.slug,
+                description: product.description, // Use direct description from SQL result
+                is_discontinued: Boolean(product.is_discontinued),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 key_highlights: keyHighlights,

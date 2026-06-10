@@ -128,6 +128,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'draft'
     },
+    is_discontinued: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     redirect_url: {
       type: DataTypes.STRING(500),
       allowNull: true,
