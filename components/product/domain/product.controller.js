@@ -215,10 +215,9 @@ module.exports.listNewProducts = async (req, res, next) => {
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.status, p.createdAt,
+                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
-                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY p.createdAt DESC, p.${sort_by} ${order}
@@ -1926,10 +1925,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // 1. Get product basic info with raw SQL (MUST run first for validation)
         const productResult = await Product.sequelize.query(`
             SELECT 
+                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
+                p.is_discontinued, p.createdAt, p.updatedAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
-                p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.is_discontinued, p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
