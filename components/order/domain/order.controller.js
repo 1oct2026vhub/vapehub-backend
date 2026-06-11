@@ -14,6 +14,7 @@ const dealService = require('../../Cart/helper/deal.service');
 const { findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { placeOrderLogic } = require('../helper/orderPlacement.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../../checkout/helper/guestCheckout.helper');
+const orderPlacementLogger = require('../../../utils/orderPlacementLogger');
 
 module.exports.getOrders = async (req, res) => {
     try {
@@ -318,21 +319,48 @@ module.exports.getOrders = async (req, res) => {
 // };
 
 module.exports.placeOrder = async (req, res, next) => {
+    const startedAt = Date.now();
+    const user_id = req.user.id;
+    const logContext = {
+        userId: user_id,
+        paymentMethod: req.body?.payment_method?.method || null,
+        clientTotal: req.body?.total ?? null,
+        shippingMethodId: req.body?.shipping_method_id ?? null
+    };
+
+    orderPlacementLogger.logStart(logContext);
+
     const transaction = await sequelize.transaction();
     try {
-        const user_id = req.user.id;
         const orderData = req.body;
-
         const orderResult = await placeOrderLogic(user_id, orderData, transaction);
 
         await transaction.commit();
-        
+
+        orderPlacementLogger.logSuccess({
+            ...logContext,
+            durationMs: Date.now() - startedAt,
+            orderId: orderResult.order_details?.order_id ?? null,
+            orderCode: orderResult.order_code ?? null,
+            orderUniqueId: orderResult.order_details?.order_unique_id ?? null,
+            calculatedTotal: orderResult.order_details?.pricing?.total ?? null,
+            worldpayUrlPresent: Boolean(orderResult.worldpay_url),
+            reusedPendingOrder: Boolean(orderResult.reused_pending_order)
+        });
+
         return successResponse(res, {
             message: "Order placed successfully",
             data: orderResult
         }, "Success");
     } catch (error) {
         await transaction.rollback();
+
+        orderPlacementLogger.logError({
+            ...logContext,
+            durationMs: Date.now() - startedAt,
+            error: orderPlacementLogger.serializeErrorForLog(error)
+        });
+
         return errorResponse(res, error, error.message);
     }
 };

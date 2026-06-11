@@ -21,8 +21,66 @@ const {
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
-const axios = require('axios');
+const {
+    createWorldpayPaymentPage,
+    generateTransactionReference
+} = require('./worldpay.helper');
 const { v4: uuidv4 } = require('uuid');
+
+const PENDING_WORLDPAY_ORDER_TTL_HOURS = Number(process.env.WORLDPAY_PENDING_ORDER_TTL_HOURS) || 24;
+
+const normalizeCartLines = (lines) =>
+    [...lines]
+        .map((line) => ({
+            product_id: line.product_id,
+            variant_id: line.variant_id ?? null,
+            quantity: line.quantity
+        }))
+        .sort((a, b) => {
+            const keyA = `${a.product_id}:${a.variant_id}:${a.quantity}`;
+            const keyB = `${b.product_id}:${b.variant_id}:${b.quantity}`;
+            return keyA.localeCompare(keyB);
+        });
+
+const cartMatchesOrder = (orderItems, newOrderItems) => {
+    const existing = normalizeCartLines(orderItems);
+    const incoming = normalizeCartLines(newOrderItems);
+    if (existing.length !== incoming.length) {
+        return false;
+    }
+    return existing.every((line, index) =>
+        line.product_id === incoming[index].product_id &&
+        line.variant_id === incoming[index].variant_id &&
+        line.quantity === incoming[index].quantity
+    );
+};
+
+const buildPlaceOrderResponse = ({
+    order,
+    worldpayUrl,
+    payMethod,
+    orderDetails,
+    shippingAddrs,
+    billingAddrs,
+    pricing,
+    reusedPendingOrder = false
+}) => ({
+    order_code: order.order_code,
+    worldpay_url: payMethod === 'Worldpay' ? worldpayUrl : null,
+    reused_pending_order: reusedPendingOrder,
+    order_details: {
+        order_id: order.id,
+        order_unique_id: order.order_unique_id,
+        order_code: order.order_code,
+        status: order.status,
+        total: pricing.total,
+        created_at: order.createdAt || order.created_at,
+        order_items: orderDetails,
+        pricing,
+        shipping: { address: shippingAddrs },
+        billing: { address: billingAddrs }
+    }
+});
 
 /**
  * Core order placement logic - returns order data without sending HTTP response
@@ -628,9 +686,23 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
     // Ensure Price Integrity
     calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
 
+    const pricing = {
+        subtotal: subTotal,
+        shipping_cost: shippingCostUsed,
+        deals_discount: dealsDiscount,
+        coupon_discount: coupon ? discount : 0,
+        referral_discount: referralDiscount,
+        loyalty_discount: loyaltyDiscount,
+        mail_subscription_discount: mailSubscriptionDiscount,
+        mail_subscription_discount_type: mailSubscriptionDiscountType,
+        total: calculatedTotal
+    };
+
     // Payment processing
     let orderCode = 0;
-    let worldpayResponse = {};
+    let worldpayUrl = null;
+    let reusedPendingOrder = false;
+    let order = null;
 
     if (payMethod === "VivaWallet") {
         try {
@@ -643,171 +715,127 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             throw new Error("Failed to process payment with Viva Wallet: " + error.message);
         }
     } else if (payMethod === "Worldpay") {
-        const generateTransactionReference = () => {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < 16; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        };
-        orderCode = generateTransactionReference();
-
-        const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
-        const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
-
-        // Use billing address from billingAddrs (which may be same as shipping if useShippingAsBilling is true)
         const billingAddrForPayment = useShippingAsBilling ? shipping_address : (billing_address || shipping_address);
-        
         let countryCode = (billingAddrForPayment.country || shipping_address.country || 'GB').toUpperCase();
         if (countryCode.length !== 2) {
             countryCode = 'GB';
         }
 
-        try {
-            worldpayResponse = await axios({
-                method: 'POST',
-                url: `${process.env.WORLDPAY_URL}/payment_pages`,
-                headers: {
-                    'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
-                    'User-Agent': 'string',
-                    'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`
-                },
-                data: {
-                    transactionReference: orderCode,
-                    merchant: { entity: process.env.WORLDPAY_MERCHANT_ID },
-                    narrative: { line1: 'VapeHub Order' },
-                    value: {
-                        currency: 'GBP',
-                        amount: Math.round(calculatedTotal * 100)
-                    },
-                    description: 'VapeHub Order',
-                    billingAddressName: billingAddrForPayment.first_name,
-                    billingAddress: {
-                        address1: billingAddrForPayment.address_line_1,
-                        address2: billingAddrForPayment.address_line_2 || '',
-                        address3: billingAddrForPayment.region,
-                        postalCode: billingAddrForPayment.post_code,
-                        city: billingAddrForPayment.city,
-                        state: billingAddrForPayment.region,
-                        countryCode: countryCode
-                    },
-                    resultURLs: {
-                        successURL: `${process.env.FRONTEND_URL}/payment-success?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`
-                    },
-                }
-            });
-
-            if (!worldpayResponse.data) {
-                throw new Error('No response data from Worldpay');
-            }
-        } catch (error) {
-            // Log as much detail as possible so we can debug cryptic payloads like {"a":"$@1","f":"","b":"..."}
-            console.error('Worldpay payment_pages error status:', error.response?.status);
-            console.error('Worldpay payment_pages error data:', error.response?.data);
-
-            // Try to surface a useful message if Worldpay sends one in a different shape
-            let worldpayMessage;
-            const data = error.response?.data;
-
-            if (typeof data === 'string') {
-                worldpayMessage = data;
-            } else if (data && typeof data === 'object') {
-                // Common patterns: { message }, { error: { message } }, or { a: 'CODE', b: 'traceId' }
-                worldpayMessage =
-                    data.message ||
-                    data.error?.message ||
-                    data.error_description ||
-                    JSON.stringify(data);
-            }
-
-            throw new Error(worldpayMessage || 'Failed to process payment with Worldpay');
-        }
-    }
-
-    // Generate order unique ID
-    const randomDigit = Math.floor(Math.random() * 10);
-    const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-    const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
-
-    // Create Order
-    const order = await Order.create({
-        user_id,
-        coupon_id: coupon && coupon_count_flag ? coupon.id : null,
-        total: calculatedTotal,
-        status: "pending",
-        order_shipping_address_id: shippingAddrs.id,
-        order_billing_address_id: billingAddrs.id,
-        shipping_method_id: shippingMethodId ? shippingMethodId : null,
-        order_unique_id: orderUniqueId,
-        order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
-        // Store the actual shipping cost that was applied to this order
-        shipping_cost: shippingCostUsed,
-        email: email,
-        phone: phone,
-        sub_total: subTotal,
-        deals_discount: dealsDiscount,
-        applicable_deals: applicableDeals,
-        discount_price: referralDiscount,
-        discount_type: discountType,
-        referral_id: referralId,
-        payment_method_id: paymentMethodRecord.id,
-        loyalty_flag: loyalty_flag,
-        loyalty_discount: loyaltyDiscount,
-        mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
-    }, { transaction });
-
-    await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
-
-    if (couponCode && referral_flag) {
-        try {
-            const referral = await Referral.findOne({
-                where: { referral_coupon_code: couponCode },
-                lock: true,
-                transaction
-            });
-
-            if (referral) {
-                await referral.update({
-                    order_id: order.id
-                }, { transaction });
-            }
-        } catch (error) {
-            console.log("error in place order function while updating referral with order");
-        }
-    }
-
-    return {
-        order_code: order.order_code,
-        worldpay_url: payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
-        order_details: {
-            order_id: order.id,
-            order_unique_id: order.order_unique_id,
-            order_code: order.order_code,
-            status: order.status,
-            total: calculatedTotal,
-            created_at: order.created_at,
-            order_items: orderDetails,
-            pricing: {
-                subtotal: subTotal,
-                // Reflect the same shipping cost as stored on the order
-                shipping_cost: shippingCostUsed,
-                deals_discount: dealsDiscount,
-                coupon_discount: coupon ? discount : 0,
-                referral_discount: referralDiscount,
-                loyalty_discount: loyaltyDiscount,
-                mail_subscription_discount: mailSubscriptionDiscount,
-                mail_subscription_discount_type: mailSubscriptionDiscountType,
-                total: calculatedTotal
+        const pendingSince = new Date(Date.now() - PENDING_WORLDPAY_ORDER_TTL_HOURS * 60 * 60 * 1000);
+        const existingPending = await Order.findOne({
+            where: {
+                user_id,
+                status: 'pending',
+                payment_method_id: paymentMethodRecord.id,
+                createdAt: { [Op.gte]: pendingSince }
             },
-            shipping: { address: shippingAddrs },
-            billing: { address: billingAddrs }
+            include: [{ model: OrderItem, as: 'orderItems' }],
+            order: [['createdAt', 'DESC']],
+            lock: transaction.LOCK.UPDATE,
+            transaction
+        });
+
+        const canReusePendingOrder = existingPending &&
+            cartMatchesOrder(existingPending.orderItems, orderItems) &&
+            Math.abs(parseFloat(existingPending.total) - calculatedTotal) < 0.01;
+
+        if (canReusePendingOrder) {
+            reusedPendingOrder = true;
+            order = existingPending;
+            orderCode = existingPending.order_code;
+
+            const { paymentUrl } = await createWorldpayPaymentPage({
+                transactionReference: orderCode,
+                calculatedTotal,
+                billingAddrForPayment,
+                countryCode,
+                logContext: { userId: user_id, reusedPendingOrder: true, orderId: order.id }
+            });
+            worldpayUrl = paymentUrl;
+        } else {
+            orderCode = generateTransactionReference();
+
+            const { paymentUrl } = await createWorldpayPaymentPage({
+                transactionReference: orderCode,
+                calculatedTotal,
+                billingAddrForPayment,
+                countryCode,
+                logContext: { userId: user_id, reusedPendingOrder: false }
+            });
+            worldpayUrl = paymentUrl;
         }
-    };
+    }
+
+    if (!reusedPendingOrder) {
+        const randomDigit = Math.floor(Math.random() * 10);
+        const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+        const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
+
+        order = await Order.create({
+            user_id,
+            coupon_id: coupon && coupon_count_flag ? coupon.id : null,
+            total: calculatedTotal,
+            status: "pending",
+            order_shipping_address_id: shippingAddrs.id,
+            order_billing_address_id: billingAddrs.id,
+            shipping_method_id: shippingMethodId ? shippingMethodId : null,
+            order_unique_id: orderUniqueId,
+            order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
+            shipping_cost: shippingCostUsed,
+            email: email,
+            phone: phone,
+            sub_total: subTotal,
+            deals_discount: dealsDiscount,
+            applicable_deals: applicableDeals,
+            discount_price: referralDiscount,
+            discount_type: discountType,
+            referral_id: referralId,
+            payment_method_id: paymentMethodRecord.id,
+            loyalty_flag: loyalty_flag,
+            loyalty_discount: loyaltyDiscount,
+            mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
+        }, { transaction });
+
+        await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
+
+        if (couponCode && referral_flag) {
+            try {
+                const referral = await Referral.findOne({
+                    where: { referral_coupon_code: couponCode },
+                    lock: true,
+                    transaction
+                });
+
+                if (referral) {
+                    await referral.update({
+                        order_id: order.id
+                    }, { transaction });
+                }
+            } catch (error) {
+                console.log("error in place order function while updating referral with order");
+            }
+        }
+    } else {
+        pricing.subtotal = parseFloat(order.sub_total);
+        pricing.shipping_cost = parseFloat(order.shipping_cost || 0);
+        pricing.deals_discount = parseFloat(order.deals_discount || 0);
+        pricing.coupon_discount = 0;
+        pricing.referral_discount = parseFloat(order.discount_price || 0);
+        pricing.loyalty_discount = parseFloat(order.loyalty_discount || 0);
+        pricing.mail_subscription_discount = parseFloat(order.mailSubscription_discount || 0);
+        pricing.total = parseFloat(order.total);
+    }
+
+    return buildPlaceOrderResponse({
+        order,
+        worldpayUrl,
+        payMethod,
+        orderDetails,
+        shippingAddrs,
+        billingAddrs,
+        pricing,
+        reusedPendingOrder
+    });
 };
 
 module.exports = {
