@@ -9,6 +9,19 @@ const { createNotification } = require('../../../notification/helper/notificatio
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
+const SHIPSTATION_CONCURRENCY = Number(process.env.SHIPSTATION_CONCURRENCY || 3);
+const SHIPSTATION_BATCH_DELAY_MS = Number(process.env.SHIPSTATION_BATCH_DELAY_MS || 500);
+
+async function safeRollback(transaction) {
+    if (transaction && !transaction.finished) {
+        await transaction.rollback();
+    }
+}
+
+function getOrderCustomerEmail(order) {
+    return order.user?.email || order.email || null;
+}
+
 /**
  * List all orders with filtering and pagination
  * Supports filtering by:
@@ -692,7 +705,6 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             const missingOrderIds = order_ids.filter(id => !foundOrderIds.includes(id));
 
             if (missingOrderIds.length > 0) {
-                await transaction.rollback();
                 const error = new Error('Some orders not found');
                 error.statusCode = 404;
                 error.missingOrderIds = missingOrderIds;
@@ -702,29 +714,50 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             const results = [];
             const errors = [];
 
-            // Step 1: For "packed" status, create ShipStation orders first (in parallel for efficiency)
-            // This happens outside transaction to avoid holding it during API calls
-            const shipStationPromises = [];
-            const shipStationMap = new Map(); // Map order.id -> shipStationPromise index
-            
+            // Step 1: For "packed" status, create ShipStation orders in rate-limited batches
+            const shipStationResultsByOrderId = new Map();
+
             if (status === orderStatus.PACKED) {
-                for (let i = 0; i < orders.length; i++) {
-                    const order = orders[i];
-                    
-                    // Only create ShipStation order if it doesn't already exist
-                    if (!order.shipstation_order_id) {
-                        const promise = createShipStationOrder(order)
-                            .then(response => ({ success: true, response, order }))
-                            .catch(error => ({ success: false, error, order }));
-                        
-                        shipStationPromises.push(promise);
-                        shipStationMap.set(order.id, shipStationPromises.length - 1);
+                const ordersNeedingShipStation = [];
+
+                for (const order of orders) {
+                    if (order.shipstation_order_id) {
+                        continue;
+                    }
+
+                    if (!getOrderCustomerEmail(order)) {
+                        shipStationResultsByOrderId.set(order.id, {
+                            success: false,
+                            error: new Error('Invalid order data: missing customer email')
+                        });
+                        continue;
+                    }
+
+                    ordersNeedingShipStation.push(order);
+                }
+
+                for (let i = 0; i < ordersNeedingShipStation.length; i += SHIPSTATION_CONCURRENCY) {
+                    const batch = ordersNeedingShipStation.slice(i, i + SHIPSTATION_CONCURRENCY);
+                    const batchResults = await Promise.all(
+                        batch.map(async (order) => {
+                            try {
+                                const response = await createShipStationOrder(order);
+                                return { orderId: order.id, success: true, response };
+                            } catch (error) {
+                                return { orderId: order.id, success: false, error };
+                            }
+                        })
+                    );
+
+                    for (const result of batchResults) {
+                        shipStationResultsByOrderId.set(result.orderId, result);
+                    }
+
+                    if (i + SHIPSTATION_CONCURRENCY < ordersNeedingShipStation.length) {
+                        await new Promise(resolve => setTimeout(resolve, SHIPSTATION_BATCH_DELAY_MS));
                     }
                 }
             }
-
-            // Wait for all ShipStation creations to complete (non-blocking for transaction)
-            const shipStationResults = await Promise.allSettled(shipStationPromises);
 
             // Step 2: Process each order - only update status if ShipStation creation succeeded (if required)
             for (const order of orders) {
@@ -738,31 +771,24 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                             // Order already has ShipStation ID, proceed with status update
                             shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
                         } else {
-                            // Check if ShipStation creation was attempted and succeeded
-                            const promiseIndex = shipStationMap.get(order.id);
-                            if (promiseIndex !== undefined) {
-                                const result = shipStationResults[promiseIndex];
-                                
-                                if (result.status === 'fulfilled' && result.value.success) {
-                                    shipStationResponse = result.value.response;
-                                    // Reload order to get updated shipstation_order_id
-                                    await order.reload();
+                            const result = shipStationResultsByOrderId.get(order.id);
+                            if (result) {
+                                if (result.success) {
+                                    shipStationResponse = result.response;
+                                    await order.reload({ transaction });
                                 } else {
-                                    // ShipStation creation failed - don't update order status
-                                    const errorMsg = result.status === 'fulfilled' 
-                                        ? (result.value.error?.message || result.value.error?.toString() || 'Unknown error')
-                                        : result.reason?.message || result.reason?.toString() || 'Unknown error';
-                                    
+                                    const errorMsg = result.error?.message || result.error?.toString() || 'Unknown error';
+
                                     shipStationError = errorMsg;
                                     console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
-                                    
+
                                     errors.push({
                                         order_id: order.id,
                                         order_unique_id: order.order_unique_id,
                                         error: `Failed to create ShipStation order: ${errorMsg}`,
-                                        status: order.status // Keep original status
+                                        status: order.status
                                     });
-                                    continue; // Skip to next order without updating status
+                                    continue;
                                 }
                             }
                         }
@@ -826,16 +852,18 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
                 }
             }
 
-            // If all updates failed, rollback
             if (results.length === 0 && errors.length > 0) {
-                await transaction.rollback();
-                const error = new Error('All order updates failed');
-                error.statusCode = 500;
-                error.errors = errors;
-                throw error;
+                await safeRollback(transaction);
+                return successResponse(res, {
+                    total: order_ids.length,
+                    successful: 0,
+                    failed: errors.length,
+                    status: status,
+                    results: [],
+                    errors: errors
+                }, 'All order updates failed');
             }
 
-            // Commit transaction if at least one update succeeded
             await transaction.commit();
 
             const response = {
@@ -850,7 +878,7 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             const message = `Successfully updated ${results.length} out of ${order_ids.length} orders`;
             successResponse(res, response, message);
         } catch (error) {
-            await transaction.rollback();
+            await safeRollback(transaction);
             throw error;
         }
     } catch (error) {

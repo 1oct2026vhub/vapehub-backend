@@ -1,13 +1,41 @@
 const axios = require('axios');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
 
+const SHIPSTATION_MAX_RETRIES = Number(process.env.SHIPSTATION_MAX_RETRIES || 3);
+
+async function withShipStationRetry(requestFn, maxRetries = SHIPSTATION_MAX_RETRIES) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await requestFn();
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status !== 429 || attempt === maxRetries) {
+                break;
+            }
+            const retryAfterHeader = error.response?.headers?.['retry-after'];
+            const retryAfterMs = retryAfterHeader
+                ? Number(retryAfterHeader) * 1000
+                : 1000 * (2 ** attempt);
+            shipstationLogger.logInfo({
+                type: 'rate_limit_retry',
+                attempt: attempt + 1,
+                maxRetries,
+                retryAfterMs
+            });
+            await new Promise(resolve => setTimeout(resolve, retryAfterMs));
+        }
+    }
+    throw lastError;
+}
+
 async function sendOrderToShipStation(shipStationOrder) {
     try {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
         
-        const response = await axios.post(
+        const response = await withShipStationRetry(() => axios.post(
             'https://ssapi.shipstation.com/orders/createorder',
             shipStationOrder,
             {
@@ -17,7 +45,7 @@ async function sendOrderToShipStation(shipStationOrder) {
                 },
                 timeout: 30000 // 30 second timeout
             }
-        );
+        ));
         return response.data;
     } catch (error) {
         // Handle network errors properly
@@ -85,7 +113,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             testLabel
         });
 
-        const response = await axios.post(
+        const response = await withShipStationRetry(() => axios.post(
             'https://ssapi.shipstation.com/orders/createlabelfororder',
             requestPayload,
             {
@@ -95,7 +123,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                 },
                 timeout: 30000 // 30 second timeout
             }
-        );
+        ));
         
         // Log successful response - include tracking URL if available
         shipstationLogger.logInfo({
