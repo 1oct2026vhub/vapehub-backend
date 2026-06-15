@@ -13,6 +13,7 @@ const { createNotification } = require('../../notification/helper/notification.h
 const dealService = require('../../Cart/helper/deal.service');
 const { findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { placeOrderLogic } = require('../helper/orderPlacement.helper');
+const { completeWorldpayCheckout } = require('../helper/worldpay.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../../checkout/helper/guestCheckout.helper');
 const orderPlacementLogger = require('../../../utils/orderPlacementLogger');
 
@@ -330,30 +331,36 @@ module.exports.placeOrder = async (req, res, next) => {
 
     orderPlacementLogger.logStart(logContext);
 
+    let transactionCommitted = false;
     const transaction = await sequelize.transaction();
     try {
         const orderData = req.body;
         const orderResult = await placeOrderLogic(user_id, orderData, transaction);
 
         await transaction.commit();
+        transactionCommitted = true;
+
+        const finalOrderResult = await completeWorldpayCheckout(orderResult);
 
         orderPlacementLogger.logSuccess({
             ...logContext,
             durationMs: Date.now() - startedAt,
-            orderId: orderResult.order_details?.order_id ?? null,
-            orderCode: orderResult.order_code ?? null,
-            orderUniqueId: orderResult.order_details?.order_unique_id ?? null,
-            calculatedTotal: orderResult.order_details?.pricing?.total ?? null,
-            worldpayUrlPresent: Boolean(orderResult.worldpay_url),
-            reusedPendingOrder: Boolean(orderResult.reused_pending_order)
+            orderId: finalOrderResult.order_details?.order_id ?? null,
+            orderCode: finalOrderResult.order_code ?? null,
+            orderUniqueId: finalOrderResult.order_details?.order_unique_id ?? null,
+            calculatedTotal: finalOrderResult.order_details?.pricing?.total ?? null,
+            worldpayUrlPresent: Boolean(finalOrderResult.worldpay_url),
+            reusedPendingOrder: Boolean(finalOrderResult.reused_pending_order)
         });
 
         return successResponse(res, {
             message: "Order placed successfully",
-            data: orderResult
+            data: finalOrderResult
         }, "Success");
     } catch (error) {
-        await transaction.rollback();
+        if (!transactionCommitted) {
+            await transaction.rollback();
+        }
 
         orderPlacementLogger.logError({
             ...logContext,
@@ -1132,6 +1139,7 @@ module.exports.placeGuestOrder = async (req, res, next) => {
 
         // Step 3: Place order using helper
         const orderTransaction = await sequelize.transaction();
+        let orderTransactionCommitted = false;
         try {
             const orderResult = await placeOrderLogic(tempUser.id, {
                 ...orderData,
@@ -1140,13 +1148,18 @@ module.exports.placeGuestOrder = async (req, res, next) => {
             }, orderTransaction);
 
             await orderTransaction.commit();
+            orderTransactionCommitted = true;
+
+            const finalOrderResult = await completeWorldpayCheckout(orderResult);
 
             return successResponse(res, {
                 message: "Order placed successfully",
-                data: orderResult
+                data: finalOrderResult
             }, "Success");
         } catch (error) {
-            await orderTransaction.rollback();
+            if (!orderTransactionCommitted) {
+                await orderTransaction.rollback();
+            }
             throw error;
         }
 

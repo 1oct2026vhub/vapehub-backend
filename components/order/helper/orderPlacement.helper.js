@@ -21,10 +21,7 @@ const {
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
-const {
-    createWorldpayPaymentPage,
-    generateTransactionReference
-} = require('./worldpay.helper');
+const { generateTransactionReference } = require('./worldpay.helper');
 const { v4: uuidv4 } = require('uuid');
 
 const PENDING_WORLDPAY_ORDER_TTL_HOURS = Number(process.env.WORLDPAY_PENDING_ORDER_TTL_HOURS) || 24;
@@ -700,7 +697,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     // Payment processing
     let orderCode = 0;
-    let worldpayUrl = null;
+    let worldpayCheckoutRequest = null;
     let reusedPendingOrder = false;
     let order = null;
 
@@ -743,27 +740,21 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             reusedPendingOrder = true;
             order = existingPending;
             orderCode = existingPending.order_code;
-
-            const { paymentUrl } = await createWorldpayPaymentPage({
-                transactionReference: orderCode,
-                calculatedTotal,
-                billingAddrForPayment,
-                countryCode,
-                logContext: { userId: user_id, reusedPendingOrder: true, orderId: order.id }
-            });
-            worldpayUrl = paymentUrl;
         } else {
             orderCode = generateTransactionReference();
-
-            const { paymentUrl } = await createWorldpayPaymentPage({
-                transactionReference: orderCode,
-                calculatedTotal,
-                billingAddrForPayment,
-                countryCode,
-                logContext: { userId: user_id, reusedPendingOrder: false }
-            });
-            worldpayUrl = paymentUrl;
         }
+
+        worldpayCheckoutRequest = {
+            transactionReference: orderCode,
+            calculatedTotal,
+            billingAddrForPayment,
+            countryCode,
+            logContext: {
+                userId: user_id,
+                reusedPendingOrder,
+                orderId: order?.id ?? null
+            }
+        };
     }
 
     if (!reusedPendingOrder) {
@@ -824,11 +815,19 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         pricing.loyalty_discount = parseFloat(order.loyalty_discount || 0);
         pricing.mail_subscription_discount = parseFloat(order.mailSubscription_discount || 0);
         pricing.total = parseFloat(order.total);
+
+        if (worldpayCheckoutRequest) {
+            worldpayCheckoutRequest.calculatedTotal = parseFloat(order.total);
+        }
     }
 
-    return buildPlaceOrderResponse({
+    if (worldpayCheckoutRequest && order) {
+        worldpayCheckoutRequest.logContext.orderId = order.id;
+    }
+
+    const placeOrderResponse = buildPlaceOrderResponse({
         order,
-        worldpayUrl,
+        worldpayUrl: null,
         payMethod,
         orderDetails,
         shippingAddrs,
@@ -836,6 +835,12 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         pricing,
         reusedPendingOrder
     });
+
+    if (worldpayCheckoutRequest) {
+        placeOrderResponse.worldpayCheckoutRequest = worldpayCheckoutRequest;
+    }
+
+    return placeOrderResponse;
 };
 
 module.exports = {

@@ -8,6 +8,7 @@ const { createTemporaryUser, findOrCreateTemporaryUser } = require('../../auth/h
 const { createGuestUser } = require('../helper/guestCheckout.helper');
 const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
+const { completeWorldpayCheckout } = require('../../order/helper/worldpay.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
 
 const assertNotDiscontinued = (product, variant) => {
@@ -1893,6 +1894,7 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
 
         // Step 4: Place order using helper with enriched cart items
         const orderTransaction = await sequelize.transaction();
+        let orderTransactionCommitted = false;
         try {
             const orderResult = await placeOrderLogic(tempUser.id, {
                 email,
@@ -1912,11 +1914,14 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             }, orderTransaction);
 
             await orderTransaction.commit();
+            orderTransactionCommitted = true;
+
+            const finalOrderResult = await completeWorldpayCheckout(orderResult);
 
             // Return combined response
             return successResponse(res, {
                 checkout: checkoutSummary,
-                order: orderResult,
+                order: finalOrderResult,
                 tokens: {
                     accessToken,
                     refreshToken
@@ -1925,7 +1930,9 @@ module.exports.guestCheckoutAndOrder = async (req, res, next) => {
             }, 'Order placed successfully');
 
         } catch (orderError) {
-            await orderTransaction.rollback();
+            if (!orderTransactionCommitted) {
+                await orderTransaction.rollback();
+            }
             throw orderError;
         }
 

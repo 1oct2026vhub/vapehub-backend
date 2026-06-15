@@ -164,10 +164,25 @@ const createWorldpayPaymentPage = async ({
     }
 };
 
+const completeWorldpayCheckout = async (orderResult) => {
+    if (!orderResult?.worldpayCheckoutRequest) {
+        return orderResult;
+    }
+
+    const { worldpayCheckoutRequest, ...rest } = orderResult;
+    const { paymentUrl } = await createWorldpayPaymentPage(worldpayCheckoutRequest);
+
+    return {
+        ...rest,
+        worldpay_url: paymentUrl
+    };
+};
+
 module.exports = {
     extractWorldpayPaymentUrl,
     generateTransactionReference,
     createWorldpayPaymentPage,
+    completeWorldpayCheckout,
     parseWorldpayErrorMessage,
     serializeWorldpayErrorForLog,
     getWorldpayTimeoutMs
