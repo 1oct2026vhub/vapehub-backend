@@ -907,42 +907,41 @@ module.exports.checkOrderStock = async (req, res) => {
                 stock_issues: stockIssues
             }, 'Order cancelled due to insufficient stock', 400);
         }
-        
-        var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
-        var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
-        var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
-        const orderDetails = await axios({
-                    method: "GET",
-                    url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
-                    headers: {
-                      "Authorization": "Basic " + credentials,
-                    }
-        });
-        // Check if order state indicates cancellation (StateId 1 or 2)
-        if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
-            // Update order status to cancelled
-            await order.update({ 
-                status: 'cancel'
-            }, { transaction });
 
-            // Create order log for cancellation
-            await sequelize.models.OrderLog.create({
-                order_id: order.id,
-                user_id: userId,
-                status: 'cancel',
-                label: 'Order Cancelled - Viva Wallet State'
-            }, { transaction });
+        // Viva Wallet order-status check disabled: we use Worldpay only.
+        // order_code holds a Worldpay transaction reference, not a Viva order code —
+        // calling Viva's API here returns 400 and breaks check-stock for every order.
+        // Payment status for Worldpay is handled via webhooks / success-failure redirects.
+        //
+        // var merchantId = process.env.VIVA_MERCHANT_ID || '82231a6f-a467-47a4-8674-6e43606f49ce';
+        // var apiKey = process.env.VIVA_API_KEY || ']kD;D=';
+        // var credentials = Buffer.from(merchantId + ':' + apiKey).toString('base64');
+        // const orderDetails = await axios({
+        //     method: "GET",
+        //     url: `https://demo.vivapayments.com/api/orders/${order.order_code}`,
+        //     headers: {
+        //         "Authorization": "Basic " + credentials,
+        //     }
+        // });
+        // // Check if order state indicates cancellation (StateId 1 or 2)
+        // if (orderDetails.data && (orderDetails.data.StateId === 1 || orderDetails.data.StateId === 2)) {
+        //     await order.update({ status: 'cancel' }, { transaction });
+        //     await sequelize.models.OrderLog.create({
+        //         order_id: order.id,
+        //         user_id: userId,
+        //         status: 'cancel',
+        //         label: 'Order Cancelled - Viva Wallet State'
+        //     }, { transaction });
+        //     await transaction.commit();
+        //     return errorResponse(res, {
+        //         order_id: order.id,
+        //         order_code: order.order_code,
+        //         status: order.status,
+        //         viva_state: orderDetails.data.StateId,
+        //         message: 'Order cancelled due to Viva Wallet state'
+        //     }, 'Order cancelled due to Viva Wallet state', 400);
+        // }
 
-            await transaction.commit();
-
-            return errorResponse(res, {
-                order_id: order.id,
-                order_code: order.order_code,
-                status: order.status,
-                viva_state: orderDetails.data.StateId,
-                message: 'Order cancelled due to Viva Wallet state'
-            }, 'Order cancelled due to Viva Wallet state', 400);
-        }
         await transaction.commit();
         return successResponse(res, {
             order_id: order.id,
@@ -954,65 +953,35 @@ module.exports.checkOrderStock = async (req, res) => {
     } catch (error) {
         await transaction.rollback();
         console.error('Error checking order stock:', error);
-        
-        // If error is 404, update order status to cancel
-        if (error.response?.status === 404) {
-            try {
-                const order = await Order.findOne({
-                    where: { 
-                        id: req.params.orderId,
-                        user_id: req.user.id
-                    }
-                });
 
-                if (order) {
-                    await order.update({ status: 'cancel' });
-                    
-                    // Create order log for cancellation
-                    await sequelize.models.OrderLog.create({
-                        order_id: order.id,
-                        user_id: req.user.id,
-                        status: 'cancel',
-                        label: 'Order Cancelled - Viva Wallet Order Not Found'
-                    });
-
-                    // // Create notification for cancellation
-                    // await createNotification({
-                    //     userId: req.user.id,
-                    //     type: 'order',
-                    //     action: 'cancelled',
-                    //     data: {
-                    //         orderId: order.id,
-                    //         orderUniqueId: order.order_unique_id,
-                    //         orderCode: order.order_code,
-                    //         reason: 'Viva Wallet Order Not Found'
-                    //     },
-                    //     url: '/order-details'
-                    // });
-
-                    // Send cancellation email
-                    // const emailData = {
-                    //     emailTypes: 'ORDER_CANCELLATION',
-                    //     to: order.email,
-                    //     context: {
-                    //         userName: order.user?.first_name || order.email.split('@')[0],
-                    //         orderId: order.id,
-                    //         orderUniqueId: order.order_unique_id,
-                    //         orderCode: order.order_code,
-                    //         orderDate: order.createdAt.toLocaleDateString(),
-                    //         status: 'cancelled',
-                    //         reason: 'Viva Wallet Order Not Found'
-                    //     }
-                    // };
-
-                    // await sendEmail(emailData.to, emailData.emailTypes, emailData.context);
-                    return errorResponse(res, {message:'Cannot process this order due to invalid or expired Viva Wallet order code'}, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
-                }
-            } catch (updateError) {
-                return errorResponse(res, {message:'Cannot process this order due to invalid or expired Viva Wallet order code'}, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
-            }
+        if (error.statusCode) {
+            return errorResponse(res, {}, error.message, error.statusCode);
         }
-        
+
+        // Viva Wallet 404 handling disabled — not applicable for Worldpay-only orders.
+        // if (error.response?.status === 404) {
+        //     try {
+        //         const order = await Order.findOne({
+        //             where: {
+        //                 id: req.params.orderId,
+        //                 user_id: req.user.id
+        //             }
+        //         });
+        //         if (order) {
+        //             await order.update({ status: 'cancel' });
+        //             await sequelize.models.OrderLog.create({
+        //                 order_id: order.id,
+        //                 user_id: req.user.id,
+        //                 status: 'cancel',
+        //                 label: 'Order Cancelled - Viva Wallet Order Not Found'
+        //             });
+        //             return errorResponse(res, { message: 'Cannot process this order due to invalid or expired Viva Wallet order code' }, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
+        //         }
+        //     } catch (updateError) {
+        //         return errorResponse(res, { message: 'Cannot process this order due to invalid or expired Viva Wallet order code' }, 'Cannot process this order due to invalid or expired Viva Wallet order code', 404);
+        //     }
+        // }
+
         return errorResponse(res, error, 'Failed to check order stock');
     }
 };
