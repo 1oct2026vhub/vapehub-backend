@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
+const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
@@ -758,12 +758,12 @@ async function getShipStationWebhooks(req, res){
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+        const response = await shipStationRequest(() => axios.get('https://ssapi.shipstation.com/webhooks', {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
     } catch (error) {
         shipstationLogger.logError({
@@ -800,12 +800,12 @@ async function getShipStationCarriers(req, res, next) {
         }
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-        const response = await axios.get(shipStationCarrierUrl, {
+        const response = await shipStationRequest(() => axios.get(shipStationCarrierUrl, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carriers:', error);
@@ -837,12 +837,12 @@ async function getShipStationCarrierServices(req, res) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
+        const response = await shipStationRequest(() => axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carrier services:', error);
