@@ -39,5 +39,6 @@ router.use("/popularCategory", require("./popularCategory/routes/popularCategory
 router.use("/shopByCategory", require("./shopByCategory/routes/shopByCategory.route"))
 router.use("/entity-banners", require("./entityBanner/routes/entityBanner.route"))
 router.use("/internal", require("./internal/emailCampaign.route"))
+router.use("/internal", require("./internal/bulkOrderStatus.route"))
 
 module.exports = router;

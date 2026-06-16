@@ -7,7 +7,9 @@ const {
     updateOrderStatusValidation, 
     getOrderStatsValidation,
     getOrderReportValidation,
-    bulkUpdateOrderStatusValidation
+    bulkUpdateOrderStatusValidation,
+    bulkUpdateOrderStatusAsyncValidation,
+    getBulkOrderStatusJobValidation
 } = require("../helper/order.validator");
 
 /**
@@ -152,6 +154,8 @@ router.get('/report', [authMiddleware(true), validateRequest(getOrderReportValid
  *         description: Unauthorized
  */
 router.put('/bulk-status', [authMiddleware(true), validateRequest(bulkUpdateOrderStatusValidation)], orderController.bulkUpdateOrderStatus);
+router.post('/bulk-status/async', [authMiddleware(true), validateRequest(bulkUpdateOrderStatusAsyncValidation)], orderController.bulkUpdateOrderStatusAsync);
+router.get('/bulk-status/jobs/:id', [authMiddleware(true), validateRequest(getBulkOrderStatusJobValidation)], orderController.getBulkOrderStatusJob);
 
 /**
  * @swagger
