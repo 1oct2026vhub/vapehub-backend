@@ -112,10 +112,22 @@ exports.validatePlaceOrder = [
     .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
+    .exists({ checkNull: true })
+    .withMessage("Total amount is required")
     .isFloat({ min: 0 })
-    .withMessage("Total amount must be a positive number")
-    .notEmpty()
-    .withMessage("Total amount is required"),
+    .withMessage("Total amount must be zero or greater"),
+
+  body("loyalty").optional().isBoolean().withMessage("loyalty must be true or false"),
+
+  body("points_to_redeem")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];
 
 exports.validateOrderId = [
@@ -265,8 +277,20 @@ exports.validateGuestPlaceOrder = [
     .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
+    .exists({ checkNull: true })
+    .withMessage("Total amount is required")
     .isFloat({ min: 0 })
-    .withMessage("Total amount must be a positive number")
-    .notEmpty()
-    .withMessage("Total amount is required"),
+    .withMessage("Total amount must be zero or greater"),
+
+  body("loyalty").optional().isBoolean().withMessage("loyalty must be true or false"),
+
+  body("points_to_redeem")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];

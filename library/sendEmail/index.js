@@ -48,6 +48,7 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
     });
 }
 
+
 module.exports = async (to, emailType, context = {}, attachments = []) => {
     try {
         // if unknown type, throw error
