@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -8,6 +8,7 @@ const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
 const logger = require('../../../library/logger');
 const utilsLogger = require('../../../utils/logger');
+const { redeemLoyaltyPointsForOrder } = require('../../order/helper/loyaltyPointsRedemption.helper');
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
@@ -212,28 +213,8 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 where: { id: order.user_id }
                             });
 
-                            let debitPoints = parseInt(order.loyalty_points_used, 10) || 0;
-                            const pv = parseFloat(settings.points_value) || 0;
-                            if (debitPoints <= 0 && parseFloat(order.loyalty_discount || 0) > 0 && pv > 0) {
-                                debitPoints = Math.floor(parseFloat(order.loyalty_discount) / pv);
-                            }
-                            if (debitPoints <= 0) {
-                                debitPoints = parseInt(settings.minimum_points_redemption, 10) || 0;
-                            }
-
-                            if(debitPoints > 0 && parseFloat(user.loyalty_points) >= debitPoints){
-                                await user.update({
-                                    loyalty_points: sequelize.literal(`GREATEST(0, loyalty_points - ${debitPoints})`)
-                                });
-                                // Add loyalty points redemption history
-                                await LoyaltyPointsHistory.create({
-                                    user_id: user.id,
-                                    type: 'redeemed',
-                                    points: debitPoints,
-                                    order_id: order.id || null,
-                                    description: 'Points redeemed',
-                                    timestamp: new Date()
-                                });
+                            if (user) {
+                                await redeemLoyaltyPointsForOrder({ order, user, settings });
                             }
                             const minimumAmountForLoyaltyPoints = settings.min_amount_for_loyalty_points || 0;
                             if (parseFloat(order.total) >= parseFloat(minimumAmountForLoyaltyPoints)) {

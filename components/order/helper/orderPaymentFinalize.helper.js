@@ -13,7 +13,6 @@ const {
   MailSubscription,
   MailSubscriptionSettings,
   LoyaltyPointsSettings,
-  LoyaltyPointsHistory,
   ShippingMethod,
   OrderAddress,
   sequelize,
@@ -22,6 +21,7 @@ const { createNotification } = require('../../notification/helper/notification.h
 const sendEmail = require('../../../library/sendEmail');
 const appConstants = require('../../../config/constants');
 const logger = require('../../../library/logger');
+const { redeemLoyaltyPointsForOrder } = require('./loyaltyPointsRedemption.helper');
 
 const orderIncludeForFinalize = [
   { model: User, as: 'user' },
@@ -134,33 +134,7 @@ async function finalizePointsOnlyOrder(orderId, transaction) {
     if (settings) {
       const user = await User.findOne({ where: { id: order.user_id }, transaction });
       if (user) {
-        let debitPoints = parseInt(order.loyalty_points_used, 10) || 0;
-        const pv = parseFloat(settings.points_value) || 0;
-        if (debitPoints <= 0 && parseFloat(order.loyalty_discount || 0) > 0 && pv > 0) {
-          debitPoints = Math.floor(parseFloat(order.loyalty_discount) / pv);
-        }
-        if (debitPoints <= 0) {
-          debitPoints = parseInt(settings.minimum_points_redemption, 10) || 0;
-        }
-        if (debitPoints > 0 && user.loyalty_points >= debitPoints) {
-          await user.update(
-            {
-              loyalty_points: sequelize.literal(`GREATEST(0, loyalty_points - ${debitPoints})`),
-            },
-            { transaction }
-          );
-          await LoyaltyPointsHistory.create(
-            {
-              user_id: user.id,
-              type: 'redeemed',
-              points: debitPoints,
-              order_id: order.id,
-              description: 'Points redeemed',
-              timestamp: new Date(),
-            },
-            { transaction }
-          );
-        }
+        await redeemLoyaltyPointsForOrder({ order, user, settings, transaction });
       }
     }
   }
