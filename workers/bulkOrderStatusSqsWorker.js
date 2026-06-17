@@ -48,7 +48,11 @@ let queueUrl;
 let http;
 
 function buildRuntimeClients() {
-    const apiBase = (process.env.API_BASE_URL || '').replace(/\/$/, '');
+    const apiBase = (
+        process.env.BULK_ORDER_STATUS_API_BASE_URL ||
+        process.env.API_BASE_URL ||
+        ''
+    ).replace(/\/$/, '');
     const internalKey = process.env.BULK_ORDER_STATUS_INTERNAL_KEY || '';
     queueUrl = process.env.BULK_ORDER_STATUS_SQS_QUEUE_URL || '';
 
@@ -207,8 +211,8 @@ function validateEnv() {
     if (!(process.env.BULK_ORDER_STATUS_INTERNAL_KEY || '').trim()) {
         missing.push('BULK_ORDER_STATUS_INTERNAL_KEY');
     }
-    if (!(process.env.API_BASE_URL || '').trim()) {
-        missing.push('API_BASE_URL');
+    if (!((process.env.BULK_ORDER_STATUS_API_BASE_URL || '').trim() || (process.env.API_BASE_URL || '').trim())) {
+        missing.push('BULK_ORDER_STATUS_API_BASE_URL (or API_BASE_URL)');
     }
     if (missing.length) {
         console.error(`[bulk-order-status-sqs-worker] Missing required env: ${missing.join(', ')}`);
@@ -223,7 +227,11 @@ async function main() {
     logger.info(
         {
             queue: queueUrl,
-            apiBase: (process.env.API_BASE_URL || '').replace(/\/$/, ''),
+            apiBase: (
+                process.env.BULK_ORDER_STATUS_API_BASE_URL ||
+                process.env.API_BASE_URL ||
+                ''
+            ).replace(/\/$/, ''),
             concurrency: CONCURRENCY,
             maxMessages: MAX_MESSAGES,
             longPollSec: LONG_POLL_SEC,
