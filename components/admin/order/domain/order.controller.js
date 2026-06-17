@@ -44,7 +44,9 @@ module.exports.listAllOrders = async (req, res, next) => {
             limit = 10
         } = req.query;
 
-        const offset = (page - 1) * limit;
+        const parsedLimit = parseInt(limit);
+        const parsedPage = parseInt(page);
+        const offset = (parsedPage - 1) * parsedLimit;
         let whereCondition = {};
 
         // Status filter
@@ -141,8 +143,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         orders: [],
                         pagination: {
                             total: 0,
-                            page: parseInt(page),
-                            limit: parseInt(limit),
+                            page: parsedPage,
+                            limit: parsedLimit,
                             total_pages: 0
                         }
                     }, 'Success');
@@ -175,8 +177,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         orders: [],
                         pagination: {
                             total: 0,
-                            page: parseInt(page),
-                            limit: parseInt(limit),
+                            page: parsedPage,
+                            limit: parsedLimit,
                             total_pages: 0
                         }
                     }, 'Success');
@@ -184,98 +186,98 @@ module.exports.listAllOrders = async (req, res, next) => {
             }
         }
         
-        // Get total count separately to ensure accuracy
-        const totalCount = await Order.count({
-            where: whereCondition
-        });
-        
-        // Get orders with pagination
-        const orders = await Order.findAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
-                    required: false,
-                    paranoid: false
-                },
-                {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
-                    required: false
-                },
-                {
-                    model: UserAddress,
-                    as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
-                    required: false
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'slug', 'sku'],
-                            required: false,
-                            paranoid: false,
-                            include: [
-                                {
-                                    model: ProductImage,
-                                    as: 'ProductImages',
-                                    attributes: ['id', 'image_url', 'is_primary'],
-                                    where: { is_primary: true },
-                                    required: false
-                                }
-                            ]
+        const orderListIncludes = [
+            {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                required: false,
+                paranoid: false
+            },
+            {
+                model: UserAddress,
+                as: 'shippingAddress',
+                attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                required: false
+            },
+            {
+                model: UserAddress,
+                as: 'billingAddress',
+                attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                required: false
+            },
+            {
+                model: OrderItem,
+                as: 'orderItems',
+                separate: true,
+                include: [
+                    {
+                        model: Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'slug', 'sku'],
+                        required: false,
+                        paranoid: false,
+                        include: [
+                            {
+                                model: ProductImage,
+                                as: 'ProductImages',
+                                attributes: ['id', 'image_url', 'is_primary'],
+                                where: { is_primary: true },
+                                required: false
+                            }
+                        ]
+                    },
+                    {
+                        model: ProductVariant,
+                        as: 'variant',
+                        attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
+                        required: false,
+                        paranoid: false,
+                        where: {
+                            id: sequelize.col('orderItems.variant_id')
                         },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
-                            required: false,
-                            paranoid: false,
-                            where: {
-                                id: sequelize.col('orderItems.variant_id')
+                        include: [
+                            {
+                                model: ProductVariantImage,
+                                as: 'variantImages',
+                                attributes: ['id', 'image_url', 'is_primary'],
+                                where: { is_primary: true },
+                                required: false
                             },
-                            include: [
-                                {
-                                    model: ProductVariantImage,
-                                    as: 'variantImages',
-                                    attributes: ['id', 'image_url', 'is_primary'],
-                                    where: { is_primary: true },
-                                    required: false
-                                },
-                                {
-                                    model: ProductVariantAttribute,
-                                    as: 'variantAttributes',
-                                    paranoid: false,
-                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
-                                    include: [
-                                        { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
-                                        { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
-                                    ]
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            order: [['createdAt', 'DESC']],
-            limit: parseInt(limit),
-            offset: parseInt(offset)
-        });
+                            {
+                                model: ProductVariantAttribute,
+                                as: 'variantAttributes',
+                                paranoid: false,
+                                attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
+                                include: [
+                                    { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
+                                    { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const [totalCount, orders] = await Promise.all([
+            Order.count({ where: whereCondition }),
+            Order.findAll({
+                where: whereCondition,
+                include: orderListIncludes,
+                order: [['createdAt', 'DESC']],
+                limit: parsedLimit,
+                offset
+            })
+        ]);
 
         const response = {
             orders: orders,
             pagination: {
                 total: totalCount,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total_pages: Math.ceil(totalCount / limit)
+                page: parsedPage,
+                limit: parsedLimit,
+                total_pages: Math.ceil(totalCount / parsedLimit)
             }
         };
 
