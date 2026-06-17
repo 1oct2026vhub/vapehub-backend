@@ -32,13 +32,13 @@ const BULK_ORDER_INCLUDES = [
                 model: Product,
                 as: 'product',
                 paranoid: false,
-                attributes: ['id', 'name', 'sku', 'slug', 'deletedAt']
+                attributes: ['id', 'name', 'sku', 'slug']
             },
             {
                 model: ProductVariant,
                 as: 'variant',
                 paranoid: false,
-                attributes: ['id', 'stock', 'sku', 'slug', 'weight', 'deletedAt'],
+                attributes: ['id', 'stock', 'sku', 'slug', 'weight'],
                 include: [
                     {
                         model: ProductVariantAttribute,

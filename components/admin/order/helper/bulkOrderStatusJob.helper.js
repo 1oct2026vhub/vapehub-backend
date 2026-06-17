@@ -181,42 +181,59 @@ async function processBulkOrderStatusJobItem(jobItem) {
         return;
     }
 
-    const result = await processOrderStatusUpdate({
-        orderId: jobItem.order_id,
-        status: job.target_status,
-        userId: job.initiated_by,
-        createLabel: false,
-    });
-
-    const processedAt = new Date();
-    const shipstationOrderId = result.shipstation_data?.order_id || null;
-
-    if (result.skipped) {
-        await jobItem.update({
-            status: 'skipped',
-            error_message: result.message || null,
-            shipstation_order_id: shipstationOrderId,
-            processed_at: processedAt
+    try {
+        const result = await processOrderStatusUpdate({
+            orderId: jobItem.order_id,
+            status: job.target_status,
+            userId: job.initiated_by,
+            createLabel: false,
         });
-        await job.increment('skipped');
-    } else if (result.success) {
-        await jobItem.update({
-            status: 'success',
-            shipstation_order_id: shipstationOrderId,
-            processed_at: processedAt
-        });
-        await job.increment('successful');
-    } else {
+
+        const processedAt = new Date();
+        const shipstationOrderId = result.shipstation_data?.order_id || null;
+
+        if (result.skipped) {
+            await jobItem.update({
+                status: 'skipped',
+                error_message: result.message || null,
+                shipstation_order_id: shipstationOrderId,
+                processed_at: processedAt
+            });
+            await job.increment('skipped');
+        } else if (result.success) {
+            await jobItem.update({
+                status: 'success',
+                shipstation_order_id: shipstationOrderId,
+                processed_at: processedAt
+            });
+            await job.increment('successful');
+        } else {
+            await jobItem.update({
+                status: 'failed',
+                error_message: result.error || 'Unknown error',
+                processed_at: processedAt
+            });
+            await job.increment('failed');
+        }
+
+        await finalizeJobIfComplete(job.id);
+        return result;
+    } catch (error) {
+        const processedAt = new Date();
         await jobItem.update({
             status: 'failed',
-            error_message: result.error || 'Unknown error',
+            error_message: error.message || 'Unknown error',
             processed_at: processedAt
         });
         await job.increment('failed');
+        await finalizeJobIfComplete(job.id);
+        return {
+            success: false,
+            skipped: false,
+            order_id: jobItem.order_id,
+            error: error.message || 'Unknown error',
+        };
     }
-
-    await finalizeJobIfComplete(job.id);
-    return result;
 }
 
 async function getBulkOrderStatusJobDetails(jobId, { errorLimit = MAX_ERROR_SAMPLES } = {}) {
