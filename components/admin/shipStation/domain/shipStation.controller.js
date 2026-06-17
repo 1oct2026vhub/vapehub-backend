@@ -3,7 +3,8 @@ const { sendOrderToShipStation, createLabelForOrder, getProductById, listProduct
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
-const shipstationLogger = require('../../../../utils/shipstationLogger');
+const { createDomainLogger } = require('../../../../library/logging/domainLogger');
+const shipstationLog = createDomainLogger('shipstation');
 
 /**
  * Capitalize first letter of each word in a string
@@ -31,7 +32,7 @@ async function createShipStationOrder(order) {
             throw new Error('Invalid order data: missing customer email');
         }
 
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_order_start',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -98,7 +99,7 @@ async function createShipStationOrder(order) {
             requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Standard Delivery',
         };
         
-        shipstationLogger.logApiCall({
+        shipstationLog.logApiCall({
             type: 'create_order_request',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -108,7 +109,7 @@ async function createShipStationOrder(order) {
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
         
-        shipstationLogger.logApiCall({
+        shipstationLog.logApiCall({
             type: 'create_order_response',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -133,7 +134,7 @@ async function createShipStationOrder(order) {
             }
         );
 
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_order_db_updated',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -183,7 +184,7 @@ async function createShipStationOrder(order) {
                 advancedOptions,
                 testLabel
             });
-            shipstationLogger.logInfo({
+            shipstationLog.logInfo({
                 type: 'create_label_success',
                 order_id: order.id,
                 order_unique_id: order.order_unique_id,
@@ -191,7 +192,7 @@ async function createShipStationOrder(order) {
                 shipment_id: labelResponse?.shipmentId
             });
         } catch (labelError) {
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'create_label_error',
                 order_id: order.id,
                 order_unique_id: order.order_unique_id,
@@ -206,7 +207,7 @@ async function createShipStationOrder(order) {
         return { orderResponse, labelResponse };
 
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'create_order_error',
             order_id: order?.id,
             order_unique_id: order?.order_unique_id,
@@ -237,7 +238,7 @@ async function getShipStationProductById(req, res) {
             data: product
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_product_error',
             productId: req.params.productId,
             error: error.message,
@@ -292,7 +293,7 @@ async function listShipStationProducts(req, res) {
             data: products
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'list_products_error',
             query_params: req.query,
             error: error.message,
@@ -340,7 +341,7 @@ async function updateShipStationProduct(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'update_product_error',
             productId: req.params.productId,
             error: error.message,
@@ -389,7 +390,7 @@ async function getShipStationOrderById(req, res) {
             data: order
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -430,7 +431,7 @@ async function deleteShipStationOrderById(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'delete_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -508,7 +509,7 @@ async function holdShipStationOrderUntil(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'hold_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -557,7 +558,7 @@ async function restoreShipStationOrderFromHold(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'restore_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -649,7 +650,7 @@ async function markShipStationOrderAsShipped(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'mark_shipped_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -710,7 +711,7 @@ async function voidShipStationLabel(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'void_label_error',
             shipmentId: req.body.shipmentId,
             error: error.message,
@@ -766,7 +767,7 @@ async function getShipStationWebhooks(req, res){
         }));
         return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_webhooks_error',
             error: error.message,
             stack: error.stack

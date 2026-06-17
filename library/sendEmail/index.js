@@ -1,6 +1,5 @@
 const nodemailer = require('nodemailer');
 const logger = require('../logger')
-const utilsLogger = require('../../utils/logger');
 const { newEmail } = require('../mailsInDev')
 const constants = require('../../config/constants')
 const { errorResponse } = require("../../utils/responseUtils")
