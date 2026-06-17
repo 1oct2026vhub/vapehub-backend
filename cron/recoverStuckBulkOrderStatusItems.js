@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
-const { BulkOrderStatusJob, BulkOrderStatusJobItem } = require('../models');
+const { BulkOrderStatusJob, BulkOrderStatusJobItem, sequelize } = require('../models');
 const { enqueueBulkOrderStatusItems } = require('../library/bulkOrderStatus/sqsEnqueue');
 const { finalizeJobIfComplete } = require('../components/admin/order/helper/bulkOrderStatusJob.helper');
 const logger = require('../library/logger');
@@ -24,11 +24,13 @@ async function recoverStuckBulkOrderStatusItems() {
 
     const stuckItems = await BulkOrderStatusJobItem.findAll({
         where: {
-            status: 'processing',
-            updatedAt: { [Op.lt]: cutoff }
+            [Op.and]: [
+                { status: 'processing' },
+                sequelize.where(sequelize.col('updated_at'), Op.lt, cutoff)
+            ]
         },
         attributes: ['id', 'job_id', 'attempts'],
-        order: [['updatedAt', 'ASC']],
+        order: [[sequelize.col('updated_at'), 'ASC']],
         limit: BATCH_LIMIT
     });
 
@@ -105,9 +107,10 @@ async function tryResetItem(item, cutoff) {
         },
         {
             where: {
-                id: item.id,
-                status: 'processing',
-                updatedAt: { [Op.lt]: cutoff }
+                [Op.and]: [
+                    { id: item.id, status: 'processing' },
+                    sequelize.where(sequelize.col('updated_at'), Op.lt, cutoff)
+                ]
             }
         }
     );
