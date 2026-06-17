@@ -70,7 +70,10 @@ module.exports = (sequelize, DataTypes) => {
         sequelize,
         modelName: 'BulkOrderStatusJob',
         tableName: 'bulk_order_status_jobs',
-        timestamps: true
+        timestamps: true,
+        underscored: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
     });
 
     return BulkOrderStatusJob;
