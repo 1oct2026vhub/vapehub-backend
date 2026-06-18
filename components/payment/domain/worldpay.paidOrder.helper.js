@@ -18,12 +18,12 @@ const {
     LoyaltyPointsSettings,
     ReferralMethod,
     sequelize,
-    LoyaltyPointsHistory,
     MailSubscription,
     MailSubscriptionSettings
 } = require('../../../models');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
+const { redeemLoyaltyPointsForOrder } = require('../../order/helper/loyaltyPointsRedemption.helper');
 
 const WORLDPAY_PAID_ORDER_INCLUDES = [
     { model: User, as: 'user' },
@@ -175,19 +175,8 @@ const runPostPaymentSideEffects = async (order, { amount, currency, orderCode })
             const user = await User.findOne({
                 where: { id: order.user_id }
             });
-            if (parseFloat(user.loyalty_points) >= parseFloat(settings.minimum_points_redemption)) {
-                const redeemedPoints = user.loyalty_points;
-                await user.update({
-                    loyalty_points: sequelize.literal(`loyalty_points - ${settings.minimum_points_redemption}`)
-                });
-                await LoyaltyPointsHistory.create({
-                    user_id: user.id,
-                    type: 'redeemed',
-                    points: Math.abs(redeemedPoints),
-                    order_id: order.id || null,
-                    description: 'Points redeemed',
-                    timestamp: new Date()
-                });
+            if (user) {
+                await redeemLoyaltyPointsForOrder({ order, user, settings });
             }
             const minimumAmountForLoyaltyPoints = settings.min_amount_for_loyalty_points || 0;
             if (parseFloat(order.total) >= parseFloat(minimumAmountForLoyaltyPoints)) {
