@@ -4,7 +4,8 @@ const { Op } = require('sequelize');
 const logger = require('../../../library/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
-const paymentWebhookLogger = require('../../../utils/paymentWebhookLogger');
+const { createDomainLogger } = require('../../../library/logging/domainLogger');
+const paymentWebhookLog = createDomainLogger('payment-webhook');
 const {
     findWorldpayOrderByCode,
     runPostPaymentSideEffects
@@ -151,7 +152,7 @@ const serializeErrorForLog = (error) => ({
 });
 
 const logPaymentWebhookError = (type, error, context = {}) => {
-    paymentWebhookLogger.logError({
+    paymentWebhookLog.logError({
         type,
         ...context,
         error: serializeErrorForLog(error)
@@ -159,7 +160,7 @@ const logPaymentWebhookError = (type, error, context = {}) => {
 };
 
 module.exports.handleWorldpayWebhook = async (req, res) => {
-    paymentWebhookLogger.logWebhookStart();
+    paymentWebhookLog.logWebhookStart();
     try {
         // Get raw body data
         let rawData;
@@ -195,7 +196,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 ip_address: req?.ip || null,
                 user_agent: req?.get?.('User-Agent') || null
             });
-            paymentWebhookLogger.logWebhookEnd();
+            paymentWebhookLog.logWebhookEnd();
             
             return errorResponse(res, {}, 'Invalid webhook data format', 400);
         }
@@ -219,7 +220,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 } = {}
             } = webhookData || {};
 
-            paymentWebhookLogger.logWebhook({
+            paymentWebhookLog.logWebhook({
                 type: 'worldpay_webhook_received',
                 event_id: eventId || null,
                 event_type: eventType || null,
@@ -242,13 +243,13 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             const order = await findWorldpayOrderByCode(transactionReference);
 
             if (!order) {
-                paymentWebhookLogger.logError({
+                paymentWebhookLog.logError({
                     type: 'worldpay_order_not_found',
                     event_id: eventId || null,
                     event_type: eventType || null,
                     transaction_reference: transactionReference || null
                 });
-                paymentWebhookLogger.logWebhookEnd();
+                paymentWebhookLog.logWebhookEnd();
                 
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
@@ -287,7 +288,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 //     await handleRefundFailed(order, webhookData);
                 //     break;
                 default:
-                    paymentWebhookLogger.logInfo({
+                    paymentWebhookLog.logInfo({
                         type: 'worldpay_unhandled_event_type',
                         event_id: eventId || null,
                         event_type: eventType || null,
@@ -297,7 +298,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             }
 
             // Log the webhook processing completion
-            paymentWebhookLogger.logInfo({
+            paymentWebhookLog.logInfo({
                 type: 'worldpay_webhook_processed',
                 event_id: eventId || null,
                 event_type: eventType || null,
@@ -305,7 +306,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 order_id: order?.id || null,
                 order_code: order?.order_code || null
             });
-            paymentWebhookLogger.logWebhookEnd();
+            paymentWebhookLog.logWebhookEnd();
             
 
             // Return success response
@@ -320,7 +321,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         logPaymentWebhookError('worldpay_webhook_processing_error', error, {
             ip_address: req?.ip || null
         });
-        paymentWebhookLogger.logWebhookEnd();
+        paymentWebhookLog.logWebhookEnd();
         
         return errorResponse(res, error, 'Failed to process webhook');
     }
@@ -335,7 +336,7 @@ const handleCancelledPayment = async (order, webhookData) => {
         );
         const customerOrderContext = await buildCustomerOrderContext(order);
         const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, 'Payment cancelled via Worldpay', 'cancelled');
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_cancelled_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -1528,7 +1529,7 @@ const handlePaymentError = async (order, webhookData) => {
             (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Payment failed via Worldpay');
         const customerOrderContext = await buildCustomerOrderContext(order);
         const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, failureReason, 'failed');
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_payment_error_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -1711,7 +1712,7 @@ const handlePaymentRefused = async (order, webhookData) => {
             'Payment refused by Worldpay',
             'refused'
         );
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_payment_refused_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -2258,7 +2259,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             'Payment cancelled via Worldpay (manual cancel endpoint)',
             'cancelled'
         );
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_manual_cancel_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,

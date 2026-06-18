@@ -1,15 +1,25 @@
-const pino = require('pino')
+const pino = require('pino');
+const path = require('path');
 
-if(process.env.CONSOLE_LOG!=='true') {
+const useConsole = process.env.CONSOLE_LOG === 'true';
+const useS3 = process.env.S3_LOG_ENABLED !== 'false' && Boolean(process.env.AWS_S3_BUCKET);
+const useLocalFile = process.env.LOCAL_LOG_FILE === 'true';
 
-	const path = require('path')
+let logger;
 
-	const transport = pino.transport({
-		target: path.join(__dirname, 'transport.js'),
-		options: { destination: path.join(__dirname, '../../logs') }
-	})
-
-	module.exports = pino(transport)
+if (useConsole) {
+    logger = pino();
+} else if (useS3) {
+    logger = pino(pino.transport({
+        target: path.join(__dirname, 'transport.s3.js'),
+    }));
+} else if (useLocalFile) {
+    logger = pino(pino.transport({
+        target: path.join(__dirname, 'transport.js'),
+        options: { destination: path.join(__dirname, '../../logs') },
+    }));
 } else {
-	module.exports = pino()
+    logger = pino();
 }
+
+module.exports = logger;

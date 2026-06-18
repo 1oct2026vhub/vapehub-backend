@@ -7,7 +7,7 @@ const hbs = require('handlebars')
 
 const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
-const utilsLogger = require('../../utils/logger');
+const logger = require('../logger');
 
 // Serialize index updates to avoid race conditions when multiple emails
 // are rendered/saved concurrently (e.g. promotional sends in parallel).
@@ -66,7 +66,7 @@ exports.newEmail = async(email) => {
                     await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' ')) + '.html'));
                 }
             } catch (error) {
-                utilsLogger.logError(`Error in newEmail: ${error}`);
+                logger.error({ err: error }, 'Error in newEmail');
             }
         }
 
