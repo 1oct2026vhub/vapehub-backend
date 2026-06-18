@@ -231,9 +231,6 @@ module.exports.listAllOrders = async (req, res, next) => {
                         attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
                         required: false,
                         paranoid: false,
-                        where: {
-                            id: sequelize.col('orderItems.variant_id')
-                        },
                         include: [
                             {
                                 model: ProductVariantImage,
@@ -330,9 +327,6 @@ module.exports.getOrderById = async (req, res, next) => {
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug', 'sku'],
                             paranoid: false,
-                            where: {
-                                id: { [Op.col]: 'orderItems.variant_id' }
-                            },
                             include: [
                                 {
                                     model: ProductVariantImage,
