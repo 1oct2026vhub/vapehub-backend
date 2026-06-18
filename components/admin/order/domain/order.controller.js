@@ -855,6 +855,78 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
     }
 };
 
+module.exports.bulkUpdateOrderStatusAsync = async (req, res, next) => {
+    try {
+        const { order_ids, status } = req.body;
+        const user_id = req?.user?.id;
+
+        if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
+            const error = new Error('order_ids array is required and must not be empty');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (order_ids.length > ASYNC_BULK_MAX_ORDERS) {
+            const error = new Error(`Maximum ${ASYNC_BULK_MAX_ORDERS} orders can be queued at once`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!status || !Object.values(orderStatusEnums).includes(status)) {
+            const error = new Error('Invalid order status');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const invalidIds = order_ids.filter(id => !(Number.isInteger(id) && id > 0));
+        if (invalidIds.length > 0) {
+            const error = new Error('All order IDs must be positive integers');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const job = await createBulkOrderStatusJob({
+            orderIds: [...new Set(order_ids)],
+            status,
+            userId: user_id,
+        });
+
+        return successResponse(res, {
+            job_id: job.id,
+            job_key: job.job_key,
+            total: job.total,
+            status: job.status,
+            target_status: job.target_status,
+        }, 'Bulk status update queued', 202);
+    } catch (error) {
+        console.error('bulkUpdateOrderStatusAsync error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getBulkOrderStatusJob = async (req, res, next) => {
+    try {
+        const jobId = Number(req.params.id);
+        if (!Number.isInteger(jobId) || jobId <= 0) {
+            const error = new Error('Invalid job ID');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const job = await getBulkOrderStatusJobDetails(jobId);
+        if (!job) {
+            const error = new Error('Bulk order status job not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        return successResponse(res, job, 'Bulk order status job retrieved');
+    } catch (error) {
+        console.error('getBulkOrderStatusJob error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
 module.exports.getOrderStats = async (req, res, next) => {
     try {
         const { start_date, end_date } = req.query;

@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { getVivaAccessToken, createVivaOrder } = require("../helper/payment.helper");
-const { Order, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, LoyaltyPointsHistory, MailSubscription, MailSubscriptionSettings } = require("../../../models");
+const { Order, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, CouponUsage, Coupon, User, UserAddress, OrderAddress, ShippingMethod, Cart, Referral, ReferralMethod, LoyaltyPointsSettings, sequelize, MailSubscription, MailSubscriptionSettings } = require("../../../models");
 const { Op } = require('sequelize');
 const crypto = require("crypto");
 const { createNotification } = require('../../notification/helper/notification.helper');
@@ -211,20 +211,8 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                                 where: { id: order.user_id }
                             });
 
-                            if(parseFloat(user.loyalty_points) >= parseFloat(settings.minimum_points_redemption)){  // && total >= settings.minimum_purchase_amount
-                                const redeemedPoints = user.loyalty_points;
-                                await user.update({
-                                    loyalty_points: sequelize.literal(`loyalty_points - ${settings.minimum_points_redemption}`)
-                                });
-                                // Add loyalty points redemption history
-                                await LoyaltyPointsHistory.create({
-                                    user_id: user.id,
-                                    type: 'redeemed',
-                                    points: Math.abs(redeemedPoints),
-                                    order_id: order.id || null,
-                                    description: 'Points redeemed',
-                                    timestamp: new Date()
-                                });
+                            if (user) {
+                                await redeemLoyaltyPointsForOrder({ order, user, settings });
                             }
                             const minimumAmountForLoyaltyPoints = settings.min_amount_for_loyalty_points || 0;
                             if (parseFloat(order.total) >= parseFloat(minimumAmountForLoyaltyPoints)) {

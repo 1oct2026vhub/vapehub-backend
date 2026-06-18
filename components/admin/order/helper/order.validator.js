@@ -3,6 +3,8 @@ const { orderStatusEnums } = require('../../../../config/constants');
 
 // Define the valid status values based on the Order model
 const ORDER_STATUS = orderStatusEnums;
+const SYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_SYNC_MAX || 100);
+const ASYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_ASYNC_MAX || 500);
 
 const listAllOrdersValidation = [
     query('status')
@@ -100,8 +102,8 @@ const getOrderReportValidation = [
 
 const bulkUpdateOrderStatusValidation = [
     body('order_ids')
-        .isArray({ min: 1, max: 100 })
-        .withMessage('order_ids must be an array with at least 1 and at most 100 items'),
+        .isArray({ min: 1, max: SYNC_BULK_MAX_ORDERS })
+        .withMessage(`order_ids must be an array with at least 1 and at most ${SYNC_BULK_MAX_ORDERS} items`),
     body('order_ids.*')
         .isInt({ min: 1 })
         .withMessage('Each order ID must be a positive integer'),
@@ -110,10 +112,30 @@ const bulkUpdateOrderStatusValidation = [
         .withMessage('Invalid order status')
 ];
 
+const bulkUpdateOrderStatusAsyncValidation = [
+    body('order_ids')
+        .isArray({ min: 1, max: ASYNC_BULK_MAX_ORDERS })
+        .withMessage(`order_ids must be an array with at least 1 and at most ${ASYNC_BULK_MAX_ORDERS} items`),
+    body('order_ids.*')
+        .isInt({ min: 1 })
+        .withMessage('Each order ID must be a positive integer'),
+    body('status')
+        .isIn(ORDER_STATUS)
+        .withMessage('Invalid order status')
+];
+
+const getBulkOrderStatusJobValidation = [
+    param('id')
+        .isInt({ min: 1 })
+        .withMessage('Invalid job ID')
+];
+
 module.exports = {
     listAllOrdersValidation,
     updateOrderStatusValidation,
     getOrderStatsValidation,
     getOrderReportValidation,
-    bulkUpdateOrderStatusValidation
+    bulkUpdateOrderStatusValidation,
+    bulkUpdateOrderStatusAsyncValidation,
+    getBulkOrderStatusJobValidation
 }; 
