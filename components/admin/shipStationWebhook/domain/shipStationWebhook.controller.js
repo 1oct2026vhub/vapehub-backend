@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const logger = require("../../../../library/logger");
+const { shipStationRequest } = require('../../shipStation/helper/shipStation.helper');
 const { Order, User, OrderItem, Product, ProductVariant, ProductVariantAttribute, Attribute, AttributeTerm, OrderAddress, ShippingMethod } = require('../../../../models');
 const utilsLogger = require('../../../../utils/logger');
 const shipstationLogger = require('../../../../utils/shipstationLogger');
@@ -25,12 +26,12 @@ async function getShipStationWebhooks(req, res, next) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+        const response = await shipStationRequest(() => axios.get('https://ssapi.shipstation.com/webhooks', {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('ShipStation webhooks retrieved successfully', {
             webhook_count: response.data?.webhooks?.length || 0
@@ -87,12 +88,12 @@ async function subscribeToWebhook(req, res, next) {
             friendly_name
         };
 
-        const response = await axios.post('https://ssapi.shipstation.com/webhooks/subscribe', webhookData, {
+        const response = await shipStationRequest(() => axios.post('https://ssapi.shipstation.com/webhooks/subscribe', webhookData, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         return successResponse(res, response.data, 'Webhook subscribed successfully');
     } catch (error) {
@@ -134,12 +135,12 @@ async function unsubscribeFromWebhook(req, res, next) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.delete(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
+        const response = await shipStationRequest(() => axios.delete(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('ShipStation webhook unsubscribed successfully', {
             webhook_id: webhookId
@@ -1332,12 +1333,12 @@ async function fetchOrdersByImportBatch(resource_url, resource_type) {
             has_credentials: !!(shipstationApiKey && shipstationApiSecret)
         });
         
-        const response = await axios.get(resource_url, {
+        const response = await shipStationRequest(() => axios.get(resource_url, {
             auth: {
                 username: shipstationApiKey,
                 password: shipstationApiSecret,
             },
-        });
+        }));
         
         // Log response structure for debugging
         shipstationLogger.logInfo({

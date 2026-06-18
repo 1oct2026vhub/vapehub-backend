@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
+const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
@@ -19,8 +19,9 @@ function capitalizeName(str) {
         .join(' ');
 }
 
-async function createShipStationOrder(order) {
+async function createShipStationOrder(order, options = {}) {
     try {
+        const { createLabel = true } = options;
         // Validate required order data
         if (!order || !order.order_unique_id) {
             throw new Error('Invalid order data: missing order or order_unique_id');
@@ -71,7 +72,10 @@ async function createShipStationOrder(order) {
                 const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
                 
                 // Build product name with attributes
-                let productName = item.product.name;
+                let productName = item.product?.name;
+                if (!productName) {
+                    throw new Error(`Order item ${item.id} is missing product name`);
+                }
                 
                 // If variant has attributes, append them in readable format
                 if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
@@ -168,39 +172,41 @@ async function createShipStationOrder(order) {
 
         // Create label for the order
         let labelResponse = null;
-        try {
-            labelResponse = await createLabelForOrder({
-                orderId,
-                carrierCode,
-                serviceCode,
-                packageCode,
-                confirmation,
-                shipDate,
-                weight,
-                dimensions,
-                insuranceOptions,
-                internationalOptions,
-                advancedOptions,
-                testLabel
-            });
-            shipstationLogger.logInfo({
-                type: 'create_label_success',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                shipstation_order_id: orderId,
-                shipment_id: labelResponse?.shipmentId
-            });
-        } catch (labelError) {
-            shipstationLogger.logError({
-                type: 'create_label_error',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                shipstation_order_id: orderId,
-                error: labelError.message,
-                stack: labelError.stack
-            });
-            // Don't fail the entire operation, just log the error
-            // The order was created successfully, so we can still return the order response
+        if (createLabel) {
+            try {
+                labelResponse = await createLabelForOrder({
+                    orderId,
+                    carrierCode,
+                    serviceCode,
+                    packageCode,
+                    confirmation,
+                    shipDate,
+                    weight,
+                    dimensions,
+                    insuranceOptions,
+                    internationalOptions,
+                    advancedOptions,
+                    testLabel
+                });
+                shipstationLogger.logInfo({
+                    type: 'create_label_success',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: orderId,
+                    shipment_id: labelResponse?.shipmentId
+                });
+            } catch (labelError) {
+                shipstationLogger.logError({
+                    type: 'create_label_error',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: orderId,
+                    error: labelError.message,
+                    stack: labelError.stack
+                });
+                // Don't fail the entire operation, just log the error
+                // The order was created successfully, so we can still return the order response
+            }
         }
 
         return { orderResponse, labelResponse };
@@ -758,12 +764,12 @@ async function getShipStationWebhooks(req, res){
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+        const response = await shipStationRequest(() => axios.get('https://ssapi.shipstation.com/webhooks', {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
     } catch (error) {
         shipstationLogger.logError({
@@ -800,12 +806,12 @@ async function getShipStationCarriers(req, res, next) {
         }
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-        const response = await axios.get(shipStationCarrierUrl, {
+        const response = await shipStationRequest(() => axios.get(shipStationCarrierUrl, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carriers:', error);
@@ -837,12 +843,12 @@ async function getShipStationCarrierServices(req, res) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
+        const response = await shipStationRequest(() => axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carrier services:', error);

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require("../../../../library/logger");
+const { shipStationRequest } = require('../../shipStation/helper/shipStation.helper');
 
 /**
  * Get ShipStation API credentials
@@ -34,12 +35,12 @@ async function getAllWebhooks() {
     try {
         const authHeader = createAuthHeader();
         
-        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+        const response = await shipStationRequest(() => axios.get('https://ssapi.shipstation.com/webhooks', {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('Successfully retrieved webhooks from ShipStation', {
             webhook_count: response.data?.webhooks?.length || 0
@@ -82,12 +83,12 @@ async function subscribeToWebhook(webhookData) {
             friendly_name
         };
 
-        const response = await axios.post('https://ssapi.shipstation.com/webhooks', payload, {
+        const response = await shipStationRequest(() => axios.post('https://ssapi.shipstation.com/webhooks', payload, {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         return response.data;
     } catch (error) {
@@ -114,12 +115,12 @@ async function unsubscribeFromWebhook(webhookId) {
 
         const authHeader = createAuthHeader();
         
-        const response = await axios.delete(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
+        const response = await shipStationRequest(() => axios.delete(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('Successfully unsubscribed from webhook', {
             webhook_id: webhookId
@@ -150,12 +151,12 @@ async function getWebhookById(webhookId) {
 
         const authHeader = createAuthHeader();
         
-        const response = await axios.get(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
+        const response = await shipStationRequest(() => axios.get(`https://ssapi.shipstation.com/webhooks/${webhookId}`, {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('Successfully retrieved webhook by ID', {
             webhook_id: webhookId
@@ -191,12 +192,12 @@ async function updateWebhook(webhookId, updateData) {
 
         const authHeader = createAuthHeader();
         
-        const response = await axios.put(`https://ssapi.shipstation.com/webhooks/${webhookId}`, updateData, {
+        const response = await shipStationRequest(() => axios.put(`https://ssapi.shipstation.com/webhooks/${webhookId}`, updateData, {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
 
         logger.info('Successfully updated webhook', {
             webhook_id: webhookId,

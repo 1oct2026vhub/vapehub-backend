@@ -1258,8 +1258,29 @@ module.exports.getSlugRelations = async (req, res, next) => {
             return errorResponse(res, { message: "At least one valid slug is required" }, "At least one valid slug is required", 400);
         }
 
+        const normalizePath = (urlOrPath) => {
+            if (!urlOrPath) return '/';
+            let p = String(urlOrPath).trim();
+            if (/^https?:\/\//i.test(p)) {
+                p = new URL(p).pathname;
+            }
+            p = p.startsWith('/') ? p : '/' + p;
+            return p.replace(/\/$/, '') || '/';
+        };
+
+        const isSelfRedirect = (slug, redirectUrl) => {
+            const canonicalPath = normalizePath('/' + String(slug).replace(/^\/+|\/+$/g, ''));
+            return canonicalPath === normalizePath(redirectUrl);
+        };
+
+        const setRedirectIfValid = (map, slug, url) => {
+            if (slug != null && url && !map.has(slug) && !isSelfRedirect(slug, url)) {
+                map.set(slug, url);
+            }
+        };
+
         // Helper: generate path variations for redirect lookup (handles prefixes, slashes, /amp/)
-        const generatePathVariations = (slug) => {
+        const generatePathVariations = (slug, { includePrefixes = true } = {}) => {
             const variations = new Set();
             let s = String(slug).trim();
             variations.add(s);
@@ -1271,21 +1292,23 @@ module.exports.getSlugRelations = async (req, res, next) => {
             variations.add('/' + s);
             variations.add(s + '/');
             variations.add('/' + s + '/');
-            const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
-            for (const prefix of prefixes) {
-                if (!s.includes('/')) {
-                    variations.add(prefix + '/' + s);
-                    variations.add('/' + prefix + '/' + s);
-                    variations.add(prefix + '/' + s + '/');
-                    variations.add('/' + prefix + '/' + s + '/');
+            if (includePrefixes) {
+                const prefixes = ['brand', 'product-tag', 'product-category', 'blog'];
+                for (const prefix of prefixes) {
+                    if (!s.includes('/')) {
+                        variations.add(prefix + '/' + s);
+                        variations.add('/' + prefix + '/' + s);
+                        variations.add(prefix + '/' + s + '/');
+                        variations.add('/' + prefix + '/' + s + '/');
+                    }
                 }
-            }
-            // Add blog category specific path format: /blogs/category/{slug}
-            if (!s.includes('/')) {
-                variations.add('blogs/category/' + s);
-                variations.add('/blogs/category/' + s);
-                variations.add('blogs/category/' + s + '/');
-                variations.add('/blogs/category/' + s + '/');
+                // Add blog category specific path format: /blogs/category/{slug}
+                if (!s.includes('/')) {
+                    variations.add('blogs/category/' + s);
+                    variations.add('/blogs/category/' + s);
+                    variations.add('blogs/category/' + s + '/');
+                    variations.add('/blogs/category/' + s + '/');
+                }
             }
             const normalized = [];
             variations.forEach(v => {
@@ -1331,7 +1354,10 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     attributes: ['sources', 'url_to'],
                     limit: 1
                 });
-                hasRedirect = tableRedirects.length > 0;
+                hasRedirect = tableRedirects.some((r) => {
+                    const slug = pathBySlug.get(r.sources);
+                    return slug != null && !isSelfRedirect(slug, r.url_to);
+                });
             }
 
             // Check blog category redirects by entity_type and slug
@@ -1345,7 +1371,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     },
                     attributes: ['slug', 'url_to']
                 });
-                hasRedirect = blogCategoryRedirect != null;
+                hasRedirect = blogCategoryRedirect != null
+                    && !isSelfRedirect(blogCategoryRedirect.slug, blogCategoryRedirect.url_to);
             }
 
             // Check soft-deleted products with redirect_url
@@ -1354,7 +1381,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != '' LIMIT 1`,
                     { replacements: { slugs: nonExistentSlugs }, type: Product.sequelize.QueryTypes.SELECT }
                 );
-                hasRedirect = redirectRows.length > 0;
+                hasRedirect = redirectRows.some((r) => !isSelfRedirect(r.slug, r.redirect_url));
             }
 
             // If no redirects found, return error about non-existent slugs
@@ -1387,7 +1414,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
         // Build path variations for ALL slugs (matched and unmatched) so we include redirect details when found
         const pathBySlug = new Map();
         slugArray.forEach(slug => {
-            generatePathVariations(slug).forEach(path => {
+            const includePrefixes = !existingSlugSet.has(slug);
+            generatePathVariations(slug, { includePrefixes }).forEach(path => {
                 if (!pathBySlug.has(path)) pathBySlug.set(path, slug);
             });
         });
@@ -1402,9 +1430,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
             });
             tableRedirects.forEach(r => {
                 const slug = pathBySlug.get(r.sources);
-                if (slug != null && !redirectMap.has(slug)) {
-                    redirectMap.set(slug, r.url_to);
-                }
+                setRedirectIfValid(redirectMap, slug, r.url_to);
             });
         }
 
@@ -1420,9 +1446,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 attributes: ['slug', 'url_to']
             });
             blogCategoryRedirects.forEach(r => {
-                if (!redirectMap.has(r.slug)) {
-                    redirectMap.set(r.slug, r.url_to);
-                }
+                setRedirectIfValid(redirectMap, r.slug, r.url_to);
             });
         }
 
@@ -1432,7 +1456,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 `SELECT slug, redirect_url FROM products WHERE slug IN (:slugs) AND deletedAt IS NOT NULL AND redirect_url IS NOT NULL AND TRIM(redirect_url) != ''`,
                 { replacements: { slugs: unmatchedSlugs }, type: Product.sequelize.QueryTypes.SELECT }
             );
-            redirectRows.forEach(r => redirectMap.set(r.slug, r.redirect_url));
+            redirectRows.forEach(r => setRedirectIfValid(redirectMap, r.slug, r.redirect_url));
         }
         // Handle no slug_relation matches: return redirect if found (product or redirect table), else 404
         if (!slugRelations.length) {
@@ -2819,7 +2843,7 @@ module.exports.getSeoMetaBySlug = async (req, res, next) => {
  * @param {number} maxLength - Maximum character length (default: 160 for SEO)
  * @returns {string|null} Clean text without HTML tags and formatting or null if input is null/undefined
  */
-const removeHtmlTags = (text, maxLength = 160) => {
+const removeHtmlTags = (text, maxLength) => {
     if (!text) return null;
     
     // Remove HTML tags

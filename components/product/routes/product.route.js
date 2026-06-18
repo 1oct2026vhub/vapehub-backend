@@ -123,6 +123,9 @@ const path = require("path");
  *                           updated_at:
  *                             type: string
  *                             format: date-time
+ *                           is_discontinued:
+ *                             type: boolean
+ *                             description: Whether the product is marked discontinued
  *                           Category:
  *                             type: object
  *                           Brand:
@@ -147,6 +150,9 @@ const path = require("path");
  *                                   type: integer
  *                                 stock_status:
  *                                   type: string
+ *                                 is_discontinued:
+ *                                   type: boolean
+ *                                   description: Whether this variant is marked discontinued
  *                                 variantAttributes:
  *                                   type: array
  *                                   items:
@@ -1255,12 +1261,61 @@ router.get('/:id/linked-products',
 
 /**
  * @swagger
+ * /api/product/{id}/description:
+ *   get:
+ *     tags:
+ *       - Product
+ *     summary: Get product description by ID
+ *     description: Returns the published product HTML description. Use this on initial product page load instead of filter-variants to keep variant filtering responses small.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *     responses:
+ *       200:
+ *         description: Product description fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                     description:
+ *                       type: string
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id/description',
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer')
+    ]),
+    productController.getProductDescription
+);
+
+/**
+ * @swagger
  * /api/product/filter-variants:
  *   post:
  *     tags:
  *       - Product
  *     summary: Filter product variants by attribute terms or slug
- *     description: Filter variants by either attribute_terms (array) or slugs (string). At least one must be provided.
+ *     description: Filter variants by either attribute_terms (array) or slugs (string). At least one must be provided. Product HTML description is not included; use GET /api/product/{id}/description on initial page load.
  *     requestBody:
  *       required: true
  *       content:
@@ -1315,6 +1370,9 @@ router.get('/:id/linked-products',
  *                           type: string
  *                         slug:
  *                           type: string
+ *                         is_discontinued:
+ *                           type: boolean
+ *                           description: Whether the product is marked discontinued
  *                     variants:
  *                       type: array
  *                       items:
@@ -1336,6 +1394,9 @@ router.get('/:id/linked-products',
  *                             type: string
  *                           is_in_stock:
  *                             type: boolean
+ *                           is_discontinued:
+ *                             type: boolean
+ *                             description: Whether this variant is marked discontinued
  *                           primary_image:
  *                             type: object
  *                             nullable: true
@@ -1397,6 +1458,9 @@ router.get('/:id/linked-products',
  *                                   type: string
  *                                 is_in_stock:
  *                                   type: boolean
+ *                                 is_discontinued:
+ *                                   type: boolean
+ *                                   description: True when all variants for this term are discontinued
  *                     stock_summary:
  *                       type: object
  *                       properties:
