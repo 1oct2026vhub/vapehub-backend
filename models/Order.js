@@ -3,7 +3,6 @@ const { Model, DataTypes, Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid'); // Import UUID generator
 const logger = require('../library/logger');
 const reviewHelper = require('../components/review/helper/review.helper');
-const cron = require('node-cron');
 const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
@@ -887,17 +886,6 @@ module.exports = (sequelize, DataTypes) => {
         await Order.handleStatusChange(instance);
       }
     }
-  });
-
-  // Schedule cron job to send Trustpilot invitations daily at 12:30 AM (midnight)
-  cron.schedule('30 0 * * *', async () => {
-    try {
-      await Order.sendTrustpilotInvitationsForDeliveredOrders();
-    } catch (error) {
-      console.log(error);
-    }
-  }, {
-    timezone: process.env.UK_TIMEZONE || 'Europe/London'
   });
 
   return Order;
