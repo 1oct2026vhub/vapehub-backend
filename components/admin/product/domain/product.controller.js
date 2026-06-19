@@ -13,6 +13,35 @@ const { invalidateCachePattern, invalidateCache } = require('../../../../library
 
 const slugManager = new SlugManager(SlugRelation);
 
+/** Admin list columns — excludes LONGTEXT description (available via GET /fetch/:id). */
+const ADMIN_LIST_PRODUCT_ATTRIBUTES = [
+    'id', 'updated_by', 'name', 'slug', 'sku', 'price', 'discount_price',
+    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 'is_discontinued',
+    'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style',
+    'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type',
+    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status',
+    'createdAt', 'updatedAt', 'deletedAt'
+];
+
+/** Variant columns for admin list — excludes description (available via fetch/:id). */
+const ADMIN_LIST_VARIANT_ATTRIBUTES = [
+    'id', 'product_id', 'sku', 'slug', 'price', 'discount_price', 'purchase_price',
+    'weight', 'length', 'width', 'height', 'barcode', 'stock', 'low_stock_threshold',
+    'stock_status', 'status', 'is_discontinued'
+];
+
+const groupRecordsByForeignKey = (records, foreignKey) => {
+    const map = new Map();
+    records.forEach((record) => {
+        const key = record[foreignKey];
+        if (!map.has(key)) {
+            map.set(key, []);
+        }
+        map.get(key).push(record);
+    });
+    return map;
+};
+
 const buildCanonicalUrl = (slug) => {
     const baseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
     if (!baseUrl || !slug) {
@@ -300,6 +329,9 @@ module.exports.listAllProducts = async (req, res, next) => {
         if (deleted !== undefined && (deleted === "true" || deleted === true)) {
             whereClause.deletedAt = { [Op.ne]: null }
         }
+
+        const includeDeleted = deleted === "true" || deleted === true;
+
         // Optimized include clause - only essential relationships for better performance
         const includeClause = [
             { 
@@ -307,117 +339,49 @@ module.exports.listAllProducts = async (req, res, next) => {
                 as: 'Categories',
                 required: false,
                 through: { attributes: ['is_primary'] },
-                attributes: ['id', 'name', 'slug'] // Limit attributes
+                attributes: ['id', 'name', 'slug']
             },
             { 
                 model: Brand, 
                 as: 'Brands',
                 required: false,
                 through: { attributes: ['is_primary'] },
-                attributes: ['id', 'name', 'slug'] // Limit attributes
+                attributes: ['id', 'name', 'slug']
             },
             { 
                 model: ProductImage, 
                 as: 'ProductImages',
                 required: false,
-                attributes: ['id', 'product_id', 'image_url', 'is_primary'] // Limit attributes
+                separate: true,
+                limit: 1,
+                order: [['is_primary', 'DESC'], ['id', 'ASC']],
+                attributes: ['id', 'product_id', 'image_url', 'is_primary']
             }
         ];
 
-        // Separate query for variants and attributes to reduce JOIN complexity
-        const variantIncludeClause = [
+        const variantNestedIncludes = [
             {
-                model: ProductVariant,
-                as: "variants",
+                model: ProductVariantImage,
+                as: "variantImages",
                 attributes: [
                     "id",
-                    "product_id",
-                    "sku",
-                    "slug",
-                    "price",
-                    "discount_price",
-                    "purchase_price",
-                    "weight",
-                    "length",
-                    "width",
-                    "height",
-                    "description",
-                    "barcode",
-                    "stock",
-                    "low_stock_threshold",
-                    "stock_status",
-                    "status",
-                    "is_discontinued"
-                ],
-                include: [
-                    {
-                        model: ProductVariantImage,
-                        as: "variantImages",
-                        attributes: [
-                            "id",
-                            "variant_id",
-                            "image_url",
-                            "is_primary"
-                        ]
-                    },
-                    {
-                        model: ProductVariantAttribute,
-                        as: "variantAttributes",
-                        attributes: [
-                            "id",
-                            "variant_id",
-                            "attribute_id",
-                            "term_id",
-                            "is_visible",
-                            "used_in_variation"
-                        ],
-                        include: [
-                            {
-                                model: AttributeTerm,
-                                as: "term",
-                                attributes: [
-                                    "id",
-                                    "name",
-                                    "slug"
-                                ]
-                            },
-                            {
-                                model: Attribute,
-                                as: "attribute",
-                                attributes: [
-                                    "id",
-                                    "name",
-                                    "type"
-                                ]
-                            }
-                        ]
-                    }
+                    "variant_id",
+                    "image_url",
+                    "is_primary"
                 ]
-            }
-        ];
-
-        const attributeIncludeClause = [
+            },
             {
-                model: ProductAttributeTerm,
-                as: "productAttributeTerms",
+                model: ProductVariantAttribute,
+                as: "variantAttributes",
                 attributes: [
                     "id",
-                    "product_id",
+                    "variant_id",
                     "attribute_id",
                     "term_id",
-                    "is_visible_page",
+                    "is_visible",
                     "used_in_variation"
                 ],
-                include: [  
-                    {
-                        model: Attribute,
-                        as: "attribute",
-                        attributes: [
-                            "id",
-                            "name",
-                            "slug"
-                        ]
-                    },
+                include: [
                     {
                         model: AttributeTerm,
                         as: "term",
@@ -426,18 +390,66 @@ module.exports.listAllProducts = async (req, res, next) => {
                             "name",
                             "slug"
                         ]
+                    },
+                    {
+                        model: Attribute,
+                        as: "attribute",
+                        attributes: [
+                            "id",
+                            "name",
+                            "type"
+                        ]
                     }
                 ]
             }
         ];
 
-        // Optimized query execution - separate count and data queries
-        const totalCount = await Product.count({
-            where: whereClause,
-            paranoid: deleted === "true" || deleted === true ? false : true
-        });
+        const attributeNestedIncludes = [
+            {
+                model: Attribute,
+                as: "attribute",
+                attributes: [
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            },
+            {
+                model: AttributeTerm,
+                as: "term",
+                attributes: [
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            }
+        ];
 
-        // Calculate pagination details
+        const productAttributeTermAttributes = [
+            "id",
+            "product_id",
+            "attribute_id",
+            "term_id",
+            "is_visible_page",
+            "used_in_variation"
+        ];
+
+        const [totalCount, products] = await Promise.all([
+            Product.count({
+                where: whereClause,
+                paranoid: !includeDeleted
+            }),
+            Product.findAll({
+                where: whereClause,
+                attributes: ADMIN_LIST_PRODUCT_ATTRIBUTES,
+                include: includeClause,
+                order: [[sort_by, order]],
+                limit: parsedLimit,
+                offset: parsedOffset,
+                paranoid: !includeDeleted
+            })
+        ]);
+
         const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
 
@@ -449,38 +461,28 @@ module.exports.listAllProducts = async (req, res, next) => {
             offset: parsedOffset
         };
 
-        // Fetch basic product data first (faster)
-        const products = await Product.findAll({
-            where: whereClause,
-            include: includeClause,
-            order: [[sort_by, order]],
-            limit: parsedLimit,
-            offset: parsedOffset,
-            paranoid: !(deleted === "true" || deleted === true)
-        });
-
-        // Fetch variants and attributes separately for better performance
         if (products.length > 0) {
             const productIds = products.map(p => p.id);
-            
-            // Get variants for these products
-            const variants = await ProductVariant.findAll({
-                where: { product_id: { [Op.in]: productIds } },
-                include: variantIncludeClause[0].include,
-                attributes: variantIncludeClause[0].attributes
-            });
 
-            // Get attributes for these products
-            const attributes = await ProductAttributeTerm.findAll({
-                where: { product_id: { [Op.in]: productIds } },
-                include: attributeIncludeClause[0].include,
-                attributes: attributeIncludeClause[0].attributes
-            });
+            const [variants, attributes] = await Promise.all([
+                ProductVariant.findAll({
+                    where: { product_id: { [Op.in]: productIds } },
+                    include: variantNestedIncludes,
+                    attributes: ADMIN_LIST_VARIANT_ATTRIBUTES
+                }),
+                ProductAttributeTerm.findAll({
+                    where: { product_id: { [Op.in]: productIds } },
+                    include: attributeNestedIncludes,
+                    attributes: productAttributeTermAttributes
+                })
+            ]);
 
-            // Attach variants and attributes to products
+            const variantsByProductId = groupRecordsByForeignKey(variants, 'product_id');
+            const attributesByProductId = groupRecordsByForeignKey(attributes, 'product_id');
+
             products.forEach(product => {
-                product.dataValues.variants = variants.filter(v => v.product_id === product.id);
-                product.dataValues.productAttributeTerms = attributes.filter(a => a.product_id === product.id);
+                product.dataValues.variants = variantsByProductId.get(product.id) || [];
+                product.dataValues.productAttributeTerms = attributesByProductId.get(product.id) || [];
             });
         }
         
