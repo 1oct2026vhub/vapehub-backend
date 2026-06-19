@@ -13,6 +13,57 @@ const ASYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_ASYNC_MAX || 
 const MAX_ERROR_SAMPLES = 50;
 const DELIVERY_MODE = process.env.BULK_ORDER_STATUS_DELIVERY_MODE || 'db_poll';
 
+async function findOrdersInActiveBulkJobs(orderIds, targetStatus) {
+    if (!orderIds.length) {
+        return [];
+    }
+
+    return BulkOrderStatusJobItem.findAll({
+        attributes: ['order_id', 'job_id'],
+        where: {
+            order_id: { [Op.in]: orderIds },
+            status: { [Op.in]: ['pending', 'processing'] },
+        },
+        include: [{
+            model: BulkOrderStatusJob,
+            as: 'job',
+            required: true,
+            attributes: ['id', 'status', 'target_status'],
+            where: {
+                target_status: targetStatus,
+                status: { [Op.in]: ['queued', 'processing'] },
+            },
+        }],
+    });
+}
+
+async function findOrdersAlreadyAtTargetStatus(orderIds, targetStatus) {
+    if (!orderIds.length) {
+        return [];
+    }
+
+    return Order.findAll({
+        where: {
+            id: { [Op.in]: orderIds },
+            status: targetStatus,
+        },
+        attributes: ['id', 'order_unique_id', 'shipstation_order_id'],
+    });
+}
+
+function isOrderAlreadyProcessedForTarget(order, targetStatus) {
+    if (!order || !targetStatus) {
+        return false;
+    }
+    if (order.status === targetStatus) {
+        return true;
+    }
+    if (targetStatus === 'packed' && order.shipstation_order_id) {
+        return true;
+    }
+    return false;
+}
+
 async function createBulkOrderStatusJob({ orderIds, status, userId }) {
     const uniqueOrderIds = [...new Set(orderIds)];
 
@@ -31,16 +82,43 @@ async function createBulkOrderStatusJob({ orderIds, status, userId }) {
         throw error;
     }
 
+    const inFlight = await findOrdersInActiveBulkJobs(uniqueOrderIds, status);
+    if (inFlight.length > 0) {
+        const error = new Error(
+            'Some orders are already being processed in an active bulk job. ' +
+            'Wait for the current batch to finish before submitting again.'
+        );
+        error.statusCode = 409;
+        error.code = 'BULK_ORDERS_ALREADY_QUEUED';
+        error.orderIds = [...new Set(inFlight.map((i) => i.order_id))];
+        error.jobIds = [...new Set(inFlight.map((i) => i.job_id))];
+        throw error;
+    }
+
+    const alreadyDone = await findOrdersAlreadyAtTargetStatus(uniqueOrderIds, status);
+    const alreadyDoneIds = new Set(alreadyDone.map((o) => o.id));
+    const orderIdsToQueue = uniqueOrderIds.filter((id) => !alreadyDoneIds.has(id));
+
+    if (orderIdsToQueue.length === 0) {
+        const error = new Error('All selected orders already have the target status');
+        error.statusCode = 409;
+        error.code = 'BULK_ORDERS_ALREADY_AT_STATUS';
+        error.orderIds = uniqueOrderIds;
+        throw error;
+    }
+
+    const ordersToQueue = orders.filter((o) => orderIdsToQueue.includes(o.id));
+
     const job = await BulkOrderStatusJob.create({
         job_key: crypto.randomUUID(),
         status: 'queued',
         target_status: status,
-        total: uniqueOrderIds.length,
+        total: orderIdsToQueue.length,
         initiated_by: userId
     });
 
-    const orderById = new Map(orders.map(o => [o.id, o]));
-    const jobItemsPayload = uniqueOrderIds.map(orderId => ({
+    const orderById = new Map(ordersToQueue.map(o => [o.id, o]));
+    const jobItemsPayload = orderIdsToQueue.map(orderId => ({
         job_id: job.id,
         order_id: orderId,
         order_unique_id: orderById.get(orderId)?.order_unique_id || null,
@@ -175,6 +253,31 @@ async function finalizeJobIfComplete(jobId) {
     });
 }
 
+async function finalizeJobItemAsSkipped(jobItem, order, message) {
+    const job = await BulkOrderStatusJob.findByPk(jobItem.job_id);
+    if (!job) {
+        return false;
+    }
+
+    const [updated] = await BulkOrderStatusJobItem.update(
+        {
+            status: 'skipped',
+            error_message: message,
+            shipstation_order_id: order?.shipstation_order_id || null,
+            processed_at: new Date(),
+        },
+        { where: { id: jobItem.id, status: 'processing' } }
+    );
+
+    if (updated === 0) {
+        return false;
+    }
+
+    await job.increment('skipped');
+    await finalizeJobIfComplete(job.id);
+    return true;
+}
+
 async function processBulkOrderStatusJobItem(jobItem) {
     const job = jobItem.job || await BulkOrderStatusJob.findByPk(jobItem.job_id);
     if (!job) {
@@ -182,6 +285,29 @@ async function processBulkOrderStatusJobItem(jobItem) {
     }
 
     try {
+        const order = await Order.findByPk(jobItem.order_id, {
+            attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+        });
+
+        if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
+            const processedAt = new Date();
+            await jobItem.update({
+                status: 'skipped',
+                error_message: 'Order already at target status or already sent to ShipStation (duplicate batch item)',
+                shipstation_order_id: order.shipstation_order_id || null,
+                processed_at: processedAt,
+            });
+            await job.increment('skipped');
+            await finalizeJobIfComplete(job.id);
+            return {
+                success: true,
+                skipped: true,
+                order_id: order.id,
+                order_unique_id: order.order_unique_id,
+                message: 'Order already processed',
+            };
+        }
+
         const result = await processOrderStatusUpdate({
             orderId: jobItem.order_id,
             status: job.target_status,
@@ -286,4 +412,7 @@ module.exports = {
     processBulkOrderStatusJobItem,
     getBulkOrderStatusJobDetails,
     finalizeJobIfComplete,
+    finalizeJobItemAsSkipped,
+    findOrdersInActiveBulkJobs,
+    isOrderAlreadyProcessedForTarget,
 };
