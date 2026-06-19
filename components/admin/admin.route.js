@@ -58,5 +58,6 @@ router.use('/settings', require('./settings/routes/settings.route'));
 router.use('/popularCategory', require('./popularCategory/routes/popularCategory.route'));
 router.use('/shopByCategory', require('./shopByCategory/routes/shopByCategory.route'));
 router.use('/newsletter-templates', require('./newsletterTemplates/routes/newsletterTemplates.route'));
+router.use('/logs', require('./logs/routes/logs.route'));
 
 module.exports = router;
