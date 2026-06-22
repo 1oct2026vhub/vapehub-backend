@@ -12,7 +12,7 @@ const ENDPOINT_PATH = '/api/internal/bulk-order-status/process-item';
 const CONCURRENCY = Math.max(1, Number(process.env.BULK_ORDER_STATUS_WORKER_CONCURRENCY || 1));
 const MAX_MESSAGES = Math.min(10, Math.max(1, Number(process.env.BULK_ORDER_STATUS_WORKER_MAX_MESSAGES || 10)));
 const LONG_POLL_SEC = Math.min(20, Math.max(0, Number(process.env.BULK_ORDER_STATUS_WORKER_LONG_POLL_SECONDS || 20)));
-const HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.BULK_ORDER_STATUS_WORKER_HTTP_TIMEOUT_MS || 180000));
+const HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.BULK_ORDER_STATUS_WORKER_HTTP_TIMEOUT_MS || 120000));
 const BACKPRESSURE_FACTOR = Math.max(1, Number(process.env.BULK_ORDER_STATUS_WORKER_BACKPRESSURE_FACTOR || 2));
 
 let running = true;
