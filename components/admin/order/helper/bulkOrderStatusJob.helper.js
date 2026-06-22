@@ -312,7 +312,6 @@ async function processBulkOrderStatusJobItem(jobItem) {
             orderId: jobItem.order_id,
             status: job.target_status,
             userId: job.initiated_by,
-            createLabel: false,
         });
 
         const processedAt = new Date();
