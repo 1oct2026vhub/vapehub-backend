@@ -198,6 +198,17 @@ router.get('/posts/:id',
  *                 type: array
  *                 items:
  *                   type: integer
+ *               author_id:
+ *                 type: integer
+ *                 description: Blog author user ID. Defaults to the authenticated admin when omitted.
+ *               sources:
+ *                 type: string
+ *                 description: JSON array of source objects with label, href, and optional description
+ *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               related_blog_ids:
+ *                 type: string
+ *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
+ *                 example: "18,42,7"
  *     responses:
  *       201:
  *         description: Blog post created successfully
@@ -403,6 +414,17 @@ router.put('/posts/bulk-restore',
  *                 type: array
  *                 items:
  *                   type: integer
+ *               author_id:
+ *                 type: integer
+ *                 description: Blog author user ID. Defaults to the authenticated admin when omitted.
+ *               sources:
+ *                 type: string
+ *                 description: JSON array of source objects with label, href, and optional description
+ *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               related_blog_ids:
+ *                 type: string
+ *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
+ *                 example: "18,42,7"
  *     responses:
  *       200:
  *         description: Blog post updated successfully
@@ -526,6 +548,55 @@ router.use('/tags', blogTagRoute);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/BlogTag'
+ *         sources:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/BlogSourceItem'
+ *         related_blog_ids:
+ *           type: array
+ *           items:
+ *             type: integer
+ *           description: Curated related blog IDs in display order (max 3)
+ *         related_blogs:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/RelatedBlogPreview'
+ *     BlogSourceItem:
+ *       type: object
+ *       required:
+ *         - label
+ *         - href
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "Medicines and Healthcare products Regulatory Agency (MHRA)"
+ *         href:
+ *           type: string
+ *           format: uri
+ *           example: "https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency"
+ *         description:
+ *           type: string
+ *           example: "e-cigarette product notification scheme & manufacturer guidance"
+ *     RelatedBlogPreview:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         title:
+ *           type: string
+ *         slug:
+ *           type: string
+ *         image_url:
+ *           type: string
+ *         alt_text:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *         published_at:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
  */
 
 module.exports = router;

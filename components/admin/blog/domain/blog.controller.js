@@ -7,8 +7,15 @@ const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);
 const seoService = require('../../seo/domain/seo.service');
 
-const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
+const { updateBlogCategories, updateBlogTags, updateBlogRelatedPosts, getBlogRelatedPosts } = require("../helper/blogRelations.helper");
 const { replaceInlineBase64ImagesWithS3Urls } = require("../helper/blogContent.helper");
+const {
+    AUTHOR_ATTRIBUTES,
+    parseSourcesField,
+    parseRelatedBlogIdsField,
+    resolveAuthorId,
+    attachRelatedBlogFields
+} = require("../helper/blogPayload.helper");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -64,7 +71,7 @@ module.exports.listAllBlogs = async (req, res) => {
             {
                 model: User,
                 as: 'author',
-                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'],
+                attributes: AUTHOR_ATTRIBUTES,
                 required: false
             },
             {
@@ -147,7 +154,7 @@ module.exports.getBlogById = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
+                    attributes: AUTHOR_ATTRIBUTES
                 },
                 {
                     model: BlogCategory,
@@ -194,6 +201,9 @@ module.exports.getBlogById = async (req, res) => {
             };
         }
 
+        const relatedPosts = await getBlogRelatedPosts(blog.id);
+        blogData = attachRelatedBlogFields(blogData, relatedPosts);
+
         successResponse(res, blogData);
     } catch (error) {
         errorResponse(res, error);
@@ -210,6 +220,16 @@ const parseArrayField = (field) => {
     }
 };
 
+const formatAdminBlogResponse = async (blogInstance) => {
+    const blogData = blogInstance.toJSON ? blogInstance.toJSON() : blogInstance;
+    if (blogData.status === 'draft' || blogData.status === 'archived') {
+        blogData.published_at = null;
+    }
+
+    const relatedPosts = await getBlogRelatedPosts(blogData.id);
+    return attachRelatedBlogFields(blogData, relatedPosts);
+};
+
 module.exports.createBlog = async (req, res) => {
     let transaction;
     
@@ -224,7 +244,13 @@ module.exports.createBlog = async (req, res) => {
             req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
         const tags = req.body.tags ? 
             req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
-        const { id: author_id } = req.user;
+        const author_id = await resolveAuthorId(req.body.author_id, req.user.id);
+        const sources = req.body.sources !== undefined
+            ? parseSourcesField(req.body.sources)
+            : [];
+        const relatedBlogIds = req.body.related_blog_ids !== undefined
+            ? parseRelatedBlogIdsField(req.body.related_blog_ids)
+            : [];
         const status = req.body.status || 'draft';
 
         let image_url = null;
@@ -240,10 +266,11 @@ module.exports.createBlog = async (req, res) => {
             image_url,
             alt_text,
             author_id,
+            sources,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
             status,
-            updated_by: author_id
+            updated_by: req.user.id
         }, { transaction });
 
         // Create slug relation using static method
@@ -253,7 +280,8 @@ module.exports.createBlog = async (req, res) => {
         try {
             await Promise.all([
                 categories.length > 0 ? updateBlogCategories(blog.id, transaction, categories) : Promise.resolve(),
-                tags.length > 0 ? updateBlogTags(blog.id, transaction, tags) : Promise.resolve()
+                tags.length > 0 ? updateBlogTags(blog.id, transaction, tags) : Promise.resolve(),
+                relatedBlogIds.length > 0 ? updateBlogRelatedPosts(blog.id, transaction, relatedBlogIds) : Promise.resolve()
             ]);
         } catch (error) {
             console.error('Error updating relations:', error);
@@ -266,7 +294,7 @@ module.exports.createBlog = async (req, res) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
+                    attributes: AUTHOR_ATTRIBUTES
                 },
                 {
                     model: BlogCategory,
@@ -284,7 +312,8 @@ module.exports.createBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
-        successResponse(res, createdBlog, 'Blog post created successfully', 201);
+        const responseData = await formatAdminBlogResponse(createdBlog);
+        successResponse(res, responseData, 'Blog post created successfully', 201);
     } catch (error) {
         if (transaction) {
             try {
@@ -321,13 +350,16 @@ const handleImageUpload = async (file) => {
     }
 };
 
-const updateBlogRelations = async (blogId, { categories, tags }, transaction) => {
+const updateBlogRelations = async (blogId, { categories, tags, relatedBlogIds }, transaction) => {
     const updates = [];
     if (categories) {
         updates.push(updateBlogCategories(blogId, transaction, categories));
     }
     if (tags) {
         updates.push(updateBlogTags(blogId, transaction, tags));
+    }
+    if (relatedBlogIds !== undefined) {
+        updates.push(updateBlogRelatedPosts(blogId, transaction, relatedBlogIds));
     }
     await Promise.all(updates);
 };
@@ -342,6 +374,15 @@ module.exports.updateBlog = async (req, res) => {
             : undefined;
         const { id: updated_by } = req.user;
         const status = req.body.status;
+        const parsedSources = req.body.sources !== undefined
+            ? parseSourcesField(req.body.sources)
+            : undefined;
+        const parsedRelatedBlogIds = req.body.related_blog_ids !== undefined
+            ? parseRelatedBlogIdsField(req.body.related_blog_ids, id)
+            : undefined;
+        const parsedAuthorId = req.body.author_id !== undefined
+            ? await resolveAuthorId(req.body.author_id, updated_by)
+            : undefined;
         const blog = await Blog.findByPk(id, { transaction, paranoid: false });
         if (!blog) {
             await transaction.rollback();
@@ -369,6 +410,8 @@ module.exports.updateBlog = async (req, res) => {
             ...(image_url && { image_url }),
             ...(alt_text !== undefined && { alt_text }),
             ...(status && { status }),
+            ...(parsedSources !== undefined && { sources: parsedSources }),
+            ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
             updated_by
         };
 
@@ -398,7 +441,11 @@ module.exports.updateBlog = async (req, res) => {
             tags.split(',').map(id => parseInt(id.trim())) : [];
 
         // Update relations
-        await updateBlogRelations(id, { categories: parsedCategories, tags: parsedTags }, transaction);
+        await updateBlogRelations(id, {
+            categories: parsedCategories,
+            tags: parsedTags,
+            relatedBlogIds: parsedRelatedBlogIds
+        }, transaction);
 
         // Update SEO noIndex based on blog post status and publication date
         await seoService.updateBlogPostNoIndex(id, status, published_at);
@@ -445,7 +492,7 @@ module.exports.updateBlog = async (req, res) => {
         const updatedBlog = await Blog.findByPk(id, {
             paranoid: false,
             include: [
-                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
+                { model: User, as: 'author', attributes: AUTHOR_ATTRIBUTES },
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
                 { model: BlogTag, as: 'tags', through: { attributes: [] } }
             ],
@@ -455,7 +502,7 @@ module.exports.updateBlog = async (req, res) => {
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
 
-        let responseData = updatedBlog;
+        let responseData = await formatAdminBlogResponse(updatedBlog);
         const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
         if (updatedBlogIsDeleted) {
             const redirect = await Redirect.findOne({
@@ -464,7 +511,7 @@ module.exports.updateBlog = async (req, res) => {
             });
             if (redirect) {
                 responseData = {
-                    ...updatedBlog.toJSON(),
+                    ...responseData,
                     redirect: {
                         redirect_url: redirect.url_to,
                         old_path: redirect.sources,

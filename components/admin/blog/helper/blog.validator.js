@@ -1,7 +1,7 @@
 const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
-const { Blog } = require('../../../../models');
+const { Blog, User } = require('../../../../models');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -26,6 +26,122 @@ const assertContentWithinSizeLimit = (value) => {
         );
     }
 };
+
+const parseSourcesForValidation = (value) => {
+    if (value == null || value === '') {
+        return [];
+    }
+
+    let sources = value;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return [];
+        }
+        sources = JSON.parse(trimmed);
+    }
+
+    if (!Array.isArray(sources)) {
+        throw new Error('sources must be a JSON array');
+    }
+
+    if (sources.length > 20) {
+        throw new Error('sources cannot contain more than 20 items');
+    }
+
+    sources.forEach((item, index) => {
+        if (!item || typeof item !== 'object') {
+            throw new Error(`sources[${index}] must be an object`);
+        }
+        if (!item.label || !String(item.label).trim()) {
+            throw new Error(`sources[${index}].label is required`);
+        }
+        if (!item.href || !String(item.href).trim()) {
+            throw new Error(`sources[${index}].href is required`);
+        }
+        try {
+            const url = new URL(String(item.href).trim());
+            if (!['http:', 'https:'].includes(url.protocol)) {
+                throw new Error('invalid protocol');
+            }
+        } catch {
+            throw new Error(`sources[${index}].href must be a valid URL with http or https`);
+        }
+    });
+
+    return sources;
+};
+
+const parseRelatedBlogIdsForValidation = (value, blogId = null) => {
+    if (value == null || value === '') {
+        return [];
+    }
+
+    let ids = value;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return [];
+        }
+        if (trimmed.startsWith('[')) {
+            ids = JSON.parse(trimmed);
+        } else {
+            ids = trimmed.split(',').map((id) => parseInt(id.trim(), 10));
+        }
+    }
+
+    if (!Array.isArray(ids)) {
+        throw new Error('related_blog_ids must be an array or comma-separated list of integers');
+    }
+
+    const parsedIds = ids.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id));
+    const uniqueIds = [...new Set(parsedIds)];
+
+    if (uniqueIds.length > 3) {
+        throw new Error('related_blog_ids cannot contain more than 3 items');
+    }
+
+    if (blogId != null && uniqueIds.includes(parseInt(blogId, 10))) {
+        throw new Error('related_blog_ids cannot include the current blog post');
+    }
+
+    return uniqueIds;
+};
+
+const authorIdValidation = (optional = true) => body('author_id')
+    .optional({ values: optional ? 'undefined' : 'falsy' })
+    .custom(async (value) => {
+        if (value == null || value === '') {
+            return true;
+        }
+
+        const authorId = parseInt(value, 10);
+        if (Number.isNaN(authorId)) {
+            throw new Error('author_id must be a valid integer');
+        }
+
+        const author = await User.findByPk(authorId, { attributes: ['id'] });
+        if (!author) {
+            throw new Error('author_id does not match an existing user');
+        }
+
+        return true;
+    });
+
+const sourcesValidation = body('sources')
+    .optional()
+    .custom((value) => {
+        parseSourcesForValidation(value);
+        return true;
+    });
+
+const relatedBlogIdsValidation = (blogIdFromParams = false) => body('related_blog_ids')
+    .optional()
+    .custom((value, { req }) => {
+        const blogId = blogIdFromParams ? req.params.id : null;
+        parseRelatedBlogIdsForValidation(value, blogId);
+        return true;
+    });
 
 const blogIdValidation = [
     param('id')
@@ -97,7 +213,11 @@ const blogValidation = [
         .optional()
         .isString()
         .isLength({ max: 500 })
-        .withMessage('Alt text must be a string with maximum 500 characters')
+        .withMessage('Alt text must be a string with maximum 500 characters'),
+
+    authorIdValidation(true),
+    sourcesValidation,
+    relatedBlogIdsValidation(false)
 ];
 
 const blogUpdateValidation = [
@@ -195,7 +315,11 @@ const blogUpdateValidation = [
         .optional()
         .isString()
         .isLength({ max: 500 })
-        .withMessage('Alt text must be a string with maximum 500 characters')
+        .withMessage('Alt text must be a string with maximum 500 characters'),
+
+    authorIdValidation(true),
+    sourcesValidation,
+    relatedBlogIdsValidation(true)
 ];
 
 const filterValidations = [
