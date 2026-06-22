@@ -6,11 +6,7 @@ const {
     Order,
     sequelize,
 } = require('../../../../models');
-const {
-    processOrderStatusUpdate,
-    isOrderAlreadyProcessedForTarget,
-    loadOrderStateFromDb,
-} = require('./bulkOrderStatus.processor');
+const { processOrderStatusUpdate } = require('./bulkOrderStatus.processor');
 const { enqueueBulkOrderStatusItems } = require('../../../../library/bulkOrderStatus/sqsEnqueue');
 
 const ASYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_ASYNC_MAX || 500);
@@ -53,6 +49,19 @@ async function findOrdersAlreadyAtTargetStatus(orderIds, targetStatus) {
         },
         attributes: ['id', 'order_unique_id', 'shipstation_order_id'],
     });
+}
+
+function isOrderAlreadyProcessedForTarget(order, targetStatus) {
+    if (!order || !targetStatus) {
+        return false;
+    }
+    if (order.status === targetStatus) {
+        return true;
+    }
+    if (targetStatus === 'packed' && order.shipstation_order_id) {
+        return true;
+    }
+    return false;
 }
 
 async function createBulkOrderStatusJob({ orderIds, status, userId }) {
@@ -276,7 +285,9 @@ async function processBulkOrderStatusJobItem(jobItem) {
     }
 
     try {
-        const order = await loadOrderStateFromDb(jobItem.order_id);
+        const order = await Order.findByPk(jobItem.order_id, {
+            attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+        });
 
         if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
             const processedAt = new Date();
