@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { ShippingMethod, User } = require("../../../../models");
 const { Op } = require("sequelize");
+const { clearFallbackShippingMethodCache } = require("../../shipStation/helper/shipStationShippingMapping.helper");
 
 // Helper function to calculate shipping cost based on rules
 const calculateShippingCost = (shippingMethod, orderTotal) => {
@@ -57,6 +58,7 @@ module.exports.createShippingMethod = async (req, res) => {
             is_enabled,
             service_code,
             carrier_code,
+            requestedShippingService,
             api_key, 
             api_secret,
             is_free_shipping,
@@ -106,6 +108,7 @@ module.exports.createShippingMethod = async (req, res) => {
             is_enabled: willBeEnabled,
             service_code,
             carrier_code,
+            requestedShippingService,
             api_key, 
             api_secret,
             is_free_shipping: willBeFreeShipping,
@@ -113,6 +116,7 @@ module.exports.createShippingMethod = async (req, res) => {
             updated_by 
         });
         
+        clearFallbackShippingMethodCache();
         return successResponse(res, shippingMethod, "Shipping method created successfully", 201);
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -283,6 +287,7 @@ module.exports.updateShippingMethod = async (req, res) => {
             is_enabled,
             service_code,
             carrier_code,
+            requestedShippingService,
             api_key, 
             api_secret,
             is_free_shipping,
@@ -322,6 +327,7 @@ module.exports.updateShippingMethod = async (req, res) => {
             ...(is_enabled !== undefined && { is_enabled }),
             ...(service_code !== undefined && { service_code }),
             ...(carrier_code !== undefined && { carrier_code }),
+            ...(requestedShippingService !== undefined && { requestedShippingService }),
             ...(api_key !== undefined && { api_key }),
             ...(api_secret !== undefined && { api_secret }),
             ...(is_free_shipping !== undefined && { is_free_shipping }),
@@ -330,6 +336,7 @@ module.exports.updateShippingMethod = async (req, res) => {
         };
         
         await shippingMethod.update(updatedFields);
+        clearFallbackShippingMethodCache();
         
         // Reload the updated shipping method with associations
         await shippingMethod.reload({

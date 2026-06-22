@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, listOrdersByOrderNumber, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
+const { resolveShipStationShippingMapping } = require('../helper/shipStationShippingMapping.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
@@ -74,6 +75,21 @@ async function createShipStationOrder(order, options = {}) {
             }
         }
 
+        const shippingMapping = await resolveShipStationShippingMapping(order);
+
+        if (shippingMapping.usedFallback) {
+            shipstationLog.logInfo({
+                type: 'create_order_shipping_mapping_fallback',
+                order_id: order.id,
+                order_unique_id: order.order_unique_id,
+                shipping_method_id: order.shippingMethod?.id || null,
+                fallback_method_id: shippingMapping.fallbackMethodId,
+                carrier_code: shippingMapping.carrierCode,
+                service_code: shippingMapping.serviceCode,
+                requested_shipping_service: shippingMapping.requestedShippingService,
+            });
+        }
+
         const shipStationOrder = {
             orderKey: order.order_unique_id,
             orderNumber: order.order_unique_id,
@@ -136,7 +152,9 @@ async function createShipStationOrder(order, options = {}) {
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
-            requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Standard Delivery',
+            requestedShippingService: shippingMapping.requestedShippingService,
+            carrierCode: shippingMapping.carrierCode,
+            serviceCode: shippingMapping.serviceCode,
         };
         
         shipstationLog.logApiCall({
@@ -187,25 +205,25 @@ async function createShipStationOrder(order, options = {}) {
             shipstation_order_id: orderId
         });
 
-        // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail';
-        const serviceCode = order.shippingMethod?.service_code || 'royal_mail_tracked_48';
-        const packageCode = 'package'; // Example default
+        const { carrierCode, serviceCode } = shippingMapping;
+        const packageCode = 'package';
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-        
-        // Calculate total weight (example: sum of item weights, fallback to 1 pound)
+
         let totalWeight = 1;
         if (order.orderItems && order.orderItems.length > 0) {
-            totalWeight = order.orderItems.reduce((sum, item) => sum + (item.weight || 0), 0) || 1;
+            totalWeight = order.orderItems.reduce((sum, item) => {
+                const itemWeight = item.weight ?? item.variant?.weight ?? 0;
+                return sum + itemWeight;
+            }, 0) || 1;
         }
-        
+
         const weight = { value: totalWeight, units: 'pounds' };
         const dimensions = null;
         const insuranceOptions = null;
         const internationalOptions = null;
         const advancedOptions = null;
-        const testLabel = true;
+        const testLabel = process.env.SHIPSTATION_TEST_LABEL === 'true';
 
         // Create label for the order
         let labelResponse = null;
