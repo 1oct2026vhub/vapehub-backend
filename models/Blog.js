@@ -32,6 +32,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'blog_id',
                 as: 'tagRelations'
             });
+            this.hasMany(models.BlogRelatedPost, {
+                foreignKey: 'blog_id',
+                as: 'relatedPosts'
+            });
         }
     }
 
@@ -82,6 +86,10 @@ module.exports = (sequelize, DataTypes) => {
         },
         published_at: {
             type: DataTypes.DATE,
+            allowNull: true
+        },
+        sources: {
+            type: DataTypes.JSON,
             allowNull: true
         },
         updated_by: {
