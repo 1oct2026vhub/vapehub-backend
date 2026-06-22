@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
+const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, listOrdersByOrderNumber, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
@@ -40,8 +40,44 @@ async function createShipStationOrder(order, options = {}) {
             user_email: customerEmail
         });
 
+        let resolvedShipStationOrderId = order.shipstation_order_id || null;
+
+        if (!resolvedShipStationOrderId) {
+            const existingOrders = await listOrdersByOrderNumber(order.order_unique_id);
+            if (existingOrders.length > 0) {
+                const pick =
+                    existingOrders.find((o) => o.orderStatus === 'awaiting_shipment') ||
+                    [...existingOrders].sort(
+                        (a, b) => new Date(b.createDate) - new Date(a.createDate)
+                    )[0];
+
+                resolvedShipStationOrderId = pick.orderId;
+
+                await Order.update(
+                    { shipstation_order_id: resolvedShipStationOrderId },
+                    {
+                        where: { id: order.id },
+                        isAdmin: true,
+                        userId: null,
+                    }
+                );
+
+                shipstationLogger.logInfo({
+                    type: 'create_order_linked_existing',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: resolvedShipStationOrderId,
+                    existing_count: existingOrders.length,
+                });
+
+                order.shipstation_order_id = resolvedShipStationOrderId;
+            }
+        }
+
         const shipStationOrder = {
+            orderKey: order.order_unique_id,
             orderNumber: order.order_unique_id,
+            ...(resolvedShipStationOrderId && { orderId: resolvedShipStationOrderId }),
             orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
             orderStatus: 'awaiting_shipment',
             customerUsername: customerEmail,
@@ -152,8 +188,8 @@ async function createShipStationOrder(order, options = {}) {
         });
 
         // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail'; // Example default
-        const serviceCode = order.shippingMethod?.service_code || 'standard_delivery'; // Example default
+        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail';
+        const serviceCode = order.shippingMethod?.service_code || 'royal_mail_tracked_48';
         const packageCode = 'package'; // Example default
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];

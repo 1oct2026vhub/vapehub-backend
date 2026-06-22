@@ -306,6 +306,37 @@ async function updateProduct(productId, productData) {
     }
 }
 
+async function listOrdersByOrderNumber(orderNumber) {
+    try {
+        const apiKey = process.env.SHIPSTATION_API_KEY;
+        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+        const response = await shipStationRequest(() => axios.get(
+            'https://ssapi.shipstation.com/orders',
+            {
+                params: { orderNumber, pageSize: 50, page: 1 },
+                headers: {
+                    Authorization: `Basic ${auth}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 30000,
+            }
+        ));
+
+        return response.data?.orders || [];
+    } catch (error) {
+        shipstationLogger.logError({
+            type: 'list_orders_by_order_number_error',
+            error: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            orderNumber,
+        });
+        throw new Error(`Failed to list orders for orderNumber ${orderNumber} in ShipStation: ${error.message}`);
+    }
+}
+
 async function getOrderById(orderId) {
     try {
         const apiKey = process.env.SHIPSTATION_API_KEY;
@@ -488,6 +519,7 @@ module.exports = {
     getProductById,
     listProducts,
     updateProduct,
+    listOrdersByOrderNumber,
     getOrderById,
     deleteOrderById,
     holdOrderUntil,
