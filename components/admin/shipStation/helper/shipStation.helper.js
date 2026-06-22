@@ -326,7 +326,7 @@ async function listOrdersByOrderNumber(orderNumber) {
 
         return response.data?.orders || [];
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'list_orders_by_order_number_error',
             error: error.message,
             response: error.response?.data,

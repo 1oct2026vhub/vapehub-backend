@@ -1,20 +1,25 @@
-const pino = require('../logger');
+const baseLogger = require('../logger');
+const shipstationLogger = require('../../utils/shipstationLogger');
 
-function createDomainLogger(domain) {
-    const log = pino.child({ domain });
+function wrapPino(logger, domain) {
+    const withDomain = (data) => ({ domain, ...(data || {}) });
 
     return {
-        logInfo: (data) => log.info(data ?? {}),
-        logError: (data) => log.error(data ?? {}),
-        logDebug: (data) => log.debug(data ?? {}),
-        logWebhook: (data) => log.info({ logType: 'WEBHOOK', ...(data ?? {}) }),
-        logApiCall: (data) => log.info({ logType: 'API', ...(data ?? {}) }),
-        logWebhookStart: () => log.info({ marker: 'webhook_start' }),
-        logWebhookEnd: () => log.info({ marker: 'webhook_end' }),
-        logStart: (data) => log.info({ logType: 'START', ...(data ?? {}) }),
-        logSuccess: (data) => log.info({ logType: 'SUCCESS', ...(data ?? {}) }),
-        logWorldpay: (data) => log.info({ logType: 'WORLDPAY', ...(data ?? {}) }),
+        logInfo: (data) => logger.info(withDomain(data)),
+        logError: (data) => logger.error(withDomain(data)),
+        logDebug: (data) => logger.debug(withDomain(data)),
+        logApiCall: (data) => logger.info({ ...withDomain(data), logType: 'api' }),
+        logWebhook: (data) => logger.info({ ...withDomain(data), logType: 'webhook' }),
+        logWebhookStart: () => logger.info({ domain, logType: 'webhook', event: 'start' }),
+        logWebhookEnd: () => logger.info({ domain, logType: 'webhook', event: 'end' }),
     };
+}
+
+function createDomainLogger(domain) {
+    if (domain === 'shipstation') {
+        return shipstationLogger;
+    }
+    return wrapPino(baseLogger.child({ domain }), domain);
 }
 
 module.exports = { createDomainLogger };

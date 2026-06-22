@@ -62,7 +62,7 @@ async function createShipStationOrder(order, options = {}) {
                     }
                 );
 
-                shipstationLogger.logInfo({
+                shipstationLog.logInfo({
                     type: 'create_order_linked_existing',
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
@@ -225,7 +225,7 @@ async function createShipStationOrder(order, options = {}) {
                     advancedOptions,
                     testLabel
                 });
-                shipstationLogger.logInfo({
+                shipstationLog.logInfo({
                     type: 'create_label_success',
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
@@ -233,7 +233,7 @@ async function createShipStationOrder(order, options = {}) {
                     shipment_id: labelResponse?.shipmentId
                 });
             } catch (labelError) {
-                shipstationLogger.logError({
+                shipstationLog.logError({
                     type: 'create_label_error',
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
