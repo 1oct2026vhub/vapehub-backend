@@ -1,5 +1,4 @@
 const baseLogger = require('../logger');
-const shipstationLogger = require('../../utils/shipstationLogger');
 
 function wrapPino(logger, domain) {
     const withDomain = (data) => ({ domain, ...(data || {}) });
@@ -16,9 +15,6 @@ function wrapPino(logger, domain) {
 }
 
 function createDomainLogger(domain) {
-    if (domain === 'shipstation') {
-        return shipstationLogger;
-    }
     return wrapPino(baseLogger.child({ domain }), domain);
 }
 
