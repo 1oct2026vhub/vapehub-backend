@@ -3,14 +3,24 @@ const { Order, OrderItem, User, Product, ProductVariant, PaymentStatus, ProductI
 const { Op } = require("sequelize");
 const ExcelJS = require('exceljs');
 const moment = require('moment');
-const { orderStatusEnums } = require('../../../../config/constants');
+const { orderStatusEnums, orderStatus} = require('../../../../config/constants');
 const { formatNumber } = require('../../../../utils/dateUtils');
-const { processOrderStatusUpdate } = require('../helper/bulkOrderStatus.processor');
+const { createNotification } = require('../../../notification/helper/notification.helper');
+const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
 const {
     ASYNC_BULK_MAX_ORDERS,
     createBulkOrderStatusJob,
     getBulkOrderStatusJobDetails,
 } = require('../helper/bulkOrderStatusJob.helper');
+async function safeRollback(transaction) {
+    if (transaction && !transaction.finished) {
+        await transaction.rollback();
+    }
+}
+
+function getOrderCustomerEmail(order) {
+    return order.user?.email || order.email || null;
+}
 
 /**
  * List all orders with filtering and pagination
@@ -494,30 +504,86 @@ module.exports.updateOrderStatus = async (req, res, next) => {
         }
 
         // For "packed" status, create ShipStation order FIRST before updating status
-        const result = await processOrderStatusUpdate({
-            orderId: Number(id),
-            status,
-            userId: user_id,
-            order,
-        });
-
-        if (!result.success) {
-            const error = new Error(result.error || 'Failed to update order status');
-            error.statusCode = result.error?.includes('ShipStation') ? 500 : 400;
-            throw error;
+        let shipStationResponse = null;
+        if (status === orderStatus.PACKED) {
+            // Only create ShipStation order if it doesn't already exist
+            if (!order.shipstation_order_id) {
+                try {
+                    // Create ShipStation order BEFORE updating status
+                    shipStationResponse = await createShipStationOrder(order);
+                    
+                    // Reload order to get updated shipstation_order_id
+                    await order.reload();
+                } catch (shipStationError) {
+                    console.error("ShipStation order creation failed:", shipStationError);
+                    const error = new Error(`Failed to create ShipStation order: ${shipStationError.message || shipStationError.toString()}`);
+                    error.statusCode = 500;
+                    error.shipStationError = shipStationError.message || shipStationError.toString();
+                    throw error; // Don't update status if ShipStation creation fails
+                }
+            } else {
+                // Order already has a ShipStation order ID, proceed with status update
+                shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
+            }
         }
 
-        await order.reload();
+        // Update order status (only reached if ShipStation creation succeeded or not needed)
+        await order.update({
+            status: status,
+            updated_by: user_id
+        }, {
+            isAdmin: true,  // Since this is in admin controller
+            userId: user_id // Pass the user ID for logging
+        });
 
+        // Create notification for order status change
+        await createNotification({
+            userId: order.user_id,
+            type: 'system',
+            action: 'alert',
+            data: {
+                message: `Your order #${order.order_unique_id} status has been updated to ${status}`
+            },
+            title: 'Order Status Updated',
+            url: `/order-details/${order.id}`
+        });
+
+        // Handle stock updates for cancelled orders
+        if (status === orderStatus.CANCEL) {
+            const orderItems = await OrderItem.findAll({
+                where: { order_id: id },
+                include: [
+                    {
+                        model: ProductVariant,
+                        as: 'variant'
+                    }
+                ]
+            });
+
+            for (const item of orderItems) {
+                if (item.variant) {
+                    await item.variant.increment('stock', { by: item.quantity });
+                }
+            }
+        }
+
+        // Prepare response data
         const responseData = {
             ...order.toJSON(),
-            shipstation_data: result.shipstation_data || null,
+            shipstation_data: shipStationResponse ? {
+                order_id: shipStationResponse.orderResponse?.orderId,
+                label_data: shipStationResponse.labelResponse ? {
+                    shipment_id: shipStationResponse.labelResponse.shipmentId,
+                    tracking_number: shipStationResponse.labelResponse.trackingNumber,
+                    shipment_cost: shipStationResponse.labelResponse.shipmentCost,
+                    insurance_cost: shipStationResponse.labelResponse.insuranceCost,
+                    label_data: shipStationResponse.labelResponse.labelData,
+                    form_data: shipStationResponse.labelResponse.formData
+                } : null
+            } : null
         };
 
-        const message = result.skipped
-            ? 'Order already has the target status'
-            : 'Order status updated successfully';
-        successResponse(res, responseData, message);
+        successResponse(res, responseData, 'Order status updated successfully');
     } catch (error) {
         console.error("updateOrderStatus error:", error);
         return errorResponse(res, error, error.message);
@@ -640,32 +706,126 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
         const results = [];
         const errors = [];
 
-        for (const order of orders) {
-            const result = await processOrderStatusUpdate({
-                orderId: order.id,
-                status,
-                userId: user_id,
-                order,
-            });
+        // Step 1: ShipStation API calls — outside any DB transaction
+        const shipStationResultsByOrderId = new Map();
 
-            if (result.success) {
+        if (status === orderStatus.PACKED) {
+            const ordersNeedingShipStation = [];
+
+            for (const order of orders) {
+                if (order.shipstation_order_id) {
+                    continue;
+                }
+
+                if (!getOrderCustomerEmail(order)) {
+                    shipStationResultsByOrderId.set(order.id, {
+                        success: false,
+                        error: new Error('Invalid order data: missing customer email')
+                    });
+                    continue;
+                }
+
+                ordersNeedingShipStation.push(order);
+            }
+
+            for (const order of ordersNeedingShipStation) {
+                try {
+                    const response = await createShipStationOrder(order);
+                    shipStationResultsByOrderId.set(order.id, { success: true, response });
+                } catch (error) {
+                    shipStationResultsByOrderId.set(order.id, { success: false, error });
+                }
+            }
+        }
+
+        // Step 2: Per-order DB updates in short transactions
+        for (const order of orders) {
+            let shipStationResponse = null;
+
+            if (status === orderStatus.PACKED) {
+                if (order.shipstation_order_id) {
+                    shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
+                } else {
+                    const result = shipStationResultsByOrderId.get(order.id);
+                    if (result) {
+                        if (!result.success) {
+                            const errorMsg = result.error?.message || result.error?.toString() || 'Unknown error';
+                            console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
+                            errors.push({
+                                order_id: order.id,
+                                order_unique_id: order.order_unique_id,
+                                error: `Failed to create ShipStation order: ${errorMsg}`,
+                                status: order.status
+                            });
+                            continue;
+                        }
+                        shipStationResponse = result.response;
+                    }
+                }
+            }
+
+            const transaction = await sequelize.transaction();
+            try {
+                if (status === orderStatus.PACKED && !order.shipstation_order_id) {
+                    await order.reload({ transaction });
+                }
+
+                await order.update({
+                    status: status,
+                    updated_by: user_id
+                }, {
+                    isAdmin: true,
+                    userId: user_id,
+                    transaction
+                });
+
+                if (status === orderStatus.CANCEL) {
+                    for (const item of order.orderItems) {
+                        if (item.variant) {
+                            await item.variant.increment('stock', {
+                                by: item.quantity
+                            }, { transaction });
+                        }
+                    }
+                }
+
+                await transaction.commit();
+
+                await createNotification({
+                    userId: order.user_id,
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Your order #${order.order_unique_id} status has been updated to ${status}`
+                    },
+                    title: 'Order Status Updated',
+                    url: `/order-details/${order.id}`
+                });
+
                 results.push({
                     order_id: order.id,
                     order_unique_id: order.order_unique_id,
                     status: status,
                     success: true,
-                    skipped: Boolean(result.skipped),
-                    shipstation_data: result.shipstation_data || null,
+                    shipstation_data: shipStationResponse ? {
+                        order_id: shipStationResponse.orderResponse?.orderId,
+                        label_data: shipStationResponse.labelResponse ? {
+                            shipment_id: shipStationResponse.labelResponse.shipmentId,
+                            tracking_number: shipStationResponse.labelResponse.trackingNumber,
+                            shipment_cost: shipStationResponse.labelResponse.shipmentCost
+                        } : null
+                    } : null
                 });
-                continue;
+            } catch (orderError) {
+                await safeRollback(transaction);
+                console.error(`Error updating order ${order.id}:`, orderError);
+                errors.push({
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    error: orderError.message,
+                    status: order.status
+                });
             }
-
-            errors.push({
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                error: result.error || 'Unknown error',
-                status: order.status,
-            });
         }
 
         if (results.length === 0 && errors.length > 0) {

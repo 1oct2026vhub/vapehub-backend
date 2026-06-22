@@ -843,8 +843,6 @@ module.exports = (sequelize, DataTypes) => {
             'completed'
           ];
 
-          let skipRegularLog = false;
-
           if (options.isAdmin) {
             const fromStatus = order.previous('status');
             const toStatus = order.status;
@@ -869,24 +867,24 @@ module.exports = (sequelize, DataTypes) => {
                     label: statusLabels[skippedStatus],
                   }, { transaction: options.transaction });
                 }
-                skipRegularLog = true;
+                return; // Skip the normal log creation since we've logged everything
               }
             }
           }
 
-          if (!skipRegularLog) {
-            const logData = {
-              order_id: order.id,
-              user_id: options.userId || order.user_id,
-              status: order.status,
-              label: statusLabels[order.status] || `Status changed to ${order.status}`,
-            };
+          // Create regular order log entry
+          const logData = {
+            order_id: order.id,
+            user_id: options.userId || order.user_id,
+            status: order.status,
+            label: statusLabels[order.status] || `Status changed to ${order.status}`,
+          };
 
-            await sequelize.models.OrderLog.create(logData, { transaction: options.transaction });
-          }
-
-          await Order.handleStatusChange(order);
+          await sequelize.models.OrderLog.create(logData, { transaction: options.transaction });
         }
+      },
+      afterUpdate: async (instance) => {
+        await Order.handleStatusChange(instance);
       }
     }
   });
