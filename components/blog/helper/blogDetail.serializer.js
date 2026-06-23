@@ -90,34 +90,49 @@ const formatRelatedBlogCard = (blogInstance) => {
     };
 };
 
-const publishedRelatedBlogInclude = (currentDate) => ({
-    model: Blog,
-    as: 'relatedBlog',
-    where: {
-        status: 'published',
-        published_at: { [Op.lte]: currentDate }
-    },
-    required: true,
-    attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at'],
-    include: [{
-        model: BlogCategory,
-        as: 'categories',
-        attributes: ['id', 'name', 'slug'],
-        through: { attributes: [] }
-    }]
+const publishedBlogWhere = (currentDate) => ({
+    status: 'published',
+    published_at: { [Op.lte]: currentDate }
 });
 
+const fetchPublishedBlogsByIds = async (blogIds, currentDate) => {
+    if (!blogIds.length) {
+        return new Map();
+    }
+
+    const blogs = await Blog.findAll({
+        where: {
+            id: { [Op.in]: blogIds },
+            ...publishedBlogWhere(currentDate)
+        },
+        attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at'],
+        include: [{
+            model: BlogCategory,
+            as: 'categories',
+            attributes: ['id', 'name', 'slug'],
+            through: { attributes: [] }
+        }]
+    });
+
+    return new Map(blogs.map((item) => [item.id, item]));
+};
+
 const resolveRelatedBlogs = async (blog, currentDate) => {
+    // Load curated IDs first (no join filter) so CMS order is preserved reliably
     const curatedRelations = await BlogRelatedPost.findAll({
         where: { blog_id: blog.id },
-        include: [publishedRelatedBlogInclude(currentDate)],
+        attributes: ['related_blog_id', 'sort_order'],
         order: [['sort_order', 'ASC']],
         limit: 3
     });
 
-    const relatedBlogs = curatedRelations
-        .map((relation) => formatRelatedBlogCard(relation.relatedBlog))
-        .filter(Boolean);
+    const curatedIds = curatedRelations.map((relation) => relation.related_blog_id);
+    const curatedBlogMap = await fetchPublishedBlogsByIds(curatedIds, currentDate);
+
+    const relatedBlogs = curatedIds
+        .map((id) => curatedBlogMap.get(id))
+        .filter(Boolean)
+        .map(formatRelatedBlogCard);
 
     if (relatedBlogs.length >= 3) {
         return relatedBlogs.slice(0, 3);
@@ -133,8 +148,7 @@ const resolveRelatedBlogs = async (blog, currentDate) => {
     const autoRelated = await Blog.findAll({
         where: {
             id: { [Op.notIn]: [...usedIds] },
-            status: 'published',
-            published_at: { [Op.lte]: currentDate }
+            ...publishedBlogWhere(currentDate)
         },
         include: [{
             model: BlogCategory,
