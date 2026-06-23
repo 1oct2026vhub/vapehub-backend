@@ -13,15 +13,18 @@ This folder contains background cron jobs initialized by `backend/cron/init.js`.
 
 ### What it does
 
-1. Scans `bulk_order_status_job_items` where `status = processing` and `updatedAt` is stale.
-2. If attempts are below max:
+1. Scans `bulk_order_status_job_items` where `status = processing` and `updated_at` is stale.
+2. If the order is already at target status or already has a ShipStation ID (for packed jobs), marks the item `skipped` instead of re-processing.
+3. If attempts are below max:
    - sets item back to `pending`
    - increments `attempts`
    - re-enqueues item to SQS
-3. If attempts are exhausted:
+4. If attempts are exhausted:
    - marks item as `failed`
    - increments parent job `failed`
    - runs job finalization (`finalizeJobIfComplete`)
+
+Also runs **pending recovery**: re-enqueues items stuck in `pending` longer than `BULK_ORDER_STATUS_PENDING_STALE_MINUTES`.
 
 ### Activation rules
 
@@ -40,6 +43,7 @@ If these are not set, the cron exits safely without processing.
 ### Optional tuning env vars
 
 - `BULK_ORDER_STATUS_STALE_RESET_MINUTES` (default: `15`)
+- `BULK_ORDER_STATUS_PENDING_STALE_MINUTES` (default: `10`)
 - `BULK_ORDER_STATUS_MAX_ATTEMPTS` (default: `5`)
 - `BULK_ORDER_STATUS_RECOVERY_CRON` (default: `*/5 * * * *`)
 - `BULK_ORDER_STATUS_RECOVERY_BATCH_LIMIT` (default: `500`)

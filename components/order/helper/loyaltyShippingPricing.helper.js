@@ -60,6 +60,19 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
 }
 
 /**
+ * Cart-wide £30+ free shipping applies only to standard delivery.
+ * Premium methods (Tracked 24, Special Delivery, DPD) always charge full price.
+ * Dedicated free-shipping methods use is_free_shipping + calculateShippingCost.
+ */
+function qualifiesForCartThresholdFreeShipping(shippingMethod) {
+  if (!shippingMethod || shippingMethod.is_free_shipping) {
+    return false;
+  }
+  const code = String(shippingMethod.service_code || '').toLowerCase();
+  return code === 'standard_delivery';
+}
+
+/**
  * Merchandise after deals/coupons/mail, before loyalty.
  * Points may redeem against the full checkout total (merchandise + shipping).
  *
@@ -90,7 +103,10 @@ function computeShippingAndLoyalty({
 
   let shippingCost = 0;
   if (shippingMethod) {
-    if (eligibleFreeShipping) {
+    if (shippingMethod.is_free_shipping) {
+      const calc = calculateShippingCost(shippingMethod, merchandise);
+      shippingCost = calc === null ? null : round2(calc);
+    } else if (eligibleFreeShipping && qualifiesForCartThresholdFreeShipping(shippingMethod)) {
       shippingCost = 0;
     } else {
       const calc = calculateShippingCost(shippingMethod, merchandise);
@@ -318,6 +334,7 @@ function loyaltyPricingResponseFields(pricing) {
 
 module.exports = {
   computeShippingAndLoyalty,
+  qualifiesForCartThresholdFreeShipping,
   resolveLoyaltyMoneyParams,
   computeTieredPercentFromPoints,
   pointsRequiredForTieredPercent,
