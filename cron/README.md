@@ -42,6 +42,7 @@ If these are not set, the cron exits safely without processing.
 
 ### Optional tuning env vars
 
+- `BULK_ORDER_STATUS_CLAIM_STALE_MINUTES` (default: `3`) — reclaim `processing` items in the API before cron recovery
 - `BULK_ORDER_STATUS_STALE_RESET_MINUTES` (default: `15`)
 - `BULK_ORDER_STATUS_PENDING_STALE_MINUTES` (default: `10`)
 - `BULK_ORDER_STATUS_MAX_ATTEMPTS` (default: `5`)
@@ -52,5 +53,6 @@ If these are not set, the cron exits safely without processing.
 
 - Worker: `backend/workers/bulkOrderStatusSqsWorker.js`
 - Internal route: `POST /api/internal/bulk-order-status/process-item`
+- Internal route: `POST /api/internal/bulk-order-status/release-item` (worker calls on HTTP timeout to reset stuck `processing` items)
 - API queue endpoint: `POST /api/admin/orders/bulk-status/async`
 - Job status endpoint: `GET /api/admin/orders/bulk-status/jobs/:id`

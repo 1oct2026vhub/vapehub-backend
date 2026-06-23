@@ -12,6 +12,42 @@ const { enqueueBulkOrderStatusItems } = require('../../../../library/bulkOrderSt
 const ASYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_ASYNC_MAX || 500);
 const MAX_ERROR_SAMPLES = 50;
 const DELIVERY_MODE = process.env.BULK_ORDER_STATUS_DELIVERY_MODE || 'db_poll';
+const CLAIM_STALE_MINUTES = Math.max(1, Number(process.env.BULK_ORDER_STATUS_CLAIM_STALE_MINUTES || 3));
+const MAX_ATTEMPTS = Math.max(1, Number(process.env.BULK_ORDER_STATUS_MAX_ATTEMPTS || 5));
+
+function isStaleProcessingItem(item) {
+    if (!item || item.status !== 'processing') {
+        return false;
+    }
+    const updatedAt = item.updatedAt || item.updated_at;
+    if (!updatedAt) {
+        return false;
+    }
+    const cutoff = Date.now() - CLAIM_STALE_MINUTES * 60 * 1000;
+    return new Date(updatedAt).getTime() < cutoff;
+}
+
+async function finalizeJobItemAsSkippedTx(item, job, order, message, transaction, { fromStatus = 'processing' } = {}) {
+    const [updated] = await BulkOrderStatusJobItem.update(
+        {
+            status: 'skipped',
+            error_message: message,
+            shipstation_order_id: order?.shipstation_order_id || null,
+            processed_at: new Date(),
+        },
+        {
+            where: { id: item.id, status: fromStatus },
+            transaction,
+        }
+    );
+
+    if (updated === 0) {
+        return false;
+    }
+
+    await job.increment('skipped', { transaction });
+    return true;
+}
 
 async function findOrdersInActiveBulkJobs(orderIds, targetStatus) {
     if (!orderIds.length) {
@@ -185,30 +221,77 @@ async function claimNextPendingJobItem() {
 }
 
 async function claimSpecificPendingJobItem(jobItemId) {
-    return sequelize.transaction(async (transaction) => {
-        const item = await BulkOrderStatusJobItem.findByPk(jobItemId, {
+    let jobIdToFinalize = null;
+
+    const item = await sequelize.transaction(async (transaction) => {
+        const row = await BulkOrderStatusJobItem.findByPk(jobItemId, {
             lock: transaction.LOCK.UPDATE,
             transaction
         });
-        if (!item) return null;
+        if (!row) return null;
 
-        const job = await BulkOrderStatusJob.findByPk(item.job_id, { transaction });
+        const job = await BulkOrderStatusJob.findByPk(row.job_id, { transaction });
         if (!job || !['queued', 'processing'].includes(job.status)) {
             return null;
         }
 
-        if (['success', 'failed', 'skipped'].includes(item.status)) {
-            item.job = job;
-            return item;
+        if (['success', 'failed', 'skipped'].includes(row.status)) {
+            row.job = job;
+            return row;
         }
 
-        if (item.status !== 'pending') {
+        if (row.status === 'processing') {
+            if (!isStaleProcessingItem(row)) {
+                return null;
+            }
+
+            if (row.attempts >= MAX_ATTEMPTS) {
+                await row.update({
+                    status: 'failed',
+                    error_message: `failed after ${MAX_ATTEMPTS} processing attempts (stale reclaim)`,
+                    processed_at: new Date(),
+                }, { transaction });
+                await job.increment('failed', { transaction });
+                jobIdToFinalize = job.id;
+                row.job = job;
+                return row;
+            }
+
+            const order = await Order.findByPk(row.order_id, {
+                attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+                transaction,
+            });
+
+            if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
+                const skipped = await finalizeJobItemAsSkippedTx(
+                    row,
+                    job,
+                    order,
+                    'reclaimed: order already at target status',
+                    transaction
+                );
+                if (skipped) {
+                    jobIdToFinalize = job.id;
+                    await row.reload({ transaction });
+                }
+                row.job = job;
+                return row;
+            }
+
+            await row.update({
+                status: 'pending',
+                error_message: `reclaimed from stale processing (>${CLAIM_STALE_MINUTES}m)`,
+            }, { transaction });
+            await row.reload({ transaction });
+        }
+
+        if (row.status !== 'pending') {
             return null;
         }
 
-        await item.update({
+        await row.update({
             status: 'processing',
-            attempts: item.attempts + 1
+            attempts: row.attempts + 1
         }, { transaction });
 
         if (job.status === 'queued') {
@@ -218,9 +301,101 @@ async function claimSpecificPendingJobItem(jobItemId) {
             }, { transaction });
         }
 
-        item.job = job;
-        return item;
+        row.job = job;
+        return row;
     });
+
+    if (jobIdToFinalize) {
+        await finalizeJobIfComplete(jobIdToFinalize);
+    }
+
+    return item;
+}
+
+async function releaseProcessingJobItem(jobItemId, reason = 'worker_release') {
+    let jobIdToFinalize = null;
+
+    const outcome = await sequelize.transaction(async (transaction) => {
+        const item = await BulkOrderStatusJobItem.findByPk(jobItemId, {
+            lock: transaction.LOCK.UPDATE,
+            transaction,
+        });
+
+        if (!item) {
+            return { found: false };
+        }
+
+        if (['success', 'failed', 'skipped'].includes(item.status)) {
+            return {
+                found: true,
+                released: false,
+                finalized: true,
+                item_status: item.status,
+            };
+        }
+
+        if (item.status !== 'processing') {
+            return {
+                found: true,
+                released: false,
+                finalized: false,
+                item_status: item.status,
+            };
+        }
+
+        const job = await BulkOrderStatusJob.findByPk(item.job_id, { transaction });
+        if (!job) {
+            return { found: true, released: false, finalized: false, item_status: item.status };
+        }
+
+        const order = await Order.findByPk(item.order_id, {
+            attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+            transaction,
+        });
+
+        if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
+            const skipped = await finalizeJobItemAsSkippedTx(
+                item,
+                job,
+                order,
+                `release: order already processed (${reason})`,
+                transaction
+            );
+            if (skipped) {
+                jobIdToFinalize = job.id;
+            }
+            return {
+                found: true,
+                released: false,
+                finalized: skipped,
+                item_status: skipped ? 'skipped' : item.status,
+            };
+        }
+
+        const [updated] = await BulkOrderStatusJobItem.update(
+            {
+                status: 'pending',
+                error_message: `released: ${reason}`,
+            },
+            {
+                where: { id: jobItemId, status: 'processing' },
+                transaction,
+            }
+        );
+
+        return {
+            found: true,
+            released: updated > 0,
+            finalized: false,
+            item_status: updated > 0 ? 'pending' : item.status,
+        };
+    });
+
+    if (jobIdToFinalize) {
+        await finalizeJobIfComplete(jobIdToFinalize);
+    }
+
+    return outcome;
 }
 
 async function finalizeJobIfComplete(jobId) {
@@ -406,13 +581,17 @@ async function getBulkOrderStatusJobDetails(jobId, { errorLimit = MAX_ERROR_SAMP
 
 module.exports = {
     ASYNC_BULK_MAX_ORDERS,
+    CLAIM_STALE_MINUTES,
+    MAX_ATTEMPTS,
     createBulkOrderStatusJob,
     claimNextPendingJobItem,
     claimSpecificPendingJobItem,
+    releaseProcessingJobItem,
     processBulkOrderStatusJobItem,
     getBulkOrderStatusJobDetails,
     finalizeJobIfComplete,
     finalizeJobItemAsSkipped,
     findOrdersInActiveBulkJobs,
     isOrderAlreadyProcessedForTarget,
+    isStaleProcessingItem,
 };
