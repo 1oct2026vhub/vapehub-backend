@@ -41,7 +41,6 @@ function resolveLoyaltyMoneyParams(loyaltyAmountType, loyaltyAmount, pointsValue
   let gbpPerPoint = 0;
 
   if (type === 'percentage') {
-    // Percentage uses tiered points → % in computeShippingAndLoyalty (not a flat % of checkout here).
     gbpPerPoint = pvRaw;
   } else if (type === 'fixed') {
     if (la > 0 && pvRaw >= 1) {
@@ -73,14 +72,50 @@ function qualifiesForCartThresholdFreeShipping(shippingMethod) {
 }
 
 /**
+ * Shipping cost from payable merchandise (after loyalty). Free standard delivery when payable >= threshold.
+ */
+function computeShippingCostFromPayable(shippingMethod, payableMerchandise, freeShippingThresholdGbp) {
+  const threshold = Number(freeShippingThresholdGbp) || 30;
+  const eligibleFreeShipping = payableMerchandise >= threshold;
+
+  if (!shippingMethod) {
+    return { shippingCost: 0, eligibleFreeShipping };
+  }
+
+  if (shippingMethod.is_free_shipping) {
+    const calc = calculateShippingCost(shippingMethod, payableMerchandise);
+    return { shippingCost: calc === null ? null : round2(calc), eligibleFreeShipping };
+  }
+
+  if (eligibleFreeShipping && qualifiesForCartThresholdFreeShipping(shippingMethod)) {
+    return { shippingCost: 0, eligibleFreeShipping: true };
+  }
+
+  const calc = calculateShippingCost(shippingMethod, payableMerchandise);
+  return { shippingCost: calc === null ? null : round2(calc), eligibleFreeShipping };
+}
+
+/**
+ * @throws {{ statusCode: number, message: string }}
+ */
+function assertShippingMethodRequired({ shippingMethod, payableMerchandise, freeShippingThresholdGbp }) {
+  const threshold = Number(freeShippingThresholdGbp) || 30;
+  if (payableMerchandise < threshold && !shippingMethod) {
+    throw {
+      statusCode: 400,
+      message: `Shipping method is required for orders under £${threshold}`,
+    };
+  }
+}
+
+/**
  * Merchandise after deals/coupons/mail, before loyalty.
- * Points may redeem against the full checkout total (merchandise + shipping).
+ * Loyalty redeems against merchandise only — shipping is never discounted by points.
  *
- * Percentage type: every `pointsPerTier` points (default 10, or minimum_points_redemption) grants
- * `loyalty_amount` % off the checkout (e.g. 10 pts → 3%, 40 pts → 12%).
+ * Free standard delivery applies when payable merchandise (after loyalty) >= £30.
  *
- * Fixed type: block based — every `minimum_points_redemption` points grants
- * `loyalty_amount` GBP discount. Only the minimum blocks needed are consumed.
+ * Percentage type: every `pointsPerTier` points grants `loyalty_amount` % off merchandise.
+ * Fixed type: block based — every `minimum_points_redemption` points grants `loyalty_amount` GBP off merchandise.
  *
  * @param {boolean} [fullRedemption] - loyalty + use full balance (all points requested for tier %).
  */
@@ -99,24 +134,6 @@ function computeShippingAndLoyalty({
 }) {
   const merchandise = round2(merchandiseTotalAfterDealsCouponsMail);
   const threshold = Number(freeShippingThresholdGbp) || 30;
-  const eligibleFreeShipping = merchandise >= threshold;
-
-  let shippingCost = 0;
-  if (shippingMethod) {
-    if (shippingMethod.is_free_shipping) {
-      const calc = calculateShippingCost(shippingMethod, merchandise);
-      shippingCost = calc === null ? null : round2(calc);
-    } else if (eligibleFreeShipping && qualifiesForCartThresholdFreeShipping(shippingMethod)) {
-      shippingCost = 0;
-    } else {
-      const calc = calculateShippingCost(shippingMethod, merchandise);
-      shippingCost = calc === null ? null : round2(calc);
-    }
-  }
-
-  const ship = shippingCost;
-  const checkoutGbp = ship === null ? null : round2(merchandise + ship);
-  const loyaltyRedeemableGbp = checkoutGbp === null ? merchandise : checkoutGbp;
 
   const type = String(loyaltyAmountType || '').toLowerCase();
   const isPercentageTier = type === 'percentage';
@@ -127,6 +144,8 @@ function computeShippingAndLoyalty({
   const pointsPerTier =
     minRedeem >= 1 ? minRedeem : DEFAULT_POINTS_PER_PERCENT_TIER;
   const percentPerTier = parseFloat(loyaltyAmount) || 0;
+
+  const loyaltyRedeemableGbp = merchandise;
 
   let pointsUsed = 0;
   let loyaltyDiscount = 0;
@@ -186,7 +205,21 @@ function computeShippingAndLoyalty({
     }
   }
 
-  const grandTotal = checkoutGbp === null ? null : round2(checkoutGbp - loyaltyDiscount);
+  const payableMerchandise = round2(Math.max(0, merchandise - loyaltyDiscount));
+
+  assertShippingMethodRequired({
+    shippingMethod,
+    payableMerchandise,
+    freeShippingThresholdGbp: threshold,
+  });
+
+  const { shippingCost: ship, eligibleFreeShipping } = computeShippingCostFromPayable(
+    shippingMethod,
+    payableMerchandise,
+    threshold
+  );
+
+  const grandTotal = ship === null ? null : round2(payableMerchandise + ship);
   const paymentRequired = grandTotal !== null && grandTotal > 0;
 
   return {
@@ -202,7 +235,7 @@ function computeShippingAndLoyalty({
     loyaltySurplusAbsorbedGbp,
     grandTotal,
     paymentRequired,
-    payableMerchandise: round2(Math.max(0, merchandise - Math.min(loyaltyDiscount, merchandise))),
+    payableMerchandise,
   };
 }
 
@@ -210,7 +243,7 @@ function computeShippingAndLoyalty({
  * API payload for loyalty program settings + user balance (admin-driven tier rules).
  * @param {object} settings - LoyaltyPointsSettings row
  * @param {number} userPoints
- * @param {{ merchandiseTotal?: number }} [options]
+ * @param {{ merchandiseTotal?: number, payableMerchandise?: number }} [options]
  */
 function buildLoyaltyRedemptionInfo(settings, userPoints = 0, options = {}) {
   if (!settings) return null;
@@ -227,6 +260,11 @@ function buildLoyaltyRedemptionInfo(settings, userPoints = 0, options = {}) {
     options.merchandiseTotal != null
       ? round2(options.merchandiseTotal)
       : null;
+  const payableMerchandise =
+    options.payableMerchandise != null
+      ? round2(options.payableMerchandise)
+      : merchandise;
+  const freeShippingThreshold = 30;
   const hasEnoughPoints = pts >= minRedeem;
   const meetsMinimumOrder =
     merchandise === null || merchandise >= minPurchase;
@@ -245,6 +283,8 @@ function buildLoyaltyRedemptionInfo(settings, userPoints = 0, options = {}) {
     points_value: settings.points_value,
     min_amount_for_loyalty_points: settings.min_amount_for_loyalty_points,
     amount_divisor: settings.amount_divisor,
+    free_shipping_eligible:
+      payableMerchandise !== null && payableMerchandise >= freeShippingThreshold,
   };
 
   if (type === 'percentage') {
@@ -297,7 +337,6 @@ function assertLoyaltyPointsToRedeem({
 
   const requested = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
 
-  // loyalty=true + points_to_redeem=0 => use full balance (no explicit amount check)
   if (requested === 0) return;
 
   const balance = Math.max(0, parseInt(userPointsBalance, 10) || 0);
@@ -329,12 +368,16 @@ function loyaltyPricingResponseFields(pricing) {
     loyalty_points_per_tier: pricing.loyaltyPointsPerTier,
     loyalty_percent_per_tier: pricing.loyaltyPercentPerTier,
     loyalty_redeemable_gbp: pricing.loyaltyRedeemableGbp,
+    payable_merchandise: pricing.payableMerchandise,
+    free_shipping_eligible: pricing.eligibleFreeShipping,
   };
 }
 
 module.exports = {
   computeShippingAndLoyalty,
+  computeShippingCostFromPayable,
   qualifiesForCartThresholdFreeShipping,
+  assertShippingMethodRequired,
   resolveLoyaltyMoneyParams,
   computeTieredPercentFromPoints,
   pointsRequiredForTieredPercent,
