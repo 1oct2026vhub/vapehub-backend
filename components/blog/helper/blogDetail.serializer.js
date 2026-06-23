@@ -1,0 +1,173 @@
+const { Op } = require('sequelize');
+const { Blog, BlogCategory, BlogRelatedPost } = require('../../../models');
+const { AUTHOR_ATTRIBUTES } = require('../../admin/blog/helper/blogPayload.helper');
+const { buildBlogAuthorArchiveUrl } = require('../../admin/user/helper/blogAuthor.helper');
+
+const formatSlug = (slug) => {
+    if (!slug) {
+        return slug;
+    }
+
+    const normalized = String(slug).trim();
+    return normalized.startsWith('/') ? normalized : `/${normalized}`;
+};
+
+const formatAuthor = (author) => {
+    if (!author) {
+        return null;
+    }
+
+    const authorData = author.toJSON ? author.toJSON() : author;
+    const archiveUrl = authorData.blog_author_archive_url
+        || buildBlogAuthorArchiveUrl(authorData.blog_author_slug)
+        || '/blogs';
+
+    return {
+        id: authorData.id,
+        first_name: authorData.first_name,
+        last_name: authorData.last_name,
+        email: authorData.email,
+        avatar_url: authorData.profile_pic_url ?? null,
+        role: authorData.blog_author_role ?? null,
+        bio: authorData.blog_author_bio ?? null,
+        archive_url: archiveUrl,
+        team_url: authorData.blog_author_team_url || '/blogs'
+    };
+};
+
+const extractSourcesFromContent = (content) => {
+    if (!content || typeof content !== 'string') {
+        return [];
+    }
+
+    const match = content.match(
+        /<section[^>]*class=["'][^"']*blog-sources[^"']*["'][^>]*data-sources=['"]([^'"]*)['"]/i
+    );
+    if (!match) {
+        return [];
+    }
+
+    try {
+        const decoded = match[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+        const parsed = JSON.parse(decoded);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const resolveSources = (blogData) => {
+    if (Array.isArray(blogData.sources) && blogData.sources.length > 0) {
+        return blogData.sources;
+    }
+
+    return extractSourcesFromContent(blogData.content);
+};
+
+const formatCategoryRefs = (categories = []) => (
+    categories.map((category) => {
+        const categoryData = category.toJSON ? category.toJSON() : category;
+        return {
+            id: categoryData.id,
+            name: categoryData.name,
+            slug: categoryData.slug
+        };
+    })
+);
+
+const formatRelatedBlogCard = (blogInstance) => {
+    const blogData = blogInstance.toJSON ? blogInstance.toJSON() : blogInstance;
+
+    return {
+        id: blogData.id,
+        title: blogData.title,
+        slug: formatSlug(blogData.slug),
+        content: blogData.content,
+        image_url: blogData.image_url,
+        alt_text: blogData.alt_text,
+        published_at: blogData.published_at,
+        categories: formatCategoryRefs(blogData.categories)
+    };
+};
+
+const publishedRelatedBlogInclude = (currentDate) => ({
+    model: Blog,
+    as: 'relatedBlog',
+    where: {
+        status: 'published',
+        published_at: { [Op.lte]: currentDate }
+    },
+    required: true,
+    attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at'],
+    include: [{
+        model: BlogCategory,
+        as: 'categories',
+        attributes: ['id', 'name', 'slug'],
+        through: { attributes: [] }
+    }]
+});
+
+const resolveRelatedBlogs = async (blog, currentDate) => {
+    const curatedRelations = await BlogRelatedPost.findAll({
+        where: { blog_id: blog.id },
+        include: [publishedRelatedBlogInclude(currentDate)],
+        order: [['sort_order', 'ASC']],
+        limit: 3
+    });
+
+    const relatedBlogs = curatedRelations
+        .map((relation) => formatRelatedBlogCard(relation.relatedBlog))
+        .filter(Boolean);
+
+    if (relatedBlogs.length >= 3) {
+        return relatedBlogs.slice(0, 3);
+    }
+
+    const usedIds = new Set([blog.id, ...relatedBlogs.map((item) => item.id)]);
+    const categoryIds = (blog.categories || []).map((category) => category.id);
+
+    if (categoryIds.length === 0) {
+        return relatedBlogs;
+    }
+
+    const autoRelated = await Blog.findAll({
+        where: {
+            id: { [Op.notIn]: [...usedIds] },
+            status: 'published',
+            published_at: { [Op.lte]: currentDate }
+        },
+        include: [{
+            model: BlogCategory,
+            as: 'categories',
+            attributes: ['id', 'name', 'slug'],
+            where: { id: { [Op.in]: categoryIds } },
+            through: { attributes: [] }
+        }],
+        attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at'],
+        order: [['published_at', 'DESC']],
+        limit: 3 - relatedBlogs.length
+    });
+
+    return [...relatedBlogs, ...autoRelated.map(formatRelatedBlogCard)].slice(0, 3);
+};
+
+const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
+    const blogData = blog.toJSON ? blog.toJSON() : blog;
+
+    return {
+        ...blogData,
+        slug: formatSlug(blogData.slug),
+        author: formatAuthor(blogData.author),
+        sources: resolveSources(blogData),
+        related_blogs: relatedBlogs
+    };
+};
+
+module.exports = {
+    AUTHOR_ATTRIBUTES,
+    formatSlug,
+    formatAuthor,
+    resolveSources,
+    resolveRelatedBlogs,
+    formatBlogDetailResponse
+};
