@@ -1,5 +1,4 @@
 const { redis } = require('./cache');
-const logger = require('../utils/logger');
 
 const MIN_INTERVAL_MS = Number(process.env.SHIPSTATION_MIN_INTERVAL_MS || 1600);
 const REDIS_RATE_LIMIT_ENABLED = process.env.SHIPSTATION_RATE_LIMIT_REDIS === 'true';
@@ -55,10 +54,6 @@ function logRedisFallback(reason) {
         return;
     }
     redisFallbackLogged = true;
-    logger.logInfo({
-        message: 'ShipStation Redis rate limit unavailable — using in-memory fallback',
-        reason
-    });
 }
 
 async function waitForGlobalSlot() {
