@@ -48,6 +48,7 @@ If these are not set, the cron exits safely without processing.
 - `BULK_ORDER_STATUS_MAX_ATTEMPTS` (default: `5`)
 - `BULK_ORDER_STATUS_RECOVERY_CRON` (default: `*/5 * * * *`)
 - `BULK_ORDER_STATUS_RECOVERY_BATCH_LIMIT` (default: `500`)
+- `BULK_ORDER_STATUS_JOB_RETENTION_DAYS` (default: `7`) — list/get job APIs omit older jobs
 
 ## Related workers/routes
 
@@ -56,3 +57,6 @@ If these are not set, the cron exits safely without processing.
 - Internal route: `POST /api/internal/bulk-order-status/release-item` (worker calls on HTTP timeout to reset stuck `processing` items)
 - API queue endpoint: `POST /api/admin/orders/bulk-status/async`
 - Job status endpoint: `GET /api/admin/orders/bulk-status/jobs/:id`
+- List jobs: `GET /api/admin/orders/bulk-status/jobs`
+- Per-order job items: `GET /api/admin/orders/bulk-status/jobs/:id/orders`
+- Active in-flight orders: `GET /api/admin/orders/bulk-status/active-orders`
