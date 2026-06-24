@@ -16,6 +16,7 @@ const {
     resolveAuthorId,
     attachRelatedBlogFields
 } = require("../helper/blogPayload.helper");
+const { resolveAuthorOverrideForSave } = require("../helper/blogAuthorOverride.helper");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -253,10 +254,18 @@ module.exports.createBlog = async (req, res) => {
             : [];
         const status = req.body.status || 'draft';
 
+        const heroFile = req.files?.image?.[0];
+        const authorAvatarFile = req.files?.author_avatar?.[0];
+
         let image_url = null;
-        if (req.file) {
-            image_url = await handleImageUpload(req.file);
+        if (heroFile) {
+            image_url = await handleImageUpload(heroFile);
         }
+
+        const author_override = await resolveAuthorOverrideForSave({
+            body: req.body,
+            avatarFile: authorAvatarFile
+        });
 
         // Create blog post
         const blog = await Blog.create({
@@ -267,6 +276,7 @@ module.exports.createBlog = async (req, res) => {
             alt_text,
             author_id,
             sources,
+            author_override: author_override ?? null,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
             status,
@@ -391,7 +401,14 @@ module.exports.updateBlog = async (req, res) => {
         // Use slug before update for redirect lookup (redirect was created at delete time with this slug)
         const slugForRedirect = blog.slug;
 
-        const image_url = await handleImageUpload(req.file) || blog.image_url;
+        const heroFile = req.files?.image?.[0];
+        const authorAvatarFile = req.files?.author_avatar?.[0];
+        const image_url = await handleImageUpload(heroFile) || blog.image_url;
+        const author_override = await resolveAuthorOverrideForSave({
+            body: req.body,
+            existing: blog.author_override,
+            avatarFile: authorAvatarFile
+        });
 
         // Update slug using static method
         if (slug && slug !== blog.slug) {
@@ -412,6 +429,7 @@ module.exports.updateBlog = async (req, res) => {
             ...(status && { status }),
             ...(parsedSources !== undefined && { sources: parsedSources }),
             ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
+            ...(author_override !== undefined && { author_override }),
             updated_by
         };
 

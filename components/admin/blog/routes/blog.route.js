@@ -209,6 +209,28 @@ router.get('/posts/:id',
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
  *                 example: "18,42,7"
+ *               author_avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Per-post author avatar (stored on blog, not user profile)
+ *               author_override:
+ *                 type: string
+ *                 description: JSON object override. Send empty string to clear.
+ *               author_first_name:
+ *                 type: string
+ *               author_last_name:
+ *                 type: string
+ *               author_role:
+ *                 type: string
+ *               author_bio:
+ *                 type: string
+ *               author_archive_url:
+ *                 type: string
+ *               author_team_url:
+ *                 type: string
+ *               author_avatar_url:
+ *                 type: string
+ *                 description: Avatar URL when not uploading author_avatar file
  *     responses:
  *       201:
  *         description: Blog post created successfully
@@ -425,6 +447,28 @@ router.put('/posts/bulk-restore',
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
  *                 example: "18,42,7"
+ *               author_avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Per-post author avatar (stored on blog, not user profile)
+ *               author_override:
+ *                 type: string
+ *                 description: JSON object override. Send empty string to clear.
+ *               author_first_name:
+ *                 type: string
+ *               author_last_name:
+ *                 type: string
+ *               author_role:
+ *                 type: string
+ *               author_bio:
+ *                 type: string
+ *               author_archive_url:
+ *                 type: string
+ *               author_team_url:
+ *                 type: string
+ *               author_avatar_url:
+ *                 type: string
+ *                 description: Avatar URL when not uploading author_avatar file
  *     responses:
  *       200:
  *         description: Blog post updated successfully

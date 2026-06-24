@@ -1,8 +1,7 @@
 const { Op } = require('sequelize');
 const { Blog, BlogCategory, BlogRelatedPost } = require('../../../models');
 const { AUTHOR_ATTRIBUTES } = require('../../admin/blog/helper/blogPayload.helper');
-const { buildBlogAuthorArchiveUrl } = require('../../admin/user/helper/blogAuthor.helper');
-
+const { formatMergedAuthor } = require('./blogAuthor.formatter');
 const formatSlug = (slug) => {
     if (!slug) {
         return slug;
@@ -10,29 +9,6 @@ const formatSlug = (slug) => {
 
     const normalized = String(slug).trim();
     return normalized.startsWith('/') ? normalized : `/${normalized}`;
-};
-
-const formatAuthor = (author) => {
-    if (!author) {
-        return null;
-    }
-
-    const authorData = author.toJSON ? author.toJSON() : author;
-    const archiveUrl = authorData.blog_author_archive_url
-        || buildBlogAuthorArchiveUrl(authorData.blog_author_slug)
-        || '/blogs';
-
-    return {
-        id: authorData.id,
-        first_name: authorData.first_name,
-        last_name: authorData.last_name,
-        email: authorData.email,
-        avatar_url: authorData.profile_pic_url ?? null,
-        role: authorData.blog_author_role ?? null,
-        bio: authorData.blog_author_bio ?? null,
-        archive_url: archiveUrl,
-        team_url: authorData.blog_author_team_url || '/blogs'
-    };
 };
 
 const extractSourcesFromContent = (content) => {
@@ -167,11 +143,12 @@ const resolveRelatedBlogs = async (blog, currentDate) => {
 
 const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
     const blogData = blog.toJSON ? blog.toJSON() : blog;
+    const { author_override: authorOverride, ...publicBlogData } = blogData;
 
     return {
-        ...blogData,
+        ...publicBlogData,
         slug: formatSlug(blogData.slug),
-        author: formatAuthor(blogData.author),
+        author: formatMergedAuthor(blogData.author, authorOverride),
         sources: resolveSources(blogData),
         related_blogs: relatedBlogs
     };
@@ -180,7 +157,7 @@ const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
 module.exports = {
     AUTHOR_ATTRIBUTES,
     formatSlug,
-    formatAuthor,
+    formatMergedAuthor,
     resolveSources,
     resolveRelatedBlogs,
     formatBlogDetailResponse

@@ -143,6 +143,72 @@ const relatedBlogIdsValidation = (blogIdFromParams = false) => body('related_blo
         return true;
     });
 
+const authorOverrideValidations = [
+    body('author_override')
+        .optional()
+        .custom((value) => {
+            if (value === '' || value === '{}') {
+                return true;
+            }
+
+            const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+            if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('author_override must be a JSON object');
+            }
+
+            return true;
+        }),
+
+    body('author_first_name')
+        .optional()
+        .isString()
+        .withMessage('author_first_name must be a string')
+        .isLength({ max: 255 })
+        .withMessage('author_first_name must be less than 255 characters'),
+
+    body('author_last_name')
+        .optional()
+        .isString()
+        .withMessage('author_last_name must be a string')
+        .isLength({ max: 255 })
+        .withMessage('author_last_name must be less than 255 characters'),
+
+    body('author_role')
+        .optional()
+        .isString()
+        .withMessage('author_role must be a string')
+        .isLength({ max: 255 })
+        .withMessage('author_role must be less than 255 characters'),
+
+    body('author_bio')
+        .optional()
+        .isString()
+        .withMessage('author_bio must be a string')
+        .isLength({ max: 5000 })
+        .withMessage('author_bio must be less than 5000 characters'),
+
+    body('author_archive_url')
+        .optional()
+        .isString()
+        .withMessage('author_archive_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('author_archive_url must be less than 500 characters'),
+
+    body('author_team_url')
+        .optional()
+        .isString()
+        .withMessage('author_team_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('author_team_url must be less than 500 characters'),
+
+    body('author_avatar_url')
+        .optional()
+        .isString()
+        .withMessage('author_avatar_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('author_avatar_url must be less than 500 characters')
+];
+
 const blogIdValidation = [
     param('id')
         .isInt()
@@ -217,7 +283,8 @@ const blogValidation = [
 
     authorIdValidation(true),
     sourcesValidation,
-    relatedBlogIdsValidation(false)
+    relatedBlogIdsValidation(false),
+    ...authorOverrideValidations
 ];
 
 const blogUpdateValidation = [
@@ -319,7 +386,8 @@ const blogUpdateValidation = [
 
     authorIdValidation(true),
     sourcesValidation,
-    relatedBlogIdsValidation(true)
+    relatedBlogIdsValidation(true),
+    ...authorOverrideValidations
 ];
 
 const filterValidations = [
@@ -403,11 +471,12 @@ const filterValidations = [
 const storage = multer.memoryStorage(); // Using memory storage for S3 upload
 
 const multerLimitMessage = (err) => {
+    const fieldLabel = err.field === 'author_avatar' ? 'Author avatar' : 'Featured image';
     switch (err.code) {
         case 'LIMIT_FIELD_VALUE':
             return contentTooLargeMessage();
         case 'LIMIT_FILE_SIZE':
-            return `Featured image exceeds the maximum allowed size of ${BLOG_IMAGE_MAX_MB}MB.`;
+            return `${fieldLabel} exceeds the maximum allowed size of ${BLOG_IMAGE_MAX_MB}MB.`;
         case 'LIMIT_FIELD_COUNT':
             return `Too many form fields (maximum ${BLOG_MAX_NON_FILE_FIELDS}).`;
         default:
@@ -438,7 +507,10 @@ const uploadValidation = multer({
 
         cb(null, true);
     }
-}).single('image');
+}).fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'author_avatar', maxCount: 1 }
+]);
 
 // Add upload middleware handler
 const uploadFileValidation = (req, res, next) => {
@@ -454,7 +526,7 @@ const uploadFileValidation = (req, res, next) => {
             return res.status(400).json({
                 success: false,
                 message: err.message || 'Invalid file',
-                errors: [{ path: 'image', msg: err.message }]
+                errors: [{ path: err.field || 'image', msg: err.message }]
             });
         }
         next();

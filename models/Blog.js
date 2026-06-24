@@ -92,6 +92,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        author_override: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         updated_by: {
             type: DataTypes.INTEGER,
             allowNull: true,

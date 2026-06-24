@@ -160,6 +160,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
     return {
         ...blogData,
         sources: blogData.sources ?? [],
+        author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
     };
