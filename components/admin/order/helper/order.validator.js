@@ -137,6 +137,24 @@ const listBulkOrderStatusJobsValidation = [
         .optional()
         .isIn(JOB_STATUS_FILTERS)
         .withMessage(`status must be one of: ${JOB_STATUS_FILTERS.join(', ')}`),
+    query('start_date')
+        .optional()
+        .isISO8601()
+        .withMessage('Start date must be a valid ISO date'),
+    query('end_date')
+        .optional()
+        .isISO8601()
+        .withMessage('End date must be a valid ISO date')
+        .custom((value, { req }) => {
+            if (req.query.start_date && new Date(value) < new Date(req.query.start_date)) {
+                throw new Error('End date must be after start date');
+            }
+            return true;
+        }),
+    query('date')
+        .optional()
+        .isIn(['today', 'all'])
+        .withMessage('date must be today or all'),
     query('page')
         .optional()
         .isInt({ min: 1 })

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const moment = require('moment');
 const { Op } = require('sequelize');
 const {
     BulkOrderStatusJob,
@@ -42,6 +43,38 @@ function mapApiItemStatusToDb(apiStatus) {
 
 function getJobRetentionCutoff() {
     return new Date(Date.now() - JOB_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function resolveJobListCreatedAtWhere({ startDate, endDate, date } = {}) {
+    const retentionCutoff = getJobRetentionCutoff();
+    let rangeStart;
+    let rangeEnd;
+
+    if (date === 'today') {
+        rangeStart = moment().startOf('day').toDate();
+        rangeEnd = moment().endOf('day').toDate();
+    } else if (date === 'all') {
+        rangeStart = retentionCutoff;
+        rangeEnd = null;
+    } else if (startDate || endDate) {
+        rangeStart = startDate
+            ? moment(startDate).startOf('day').toDate()
+            : retentionCutoff;
+        rangeEnd = endDate ? moment(endDate).endOf('day').toDate() : null;
+    } else {
+        rangeStart = moment().startOf('day').toDate();
+        rangeEnd = moment().endOf('day').toDate();
+    }
+
+    if (rangeStart < retentionCutoff) {
+        rangeStart = retentionCutoff;
+    }
+
+    if (rangeEnd) {
+        return { [Op.gte]: rangeStart, [Op.lte]: rangeEnd };
+    }
+
+    return { [Op.gte]: rangeStart };
 }
 
 function isJobExpired(job) {
@@ -658,13 +691,16 @@ async function getBulkOrderStatusJobDetails(jobId, { errorLimit = MAX_ERROR_SAMP
 
 async function listBulkOrderStatusJobs({
     status,
+    startDate,
+    endDate,
+    date,
     page = 1,
     limit = 20,
     sort = 'created_at',
     order = 'DESC',
 } = {}) {
     const where = {
-        created_at: { [Op.gte]: getJobRetentionCutoff() },
+        created_at: resolveJobListCreatedAtWhere({ startDate, endDate, date }),
     };
 
     const statusFilter = resolveJobStatusFilter(status);

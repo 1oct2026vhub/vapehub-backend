@@ -913,6 +913,9 @@ module.exports.listBulkOrderStatusJobs = async (req, res) => {
     try {
         const result = await listBulkOrderStatusJobs({
             status: req.query.status,
+            startDate: req.query.start_date,
+            endDate: req.query.end_date,
+            date: req.query.date,
             page: req.query.page,
             limit: req.query.limit,
             sort: req.query.sort,

@@ -58,5 +58,6 @@ If these are not set, the cron exits safely without processing.
 - API queue endpoint: `POST /api/admin/orders/bulk-status/async`
 - Job status endpoint: `GET /api/admin/orders/bulk-status/jobs/:id`
 - List jobs: `GET /api/admin/orders/bulk-status/jobs`
+  - Default: today's jobs (calendar day). Query: `date=today` | `date=all` (retention window) | `start_date` & `end_date` (ISO dates)
 - Per-order job items: `GET /api/admin/orders/bulk-status/jobs/:id/orders`
 - Active in-flight orders: `GET /api/admin/orders/bulk-status/active-orders`
