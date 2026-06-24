@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 
 const MIN_INTERVAL_MS = Number(process.env.SHIPSTATION_MIN_INTERVAL_MS || 1600);
 const REDIS_RATE_LIMIT_ENABLED = process.env.SHIPSTATION_RATE_LIMIT_REDIS === 'true';
+
 const REDIS_RATE_LIMIT_KEY =
     process.env.SHIPSTATION_RATE_LIMIT_REDIS_KEY || 'shipstation:rate_limit:next_slot';
 
