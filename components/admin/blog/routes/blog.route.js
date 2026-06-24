@@ -216,6 +216,7 @@ router.get('/posts/:id',
  *               author_override:
  *                 type: string
  *                 description: JSON object override. Send empty string to clear.
+ *                 example: '{"first_name":"VapeHub","last_name":"Editorial Team","role":"Product team","bio":"Hands-on Geek Zone guides.","archive_url":"/blogs","team_url":"/blogs"}'
  *               author_first_name:
  *                 type: string
  *               author_last_name:
@@ -454,6 +455,7 @@ router.put('/posts/bulk-restore',
  *               author_override:
  *                 type: string
  *                 description: JSON object override. Send empty string to clear.
+ *                 example: '{"first_name":"VapeHub","last_name":"Editorial Team","role":"Product team","bio":"Hands-on Geek Zone guides.","archive_url":"/blogs","team_url":"/blogs"}'
  *               author_first_name:
  *                 type: string
  *               author_last_name:
@@ -584,6 +586,13 @@ router.use('/tags', blogTagRoute);
  *           description: Date when the post was soft deleted, null if not deleted
  *         author:
  *           $ref: '#/components/schemas/User'
+ *         author_id:
+ *           type: integer
+ *           description: Linked user ID for audit and fallback author profile
+ *         author_override:
+ *           $ref: '#/components/schemas/BlogAuthorOverride'
+ *           nullable: true
+ *           description: Per-post author display override. Does not mutate the linked user profile.
  *         categories:
  *           type: array
  *           items:
@@ -605,6 +614,33 @@ router.use('/tags', blogTagRoute);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/RelatedBlogPreview'
+ *     BlogAuthorOverride:
+ *       type: object
+ *       nullable: true
+ *       description: Per-post author display fields stored on the blog row (not on users)
+ *       properties:
+ *         first_name:
+ *           type: string
+ *           example: "VapeHub"
+ *         last_name:
+ *           type: string
+ *           example: "Editorial Team"
+ *         role:
+ *           type: string
+ *           example: "VapeHub product team"
+ *         bio:
+ *           type: string
+ *           example: "Part of the VapeHub product team. Writes hands-on Geek Zone guides."
+ *         avatar_url:
+ *           type: string
+ *           format: uri
+ *           example: "https://cdn.example.com/blog/authors/avatar.jpg"
+ *         archive_url:
+ *           type: string
+ *           example: "/blogs"
+ *         team_url:
+ *           type: string
+ *           example: "/blogs"
  *     BlogSourceItem:
  *       type: object
  *       required:
