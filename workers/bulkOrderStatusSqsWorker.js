@@ -8,6 +8,7 @@ const baseLogger = require('../library/logger');
 const logger = baseLogger.child({ component: 'bulk-order-status-sqs-worker' });
 
 const ENDPOINT_PATH = '/api/internal/bulk-order-status/process-item';
+const RELEASE_PATH = '/api/internal/bulk-order-status/release-item';
 
 const CONCURRENCY = Math.max(1, Number(process.env.BULK_ORDER_STATUS_WORKER_CONCURRENCY || 1));
 const MAX_MESSAGES = Math.min(10, Math.max(1, Number(process.env.BULK_ORDER_STATUS_WORKER_MAX_MESSAGES || 10)));
@@ -82,6 +83,36 @@ function shouldDeleteMessage(res) {
     return body.data?.finalized === true;
 }
 
+function shouldReleaseOnHttpError(err) {
+    if (!err) return false;
+    const code = err.code || '';
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
+        return true;
+    }
+    const msg = (err.message || '').toLowerCase();
+    return msg.includes('timeout') || msg.includes('network error');
+}
+
+async function tryReleaseItem(jobItemId, reason) {
+    try {
+        const res = await http.post(RELEASE_PATH, { jobItemId, reason });
+        logger.warn(
+            {
+                jobItemId,
+                reason,
+                status: res.status,
+                data: typeof res.data === 'object' ? res.data?.data : null,
+            },
+            'release-item called after worker HTTP failure'
+        );
+    } catch (releaseErr) {
+        logger.error(
+            { jobItemId, reason, err: releaseErr.message, code: releaseErr.code },
+            'release-item call failed'
+        );
+    }
+}
+
 async function processOne(message) {
     const parsed = parseBody(message.Body);
     if (!parsed || !Number.isFinite(parsed.jobItemId)) {
@@ -94,8 +125,10 @@ async function processOne(message) {
     }
 
     const { jobItemId } = parsed;
+    const started = Date.now();
     try {
         const res = await http.post(ENDPOINT_PATH, { jobItemId });
+        const httpMs = Date.now() - started;
         if (shouldDeleteMessage(res)) {
             await sqs
                 .deleteMessage({
@@ -104,13 +137,17 @@ async function processOne(message) {
                 })
                 .promise();
             processedOk += 1;
-            logger.info({ jobItemId, status: res.status }, 'Bulk job item finalized; SQS message deleted');
+            logger.info(
+                { jobItemId, status: res.status, httpMs },
+                'Bulk job item finalized; SQS message deleted'
+            );
         } else {
             processedFail += 1;
             logger.warn(
                 {
                     jobItemId,
                     status: res.status,
+                    httpMs,
                     response: typeof res.data === 'object' ? res.data : String(res.data).slice(0, 500)
                 },
                 'Bulk job item not finalized — leaving SQS message for redrive'
@@ -118,8 +155,23 @@ async function processOne(message) {
         }
     } catch (err) {
         processedFail += 1;
+        const httpMs = Date.now() - started;
+        if (shouldReleaseOnHttpError(err)) {
+            await tryReleaseItem(
+                jobItemId,
+                err.code === 'ECONNABORTED' || (err.message || '').toLowerCase().includes('timeout')
+                    ? 'worker_http_timeout'
+                    : 'worker_http_error'
+            );
+        }
         logger.error(
-            { err: err.message, code: err.code, messageId: message.MessageId, jobItemId },
+            {
+                err: err.message,
+                code: err.code,
+                messageId: message.MessageId,
+                jobItemId,
+                httpMs,
+            },
             'Failed to call internal endpoint — leaving message for redrive'
         );
     }
