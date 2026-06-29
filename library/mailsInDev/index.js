@@ -8,16 +8,12 @@ const hbs = require('handlebars')
 const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
 const utilsLogger = require('../../utils/logger');
+const { SerialQueue } = require('../serialQueue');
 
 // Serialize index updates to avoid race conditions when multiple emails
 // are rendered/saved concurrently (e.g. promotional sends in parallel).
-let indexUpdateQueue = Promise.resolve();
-const enqueueIndexUpdate = (work) => {
-    const run = indexUpdateQueue.then(work, work);
-    // Keep the queue alive even if a task fails.
-    indexUpdateQueue = run.catch(() => {});
-    return run;
-};
+const indexUpdateQueue = new SerialQueue();
+const enqueueIndexUpdate = (work) => indexUpdateQueue.enqueue(work);
 
 /**
  * Function to render a new email, save it as file and add it to index file

@@ -1,4 +1,5 @@
 const { redis } = require('./cache');
+const { SerialQueue } = require('./serialQueue');
 
 const MIN_INTERVAL_MS = Number(process.env.SHIPSTATION_MIN_INTERVAL_MS || 1600);
 const REDIS_RATE_LIMIT_ENABLED = process.env.SHIPSTATION_RATE_LIMIT_REDIS === 'true';
@@ -21,7 +22,7 @@ return wait_ms
 `;
 
 let lastRequestAt = 0;
-let chain = Promise.resolve();
+const serialQueue = new SerialQueue();
 let redisFallbackLogged = false;
 
 function delay(ms) {
@@ -81,13 +82,10 @@ async function waitForGlobalSlot() {
  * With SHIPSTATION_RATE_LIMIT_REDIS=true, coordinates across API pods via Redis.
  */
 function scheduleShipStationRequest(requestFn) {
-    const run = chain.then(async () => {
+    return serialQueue.enqueue(async () => {
         await waitForGlobalSlot();
         return requestFn();
     });
-
-    chain = run.catch(() => {});
-    return run;
 }
 
 module.exports = { scheduleShipStationRequest };
