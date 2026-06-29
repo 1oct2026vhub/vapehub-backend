@@ -59,6 +59,19 @@ const uploadFiletToS3 = async (params) => {
   }
 }
 
+/**
+ * Download an S3 object body as a Buffer (for background processing without holding upload buffers).
+ * @param {string} key - S3 object key
+ * @returns {Promise<Buffer>}
+ */
+const downloadS3ObjectBuffer = async (key) => {
+  const result = await s3.getObject({
+    Bucket: process.env.AWS_S3_BUCKET,
+    Key: key,
+  }).promise();
+  return result.Body;
+};
+
 const generateUniqueFileName = (originalName) => {
   const timestamp = Date.now();
   const randomString = crypto.randomBytes(8).toString('hex');
@@ -304,6 +317,7 @@ module.exports = {
   generateSignedUrl, 
   deleteFile, 
   uploadFiletToS3, 
+  downloadS3ObjectBuffer,
   generateUniqueFileName, 
   sanitizeFileName,
   getUniqueFileNameWithPrefix,

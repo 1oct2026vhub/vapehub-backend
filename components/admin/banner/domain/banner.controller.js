@@ -1,7 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { BannerImage } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
-const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3 } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3, downloadS3ObjectBuffer } = require("../../../../library/s3/s3Helper");
 // Removed old imports - using new migration-style system
 const path = require('path');
 
@@ -236,28 +236,32 @@ module.exports.createBanner = async (req, res) => {
 
         // Schedule background generation of remaining images (only if fast mode was used)
         if (useFastMode && responsiveUrls) {
+            const backgroundS3Key = baseS3Key;
+            const savedImageUrl = image_url;
+            const partialResponsiveUrls = { ...responsiveUrls };
             setTimeout(async () => {
                 try {
                     console.log('🔄 Starting background generation of remaining responsive banner images...');
+                    const imageBuffer = await downloadS3ObjectBuffer(backgroundS3Key);
                     const remainingUrls = await generateResponsiveImagesWithMigrationStyle(
-                        files.image[0].buffer, 
-                        baseS3Key,
+                        imageBuffer,
+                        backgroundS3Key,
                         false // Full mode for background generation
                     );
                     
                     // Update banner with remaining URLs
-                    const bannerToUpdate = await BannerImage.findOne({ where: { image_url } });
+                    const bannerToUpdate = await BannerImage.findOne({ where: { image_url: savedImageUrl } });
                     if (bannerToUpdate) {
                         // Update only the missing fields
                         const updateData = {};
                         Object.entries(remainingUrls).forEach(([sizeKey, url]) => {
-                            if (url && !responsiveUrls[sizeKey]) {
+                            if (url && !partialResponsiveUrls[sizeKey]) {
                                 updateData[`image_url_${sizeKey}`] = url;
                             }
                         });
                         
                         if (Object.keys(updateData).length > 0) {
-                            updateData.responsive_urls = { ...responsiveUrls, ...remainingUrls };
+                            updateData.responsive_urls = { ...partialResponsiveUrls, ...remainingUrls };
                             await bannerToUpdate.update(updateData);
                             console.log('✅ Background responsive banner images generated and saved');
                         }
