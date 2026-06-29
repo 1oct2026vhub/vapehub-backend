@@ -14,6 +14,15 @@ Handlebars.registerHelper('eq', function(a, b) {
     return a === b;
 });
 
+const templateCompileCache = new Map();
+
+function getCompiledTemplate(filePath, source) {
+    if (!templateCompileCache.has(filePath)) {
+        templateCompileCache.set(filePath, Handlebars.compile(source));
+    }
+    return templateCompileCache.get(filePath);
+}
+
 let transporter;
 
 if (process.env.EMAIL_TEST_MODE !== 'true') {
@@ -137,8 +146,8 @@ module.exports = async function sendEmail(to, emailType, context = {}, attachmen
                 emailEncoded,
                 currentYear: new Date().getFullYear()
             };
-            data.text = Handlebars.compile(text)(templateContext);
-            data.html = Handlebars.compile(html)(templateContext);
+            data.text = getCompiledTemplate(textPath, text)(templateContext);
+            data.html = getCompiledTemplate(htmlPath, html)(templateContext);
         } catch (error) {
             throw {
                 message: "Email template render failed",

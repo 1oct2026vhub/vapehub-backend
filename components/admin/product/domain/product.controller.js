@@ -10,6 +10,7 @@ const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
+const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
 
 const slugManager = new SlugManager(SlugRelation);
 

@@ -159,8 +159,10 @@ const productImageValidation = [
       .isInt({ min: 1 }).withMessage("Image ID must be a valid integer")
 ];
 
+const { createTempDiskStorage } = require("../../../../library/multer/tempDiskStorage");
+
 // Configure multer for handling file uploads
-const storage = multer.memoryStorage();
+const storage = createTempDiskStorage('products');
 const upload = multer({
     storage: storage,
     limits: {

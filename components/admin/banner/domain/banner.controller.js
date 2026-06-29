@@ -2,6 +2,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { BannerImage } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
 const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3, downloadS3ObjectBuffer } = require("../../../../library/s3/s3Helper");
+const { readUploadFile, cleanupMulterFiles } = require("../../../../library/multer/tempDiskStorage");
 // Removed old imports - using new migration-style system
 const path = require('path');
 
@@ -190,29 +191,32 @@ module.exports.createBanner = async (req, res) => {
         // Get next display order automatically
         const display_order = await getNextDisplayOrder();
 
+        const imageFile = files.image[0];
+        const imageBuffer = await readUploadFile(imageFile);
+
         // Validate input image
         console.log('📊 Input image validation:');
-        console.log(`📁 File name: ${files.image[0].originalname}`);
-        console.log(`📊 File size: ${files.image[0].buffer.length} bytes`);
-        console.log(`📋 MIME type: ${files.image[0].mimetype}`);
+        console.log(`📁 File name: ${imageFile.originalname}`);
+        console.log(`📊 File size: ${imageBuffer.length} bytes`);
+        console.log(`📋 MIME type: ${imageFile.mimetype}`);
         
-        if (!files.image[0].buffer || files.image[0].buffer.length === 0) {
+        if (!imageBuffer || imageBuffer.length === 0) {
             const error = new Error("Uploaded image is empty or corrupted");
             error.statusCode = 400;
             throw error;
         }
 
         // Generate base S3 key for the original image (using simple path like migration)
-        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
-        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const fileExtension = path.extname(imageFile.originalname) || '.jpg';
+        const baseFileName = path.basename(imageFile.originalname, fileExtension);
         const baseS3Key = `banners/${baseFileName}${fileExtension}`;
         
         // Upload original image to S3 first
         const image_url = await uploadFiletToS3({
             Bucket: process.env.AWS_S3_BUCKET,
             Key: baseS3Key,
-            Body: files.image[0].buffer,
-            ContentType: files.image[0].mimetype
+            Body: imageBuffer,
+            ContentType: imageFile.mimetype
         }).then(response => response.Location);
         
         console.log('✅ Original image uploaded successfully');
@@ -221,15 +225,15 @@ module.exports.createBanner = async (req, res) => {
         console.log('🔄 Generating responsive banner images using migration approach...');
         console.log('📁 Base S3 Key:', baseS3Key);
         console.log('📊 Image buffer for processing:', {
-            length: files.image[0].buffer.length,
-            type: typeof files.image[0].buffer,
-            isBuffer: Buffer.isBuffer(files.image[0].buffer)
+            length: imageBuffer.length,
+            type: typeof imageBuffer,
+            isBuffer: Buffer.isBuffer(imageBuffer)
         });
         
         // Generate critical images first for fast response, then background generate others
         const useFastMode = process.env.NODE_ENV === 'development' || process.env.FAST_IMAGE_GENERATION === 'true';
         const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
-            files.image[0].buffer, 
+            imageBuffer, 
             baseS3Key,
             useFastMode // Use fast mode in development or when explicitly enabled
         );
@@ -302,15 +306,18 @@ module.exports.createBanner = async (req, res) => {
         return successResponse(res, formattedBanner, 'Banner created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 };
 
 // Helper function to handle image upload
 const uploadImageToS3 = async (file, prefix) => {
+    const body = await readUploadFile(file);
     return uploadFiletToS3({
         Bucket: process.env.AWS_S3_BUCKET,
         Key: `banners/${prefix}-${Date.now()}-${file.originalname}`,
-        Body: file.buffer,
+        Body: body,
         ContentType: file.mimetype
     }).then(response => response.Location);
 };
@@ -411,23 +418,26 @@ const updateBannerImages = async (banner, files) => {
             await deleteAllResizedImages(baseS3Key);
         }
 
+        const imageFile = files.image[0];
+        const imageBuffer = await readUploadFile(imageFile);
+
         // Generate new base S3 key
-        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
-        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const fileExtension = path.extname(imageFile.originalname) || '.jpg';
+        const baseFileName = path.basename(imageFile.originalname, fileExtension);
         const newBaseS3Key = `banners/${baseFileName}${fileExtension}`;
         
         // Upload new original image
         banner.image_url = await uploadFiletToS3({
             Bucket: process.env.AWS_S3_BUCKET,
             Key: newBaseS3Key,
-            Body: files.image[0].buffer,
-            ContentType: files.image[0].mimetype
+            Body: imageBuffer,
+            ContentType: imageFile.mimetype
         }).then(response => response.Location);
 
         // Generate responsive images using migration-style resizing
         console.log('🔄 Updating responsive banner images using migration approach...');
         const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
-            files.image[0].buffer, 
+            imageBuffer, 
             newBaseS3Key
         );
 
@@ -481,6 +491,8 @@ module.exports.updateBanner = async (req, res) => {
         return successResponse(res, formattedBanner, 'Banner updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 };
 
