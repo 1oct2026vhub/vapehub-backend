@@ -3,7 +3,6 @@ const { BulkOrderStatusJobItem } = require('../../../models');
 const {
     claimSpecificPendingJobItem,
     processBulkOrderStatusJobItem,
-    releaseProcessingJobItem,
 } = require('../../admin/order/helper/bulkOrderStatusJob.helper');
 
 function parseJobItemId(body) {
@@ -67,33 +66,6 @@ async function processBulkOrderStatusItem(req, res) {
     }
 }
 
-async function releaseBulkOrderStatusItem(req, res) {
-    try {
-        const jobItemId = parseJobItemId(req.body);
-        if (!jobItemId) {
-            return errorResponse(res, {}, 'jobItemId must be a positive integer', 400);
-        }
-
-        const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
-            ? req.body.reason.trim().slice(0, 255)
-            : 'worker_release';
-
-        const result = await releaseProcessingJobItem(jobItemId, reason);
-        if (!result.found) {
-            return errorResponse(res, {}, 'Job item not found', 404);
-        }
-
-        return successResponse(res, result, result.finalized
-            ? 'Job item already finalized'
-            : result.released
-                ? 'Job item released for retry'
-                : 'Job item was not released');
-    } catch (error) {
-        return errorResponse(res, error, error.message);
-    }
-}
-
 module.exports = {
     processBulkOrderStatusItem,
-    releaseBulkOrderStatusItem,
 };

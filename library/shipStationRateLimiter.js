@@ -21,8 +21,10 @@ return wait_ms
 `;
 
 let lastRequestAt = 0;
-let chain = Promise.resolve();
 let redisFallbackLogged = false;
+
+const pending = [];
+let draining = false;
 
 function delay(ms) {
     if (ms <= 0) {
@@ -76,18 +78,38 @@ async function waitForGlobalSlot() {
     }
 }
 
+async function drainQueue() {
+    if (draining) {
+        return;
+    }
+    draining = true;
+    try {
+        while (pending.length > 0) {
+            const { requestFn, resolve, reject } = pending.shift();
+            try {
+                await waitForGlobalSlot();
+                resolve(await requestFn());
+            } catch (err) {
+                reject(err);
+            }
+        }
+    } finally {
+        draining = false;
+        if (pending.length > 0) {
+            drainQueue();
+        }
+    }
+}
+
 /**
  * Serialize ShipStation API calls to stay under rate limits (~40/min).
  * With SHIPSTATION_RATE_LIMIT_REDIS=true, coordinates across API pods via Redis.
  */
 function scheduleShipStationRequest(requestFn) {
-    const run = chain.then(async () => {
-        await waitForGlobalSlot();
-        return requestFn();
+    return new Promise((resolve, reject) => {
+        pending.push({ requestFn, resolve, reject });
+        drainQueue();
     });
-
-    chain = run.catch(() => {});
-    return run;
 }
 
 module.exports = { scheduleShipStationRequest };
