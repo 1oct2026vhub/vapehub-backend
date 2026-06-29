@@ -49,7 +49,7 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
 }
 
 
-module.exports = async (to, emailType, context = {}, attachments = []) => {
+module.exports = async function sendEmail(to, emailType, context = {}, attachments = []) {
     try {
         // if unknown type, throw error
         if (!constants.emailTypes[emailType]) {
@@ -179,4 +179,12 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         });
         throw error;
     }
+};
+
+async function closeEmailTransport() {
+    if (transporter && typeof transporter.close === 'function') {
+        await transporter.close();
+    }
 }
+
+module.exports.closeEmailTransport = closeEmailTransport;

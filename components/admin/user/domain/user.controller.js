@@ -1275,18 +1275,6 @@ module.exports.checkExportStatus = async (req, res) => {
     }
 };
 
-// Graceful shutdown handling - cleanup temp files
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, cleaning up export temp files...');
-    cleanupAllTempFiles();
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, cleaning up export temp files...');
-    cleanupAllTempFiles();
-    process.exit(0);
-});
-
 // Cleanup all temp files on shutdown
 function cleanupAllTempFiles() {
     try {
@@ -1458,5 +1446,6 @@ async function cleanupS3ExportFilesDirectly(retentionDays) {
     }
 }
 
-// Export cleanup function for manual/cron use
+// Export cleanup functions for manual/cron/shutdown use
+module.exports.cleanupAllTempFiles = cleanupAllTempFiles;
 module.exports.cleanupOldExportFiles = cleanupOldExportFiles;
