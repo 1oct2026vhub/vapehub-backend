@@ -3,6 +3,14 @@ const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
+const {
+    categoryIdValidation,
+    categoryValidation,
+    categoryUpdatesValidation,
+    uploadFileValidation,
+    bulkUpdateCategoriesValidation,
+    uploadXlxFileMiddleware
+} = require('../helper/category.validator');
 const buyingGuideController = require('../domain/buyingGuide.controller');
 const { buyingGuideIdValidation, buyingGuideBodyValidation, buyingGuideUploadValidation } = require('../helper/buyingGuide.validator');
 
