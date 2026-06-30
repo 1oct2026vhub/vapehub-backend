@@ -287,7 +287,7 @@ module.exports.createBanner = async (req, res) => {
 
         // Set responsive URLs using helper method
         banner.updateResponsiveUrls(responsiveUrls);
-        await applyOptionalLegacyLowImage(banner, files);
+        banner.image_url_low = await resolveImageUrlLow(files, responsiveUrls);
         await banner.save();
 
         console.log('💾 Banner saved with responsive URLs');
@@ -317,9 +317,25 @@ const uploadImageToS3 = async (file, prefix) => {
     }).then(response => response.Location);
 };
 
-function clearLegacyLowMidFields(banner) {
-    banner.image_url_low = null;
-    banner.image_url_mid = null;
+/**
+ * Resolve image_url_low: upload image_low file when provided, else fall back to mobile responsive URL.
+ */
+async function resolveImageUrlLow(files, responsiveUrls) {
+    let image_url_low = null;
+
+    if (files?.image_low?.[0]) {
+        try {
+            image_url_low = await uploadImageToS3(files.image_low[0], 'low');
+        } catch (error) {
+            console.error('Failed to upload image_low:', error.message);
+        }
+    }
+
+    if (!image_url_low && responsiveUrls?.mobile) {
+        image_url_low = responsiveUrls.mobile;
+    }
+
+    return image_url_low;
 }
 
 /**
@@ -461,8 +477,9 @@ const updateBannerImages = async (banner, files) => {
         // Update all responsive image URLs using helper method
         banner.updateResponsiveUrls(responsiveUrls);
 
-        // Main image replaced — legacy low/mid are obsolete; use image_url_mobile instead
-        clearLegacyLowMidFields(banner);
+        // Main image replaced — ignore stale image_low; use mobile responsive as legacy fallback
+        banner.image_url_mid = null;
+        banner.image_url_low = responsiveUrls.mobile || null;
     }
 
     // Low-only update: admin changes legacy low asset without replacing main image
