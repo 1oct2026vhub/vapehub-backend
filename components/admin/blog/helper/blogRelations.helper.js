@@ -100,14 +100,16 @@ exports.updateBlogTags = async (blogId, transaction, tagIds = []) => {
  */
 exports.updateBlogRelatedPosts = async (blogId, transaction, relatedBlogIds = []) => {
     try {
-        const validIds = [...new Set(
-            (relatedBlogIds || [])
-                .map((id) => parseInt(id, 10))
-                .filter((id) => !Number.isNaN(id))
-        )];
+        const validIds = (relatedBlogIds || [])
+            .map((id) => parseInt(id, 10))
+            .filter((id) => !Number.isNaN(id));
 
         if (validIds.length > 3) {
             throw new Error('related_blog_ids cannot contain more than 3 items');
+        }
+
+        if (validIds.length !== new Set(validIds).size) {
+            throw new Error('related_blog_ids cannot contain duplicate IDs');
         }
 
         if (validIds.includes(Number(blogId))) {
@@ -125,7 +127,7 @@ exports.updateBlogRelatedPosts = async (blogId, transaction, relatedBlogIds = []
 
         const existingBlogs = await Blog.findAll({
             where: { id: validIds },
-            attributes: ['id'],
+            attributes: ['id', 'status'],
             transaction
         });
 
@@ -133,6 +135,11 @@ exports.updateBlogRelatedPosts = async (blogId, transaction, relatedBlogIds = []
             const foundIds = existingBlogs.map((blog) => blog.id);
             const missingIds = validIds.filter((id) => !foundIds.includes(id));
             throw new Error(`Related blog IDs ${missingIds.join(', ')} do not exist`);
+        }
+
+        const notPublished = existingBlogs.filter((blog) => blog.status !== 'published');
+        if (notPublished.length > 0) {
+            throw new Error('related post must be published/active');
         }
 
         const relations = validIds.map((relatedBlogId, index) => ({

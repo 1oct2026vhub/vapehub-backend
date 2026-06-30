@@ -72,6 +72,11 @@ const blogTagRoute = require('./blogTag.route');
  *           type: string
  *           enum: [draft, published, archived]
  *         description: Filter blogs by status (draft, published, or archived)
+ *       - in: query
+ *         name: is_active
+ *         schema:
+ *           type: boolean
+ *         description: When true and status is omitted, filters to published posts (picker convenience alias)
  *     responses:
  *       200:
  *         description: Successfully retrieved blog posts
@@ -612,6 +617,12 @@ router.use('/tags', blogTagRoute);
  *           description: Curated related blog IDs in display order (max 3)
  *         related_blogs:
  *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/RelatedBlogPreview'
+ *         related_posts:
+ *           type: array
+ *           deprecated: true
+ *           description: Deprecated alias of related_blogs
  *           items:
  *             $ref: '#/components/schemas/RelatedBlogPreview'
  *     BlogAuthorOverride:

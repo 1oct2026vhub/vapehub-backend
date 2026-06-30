@@ -18,9 +18,39 @@ const {
 } = require("../helper/blogPayload.helper");
 const { resolveAuthorOverrideForSave } = require("../helper/blogAuthorOverride.helper");
 
+const isRelatedBlogClientError = (message = '') => (
+    message.startsWith('related_blog_ids')
+    || message.startsWith('Related blog IDs')
+    || message === 'related post must be published/active'
+);
+
+const resolveBlogMutationStatusCode = (error) => {
+    if (error?.name === 'SequelizeDeadlockError') {
+        return 409;
+    }
+    if (error?.name === 'SequelizeUniqueConstraintError') {
+        return 409;
+    }
+    if (isRelatedBlogClientError(error?.message)) {
+        return 400;
+    }
+    return 500;
+};
+
 module.exports.listAllBlogs = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, sort = 'created_at', order = 'DESC', deleted, category_id, tag_id, status } = req.query;
+        const {
+            page = 1,
+            limit = 10,
+            search,
+            sort = 'created_at',
+            order = 'DESC',
+            deleted,
+            category_id,
+            tag_id,
+            status,
+            is_active
+        } = req.query;
         const offset = (page - 1) * limit;
 
         let whereCondition = {};
@@ -35,9 +65,9 @@ module.exports.listAllBlogs = async (req, res) => {
             };
         }
 
-        // Add status filter if provided
-        if (status) {
-            whereCondition.status = status;
+        const resolvedStatus = status || (is_active === 'true' ? 'published' : undefined);
+        if (resolvedStatus) {
+            whereCondition.status = resolvedStatus;
         }
 
         // Handle deleted filter - use literal SQL to avoid Sequelize column mapping issues
@@ -125,6 +155,7 @@ module.exports.listAllBlogs = async (req, res) => {
             if (blogData.status === 'draft' || blogData.status === 'archived') {
                 blogData.published_at = null;
             }
+            blogData.is_active = blogData.status === 'published';
             
             // Add empty arrays for relations if they don't exist
             blogData.categoryRelations = [];
@@ -249,9 +280,15 @@ module.exports.createBlog = async (req, res) => {
         const sources = req.body.sources !== undefined
             ? parseSourcesField(req.body.sources)
             : [];
-        const relatedBlogIds = req.body.related_blog_ids !== undefined
-            ? parseRelatedBlogIdsField(req.body.related_blog_ids)
-            : [];
+        let relatedBlogIds = [];
+        if (req.body.related_blog_ids !== undefined) {
+            try {
+                relatedBlogIds = parseRelatedBlogIdsField(req.body.related_blog_ids);
+            } catch (relatedBlogError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: relatedBlogError.message }, relatedBlogError.message, 400);
+            }
+        }
         const status = req.body.status || 'draft';
 
         const heroFile = req.files?.image?.[0];
@@ -295,7 +332,7 @@ module.exports.createBlog = async (req, res) => {
             ]);
         } catch (error) {
             console.error('Error updating relations:', error);
-            throw new Error('Failed to update blog relations');
+            throw error;
         }
 
         // Fetch complete blog data
@@ -333,9 +370,9 @@ module.exports.createBlog = async (req, res) => {
             }
         }
         console.error('Blog creation error:', error);
-        errorResponse(res, error, 
-            error.message || 'Failed to create blog post', 
-            error.name === 'SequelizeDeadlockError' ? 409 : 500
+        errorResponse(res, error,
+            error.message || 'Failed to create blog post',
+            resolveBlogMutationStatusCode(error)
         );
     }
 };
@@ -387,9 +424,15 @@ module.exports.updateBlog = async (req, res) => {
         const parsedSources = req.body.sources !== undefined
             ? parseSourcesField(req.body.sources)
             : undefined;
-        const parsedRelatedBlogIds = req.body.related_blog_ids !== undefined
-            ? parseRelatedBlogIdsField(req.body.related_blog_ids, id)
-            : undefined;
+        let parsedRelatedBlogIds;
+        if (req.body.related_blog_ids !== undefined) {
+            try {
+                parsedRelatedBlogIds = parseRelatedBlogIdsField(req.body.related_blog_ids, id);
+            } catch (relatedBlogError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: relatedBlogError.message }, relatedBlogError.message, 400);
+            }
+        }
         const parsedAuthorId = req.body.author_id !== undefined
             ? await resolveAuthorId(req.body.author_id, updated_by)
             : undefined;
@@ -549,7 +592,8 @@ module.exports.updateBlog = async (req, res) => {
                 console.error('Blog update rollback error:', rollbackError);
             }
         }
-        const statusCode = error.name === 'SequelizeUniqueConstraintError' ? 409 : 500;
+        const statusCode = error.statusCode
+            || resolveBlogMutationStatusCode(error);
         return errorResponse(res, error, error.message || 'Failed to update blog post', statusCode);
     }
 };
