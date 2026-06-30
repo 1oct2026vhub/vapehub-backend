@@ -97,17 +97,9 @@ const parseSourcesField = (field) => {
     });
 };
 
-const assertUniqueRelatedBlogIds = (ids) => {
-    const uniqueIds = [...new Set(ids)];
-    if (ids.length !== uniqueIds.length) {
-        throw new Error('related_blog_ids cannot contain duplicate IDs');
-    }
-    return uniqueIds;
-};
-
 const parseRelatedBlogIdsField = (field, blogId = null) => {
     const ids = parseJsonOrCsvIds(field, 'related_blog_ids');
-    const uniqueIds = assertUniqueRelatedBlogIds(ids);
+    const uniqueIds = [...new Set(ids)];
 
     if (uniqueIds.length > 3) {
         throw new Error('related_blog_ids cannot contain more than 3 items');
@@ -170,8 +162,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
         sources: blogData.sources ?? [],
         author_override: blogData.author_override ?? null,
         related_blog_ids,
-        related_blogs,
-        related_posts: related_blogs
+        related_blogs
     };
 };
 
@@ -179,7 +170,6 @@ module.exports = {
     AUTHOR_ATTRIBUTES,
     parseJsonOrCsvIds,
     parseSourcesField,
-    assertUniqueRelatedBlogIds,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields

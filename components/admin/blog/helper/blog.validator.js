@@ -97,10 +97,6 @@ const parseRelatedBlogIdsForValidation = (value, blogId = null) => {
     const parsedIds = ids.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id));
     const uniqueIds = [...new Set(parsedIds)];
 
-    if (parsedIds.length !== uniqueIds.length) {
-        throw new Error('related_blog_ids cannot contain duplicate IDs');
-    }
-
     if (uniqueIds.length > 3) {
         throw new Error('related_blog_ids cannot contain more than 3 items');
     }
@@ -429,11 +425,6 @@ const filterValidations = [
         .optional()
         .isIn(['draft', 'published', 'archived'])
         .withMessage('Invalid status filter'),
-
-    query('is_active')
-        .optional()
-        .isIn(['true', 'false'])
-        .withMessage('is_active must be "true" or "false"'),
     
     query('from_date')
         .optional()
