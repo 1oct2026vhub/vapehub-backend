@@ -3,7 +3,8 @@ const { authMiddleware } = require('../../../../library/middleware');
 const categoryController = require("../domain/category.controller");
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
-const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadXlxFileMiddleware } = require("../helper/category.validator");
+const buyingGuideController = require('../domain/buyingGuide.controller');
+const { buyingGuideIdValidation, buyingGuideBodyValidation, buyingGuideUploadValidation } = require('../helper/buyingGuide.validator');
 
 /**
  * @swagger
@@ -104,6 +105,20 @@ const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, upl
  *         description: Invalid request parameters
  */
 router.get('/', authMiddleware(true), categoryController.listAllCategories);
+
+router.get('/:id/buying-guide',
+    [authMiddleware(true), validateRequest(buyingGuideIdValidation)],
+    buyingGuideController.getBuyingGuide
+);
+
+router.post('/:id/buying-guide',
+    [
+        authMiddleware(true),
+        buyingGuideUploadValidation,
+        buyingGuideBodyValidation
+    ],
+    buyingGuideController.saveBuyingGuide
+);
 
 /**
  * @swagger

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const categoryController = require("../domain/category.controller");
+const buyingGuideController = require("../domain/buyingGuide.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 
@@ -152,6 +153,13 @@ router.delete('/:id', authenticateJWT,
         param('id').isInt().withMessage('ID must be an integer')
     ]),
     categoryController.deleteCategory
+);
+
+router.get('/slug/:slug/buying-guide',
+    validateRequest([
+        param('slug').isString().withMessage('slug must be a string')
+    ]),
+    buyingGuideController.getBuyingGuideBySlug
 );
 
 /**

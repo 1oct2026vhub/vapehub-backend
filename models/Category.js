@@ -17,6 +17,10 @@ module.exports = (sequelize, DataTypes) => {
               otherKey: 'product_id',
               as: 'Products'
             });
+            this.hasOne(models.CategoryBuyingGuide, {
+                foreignKey: 'category_id',
+                as: 'buyingGuide'
+            });
         }
     }
 
