@@ -193,12 +193,6 @@ module.exports.createBanner = async (req, res) => {
 
         const imageFile = files.image[0];
         const imageBuffer = await readUploadFile(imageFile);
-
-        // Validate input image
-        console.log('📊 Input image validation:');
-        console.log(`📁 File name: ${imageFile.originalname}`);
-        console.log(`📊 File size: ${imageBuffer.length} bytes`);
-        console.log(`📋 MIME type: ${imageFile.mimetype}`);
         
         if (!imageBuffer || imageBuffer.length === 0) {
             const error = new Error("Uploaded image is empty or corrupted");
@@ -293,6 +287,7 @@ module.exports.createBanner = async (req, res) => {
 
         // Set responsive URLs using helper method
         banner.updateResponsiveUrls(responsiveUrls);
+        await applyOptionalLegacyLowImage(banner, files);
         await banner.save();
 
         console.log('💾 Banner saved with responsive URLs');
@@ -321,6 +316,28 @@ const uploadImageToS3 = async (file, prefix) => {
         ContentType: file.mimetype
     }).then(response => response.Location);
 };
+
+function clearLegacyLowMidFields(banner) {
+    banner.image_url_low = null;
+    banner.image_url_mid = null;
+}
+
+/**
+ * Optional legacy low-res upload (image_url_low).
+ * Prefer image_url_mobile from responsive generation when main image is present.
+ */
+async function applyOptionalLegacyLowImage(banner, files, { allowLowWithMainImage = false } = {}) {
+    if (!files?.image_low?.[0]) {
+        return;
+    }
+
+    if (files.image && !allowLowWithMainImage) {
+        return;
+    }
+
+    await deleteImageFromS3(banner.image_url_low);
+    banner.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
+}
 
 // Helper function to validate display order
 const validateDisplayOrder = async (display_order, currentOrder) => {
@@ -443,12 +460,14 @@ const updateBannerImages = async (banner, files) => {
 
         // Update all responsive image URLs using helper method
         banner.updateResponsiveUrls(responsiveUrls);
+
+        // Main image replaced — legacy low/mid are obsolete; use image_url_mobile instead
+        clearLegacyLowMidFields(banner);
     }
-    
-    // Keep backward compatibility for image_low if provided separately
-    if (files.image_low) {
-        await deleteImageFromS3(banner.image_url_low);
-        banner.image_url_low = await uploadImageToS3(files.image_low[0], 'low');
+
+    // Low-only update: admin changes legacy low asset without replacing main image
+    if (files.image_low && !files.image) {
+        await applyOptionalLegacyLowImage(banner, files);
     }
 };
 
