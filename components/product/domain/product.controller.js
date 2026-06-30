@@ -7,6 +7,7 @@ const { fetchProductsOptimized } = require("../helper/product.helper.optimized")
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
+const { getPublishedProductRelatedBlogs } = require('../../admin/product/helper/productBlogRelations.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -1086,6 +1087,7 @@ module.exports.getProductByid = async (req, res, next) => {
         }
 
         // Prepare the response
+        const relatedBlogs = await getPublishedProductRelatedBlogs(productId);
         const response = {
             ...product.toJSON(),
             puff_count: puffCount,
@@ -1116,7 +1118,8 @@ module.exports.getProductByid = async (req, res, next) => {
                 min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                 status: loyaltySettings.status
             } : null,
-            min_price_variant: minPriceVariant
+            min_price_variant: minPriceVariant,
+            related_blogs: relatedBlogs
         };
 
         return response;

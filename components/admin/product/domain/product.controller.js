@@ -10,6 +10,12 @@ const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
+const {
+    updateProductRelatedBlogs,
+    getProductRelatedBlogs,
+    attachRelatedBlogFields,
+    parseRelatedBlogIdsField
+} = require('../helper/productBlogRelations.helper');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -497,7 +503,7 @@ module.exports.getProductById = async (req, res, next) => {
         const { id } = req.params; 
 
         // Use Promise.all for parallel execution of optimized queries
-        const [product, categories, brands, images, attributeTerms, variants, linkedProducts] = await Promise.all([
+        const [product, categories, brands, images, attributeTerms, variants, linkedProducts, relatedBlogRelations] = await Promise.all([
             // Main product query - minimal data first
             Product.findByPk(id, {
                 paranoid: false,
@@ -659,7 +665,10 @@ module.exports.getProductById = async (req, res, next) => {
                     ]
                 }],
                 attributes: []
-            }).then(result => result?.LinkedProducts || [])
+            }).then(result => result?.LinkedProducts || []),
+
+            // Related blogs query
+            getProductRelatedBlogs(id)
         ]);
 
         // If the product does not exist, return a 404 error response
@@ -740,11 +749,11 @@ module.exports.getProductById = async (req, res, next) => {
             }
         }
 
-        // Add puff count to the product response
-        let productResponse = {
+        // Add puff count and related blogs to the product response
+        let productResponse = attachRelatedBlogFields({
             ...productData,
             puff_count: puffCount
-        };
+        }, relatedBlogRelations);
 
         // When product is deleted, attach redirect details from Redirect table if any
         if (product.deletedAt) {
@@ -997,7 +1006,8 @@ module.exports.createProduct = async (req, res, next) => {
             is_discontinued,
             category_ids,
             brand_ids,
-            linked_product_ids
+            linked_product_ids,
+            related_blog_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -1047,6 +1057,16 @@ module.exports.createProduct = async (req, res, next) => {
             if (linkedProducts.length !== linkedProductIds.length) {
                 await transaction.rollback();
                 return errorResponse(res, { message: "One or more invalid linked product IDs" }, "Invalid linked product IDs", 400);
+            }
+        }
+
+        let parsedRelatedBlogIds = [];
+        if (related_blog_ids !== undefined && related_blog_ids !== null && related_blog_ids !== '') {
+            try {
+                parsedRelatedBlogIds = parseRelatedBlogIdsField(related_blog_ids);
+            } catch (relatedBlogError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: relatedBlogError.message }, relatedBlogError.message, 400);
             }
         }
 
@@ -1198,6 +1218,10 @@ module.exports.createProduct = async (req, res, next) => {
             }
         }
 
+        if (parsedRelatedBlogIds.length > 0) {
+            await updateProductRelatedBlogs(product.id, transaction, parsedRelatedBlogIds);
+        }
+
         // Create slug relation
         await slugManager.createOrUpdateSlug(cleanSlug, 'product', product.id, transaction);
 
@@ -1230,7 +1254,13 @@ module.exports.createProduct = async (req, res, next) => {
             ]
         });
 
-        return successResponse(res, newProduct, "Product created successfully", 201);
+        const relatedBlogRelations = await getProductRelatedBlogs(product.id);
+        const productResponse = attachRelatedBlogFields(
+            newProduct.toJSON ? newProduct.toJSON() : newProduct,
+            relatedBlogRelations
+        );
+
+        return successResponse(res, productResponse, "Product created successfully", 201);
     } catch (error) {
         await transaction.rollback();
         console.log(error);
@@ -1294,7 +1324,8 @@ module.exports.updateProduct = async (req, res, next) => {
             redirect_url,
             category_ids,
             brand_ids,
-            linked_product_ids
+            linked_product_ids,
+            related_blog_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
@@ -1723,6 +1754,19 @@ module.exports.updateProduct = async (req, res, next) => {
             }
         }
 
+        // Update related blog associations if provided
+        if (related_blog_ids !== undefined) {
+            try {
+                const parsedRelatedBlogIds = related_blog_ids === null || related_blog_ids === ''
+                    ? []
+                    : parseRelatedBlogIdsField(related_blog_ids);
+                await updateProductRelatedBlogs(id, transaction, parsedRelatedBlogIds);
+            } catch (relatedBlogError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: relatedBlogError.message }, relatedBlogError.message, 400);
+            }
+        }
+
         // Handle menu cleanup and sync when categories/brands are updated
         if ((category_ids !== undefined || brand_ids !== undefined)) {
             // Get new category and brand IDs after update
@@ -1968,7 +2012,11 @@ module.exports.updateProduct = async (req, res, next) => {
         }
 
         // Include redirect information in response if product is deleted
-        let responseData = updatedProduct;
+        const relatedBlogRelations = await getProductRelatedBlogs(id);
+        let responseData = attachRelatedBlogFields(
+            updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct,
+            relatedBlogRelations
+        );
         if (updatedProduct.deletedAt) {
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'product', slug: updatedProduct.slug, status: 'active' },
@@ -1976,7 +2024,7 @@ module.exports.updateProduct = async (req, res, next) => {
             });
             if (redirect) {
                 responseData = {
-                    ...(updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct),
+                    ...responseData,
                     redirect: {
                         redirect_url: redirect.url_to,
                         old_path: redirect.sources,

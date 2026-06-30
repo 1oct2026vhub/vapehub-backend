@@ -596,7 +596,7 @@ router.get('/new', productController.listNewProducts);
  *           type: integer
  *     responses:
  *       200:
- *         description: A single product
+ *         description: A single product (includes related_blogs — up to 3 published blog cards in CMS order)
  */
 router.get('/fetch/:id',
     validateRequest([
