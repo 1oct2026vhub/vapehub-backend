@@ -31,7 +31,8 @@ function resolveLoyaltyDebitPoints(order, settings) {
     const pointsPerTier = minRedeem >= 1 ? minRedeem : 10;
     const percentPerTier = parseFloat(settings.loyalty_amount) || 0;
     const paidTotal = parseFloat(order.total || 0);
-    const redeemableGbp = paidTotal + loyaltyDiscount;
+    const shippingCost = parseFloat(order.shipping_cost || 0);
+    const redeemableGbp = paidTotal + loyaltyDiscount - shippingCost;
     if (percentPerTier > 0 && redeemableGbp > 0) {
       const percentApplied = Math.min(100, (loyaltyDiscount / redeemableGbp) * 100);
       const tiers = Math.ceil(percentApplied / percentPerTier);

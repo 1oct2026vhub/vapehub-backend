@@ -334,7 +334,7 @@ module.exports.applyCoupon = async (req, res, next) => {
                 id: shippingMethodId,
                 is_enabled: true  // Only allow enabled shipping methods
             },
-            attributes: ["id", "shipping_method", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+            attributes: ["id", "shipping_method", "shipping_cost", "service_code", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         });
 
         // Calculate deals
@@ -866,11 +866,14 @@ module.exports.applyCoupon = async (req, res, next) => {
                 ? loyaltyShippingPricing.buildLoyaltyRedemptionInfo(
                     loyaltySettings,
                     pointsBalance,
-                    { merchandiseTotal: merchandiseBeforeLoyalty }
+                    {
+                        merchandiseTotal: merchandiseBeforeLoyalty,
+                        payableMerchandise: pricing.payableMerchandise,
+                    }
                 )
                 : null,
-            is_payment_required: pricing.paymentRequired && total > 0,
-            payment_required: pricing.paymentRequired && total > 0,
+            is_payment_required: total > 0,
+            payment_required: total > 0,
             mail_subscription_discount: mailSubscriptionDiscount,
             mail_subscription_discount_type: mailSubscriptionDiscountType,
             mail_subscription_data: mailSubscriptionData,

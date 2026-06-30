@@ -4,6 +4,7 @@ const shipstationLog = createDomainLogger('shipstation');
 const { scheduleShipStationRequest } = require('../../../../library/shipStationRateLimiter');
 
 const SHIPSTATION_MAX_RETRIES = Number(process.env.SHIPSTATION_MAX_RETRIES || 6);
+const SHIPSTATION_HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.SHIPSTATION_HTTP_TIMEOUT_MS || 30000));
 
 function getShipStationRetryDelayMs(error, attempt) {
     const headers = error.response?.headers || {};
@@ -63,7 +64,7 @@ async function sendOrderToShipStation(shipStationOrder) {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -141,7 +142,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         
@@ -221,7 +222,8 @@ async function getProductById(productId) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -261,7 +263,8 @@ async function listProducts(queryParams = {}) {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            timeout: SHIPSTATION_HTTP_TIMEOUT_MS
         }));
         return response.data;
     } catch (error) {
@@ -289,7 +292,8 @@ async function updateProduct(productId, productData) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -320,7 +324,7 @@ async function listOrdersByOrderNumber(orderNumber) {
                     Authorization: `Basic ${auth}`,
                     'Content-Type': 'application/json',
                 },
-                timeout: 30000,
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS,
             }
         ));
 
@@ -349,7 +353,8 @@ async function getOrderById(orderId) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -377,7 +382,8 @@ async function deleteOrderById(orderId) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -402,7 +408,8 @@ async function holdOrderUntil(orderId, holdUntilDate) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -434,7 +441,8 @@ async function restoreOrderFromHold(orderId) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -463,7 +471,8 @@ async function markOrderAsShipped(orderData) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;
@@ -497,7 +506,8 @@ async function voidShipmentLabel(shipmentData) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
         ));
         return response.data;

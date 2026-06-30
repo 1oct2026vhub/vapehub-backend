@@ -42,15 +42,22 @@ If these are not set, the cron exits safely without processing.
 
 ### Optional tuning env vars
 
+- `BULK_ORDER_STATUS_CLAIM_STALE_MINUTES` (default: `3`) — reclaim `processing` items in the API before cron recovery
 - `BULK_ORDER_STATUS_STALE_RESET_MINUTES` (default: `15`)
 - `BULK_ORDER_STATUS_PENDING_STALE_MINUTES` (default: `10`)
 - `BULK_ORDER_STATUS_MAX_ATTEMPTS` (default: `5`)
 - `BULK_ORDER_STATUS_RECOVERY_CRON` (default: `*/5 * * * *`)
 - `BULK_ORDER_STATUS_RECOVERY_BATCH_LIMIT` (default: `500`)
+- `BULK_ORDER_STATUS_JOB_RETENTION_DAYS` (default: `7`) — list/get job APIs omit older jobs
 
 ## Related workers/routes
 
 - Worker: `backend/workers/bulkOrderStatusSqsWorker.js`
 - Internal route: `POST /api/internal/bulk-order-status/process-item`
+- Stuck `processing` items after worker HTTP timeout are recovered via claim stale reclaim (`BULK_ORDER_STATUS_CLAIM_STALE_MINUTES`) or the recovery cron
 - API queue endpoint: `POST /api/admin/orders/bulk-status/async`
 - Job status endpoint: `GET /api/admin/orders/bulk-status/jobs/:id`
+- List jobs: `GET /api/admin/orders/bulk-status/jobs`
+  - Default: today's jobs (calendar day). Query: `date=today` | `date=all` (retention window) | `start_date` & `end_date` (ISO dates)
+- Per-order job items: `GET /api/admin/orders/bulk-status/jobs/:id/orders`
+- Active in-flight orders: `GET /api/admin/orders/bulk-status/active-orders`

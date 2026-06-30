@@ -11,6 +11,9 @@ const {
     ASYNC_BULK_MAX_ORDERS,
     createBulkOrderStatusJob,
     getBulkOrderStatusJobDetails,
+    listBulkOrderStatusJobs,
+    getBulkOrderStatusJobOrders,
+    getActiveBulkOrderItems,
 } = require('../helper/bulkOrderStatusJob.helper');
 async function safeRollback(transaction) {
     if (transaction && !transaction.finished) {
@@ -895,12 +898,33 @@ module.exports.bulkUpdateOrderStatusAsync = async (req, res, next) => {
         return successResponse(res, {
             job_id: job.id,
             job_key: job.job_key,
+            order_count: job.total,
             total: job.total,
             status: job.status,
             target_status: job.target_status,
         }, 'Bulk status update queued', 202);
     } catch (error) {
         console.error('bulkUpdateOrderStatusAsync error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.listBulkOrderStatusJobs = async (req, res) => {
+    try {
+        const result = await listBulkOrderStatusJobs({
+            status: req.query.status,
+            startDate: req.query.start_date,
+            endDate: req.query.end_date,
+            date: req.query.date,
+            page: req.query.page,
+            limit: req.query.limit,
+            sort: req.query.sort,
+            order: req.query.order,
+        });
+
+        return successResponse(res, result, 'Bulk order status jobs retrieved');
+    } catch (error) {
+        console.error('listBulkOrderStatusJobs error:', error);
         return errorResponse(res, error, error.message);
     }
 };
@@ -924,6 +948,58 @@ module.exports.getBulkOrderStatusJob = async (req, res, next) => {
         return successResponse(res, job, 'Bulk order status job retrieved');
     } catch (error) {
         console.error('getBulkOrderStatusJob error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getBulkOrderStatusJobOrders = async (req, res) => {
+    try {
+        const jobId = Number(req.params.id);
+        if (!Number.isInteger(jobId) || jobId <= 0) {
+            const error = new Error('Invalid job ID');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const result = await getBulkOrderStatusJobOrders(jobId, {
+            itemStatus: req.query.item_status,
+            page: req.query.page,
+            limit: req.query.limit,
+            search: req.query.search,
+        });
+
+        if (result?.invalidItemStatus) {
+            const error = new Error('Invalid item_status filter');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!result) {
+            const error = new Error('Bulk order status job not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        return successResponse(res, result, 'Bulk order status job orders retrieved');
+    } catch (error) {
+        console.error('getBulkOrderStatusJobOrders error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getActiveBulkOrderStatusItems = async (req, res) => {
+    try {
+        const { target_status: targetStatus } = req.query;
+        if (targetStatus && !Object.values(orderStatusEnums).includes(targetStatus)) {
+            const error = new Error('Invalid target_status');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const result = await getActiveBulkOrderItems({ targetStatus });
+        return successResponse(res, result, 'Active bulk order status items retrieved');
+    } catch (error) {
+        console.error('getActiveBulkOrderStatusItems error:', error);
         return errorResponse(res, error, error.message);
     }
 };

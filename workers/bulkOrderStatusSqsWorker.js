@@ -94,8 +94,10 @@ async function processOne(message) {
     }
 
     const { jobItemId } = parsed;
+    const started = Date.now();
     try {
         const res = await http.post(ENDPOINT_PATH, { jobItemId });
+        const httpMs = Date.now() - started;
         if (shouldDeleteMessage(res)) {
             await sqs
                 .deleteMessage({
@@ -104,13 +106,17 @@ async function processOne(message) {
                 })
                 .promise();
             processedOk += 1;
-            logger.info({ jobItemId, status: res.status }, 'Bulk job item finalized; SQS message deleted');
+            logger.info(
+                { jobItemId, status: res.status, httpMs },
+                'Bulk job item finalized; SQS message deleted'
+            );
         } else {
             processedFail += 1;
             logger.warn(
                 {
                     jobItemId,
                     status: res.status,
+                    httpMs,
                     response: typeof res.data === 'object' ? res.data : String(res.data).slice(0, 500)
                 },
                 'Bulk job item not finalized — leaving SQS message for redrive'
@@ -118,9 +124,16 @@ async function processOne(message) {
         }
     } catch (err) {
         processedFail += 1;
+        const httpMs = Date.now() - started;
         logger.error(
-            { err: err.message, code: err.code, messageId: message.MessageId, jobItemId },
-            'Failed to call internal endpoint — leaving message for redrive'
+            {
+                err: err.message,
+                code: err.code,
+                messageId: message.MessageId,
+                jobItemId,
+                httpMs,
+            },
+            'Failed to call internal endpoint — item stays processing until stale reclaim or cron recovery'
         );
     }
 }
