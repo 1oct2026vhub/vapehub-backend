@@ -16,9 +16,9 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'buying_guide_id',
                 as: 'tabs'
             });
-            this.hasMany(models.CategoryBuyingGuideRelatedCategory, {
+            this.hasMany(models.CategoryBuyingGuideRelatedBlog, {
                 foreignKey: 'buying_guide_id',
-                as: 'relatedCategories'
+                as: 'relatedBlogs'
             });
         }
     }

@@ -1,4 +1,3 @@
-const { Op } = require('sequelize');
 const formatAdminBuyingGuide = (guideInstance) => {
     if (!guideInstance) {
         return null;
@@ -18,22 +17,26 @@ const formatAdminBuyingGuide = (guideInstance) => {
             order: tab.sort_order
         }));
 
-    const related_category_ids = (guide.relatedCategories || [])
+    const related_blog_ids = (guide.relatedBlogs || [])
         .sort((a, b) => a.sort_order - b.sort_order)
-        .map((relation) => relation.related_category_id);
+        .map((relation) => relation.related_blog_id);
 
-    const related_categories = (guide.relatedCategories || [])
+    const related_blogs = (guide.relatedBlogs || [])
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((relation) => {
-            const category = relation.relatedCategory;
-            if (!category) {
+            const blog = relation.relatedBlog;
+            if (!blog) {
                 return null;
             }
-            const data = category.toJSON ? category.toJSON() : category;
+            const data = blog.toJSON ? blog.toJSON() : blog;
             return {
                 id: data.id,
-                name: data.name,
-                slug: data.slug
+                title: data.title,
+                slug: data.slug,
+                image_url: data.image_url,
+                alt_text: data.alt_text,
+                status: data.status,
+                published_at: data.published_at
             };
         })
         .filter(Boolean);
@@ -49,8 +52,8 @@ const formatAdminBuyingGuide = (guideInstance) => {
         banner_alt: guide.banner_alt || '',
         highlights,
         tabs,
-        related_category_ids,
-        related_categories
+        related_blog_ids,
+        related_blogs
     };
 };
 
@@ -60,50 +63,27 @@ const formatPublicBuyingGuide = async (guideInstance, models) => {
         return null;
     }
 
-    const relatedIds = adminShape.related_category_ids || [];
+    const relatedBlogs = adminShape.related_blogs || [];
     let related_guides = [];
 
-    if (relatedIds.length > 0) {
-        const { Category, CategoryBuyingGuide } = models;
-        const enabledGuides = await CategoryBuyingGuide.findAll({
-            where: {
-                category_id: { [Op.in]: relatedIds },
-                is_enabled: true
-            },
-            include: [{
-                model: Category,
-                as: 'category',
-                attributes: ['id', 'name', 'slug'],
-                required: true,
-                where: { deletedAt: null },
-                paranoid: true
-            }],
-            attributes: ['category_id', 'title']
-        });
-
-        const guideMap = new Map(
-            enabledGuides.map((item) => {
-                const data = item.toJSON ? item.toJSON() : item;
-                const category = data.category || {};
-                return [data.category_id, {
-                    id: category.id,
-                    name: category.name,
-                    slug: category.slug,
-                    title: data.title || category.name
-                }];
-            })
-        );
-
-        related_guides = relatedIds
-            .map((id) => guideMap.get(id))
-            .filter(Boolean);
+    if (relatedBlogs.length > 0) {
+        related_guides = relatedBlogs
+            .filter((blog) => blog.status === 'published')
+            .map((blog) => ({
+                id: blog.id,
+                title: blog.title,
+                slug: blog.slug,
+                image_url: blog.image_url,
+                alt_text: blog.alt_text,
+                published_at: blog.published_at
+            }));
     }
 
     const {
         id: _id,
         category_id: _categoryId,
-        related_category_ids: _relatedCategoryIds,
-        related_categories: _relatedCategories,
+        related_blog_ids: _relatedBlogIds,
+        related_blogs: _relatedBlogs,
         ...publicFields
     } = adminShape;
 

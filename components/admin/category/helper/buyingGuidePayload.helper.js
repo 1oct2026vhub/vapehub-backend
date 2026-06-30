@@ -1,5 +1,5 @@
 const MAX_HIGHLIGHTS = 3;
-const MAX_RELATED_CATEGORIES = 3;
+const MAX_RELATED_BLOGS = 3;
 
 const parseBooleanField = (value, fieldName = 'is_enabled') => {
     if (typeof value === 'boolean') {
@@ -89,24 +89,20 @@ const normalizeTabs = (tabs = []) => {
     });
 };
 
-const assertUniqueRelatedCategoryIds = (ids) => {
+const assertUniqueRelatedBlogIds = (ids) => {
     const uniqueIds = [...new Set(ids)];
     if (ids.length !== uniqueIds.length) {
-        throw new Error('Duplicate related category IDs are not allowed');
+        throw new Error('Duplicate related blog IDs are not allowed');
     }
     return uniqueIds;
 };
 
-const normalizeRelatedCategoryIds = (field, categoryId) => {
-    const ids = parseIntegerArrayField(field, 'related_category_ids');
-    const uniqueIds = assertUniqueRelatedCategoryIds(ids);
+const normalizeRelatedBlogIds = (field) => {
+    const ids = parseIntegerArrayField(field, 'related_blog_ids');
+    const uniqueIds = assertUniqueRelatedBlogIds(ids);
 
-    if (uniqueIds.length > MAX_RELATED_CATEGORIES) {
-        throw new Error('Maximum 3 related categories allowed');
-    }
-
-    if (categoryId != null && uniqueIds.includes(Number(categoryId))) {
-        throw new Error('Category cannot relate to itself');
+    if (uniqueIds.length > MAX_RELATED_BLOGS) {
+        throw new Error('Maximum 3 related blogs allowed');
     }
 
     return uniqueIds;
@@ -144,9 +140,8 @@ const parseBuyingGuideBody = (body = {}, categoryId = null) => {
     payload.tabs = normalizeTabs(
         body.tabs !== undefined ? parseJsonArrayField(body.tabs, 'tabs') : []
     );
-    payload.related_category_ids = normalizeRelatedCategoryIds(
-        body.related_category_ids !== undefined ? body.related_category_ids : [],
-        categoryId
+    payload.related_blog_ids = normalizeRelatedBlogIds(
+        body.related_blog_ids !== undefined ? body.related_blog_ids : []
     );
 
     const bannerImage = parseBannerImageField(body.banner_image);
@@ -190,11 +185,11 @@ const validateEnabledBuyingGuide = (payload) => {
     });
 };
 
-const validateBuyingGuidePayload = (payload, categoryId) => {
+const validateBuyingGuidePayload = (payload) => {
     if (payload.is_enabled) {
         validateEnabledBuyingGuide(payload);
-        if (payload.related_category_ids) {
-            normalizeRelatedCategoryIds(payload.related_category_ids, categoryId);
+        if (payload.related_blog_ids) {
+            normalizeRelatedBlogIds(payload.related_blog_ids);
         }
     }
 };
@@ -214,7 +209,7 @@ const extractS3KeyFromUrl = (url) => {
 
 module.exports = {
     MAX_HIGHLIGHTS,
-    MAX_RELATED_CATEGORIES,
+    MAX_RELATED_BLOGS,
     parseBuyingGuideBody,
     validateBuyingGuidePayload,
     parseBooleanField,
@@ -222,7 +217,7 @@ module.exports = {
     parseIntegerArrayField,
     normalizeHighlights,
     normalizeTabs,
-    normalizeRelatedCategoryIds,
+    normalizeRelatedBlogIds,
     parseBannerImageField,
     extractS3KeyFromUrl
 };

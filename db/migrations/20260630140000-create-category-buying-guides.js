@@ -148,7 +148,7 @@ module.exports = {
 
     await queryInterface.addIndex('category_buying_guide_tabs', ['buying_guide_id']);
 
-    await queryInterface.createTable('category_buying_guide_related_categories', {
+    await queryInterface.createTable('category_buying_guide_related_blogs', {
       id: {
         type: Sequelize.INTEGER,
         primaryKey: true,
@@ -165,11 +165,11 @@ module.exports = {
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
-      related_category_id: {
+      related_blog_id: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'categories',
+          model: 'blogs',
           key: 'id'
         },
         onUpdate: 'CASCADE',
@@ -192,18 +192,18 @@ module.exports = {
       }
     });
 
-    await queryInterface.addConstraint('category_buying_guide_related_categories', {
-      fields: ['buying_guide_id', 'related_category_id'],
+    await queryInterface.addConstraint('category_buying_guide_related_blogs', {
+      fields: ['buying_guide_id', 'related_blog_id'],
       type: 'unique',
-      name: 'cbg_related_categories_guide_id_category_id_unique'
+      name: 'cbg_related_blogs_guide_id_blog_id_unique'
     });
 
-    await queryInterface.addIndex('category_buying_guide_related_categories', ['buying_guide_id']);
-    await queryInterface.addIndex('category_buying_guide_related_categories', ['related_category_id']);
+    await queryInterface.addIndex('category_buying_guide_related_blogs', ['buying_guide_id']);
+    await queryInterface.addIndex('category_buying_guide_related_blogs', ['related_blog_id']);
   },
 
   async down(queryInterface) {
-    await queryInterface.dropTable('category_buying_guide_related_categories');
+    await queryInterface.dropTable('category_buying_guide_related_blogs');
     await queryInterface.dropTable('category_buying_guide_tabs');
     await queryInterface.dropTable('category_buying_guide_highlights');
     await queryInterface.dropTable('category_buying_guides');

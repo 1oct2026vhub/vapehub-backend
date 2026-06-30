@@ -136,11 +136,10 @@ module.exports.saveBuyingGuide = async (req, res) => {
     } catch (error) {
         await transaction.rollback();
         const clientErrors = [
-            'Invalid related category ID',
+            'Invalid related blog ID',
             'File upload failed',
-            'Duplicate related category IDs are not allowed',
-            'Category cannot relate to itself',
-            'Maximum 3 related categories allowed'
+            'Duplicate related blog IDs are not allowed',
+            'Maximum 3 related blogs allowed'
         ];
         const statusCode = clientErrors.includes(error.message) ? 400 : 500;
         return errorResponse(res, error, error.message || 'Failed to save buying guide', statusCode);

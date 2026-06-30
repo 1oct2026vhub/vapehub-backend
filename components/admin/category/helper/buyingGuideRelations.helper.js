@@ -1,10 +1,10 @@
 const { Op } = require('sequelize');
 const {
-    Category,
+    Blog,
     CategoryBuyingGuide,
     CategoryBuyingGuideHighlight,
     CategoryBuyingGuideTab,
-    CategoryBuyingGuideRelatedCategory
+    CategoryBuyingGuideRelatedBlog
 } = require('../../../../models');
 
 const BUYING_GUIDE_INCLUDES = [
@@ -21,14 +21,14 @@ const BUYING_GUIDE_INCLUDES = [
         order: [['sort_order', 'ASC']]
     },
     {
-        model: CategoryBuyingGuideRelatedCategory,
-        as: 'relatedCategories',
+        model: CategoryBuyingGuideRelatedBlog,
+        as: 'relatedBlogs',
         separate: true,
         order: [['sort_order', 'ASC']],
         include: [{
-            model: Category,
-            as: 'relatedCategory',
-            attributes: ['id', 'name', 'slug'],
+            model: Blog,
+            as: 'relatedBlog',
+            attributes: ['id', 'title', 'slug', 'image_url', 'alt_text', 'status', 'published_at'],
             required: true,
             paranoid: true
         }]
@@ -43,22 +43,22 @@ const findBuyingGuideByCategoryId = async (categoryId, transaction = null) => {
     });
 };
 
-const validateRelatedCategoriesExist = async (relatedCategoryIds, transaction) => {
-    if (!relatedCategoryIds.length) {
+const validateRelatedBlogsExist = async (relatedBlogIds, transaction) => {
+    if (!relatedBlogIds.length) {
         return;
     }
 
-    const categories = await Category.findAll({
+    const blogs = await Blog.findAll({
         where: {
-            id: { [Op.in]: relatedCategoryIds },
-            deletedAt: null
+            id: { [Op.in]: relatedBlogIds },
+            status: 'published'
         },
         attributes: ['id'],
         transaction
     });
 
-    if (categories.length !== relatedCategoryIds.length) {
-        throw new Error('Invalid related category ID');
+    if (blogs.length !== relatedBlogIds.length) {
+        throw new Error('Invalid related blog ID');
     }
 };
 
@@ -76,7 +76,7 @@ const replaceBuyingGuideChildren = async (buyingGuideId, payload, transaction) =
             where: { buying_guide_id: buyingGuideId },
             transaction
         }),
-        CategoryBuyingGuideRelatedCategory.destroy({
+        CategoryBuyingGuideRelatedBlog.destroy({
             where: { buying_guide_id: buyingGuideId },
             transaction
         })
@@ -107,12 +107,12 @@ const replaceBuyingGuideChildren = async (buyingGuideId, payload, transaction) =
         );
     }
 
-    if (payload.related_category_ids?.length) {
-        await validateRelatedCategoriesExist(payload.related_category_ids, transaction);
-        await CategoryBuyingGuideRelatedCategory.bulkCreate(
-            payload.related_category_ids.map((relatedCategoryId, index) => ({
+    if (payload.related_blog_ids?.length) {
+        await validateRelatedBlogsExist(payload.related_blog_ids, transaction);
+        await CategoryBuyingGuideRelatedBlog.bulkCreate(
+            payload.related_blog_ids.map((relatedBlogId, index) => ({
                 buying_guide_id: buyingGuideId,
-                related_category_id: relatedCategoryId,
+                related_blog_id: relatedBlogId,
                 sort_order: index
             })),
             { transaction }
@@ -148,7 +148,7 @@ const buildParentAttributes = (payload, existingGuide = null) => {
 module.exports = {
     BUYING_GUIDE_INCLUDES,
     findBuyingGuideByCategoryId,
-    validateRelatedCategoriesExist,
+    validateRelatedBlogsExist,
     replaceBuyingGuideChildren,
     buildParentAttributes
 };
