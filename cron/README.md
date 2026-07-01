@@ -54,7 +54,7 @@ If these are not set, the cron exits safely without processing.
 
 - Worker: `backend/workers/bulkOrderStatusSqsWorker.js`
 - Internal route: `POST /api/internal/bulk-order-status/process-item`
-- Internal route: `POST /api/internal/bulk-order-status/release-item` (worker calls on HTTP timeout to reset stuck `processing` items)
+- Stuck `processing` items after worker HTTP timeout are recovered via claim stale reclaim (`BULK_ORDER_STATUS_CLAIM_STALE_MINUTES`) or the recovery cron
 - API queue endpoint: `POST /api/admin/orders/bulk-status/async`
 - Job status endpoint: `GET /api/admin/orders/bulk-status/jobs/:id`
 - List jobs: `GET /api/admin/orders/bulk-status/jobs`
