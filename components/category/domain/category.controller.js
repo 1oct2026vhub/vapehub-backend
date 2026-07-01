@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { sequelize, Category, Product, ProductCategory, ProductBrand, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, Review, User, Order } = require("../../../models");
-const { fetchProducts } = require("../../product/helper/product.helper");
+const { fetchProductsListing } = require("../../product/helper/product.helper");
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
 const { cacheOrFetch } = require("../../../library/cache");
@@ -516,7 +516,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             delete req.query.brand;
         }
 
-        const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, brand_items, attributes, deal_items, price_ranges, pagination } = await fetchProductsListing(req.query);
 
         return successResponse(res, { 
             ...additionalData,
