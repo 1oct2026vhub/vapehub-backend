@@ -1,6 +1,11 @@
 const { FooterSection, FooterLink } = require('../../../../models');
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
+const { invalidateCachePattern } = require('../../../../library/cache');
+
+const invalidateFooterCache = () => {
+  invalidateCachePattern('footer:sections:*').catch(() => {});
+};
 
 class FooterController {
   
@@ -72,6 +77,7 @@ class FooterController {
       const createData = { ...req.body };
       if (updated_by != null) createData.updated_by = updated_by;
       const section = await FooterSection.create(createData);
+      invalidateFooterCache();
       res.status(201).json({
         success: true,
         data: section
@@ -98,6 +104,7 @@ class FooterController {
       const updated_by = req.user?.id ?? null;
       if (updated_by != null) updateData.updated_by = updated_by;
       const updatedSection = await section.update(updateData);
+      invalidateFooterCache();
       res.json({
         success: true,
         data: updatedSection
@@ -123,6 +130,7 @@ class FooterController {
       const updated_by = req.user?.id ?? null;
       if (updated_by != null) await section.update({ updated_by });
       await section.destroy();
+      invalidateFooterCache();
       res.json({
         success: true,
         message: 'Footer section deleted successfully'
@@ -195,6 +203,7 @@ class FooterController {
       const createData = { ...req.body };
       if (updated_by != null) createData.updated_by = updated_by;
       const link = await FooterLink.create(createData);
+      invalidateFooterCache();
       res.status(201).json({
         success: true,
         data: link
@@ -221,6 +230,7 @@ class FooterController {
       const updated_by = req.user?.id ?? null;
       if (updated_by != null) updateData.updated_by = updated_by;
       const updatedLink = await link.update(updateData);
+      invalidateFooterCache();
       res.json({
         success: true,
         data: updatedLink
@@ -246,6 +256,7 @@ class FooterController {
       const updated_by = req.user?.id ?? null;
       if (updated_by != null) await link.update({ updated_by });
       await link.destroy();
+      invalidateFooterCache();
       res.json({
         success: true,
         message: 'Footer link deleted successfully'
@@ -319,6 +330,7 @@ class FooterController {
         }]
       });
 
+      invalidateFooterCache();
       res.json({
         success: true,
         data: updatedSections,
@@ -391,6 +403,7 @@ class FooterController {
         order: [['order', 'ASC']]
       });
 
+      invalidateFooterCache();
       res.json({
         success: true,
         data: updatedLinks,
