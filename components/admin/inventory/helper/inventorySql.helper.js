@@ -55,11 +55,11 @@ function discontinuedClause(req, { alias = 'pv', productAlias = 'p', stock_statu
 
 function buildGetProductsQuery(req, { q, sort_by, order, last28Days, now }) {
   const sortColumnMap = {
-    salesLast28Days: 'salesLast28Days',
+    salesLast28Days: 'COALESCE(sales.salesLast28Days, 0)',
     name: 'p.name',
-    currentStock: 'currentStock',
+    currentStock: 'COALESCE(agg.currentStock, 0)',
   };
-  const sortCol = sortColumnMap[sort_by] || 'salesLast28Days';
+  const sortCol = sortColumnMap[sort_by] || sortColumnMap.salesLast28Days;
   const sortDir = order === 'ASC' ? 'ASC' : 'DESC';
   const variantDisc = variantDiscontinuedClause(req, { alias: 'pv' });
   const searchClause = q?.length ? ' AND p.name LIKE :search' : '';
@@ -90,7 +90,8 @@ function buildGetProductsQuery(req, { q, sort_by, order, last28Days, now }) {
       INNER JOIN orders o ON oi.order_id = o.id
       INNER JOIN product_variants pv ON oi.variant_id = pv.id
       WHERE o.status IN (${ORDER_STATUS_SQL})
-        AND o.updatedAt >= :last28Days
+        AND o.createdAt >= :last28Days
+        AND o.deletedAt IS NULL
         AND oi.deletedAt IS NULL
         AND pv.deleted_at IS NULL${variantDisc}
       GROUP BY pv.product_id
