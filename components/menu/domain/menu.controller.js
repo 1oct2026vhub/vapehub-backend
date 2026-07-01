@@ -65,8 +65,15 @@ module.exports = {
     // Get all menus - OPTIMIZED VERSION
     getMenus: async (req, res) => {
         try {
-            const where = {};
             const filters = req.query;
+            const cacheKey = `menu:tree:${JSON.stringify({
+                status: filters.status !== undefined ? filters.status : null,
+                entity_type: filters.entity_type || null,
+                label: filters.label || null
+            })}`;
+
+            const finalMenuTree = await cacheOrFetch(cacheKey, async () => {
+            const where = {};
             
             if (filters.status !== undefined) {
                 where.status = filters.status;
@@ -421,7 +428,10 @@ module.exports = {
             
             // Ensure consistent field mapping after filtering
             ensureConsistentFields(finalMenuTree);
-            
+
+            return finalMenuTree;
+            }, 300);
+
             return successResponse(res, { data: finalMenuTree }, 'Success');
         } catch (error) {
             logger.error('Error fetching menus:', error);

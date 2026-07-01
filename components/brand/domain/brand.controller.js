@@ -1,6 +1,6 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
 const { Brand } = require("../../../models");
-const { fetchProducts } = require("../../product/helper/product.helper");
+const { fetchProductsListing } = require("../../product/helper/product.helper");
 const { Op } = require("sequelize");
 
 module.exports.listAllbrands = async (req, res, next) => {
@@ -105,7 +105,7 @@ module.exports.getBrandBySlug = async (req, res, next) => {
         }
         req.query.brand = `${brand.id}`;
         req.query.source = 'brand';
-        const {additionalData, products, attributes, category_items, deal_items, price_ranges, pagination } = await fetchProducts(req.query);
+        const {additionalData, products, attributes, category_items, deal_items, price_ranges, pagination } = await fetchProductsListing(req.query);
 
         return successResponse(res, { 
             ...additionalData, 

@@ -12,12 +12,12 @@ const getFooterSections = async (req, res) => {
       }
 
       const sections = await FooterSection.findAll({
-        where,
+        where: { ...where, deleted_at: null },
         order: [['order', 'ASC']],
         include: [{
           model: FooterLink,
           as: 'links',
-          where: { is_active: true },
+          where: { is_active: true, deleted_at: null },
           order: [['order', 'ASC']]
         }]
       });

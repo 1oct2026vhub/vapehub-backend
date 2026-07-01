@@ -1,10 +1,16 @@
 const { Connect } = require('../../../../models');
 const { successResponse, errorResponse } = require('../../../../utils/responseUtils');
+const { invalidateCachePattern } = require('../../../../library/cache');
+
+const invalidateFooterCache = () => {
+  invalidateCachePattern('footer:sections:*').catch(() => {});
+};
 
 module.exports.createConnect = async (req, res) => {
   try {
     const { send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number } = req.body;
     const connect = await Connect.create({ send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number });
+    invalidateFooterCache();
     return successResponse(res, connect, 'Connect info created successfully');
   } catch (error) {
     return errorResponse(res, error, error.message);
@@ -38,6 +44,7 @@ module.exports.updateConnect = async (req, res) => {
     const connect = await Connect.findByPk(id);
     if (!connect) return errorResponse(res, {}, 'Connect info not found', 404);
     await connect.update({ send_us_a_message, call_us, social_media, facebook, twitter, instagram, email, phone_number });
+    invalidateFooterCache();
     return successResponse(res, connect, 'Connect info updated successfully');
   } catch (error) {
     return errorResponse(res, error, error.message);
@@ -50,6 +57,7 @@ module.exports.deleteConnect = async (req, res) => {
     const connect = await Connect.findByPk(id);
     if (!connect) return errorResponse(res, {}, 'Connect info not found', 404);
     await connect.destroy();
+    invalidateFooterCache();
     return successResponse(res, {}, 'Connect info deleted successfully');
   } catch (error) {
     return errorResponse(res, error, error.message);
