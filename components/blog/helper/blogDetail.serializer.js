@@ -66,6 +66,20 @@ const formatRelatedBlogCard = (blogInstance) => {
     };
 };
 
+const formatProductRelatedBlogCard = (blogInstance) => {
+    const blogData = blogInstance.toJSON ? blogInstance.toJSON() : blogInstance;
+
+    return {
+        id: blogData.id,
+        title: blogData.title,
+        slug: formatSlug(blogData.slug),
+        image_url: blogData.image_url,
+        alt_text: blogData.alt_text,
+        published_at: blogData.published_at,
+        categories: formatCategoryRefs(blogData.categories)
+    };
+};
+
 const publishedBlogWhere = (currentDate) => ({
     status: 'published',
     published_at: { [Op.lte]: currentDate }
@@ -158,6 +172,8 @@ module.exports = {
     AUTHOR_ATTRIBUTES,
     formatSlug,
     formatMergedAuthor,
+    formatRelatedBlogCard,
+    formatProductRelatedBlogCard,
     resolveSources,
     resolveRelatedBlogs,
     formatBlogDetailResponse

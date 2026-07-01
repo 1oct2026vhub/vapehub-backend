@@ -1229,7 +1229,7 @@ module.exports.createProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCache(`product:detail:${product.id}`).catch(() => {});
+        invalidateCache([`product:detail:${product.id}`, `product:related-blogs:${product.id}`]).catch(() => {});
 
         // Fetch and return the created product with related models
         const newProduct = await Product.findByPk(product.id, {
@@ -1988,7 +1988,7 @@ module.exports.updateProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCache(`product:detail:${id}`).catch(() => {});
+        invalidateCache([`product:detail:${id}`, `product:related-blogs:${id}`]).catch(() => {});
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
         if (shouldUpdateSeoSlug && cleanSlug) {
@@ -2098,7 +2098,7 @@ module.exports.deleteProduct = async (req, res, next) => {
         invalidateCachePattern('products:*').catch(() => {});
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
-        invalidateCache(`product:detail:${id}`).catch(() => {});
+        invalidateCache([`product:detail:${id}`, `product:related-blogs:${id}`]).catch(() => {});
         logger.info(`Product ID ${id} deleted successfully`);
 
         return successResponse(res, { message: "Product deleted successfully" });
@@ -2186,7 +2186,9 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
             invalidateCachePattern('products:*').catch(() => {});
             invalidateCachePattern('product:new:*').catch(() => {});
             invalidateCachePattern('category:products:*').catch(() => {});
-            invalidateCache(deletedProducts.map(p => `product:detail:${p.id}`)).catch(() => {});
+            invalidateCache(
+                deletedProducts.flatMap((p) => [`product:detail:${p.id}`, `product:related-blogs:${p.id}`])
+            ).catch(() => {});
         }
 
         const responseData = {

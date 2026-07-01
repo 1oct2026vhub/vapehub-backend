@@ -1,7 +1,10 @@
 const { Op } = require('sequelize');
 const { ProductRelatedBlog, Blog, BlogCategory } = require('../../../../models');
 const { parseJsonOrCsvIds } = require('../../blog/helper/blogPayload.helper');
-const { formatRelatedBlogCard } = require('../../../blog/helper/blogDetail.serializer');
+const {
+    formatRelatedBlogCard,
+    formatProductRelatedBlogCard
+} = require('../../../blog/helper/blogDetail.serializer');
 
 const MAX_RELATED_BLOGS = 3;
 
@@ -111,10 +114,7 @@ exports.attachRelatedBlogFields = (productData, relations = []) => {
     };
 };
 
-/**
- * Fetch published related blogs for storefront product detail.
- */
-exports.getPublishedProductRelatedBlogs = async (productId, currentDate = new Date()) => {
+const fetchPublishedProductRelatedBlogs = async (productId, currentDate, formatCard, blogAttributes) => {
     const relations = await ProductRelatedBlog.findAll({
         where: { product_id: productId },
         attributes: ['blog_id', 'sort_order'],
@@ -132,7 +132,7 @@ exports.getPublishedProductRelatedBlogs = async (productId, currentDate = new Da
             status: 'published',
             published_at: { [Op.lte]: currentDate }
         },
-        attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at'],
+        attributes: blogAttributes,
         include: [{
             model: BlogCategory,
             as: 'categories',
@@ -146,7 +146,31 @@ exports.getPublishedProductRelatedBlogs = async (productId, currentDate = new Da
     return blogIds
         .map((id) => blogMap.get(id))
         .filter(Boolean)
-        .map(formatRelatedBlogCard);
+        .map(formatCard);
+};
+
+/**
+ * Fetch published related blogs for storefront product detail (includes full content).
+ */
+exports.getPublishedProductRelatedBlogs = async (productId, currentDate = new Date()) => {
+    return fetchPublishedProductRelatedBlogs(
+        productId,
+        currentDate,
+        formatRelatedBlogCard,
+        ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at']
+    );
+};
+
+/**
+ * Fetch published related blog cards for product pages (metadata only, no HTML content).
+ */
+exports.getPublishedProductRelatedBlogCards = async (productId, currentDate = new Date()) => {
+    return fetchPublishedProductRelatedBlogs(
+        productId,
+        currentDate,
+        formatProductRelatedBlogCard,
+        ['id', 'title', 'slug', 'image_url', 'alt_text', 'published_at']
+    );
 };
 
 exports.parseRelatedBlogIdsField = parseRelatedBlogIdsField;
