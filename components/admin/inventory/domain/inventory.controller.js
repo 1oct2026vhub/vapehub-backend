@@ -3,6 +3,13 @@ const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../../../../models');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Parser: Json2csvParser } = require('json2csv');
+const {
+  buildGetProductsQuery,
+  mapDashboardVariantRow,
+  buildDashboardVariantListQuery,
+  buildStockCentralQuery,
+  buildDashboardSummaryQueries,
+} = require('../helper/inventorySql.helper');
 
 // "Successful" orders = payment confirmed and in fulfillment/fulfilled flow.
 // (We intentionally exclude: draft, pending, fail, cancel, returns/refunds.)
@@ -1039,179 +1046,65 @@ module.exports = {
   // Get products for inventory selection
   async getProducts(req, res) {
     try {
-      const { 
-        q, 
-        page = 1, 
-        limit = 10, 
-        sort_by = 'salesLast28Days', 
-        order = 'DESC' 
+      const {
+        q,
+        page = 1,
+        limit = 10,
+        sort_by = 'salesLast28Days',
+        order = 'DESC',
       } = req.query;
-      
+
       const parsedPage = parseInt(page, 10);
       const parsedLimit = parseInt(limit, 10);
       const parsedOffset = (parsedPage - 1) * parsedLimit;
-      
-      // Build where clause for products
-      const productWhereClause = {
-        deletedAt: null,
-        status: 'published'
-      };
-      
-      if (q && q.length > 0) {
-        productWhereClause.name = { [Op.like]: `%${q}%` };
-      }
-      
-      // Fetch all matching products (we need all to calculate sales and sort)
-      const allProducts = await Product.findAll({
-        where: productWhereClause,
-        attributes: ['id', 'name', 'slug'],
-        include: [
-          {
-            model: ProductImage,
-            as: 'ProductImages',
-            where: { is_primary: true },
-            required: false,
-            attributes: ['image_url']
-          }
-        ],
-        order: [['name', 'ASC']] // Initial order, will be re-sorted after calculating sales
-      });
 
-      // Get total count for pagination
-      const totalCount = allProducts.length;
-
-      // Calculate date range for last 28 days
       const now = new Date();
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
 
-      // Get order IDs for orders (excluding canceled) in last 28 days (once for all products)
-      const orderIds = await Order.findAll({
-        attributes: ['id'],
-        where: {
-          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: { [Op.gte]: last28Days }
-        },
-        raw: true
-      }).then(orders => orders.map(o => o.id));
-
-      // Get all product IDs
-      const productIds = allProducts.map(p => p.id);
-
-      // Fetch all variants for these products
-      const allVariants = await ProductVariant.findAll({
-        where: applyActiveInventoryVariantFilter({
-          product_id: { [Op.in]: productIds },
-          deleted_at: null
-        }, req),
-        attributes: ['id', 'product_id', 'stock', 'low_stock_threshold']
+      const { dataSql, countSql, replacements } = buildGetProductsQuery(req, {
+        q,
+        sort_by,
+        order,
+        last28Days,
+        now,
       });
 
-      // Group variants by product_id
-      const variantsByProduct = {};
-      allVariants.forEach(variant => {
-        if (!variantsByProduct[variant.product_id]) {
-          variantsByProduct[variant.product_id] = [];
-        }
-        variantsByProduct[variant.product_id].push(variant);
-      });
+      const [rows, countRows] = await Promise.all([
+        sequelize.query(dataSql, {
+          replacements: { ...replacements, limit: parsedLimit, offset: parsedOffset },
+          type: sequelize.QueryTypes.SELECT,
+        }),
+        sequelize.query(countSql, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
+      ]);
 
-      // Calculate products with inventory details
-      const productsWithInventory = await Promise.all(allProducts.map(async (product) => {
-        const productVariants = variantsByProduct[product.id] || [];
-        const variantIds = productVariants.map(v => v.id);
-
-        // Calculate product-level total stock (sum of all variant stocks)
-        const currentStock = productVariants.reduce((sum, variant) => sum + variant.stock, 0);
-
-        // Calculate minimum low_stock_threshold across all variants (most conservative)
-        const lowStockThreshold = productVariants.length > 0
-          ? Math.min(...productVariants.map(v => v.low_stock_threshold || 5))
-          : 5; // Default to 5 if no variants
-
-        // Calculate stock on hold (active reservations) for all variants of this product
-        const stockOnHold = variantIds.length > 0
-          ? await StockReservation.sum('quantity', {
-              where: {
-                variant_id: { [Op.in]: variantIds },
-                expires_at: { [Op.gt]: now }
-              }
-            }) || 0
-          : 0;
-
-        // Calculate product-level sales last 28 days (aggregated across all variants)
-        const salesLast28Days = orderIds.length > 0 && variantIds.length > 0
-          ? await OrderItem.sum('quantity', {
-              where: {
-                variant_id: { [Op.in]: variantIds },
-                order_id: { [Op.in]: orderIds }
-              }
-            }) || 0
-          : 0;
-
-        // Calculate product-level stock will last (in days)
-        const avgDailySales = salesLast28Days / 28;
-        const stockWillLastDays = avgDailySales > 0
-          ? Math.round(currentStock / avgDailySales)
-          : null;
-
-        return {
-          id: product.id,
-          name: product.name,
-          slug: product.slug,
-          image: product.ProductImages?.[0]?.image_url || null,
-          currentStock: currentStock,
-          stockOnHold: stockOnHold,
-          reservedStock: stockOnHold, // Same as stockOnHold
-          salesLast28Days: salesLast28Days || 0,
-          stockWillLastDays: stockWillLastDays,
-          low_stock_threshold: lowStockThreshold
-        };
+      const totalCount = Number(countRows[0]?.total || 0);
+      const paginatedProducts = rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        image: row.image,
+        currentStock: Number(row.currentStock),
+        stockOnHold: Number(row.stockOnHold),
+        reservedStock: Number(row.stockOnHold),
+        salesLast28Days: Number(row.salesLast28Days),
+        stockWillLastDays: row.stockWillLastDays != null ? Number(row.stockWillLastDays) : null,
+        low_stock_threshold: Number(row.low_stock_threshold),
       }));
-
-      // Sort products based on sort_by and order
-      productsWithInventory.sort((a, b) => {
-        let aValue = a[sort_by];
-        let bValue = b[sort_by];
-        
-        // Handle null/undefined values
-        if (aValue === null || aValue === undefined) aValue = 0;
-        if (bValue === null || bValue === undefined) bValue = 0;
-        
-        // Handle string comparison for name
-        if (sort_by === 'name') {
-          aValue = aValue.toString().toLowerCase();
-          bValue = bValue.toString().toLowerCase();
-          return order === 'ASC' 
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue);
-        }
-        
-        // Numeric comparison
-        const comparison = aValue - bValue;
-        return order === 'ASC' ? comparison : -comparison;
-      });
-
-      // Apply pagination
-      const paginatedProducts = productsWithInventory.slice(
-        parsedOffset, 
-        parsedOffset + parsedLimit
-      );
-
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount / parsedLimit);
-      const pagination = {
-        total_count: totalCount,
-        total_pages: totalPages,
-        current_page: parsedPage,
-        limit: parsedLimit
-      };
 
       return res.status(200).json({
         success: true,
-        message: "Products retrieved successfully",
+        message: 'Products retrieved successfully',
         data: paginatedProducts,
-        pagination: pagination
+        pagination: {
+          total_count: totalCount,
+          total_pages: Math.ceil(totalCount / parsedLimit),
+          current_page: parsedPage,
+          limit: parsedLimit,
+        },
       });
     } catch (error) {
       return errorResponse(res, error, error.message);
@@ -1430,99 +1323,58 @@ module.exports = {
     try {
       const { page = 1, limit = 20, search, stock_status } = req.query;
       const offset = (page - 1) * limit;
-      const whereClause = {};
       const now = new Date();
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
 
-      // Search and stock status filters
-      if (search) {
-        whereClause[Op.or] = [
-          { barcode: { [Op.like]: `%${search}%` } },
-          { slug: { [Op.like]: `%${search}%` } }
-        ];
-      }
-      if (stock_status === 'in_stock') whereClause.stock = { [Op.gt]: 0 };
-      if (stock_status === 'out_of_stock') whereClause.stock = 0;
-
-      const variantWhere = applyActiveInventoryVariantFilter(whereClause, req, { stock_status });
-
-      // Fetch paginated variants with product and primary image
-      const { count, rows: variants } = await ProductVariant.findAndCountAll({
-        where: variantWhere,
-        include: [
-          {
-            model: Product,
-            as: 'product',
-            attributes: ['id', 'name'],
-            where: publishedProductIncludeWhere(req),
-            required: !parseIncludeDiscontinued(req) && stock_status !== 'discontinued'
-          },
-          {
-            model: ProductVariantImage,
-            as: 'variantImages',
-            where: { is_primary: true },
-            required: false,
-            attributes: ['image_url']
-          }
-        ],
-        offset,
-        limit: parseInt(limit),
-        order: [['created_at', 'DESC']]
+      const { dataSql, countSql, replacements } = buildStockCentralQuery(req, {
+        search,
+        stock_status,
+        last28Days,
+        now,
       });
 
-      // For each variant, calculate stock on hold, sales, and stock will last
-      const data = await Promise.all(variants.map(async (variant) => {
-        // Stock on Hold (active reservations)
-        const stockOnHold = await StockReservation.sum('quantity', {
-          where: {
-            variant_id: variant.id,
-            expires_at: { [Op.gt]: now }
-          }
-        }) || 0;
+      const [rows, countRows] = await Promise.all([
+        sequelize.query(dataSql, {
+          replacements: { ...replacements, limit: parseInt(limit, 10), offset: parseInt(offset, 10) },
+          type: sequelize.QueryTypes.SELECT,
+        }),
+        sequelize.query(countSql, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
+      ]);
 
-        // Get order IDs for orders (excluding canceled) in last 28 days
-        const orderIds = await Order.findAll({
-          attributes: ['id'],
-          where: {
-            status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-            updatedAt: { [Op.gte]: last28Days }
-          },
-          raw: true
-        }).then(orders => orders.map(o => o.id));
-        // Sales last 28 days
-        const salesLast28Days = orderIds.length > 0
-          ? await OrderItem.sum('quantity', {
-              where: {
-                variant_id: variant.id,
-                order_id: { [Op.in]: orderIds }
-              }
-            }) : 0;
-        // Stock will last (days)
+      const count = Number(countRows[0]?.total || 0);
+      const data = rows.map((row) => {
+        const salesLast28Days = Number(row.salesLast28Days) || 0;
         const avgDailySales = salesLast28Days / 28;
-        const stockWillLast = avgDailySales > 0 ? (variant.stock / avgDailySales).toFixed(1) : '-';
+        const stockWillLast = avgDailySales > 0
+          ? (Number(row.currentStock) / avgDailySales).toFixed(1)
+          : '-';
+        const stockOnHold = Number(row.stockOnHold) || 0;
 
         return {
-          id: variant.id,
-          productName: variant.product?.name,
-          productImage: variant.variantImages?.[0]?.image_url || null,
-          currentStock: variant.stock,
+          id: row.id,
+          productName: row.productName,
+          productImage: row.productImage || null,
+          currentStock: Number(row.currentStock),
           stockOnHold,
-          reservedStock: stockOnHold, // If you have a different logic, adjust here
+          reservedStock: stockOnHold,
           salesLast28Days,
-          stockWillLast
+          stockWillLast,
         };
-      }));
+      });
 
       return successResponse(res, {
         items: data,
         pagination: {
           total: count,
-          page: parseInt(page),
+          page: parseInt(page, 10),
           totalPages: Math.ceil(count / limit),
-          limit: parseInt(limit)
-        }
-      }, "Stock central data retrieved successfully");
+          limit: parseInt(limit, 10),
+        },
+      }, 'Stock central data retrieved successfully');
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
@@ -1820,531 +1672,108 @@ module.exports = {
   // Comprehensive Inventory Dashboard
   async getInventoryDashboard(req, res) {
     try {
-      const { 
-        page = 1, 
-        limit = 20, 
-        stock_status, // 'in_stock', 'out_of_stock', 'low_stock'
+      const {
+        page = 1,
+        limit = 20,
+        stock_status,
         search,
         sort_by = 'created_at',
         sort_order = 'DESC',
-        top_selling = false // New option for top selling products
+        top_selling = false,
       } = req.query;
 
       const offset = (page - 1) * limit;
       const now = new Date();
-      
-      // Calculate date ranges
       const last28Days = new Date(now);
       last28Days.setDate(now.getDate() - 28);
-      
       const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfLastMonth = new Date(startOfThisMonth - 1);
       const startOfLastMonth = new Date(endOfLastMonth.getFullYear(), endOfLastMonth.getMonth(), 1);
 
-      // Get order IDs for orders (excluding canceled) in last 28 days
-      const orderIds28Days = await Order.findAll({
-        attributes: ['id'],
-        where: {
-          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: { [Op.gte]: last28Days }
-        },
-        raw: true
-      }).then(orders => orders.map(o => o.id));
+      const summaryQueries = buildDashboardSummaryQueries(req, {
+        startOfLastMonth,
+        endOfLastMonth,
+      });
 
-      // Get order IDs for orders (excluding canceled) in previous month
-      const orderIdsLastMonth = await Order.findAll({
-        attributes: ['id'],
-        where: {
-          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: {
-            [Op.gte]: startOfLastMonth,
-            [Op.lte]: endOfLastMonth
-          }
-        },
-        raw: true
-      }).then(orders => orders.map(o => o.id));
-
-      // Calculate summary statistics
       const [
-        totalVariants,
-        inStockVariants,
-        outOfStockVariants,
-        lowStockVariants,
-        totalSalesLastMonth,
-        totalRevenueLastMonth
+        totalVariantsRow,
+        inStockRow,
+        outOfStockRow,
+        lowStockRow,
+        totalSalesRow,
+        totalRevenueRow,
       ] = await Promise.all([
-        // Total variants count
-        ProductVariant.count({
-          where: applyActiveInventoryVariantFilter({}, req),
-          include: [{
-            model: Product,
-            as: 'product',
-            where: publishedProductIncludeWhere(req),
-            required: true
-          }]
+        sequelize.query(summaryQueries.totalVariantsSql, {
+          type: sequelize.QueryTypes.SELECT,
         }),
-        
-        // In stock variants
-        ProductVariant.count({
-          where: applyActiveInventoryVariantFilter({ stock: { [Op.gt]: 0 } }, req),
-          include: [{
-            model: Product,
-            as: 'product',
-            where: publishedProductIncludeWhere(req),
-            required: true
-          }]
+        sequelize.query(summaryQueries.inStockSql, {
+          type: sequelize.QueryTypes.SELECT,
         }),
-        
-        // Out of stock variants
-        ProductVariant.count({
-          where: applyActiveInventoryVariantFilter({ stock: 0 }, req),
-          include: [{
-            model: Product,
-            as: 'product',
-            where: publishedProductIncludeWhere(req),
-            required: true
-          }]
+        sequelize.query(summaryQueries.outOfStockSql, {
+          type: sequelize.QueryTypes.SELECT,
         }),
-        
-        // Low stock variants
-        ProductVariant.findAll({
-          where: applyActiveInventoryVariantFilter({
-            stock: { [Op.gt]: 0 }
-          }, req),
-          include: [{
-            model: Product,
-            as: 'product',
-            where: publishedProductIncludeWhere(req),
-            required: true
-          }],
-          attributes: ['id', 'stock', 'low_stock_threshold']
-        }).then(variants => {
-          return variants.filter(variant => variant.stock <= variant.low_stock_threshold).length;
+        sequelize.query(summaryQueries.lowStockSql, {
+          type: sequelize.QueryTypes.SELECT,
         }),
-
-        // Total sales in last month
-        orderIdsLastMonth.length > 0 
-          ? OrderItem.sum('quantity', {
-              where: {
-                order_id: { [Op.in]: orderIdsLastMonth }
-              }
-            }) || 0
-          : 0,
-
-        // Total revenue in last month
-        orderIdsLastMonth.length > 0 
-          ? OrderItem.findAll({
-              where: {
-                order_id: { [Op.in]: orderIdsLastMonth }
-              },
-              attributes: ['quantity', 'unit_price']
-            }).then(items => {
-              return items.reduce((total, item) => {
-                return total + (item.quantity * item.unit_price);
-              }, 0);
-            })
-          : 0
+        sequelize.query(summaryQueries.totalSalesLastMonthSql, {
+          replacements: summaryQueries.summaryReplacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
+        sequelize.query(summaryQueries.totalRevenueLastMonthSql, {
+          replacements: summaryQueries.summaryReplacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
       ]);
 
-      // Build WHERE clause for product filtering
-      const whereClause = {};
-      if (search) {
-        whereClause[Op.or] = [
-          { barcode: { [Op.like]: `%${search}%` } },
-          { slug: { [Op.like]: `%${search}%` } },
-          { '$product.name$': { [Op.like]: `%${search}%` } }
-        ];
-      }
+      const { dataSql, countSql, replacements } = buildDashboardVariantListQuery(req, {
+        search,
+        stock_status,
+        sort_by,
+        sort_order,
+        top_selling,
+        last28Days,
+        now,
+        startOfLastMonth,
+        endOfLastMonth,
+      });
 
-      if (stock_status) {
-        switch (stock_status) {
-          case 'in_stock':
-            whereClause.stock = { [Op.gt]: 0 };
-            break;
-          case 'out_of_stock':
-            whereClause.stock = 0;
-            break;
-          case 'low_stock':
-            // We'll handle low stock filtering in JavaScript
-            whereClause.stock = { [Op.gt]: 0 };
-            break;
-          case 'discontinued':
-            break;
-        }
-      }
-
-      const variantWhereBase = applyActiveInventoryVariantFilter(whereClause, req, { stock_status });
-
-      // Handle sorting for name field (which is in the Product table)
-      let orderClause;
-      if (sort_by === 'name') {
-        // If there's a search, avoid complex association ordering to prevent SQL issues
-        if (search) {
-          orderClause = [['created_at', 'DESC']]; // Fallback to creation date
-        } else {
-          orderClause = [[{ model: Product, as: 'product' }, 'name', sort_order]];
-        }
-      } else {
-        orderClause = [[sort_by, sort_order]];
-      }
-
-      // Get products with variants
-      let variants, count;
-      
-      if (top_selling === 'true' || top_selling === true) {
-        // Optimized query for top selling products using single SQL with aggregation
-        let productWhereClause = '';
-        const replacements = { 
-          startDate28Days: last28Days,
-          endDate28Days: now,
-          startDateLastMonth: startOfLastMonth,
-          endDateLastMonth: endOfLastMonth
-        };
-        
-        if (search) {
-          productWhereClause += ' AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)';
-          replacements.search = `%${search}%`;
-        }
-        if (stock_status === 'discontinued') {
-          productWhereClause += ' AND pv.is_discontinued = 1 AND p.is_discontinued = 1';
-        } else if (!parseIncludeDiscontinued(req)) {
-          productWhereClause += ' AND pv.is_discontinued = 0 AND p.is_discontinued = 0';
-        }
-        if (stock_status === 'in_stock') {
-          productWhereClause += ' AND pv.stock > 0';
-        } else if (stock_status === 'out_of_stock') {
-          productWhereClause += ' AND pv.stock = 0';
-        }
-
-        const sqlQuery = `
-          SELECT 
-            pv.id,
-            CONCAT(p.name, ' - ', COALESCE(pv.slug, pv.id)) as name,
-            pvi.image_url as image,
-            pv.stock as currentStock,
-            pv.low_stock_threshold as lowStockThreshold,
-            CASE WHEN pv.stock > 0 THEN 1 ELSE 0 END as isInStock,
-            CASE WHEN pv.stock = 0 THEN 1 ELSE 0 END as isOutOfStock,
-            CASE WHEN pv.stock > 0 AND pv.stock <= pv.low_stock_threshold THEN 1 ELSE 0 END as isLowStock,
-            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDate28Days AND o.updatedAt <= :endDate28Days THEN oi.quantity ELSE 0 END), 0) as salesLast28Days,
-            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
-            COALESCE(SUM(oi.quantity), 0) as totalSales
-          FROM product_variants pv
-          INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
-          LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
-          LEFT JOIN order_items oi ON pv.id = oi.variant_id
-          LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
-          WHERE pv.deleted_at IS NULL ${productWhereClause}
-          GROUP BY pv.id, p.name, pv.slug, pvi.image_url, pv.stock, pv.low_stock_threshold
-          ORDER BY salesLast28Days DESC
-        `;
-
-        const results = await sequelize.query(sqlQuery, {
+      const [inventoryRows, countRows] = await Promise.all([
+        sequelize.query(dataSql, {
+          replacements: {
+            ...replacements,
+            limit: parseInt(limit, 10),
+            offset: parseInt(offset, 10),
+          },
+          type: sequelize.QueryTypes.SELECT,
+        }),
+        sequelize.query(countSql, {
           replacements,
-          type: sequelize.QueryTypes.SELECT
-        });
+          type: sequelize.QueryTypes.SELECT,
+        }),
+      ]);
 
-        // Apply low stock filter if requested
-        let filteredData = results;
-        if (stock_status === 'low_stock') {
-          filteredData = results.filter(item => item.isLowStock === 1);
-        }
-
-        // Apply pagination
-        count = filteredData.length;
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + parseInt(limit);
-        const pagedData = filteredData.slice(startIndex, endIndex);
-
-        // Convert to consistent format
-        variants = pagedData.map(item => ({
-          id: item.id,
-          name: item.name,
-          image: item.image,
-          currentStock: item.currentStock,
-          lowStockThreshold: item.lowStockThreshold,
-          isInStock: item.isInStock === 1,
-          isOutOfStock: item.isOutOfStock === 1,
-          isLowStock: item.isLowStock === 1,
-          salesLast28Days: parseInt(item.salesLast28Days) || 0,
-          salesLastMonth: parseInt(item.salesLastMonth) || 0,
-          totalSales: parseInt(item.totalSales) || 0
-        }));
-      } else if (stock_status === 'low_stock') {
-        // Fetch all variants that match the base criteria (no pagination)
-        const allVariants = await ProductVariant.findAll({
-          where: variantWhereBase,
-          include: [
-            {
-              model: Product,
-              as: 'product',
-              attributes: ['id', 'name', 'slug'],
-              where: publishedProductIncludeWhere(req)
-            },
-            {
-              model: ProductVariantImage,
-              as: 'variantImages',
-              where: { is_primary: true, deleted_at: null },
-              required: false,
-              attributes: ['image_url']
-            }
-          ],
-          order: orderClause
-        });
-
-        // Calculate detailed data for all variants
-        let allInventoryData = await Promise.all(allVariants.map(async (variant) => {
-          // Sales in last 28 days
-          const salesLast28Days = orderIds28Days.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: orderIds28Days }
-                }
-              }) || 0
-            : 0;
-
-          // Sales in previous month
-          const salesLastMonth = orderIdsLastMonth.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: orderIdsLastMonth }
-                }
-              }) || 0
-            : 0;
-
-          // Get all order IDs (excluding canceled) for total sales calculation
-          const completedOrderIds = await Order.findAll({
-            attributes: ['id'],
-            where: { status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES } },
-            raw: true
-          }).then(orders => orders.map(o => o.id));
-          // Total sales (all-time)
-          const totalSales = completedOrderIds.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: completedOrderIds }
-                }
-              }) || 0
-            : 0;
-
-          // Stock status
-          const isInStock = variant.stock > 0;
-          const isOutOfStock = variant.stock === 0;
-          const isLowStock = isInStock && variant.stock <= variant.low_stock_threshold;
-
-          return {
-            id: variant.id,
-            name: `${variant.product?.name} - ${variant.slug ? variant.slug : `variant id(${variant.id})`}`,
-            image: variant.variantImages?.[0]?.image_url || null,
-            currentStock: variant.stock,
-            lowStockThreshold: variant.low_stock_threshold,
-            isInStock,
-            isOutOfStock,
-            isLowStock,
-            salesLast28Days,
-            salesLastMonth,
-            totalSales
-          };
-        }));
-
-        // Filter for low stock
-        allInventoryData = allInventoryData.filter(item => item.isLowStock);
-        count = allInventoryData.length;
-
-        // Paginate in JS
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + parseInt(limit);
-        variants = allInventoryData.slice(startIndex, endIndex);
-      } else {
-        // Normal pagination for non-top-selling and non-low-stock requests
-        let result;
-        
-        if (search) {
-          // Use raw SQL for search to avoid subquery issues
-          const searchSql = `
-            SELECT 
-              pv.*,
-              p.id as 'product.id',
-              p.name as 'product.name', 
-              p.slug as 'product.slug',
-              pvi.id as 'variantImages.id',
-              pvi.image_url as 'variantImages.image_url'
-            FROM product_variants pv
-            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
-            LEFT JOIN product_variant_images pvi ON pv.id = pvi.variant_id AND pvi.is_primary = 1 AND pvi.deleted_at IS NULL
-            WHERE pv.deleted_at IS NULL 
-            AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
-            ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
-            ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
-            ${sqlActiveInventoryDiscontinuedClause(req, { stock_status })}
-            ORDER BY ${sort_by === 'name' ? 'p.name' : 'pv.' + sort_by} ${sort_order}
-            LIMIT :limit OFFSET :offset
-          `;
-          
-          const searchResults = await sequelize.query(searchSql, {
-            replacements: { 
-              search: `%${search}%`,
-              limit: parseInt(limit),
-              offset: parseInt(offset)
-            },
-            type: sequelize.QueryTypes.SELECT
-          });
-          
-          // Convert raw SQL results to Sequelize-like format
-          variants = searchResults.map(row => ({
-            id: row.id,
-            product_id: row.product_id,
-            slug: row.slug,
-            stock: row.stock,
-            low_stock_threshold: row.low_stock_threshold,
-            product: {
-              id: row['product.id'],
-              name: row['product.name'],
-              slug: row['product.slug']
-            },
-            variantImages: row['variantImages.image_url'] ? [{
-              id: row['variantImages.id'],
-              image_url: row['variantImages.image_url']
-            }] : []
-          }));
-          
-          // Get total count for pagination
-          const countSql = `
-            SELECT COUNT(*) as total
-            FROM product_variants pv
-            LEFT JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
-            WHERE pv.deleted_at IS NULL 
-            AND (pv.barcode LIKE :search OR pv.slug LIKE :search OR p.name LIKE :search)
-            ${stock_status === 'in_stock' ? 'AND pv.stock > 0' : ''}
-            ${stock_status === 'out_of_stock' ? 'AND pv.stock = 0' : ''}
-            ${sqlActiveInventoryDiscontinuedClause(req, { stock_status })}
-          `;
-          
-          const countResult = await sequelize.query(countSql, {
-            replacements: { search: `%${search}%` },
-            type: sequelize.QueryTypes.SELECT
-          });
-          
-          count = countResult[0].total;
-        } else {
-          // Use normal Sequelize for non-search queries
-          result = await ProductVariant.findAndCountAll({
-            where: variantWhereBase,
-            include: [
-              {
-                model: Product,
-                as: 'product',
-                attributes: ['id', 'name', 'slug'],
-                where: publishedProductIncludeWhere(req)
-              },
-              {
-                model: ProductVariantImage,
-                as: 'variantImages',
-                where: { is_primary: true, deleted_at: null },
-                required: false,
-                attributes: ['image_url']
-              }
-            ],
-            order: orderClause,
-            offset,
-            limit: parseInt(limit)
-          });
-          
-          variants = result.rows;
-          count = result.count;
-        }
-      }
-
-      // Calculate detailed data for variants (only for non-top-selling case)
-      let inventoryData;
-      if (top_selling === 'true' || top_selling === true) {
-        // For top selling, we already have the calculated data
-        inventoryData = variants;
-      } else if (stock_status === 'low_stock') {
-        // Already calculated and paginated above
-        inventoryData = variants;
-      } else {
-        // Calculate detailed data for normal pagination
-        inventoryData = await Promise.all(variants.map(async (variant) => {
-          // Sales in last 28 days
-          const salesLast28Days = orderIds28Days.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: orderIds28Days }
-                }
-              }) || 0
-            : 0;
-
-          // Sales in previous month
-          const salesLastMonth = orderIdsLastMonth.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: orderIdsLastMonth }
-                }
-              }) || 0
-            : 0;
-
-          // Get all order IDs (excluding canceled) for total sales calculation
-          const completedOrderIds = await Order.findAll({
-            attributes: ['id'],
-            where: { status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES } },
-            raw: true
-          }).then(orders => orders.map(o => o.id));
-          // Total sales (all-time)
-          const totalSales = completedOrderIds.length > 0
-            ? await OrderItem.sum('quantity', {
-                where: {
-                  variant_id: variant.id,
-                  order_id: { [Op.in]: completedOrderIds }
-                }
-              }) || 0
-            : 0;
-
-          // Stock status
-          const isInStock = variant.stock > 0;
-          const isOutOfStock = variant.stock === 0;
-          const isLowStock = isInStock && variant.stock <= variant.low_stock_threshold;
-
-          return {
-            id: variant.id,
-            name: `${variant.product?.name} - ${variant.slug ? variant.slug : `variant id(${variant.id})`}`,
-            image: variant.variantImages?.[0]?.image_url || null,
-            currentStock: variant.stock,
-            lowStockThreshold: variant.low_stock_threshold,
-            isInStock,
-            isOutOfStock,
-            isLowStock,
-            salesLast28Days,
-            salesLastMonth,
-            totalSales
-          };
-        }));
-      }
+      const count = Number(countRows[0]?.total || 0);
+      const inventoryData = inventoryRows.map(mapDashboardVariantRow);
 
       const dashboard = {
         summary: {
-          totalInventory: totalVariants,
-          inStock: inStockVariants,
-          outOfStock: outOfStockVariants,
-          lowStock: lowStockVariants,
-          totalSalesLastMonth: totalSalesLastMonth || 0,
-          totalRevenueLastMonth: totalRevenueLastMonth || 0
+          totalInventory: Number(totalVariantsRow[0]?.total || 0),
+          inStock: Number(inStockRow[0]?.total || 0),
+          outOfStock: Number(outOfStockRow[0]?.total || 0),
+          lowStock: Number(lowStockRow[0]?.total || 0),
+          totalSalesLastMonth: Number(totalSalesRow[0]?.total || 0),
+          totalRevenueLastMonth: Number(totalRevenueRow[0]?.total || 0),
         },
         inventory: inventoryData,
         pagination: {
           total: count,
-          page: parseInt(page),
+          page: parseInt(page, 10),
           totalPages: Math.ceil(count / limit),
-          limit: parseInt(limit)
-        }
+          limit: parseInt(limit, 10),
+        },
       };
 
-      return successResponse(res, dashboard, "Inventory dashboard retrieved successfully");
+      return successResponse(res, dashboard, 'Inventory dashboard retrieved successfully');
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
