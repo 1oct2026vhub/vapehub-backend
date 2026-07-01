@@ -118,7 +118,7 @@ const parseBannerImageField = (value) => {
     return String(value).trim();
 };
 
-const parseBuyingGuideBody = (body = {}, categoryId = null) => {
+const parseBuyingGuideBody = (body = {}) => {
     if (body.is_enabled === undefined || body.is_enabled === null || body.is_enabled === '') {
         throw new Error('is_enabled is required');
     }
@@ -168,7 +168,7 @@ const validateEnabledBuyingGuide = (payload) => {
         throw new Error('Tab order values must be unique');
     }
 
-    payload.tabs.forEach((tab, index) => {
+    payload.tabs.forEach((tab) => {
         if (!tab.tab_title) {
             throw new Error('Tab title is required');
         }
@@ -177,10 +177,6 @@ const validateEnabledBuyingGuide = (payload) => {
         }
         if (!tab.section_body || !tab.section_body.trim()) {
             throw new Error('Section body is required');
-        }
-
-        if (!tab.tab_title && !tab.section_heading && !tab.section_body) {
-            throw new Error(`tabs[${index}] is invalid`);
         }
     });
 };

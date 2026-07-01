@@ -68,8 +68,8 @@ const buyingGuideBodyValidation = (req, res, next) => {
     }
 
     try {
-        const payload = parseBuyingGuideBody(req.body, categoryId);
-        validateBuyingGuidePayload(payload, categoryId);
+        const payload = parseBuyingGuideBody(req.body);
+        validateBuyingGuidePayload(payload);
         req.buyingGuidePayload = payload;
         next();
     } catch (error) {

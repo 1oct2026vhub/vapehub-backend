@@ -57,27 +57,22 @@ const formatAdminBuyingGuide = (guideInstance) => {
     };
 };
 
-const formatPublicBuyingGuide = async (guideInstance, models) => {
+const formatPublicBuyingGuide = (guideInstance) => {
     const adminShape = formatAdminBuyingGuide(guideInstance);
     if (!adminShape || !adminShape.is_enabled) {
         return null;
     }
 
-    const relatedBlogs = adminShape.related_blogs || [];
-    let related_guides = [];
-
-    if (relatedBlogs.length > 0) {
-        related_guides = relatedBlogs
-            .filter((blog) => blog.status === 'published')
-            .map((blog) => ({
-                id: blog.id,
-                title: blog.title,
-                slug: blog.slug,
-                image_url: blog.image_url,
-                alt_text: blog.alt_text,
-                published_at: blog.published_at
-            }));
-    }
+    const related_guides = (adminShape.related_blogs || [])
+        .filter((blog) => blog.status === 'published')
+        .map((blog) => ({
+            id: blog.id,
+            title: blog.title,
+            slug: blog.slug,
+            image_url: blog.image_url,
+            alt_text: blog.alt_text,
+            published_at: blog.published_at
+        }));
 
     const {
         id: _id,

@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
-const { Category, CategoryBuyingGuide } = require('../../../models');
+const { Category } = require('../../../models');
 const { findBuyingGuideByCategoryId } = require('../../admin/category/helper/buyingGuideRelations.helper');
 const { formatPublicBuyingGuide } = require('../helper/buyingGuide.serializer');
 
@@ -19,10 +19,7 @@ module.exports.getBuyingGuideBySlug = async (req, res) => {
             return errorResponse(res, { message: 'Buying guide not found' }, 'Buying guide not found', 404);
         }
 
-        const publicGuide = await formatPublicBuyingGuide(buyingGuide, {
-            Category,
-            CategoryBuyingGuide
-        });
+        const publicGuide = formatPublicBuyingGuide(buyingGuide);
 
         return successResponse(res, { buyingGuide: publicGuide }, 'Buying guide fetched successfully');
     } catch (error) {
