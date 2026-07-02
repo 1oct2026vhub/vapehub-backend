@@ -5,12 +5,6 @@ const { successResponse, errorResponse } = require('../../../../utils/responseUt
 const { Op } = require('sequelize');
 const logger = require('../../../../library/logger');
 const { uploadFiletToS3, generateUniqueFileName } = require('../../../../library/s3/s3Helper');
-const { invalidateCachePattern } = require('../../../../library/cache');
-
-const invalidateMenuCache = () => {
-    invalidateCachePattern('menu:tree:*').catch(() => {});
-    invalidateCachePattern('menu:global-hot-products').catch(() => {});
-};
 
 /**
  * Get menu items with optional filters and tree structure
@@ -591,7 +585,6 @@ const createMenu = async (req, res) => {
         }
 
         await transaction.commit();
-        invalidateMenuCache();
         return successResponse(res, newMenu, 'Menu created successfully', 201);
     } catch (error) {
         await transaction.rollback();
@@ -715,7 +708,6 @@ const updateMenu = async (req, res) => {
         }
 
         await transaction.commit();
-        invalidateMenuCache();
         return successResponse(res, updatedMenu, 'Menu updated successfully');
     } catch (error) {
         await transaction.rollback();
@@ -749,7 +741,6 @@ const deleteMenu = async (req, res) => {
         await menu.update({ updated_by: userId }, { transaction });
         await menu.destroy({ transaction });
         await transaction.commit();
-        invalidateMenuCache();
         return successResponse(res, { message: 'Menu deleted successfully' });
     } catch (error) {
         await transaction.rollback();
@@ -895,7 +886,6 @@ const reorderMenus = async (req, res) => {
         }
 
         await transaction.commit();
-        invalidateMenuCache();
         return successResponse(res, { message: 'Menu items reordered successfully' });
     } catch (error) {
         await transaction.rollback();
@@ -1283,7 +1273,6 @@ const syncProductMenu = async (req, res) => {
         }
 
         await transaction.commit();
-        invalidateMenuCache();
         return successResponse(
             res,
             {
