@@ -3,7 +3,7 @@ const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attr
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
-const { uploadFiletToS3, generateUniqueFileName, resizeToMaxSize, deleteFile } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, resizeToMaxSize, deleteFile, extractS3KeyFromUrl } = require("../../../../library/s3/s3Helper");
 const { processProductImageInMultipleSizes } = require("../../../../library/imageResize/productImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
@@ -2534,69 +2534,36 @@ module.exports.deleteProductImage = async (req, res) => {
             return errorResponse(res, { message: "Product image not found" }, "Image not found", 404);
         }
 
-        // Helper function to extract S3 key from URL
-        const extractS3Key = (imageUrl) => {
-            if (!imageUrl) return null;
-            
-            try {
-                let s3Key;
-                
-                // Extract S3 key based on URL format
-                if (imageUrl.includes('.amazonaws.com/')) {
-                    // S3 direct URL format: https://bucket.s3.region.amazonaws.com/folder/filename
-                    s3Key = imageUrl.split('.amazonaws.com/')[1];
-                } else if (imageUrl.includes('cloudfront') || imageUrl.includes('cf-')) {
-                    // CloudFront URL format: https://d1234567890.cloudfront.net/folder/filename
-                    const urlParts = imageUrl.split('/');
-                    s3Key = urlParts.slice(3).join('/'); // Remove domain parts
-                } else if (imageUrl.includes('.com/')) {
-                    // Fallback: try splitting on .com/
-                    s3Key = imageUrl.split('.com/')[1];
-                } else {
-                    // Last resort: assume last two parts are folder/filename
-                    const urlParts = imageUrl.split('/');
-                    s3Key = urlParts.slice(-2).join('/');
-                }
-                
-                // Remove query parameters if any
-                if (s3Key) {
-                    s3Key = s3Key.split('?')[0];
-                }
-                
-                return s3Key;
-            } catch (error) {
-                logger.error(`Error extracting S3 key from URL: ${imageUrl}`, error);
-                return null;
-            }
-        };
+        const sharedCount = await ProductImage.count({
+            where: { image_url: productImage.image_url },
+            transaction
+        });
 
-        // Extract the S3 key from the image URL
-        const imageKey = extractS3Key(productImage.image_url);
-        
+        const imageKey = extractS3KeyFromUrl(productImage.image_url);
+
         if (!imageKey) {
             logger.warn(`Could not extract S3 key from image URL: ${productImage.image_url}`);
-            // Continue with database deletion even if S3 key extraction fails
-        } else {
-            // Delete the original image from AWS S3
+        } else if (sharedCount === 1) {
             try {
                 await deleteFile(imageKey);
                 logger.info(`✅ Deleted original image from S3: ${imageKey}`);
             } catch (s3Error) {
                 logger.error(`Error deleting image from S3: ${imageKey}`, s3Error);
-                // Continue with database deletion even if S3 deletion fails
             }
+        } else {
+            logger.info(`Skipped S3 delete for shared product image URL (${sharedCount} references): ${productImage.image_url}`);
         }
-        
-        // Delete resized versions if they exist
+
+        // Delete resized versions if they exist (unique to this product image row)
         const resizedUrls = [
             productImage.image_url_low,
             productImage.image_url_mid,
             productImage.image_url_high
         ].filter(url => url);
-        
+
         if (resizedUrls.length > 0) {
             const deletePromises = resizedUrls.map(async (url) => {
-                const resizedKey = extractS3Key(url);
+                const resizedKey = extractS3KeyFromUrl(url);
                 if (resizedKey) {
                     try {
                         await deleteFile(resizedKey);
