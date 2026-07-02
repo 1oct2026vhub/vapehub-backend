@@ -1898,25 +1898,5 @@ const fetchProductsCached = async (query, status = 'published') => {
   return cacheOrFetch(cacheKey, () => fetchProducts(query, status), 30);
 };
 
-const { fetchProductsOptimizedCached } = require('./product.helper.optimized');
-
-const useLegacyListing = (query) =>
-  process.env.USE_LEGACY_FETCH_PRODUCTS === 'true' || query?.legacy === '1';
-
-const fetchProductsListing = async (query, status = 'published') => {
-  if (useLegacyListing(query)) {
-    return fetchProductsCached(query, status);
-  }
-  return fetchProductsOptimizedCached(query, status);
-};
-
-module.exports = {
-  getTrendingProducts,
-  generateUniqueFileName,
-  fetchProducts: fetchProductsCached,
-  fetchProductsListing,
-  fetchProductsOriginal: fetchProducts,
-  getMinPriceVariant,
-  invalidateCachePattern
-};
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern };
 

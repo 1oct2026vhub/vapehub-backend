@@ -2,7 +2,8 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order, Settings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
-const { getTrendingProducts, generateUniqueFileName, fetchProductsListing, getMinPriceVariant } = require("../helper/product.helper");
+const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
+const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
@@ -10,20 +11,43 @@ const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 module.exports.listAllproducts = async (req, res, next) => {
     try {
         req.query.source = 'product';
-        const { additionalData, products, category_items, brand_items, deal_items, attributes, price_ranges, pagination } = await fetchProductsListing({
-            ...req.query,
-            status: productStatus.PUBLISHED
-        });
-        return successResponse(res, {
-            ...additionalData,
-            products,
-            attributes,
-            category: category_items,
-            brand: brand_items,
-            deal: deal_items,
-            price_ranges,
-            pagination
-        }, 'Success');
+        if(req.query.test == 1) {
+            const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProductsOptimized({
+                ...req.query,
+                status: productStatus.PUBLISHED
+            });
+            return successResponse(res, { 
+                ...additionalData,
+                products, 
+                attributes,  
+                // allAttributes,
+                category:category_items,
+                brand:brand_items,
+                deal:deal_items,
+                // deals_text:deals_text,
+                price_ranges, 
+                pagination
+            }, 'Success');
+        } else {
+            const {additionalData, products, category_items, brand_items, deal_items, attributes,allAttributes, price_ranges, pagination } = await fetchProducts({
+                ...req.query,
+                status: productStatus.PUBLISHED
+            });
+            return successResponse(res, { 
+                ...additionalData,
+                products, 
+                attributes,  
+                // allAttributes,
+                category:category_items,
+                brand:brand_items,
+                deal:deal_items,
+                // deals_text:deals_text,
+                price_ranges, 
+                pagination
+            }, 'Success');
+        }
+        
+        
     } catch (error) {
         logger.error(error)
         return errorResponse(res, error, error.message);
