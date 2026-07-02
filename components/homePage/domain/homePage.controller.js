@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -2121,6 +2121,37 @@ module.exports.getSlugRelationsOriginal = async (req, res, next) => {
     } catch (error) {
         console.log(error);
         return errorResponse(res, error, error.message);
+    }
+};
+
+// Get all active sections with their links (public)
+module.exports.getFooterSections = async (req, res) => {
+    try {
+      const sections = await FooterSection.findAll({
+        where: {
+          is_active: true,
+          deleted_at: null
+        },
+        order: [['order', 'ASC']],
+        include: [{
+          model: FooterLink,
+          as: 'links',
+          where: {
+            is_active: true,
+            deleted_at: null
+          },
+          order: [['order', 'ASC']]
+        }]
+      });
+      res.json({
+        success: true,
+        data: sections
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch footer sections'
+      });
     }
 };
 

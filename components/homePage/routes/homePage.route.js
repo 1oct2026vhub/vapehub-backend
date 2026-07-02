@@ -1,6 +1,5 @@
 const router = require("express").Router();
 const homePageController = require("../domain/homePage.controller");
-const { getFooterSections } = require('../../footer/domain/footer.controller');
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 const { authMiddleware } = require('../../../library/middleware');
@@ -460,7 +459,7 @@ router.get('/footer', validateRequest([
         .optional()
         .isBoolean()
         .withMessage('is_active must be a boolean')
-]), getFooterSections);
+]), homePageController.getFooterSections);
 
 /**
  * @swagger

@@ -925,30 +925,6 @@ const fetchProductsOptimized = async (query, status = 'published') => {
   }
 };
 
-const { cacheOrFetch } = require('../../../library/cache');
-
-const fetchProductsOptimizedCached = async (query, status = 'published') => {
-  const cacheKey = `products:list:${JSON.stringify({
-    sort_by: query.sort_by,
-    order: query.order,
-    limit: query.limit,
-    offset: query.offset,
-    keyword: query.keyword,
-    price_range: query.price_range,
-    categories: query.categories,
-    brand: query.brand,
-    variant: query.variant,
-    attributes: query.attributes,
-    is_new: query.is_new,
-    source: query.source,
-    deal_id: query.deal_id,
-    status,
-    v: 'optimized'
-  })}`;
-  return cacheOrFetch(cacheKey, () => fetchProductsOptimized(query, status), 30);
-};
-
 module.exports = {
-  fetchProductsOptimized,
-  fetchProductsOptimizedCached
+  fetchProductsOptimized
 };
