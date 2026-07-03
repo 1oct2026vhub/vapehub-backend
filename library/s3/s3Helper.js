@@ -33,6 +33,44 @@ const generateSignedUrl = async (objectKey, operation = 'getObject') => {
 
 
 /**
+ * Extracts the S3 object key from a full URL or a stored key path.
+ * @param {string} imageUrl
+ * @returns {string|null}
+ */
+const extractS3KeyFromUrl = (imageUrl) => {
+  if (!imageUrl) return null;
+
+  try {
+    if (!imageUrl.includes('://')) {
+      return imageUrl.split('?')[0];
+    }
+
+    let s3Key;
+
+    if (imageUrl.includes('.amazonaws.com/')) {
+      s3Key = imageUrl.split('.amazonaws.com/')[1];
+    } else if (imageUrl.includes('cloudfront') || imageUrl.includes('cf-')) {
+      const urlParts = imageUrl.split('/');
+      s3Key = urlParts.slice(3).join('/');
+    } else if (imageUrl.includes('.com/')) {
+      s3Key = imageUrl.split('.com/')[1];
+    } else {
+      const urlParts = imageUrl.split('/');
+      s3Key = urlParts.slice(-2).join('/');
+    }
+
+    if (s3Key) {
+      s3Key = s3Key.split('?')[0];
+    }
+
+    return s3Key;
+  } catch (error) {
+    console.error(`Error extracting S3 key from URL: ${imageUrl}`, error);
+    return null;
+  }
+};
+
+/**
  * Deletes a file from S3
  * @param {String} key - The key (path) to the file in the bucket
  */
@@ -314,11 +352,11 @@ const uploadImageToS3WithResize = async (params, resizeOptions = null) => {
 };
 
 module.exports = {
-  generateSignedUrl, 
-  deleteFile, 
-  uploadFiletToS3, 
-  downloadS3ObjectBuffer,
-  generateUniqueFileName, 
+  generateSignedUrl,
+  deleteFile,
+  extractS3KeyFromUrl,
+  uploadFiletToS3,
+  generateUniqueFileName,
   sanitizeFileName,
   getUniqueFileNameWithPrefix,
   generateCloudFrontUrlForS3,

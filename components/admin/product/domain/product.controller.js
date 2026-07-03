@@ -3,7 +3,7 @@ const { Product, Category, Brand, ProductImage, Menu, ProductAttributeTerm, Attr
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
-const { uploadFiletToS3, generateUniqueFileName, resizeToMaxSize, deleteFile } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, resizeToMaxSize, deleteFile, extractS3KeyFromUrl } = require("../../../../library/s3/s3Helper");
 const { processProductImageInMultipleSizes } = require("../../../../library/imageResize/productImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
@@ -13,6 +13,35 @@ const { invalidateCachePattern, invalidateCache } = require('../../../../library
 const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
 
 const slugManager = new SlugManager(SlugRelation);
+
+/** Admin list columns — excludes LONGTEXT description (available via GET /fetch/:id). */
+const ADMIN_LIST_PRODUCT_ATTRIBUTES = [
+    'id', 'updated_by', 'name', 'slug', 'sku', 'price', 'discount_price',
+    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 'is_discontinued',
+    'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style',
+    'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type',
+    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status',
+    'createdAt', 'updatedAt', 'deletedAt'
+];
+
+/** Variant columns for admin list — excludes description (available via fetch/:id). */
+const ADMIN_LIST_VARIANT_ATTRIBUTES = [
+    'id', 'product_id', 'sku', 'slug', 'price', 'discount_price', 'purchase_price',
+    'weight', 'length', 'width', 'height', 'barcode', 'stock', 'low_stock_threshold',
+    'stock_status', 'status', 'is_discontinued'
+];
+
+const groupRecordsByForeignKey = (records, foreignKey) => {
+    const map = new Map();
+    records.forEach((record) => {
+        const key = record[foreignKey];
+        if (!map.has(key)) {
+            map.set(key, []);
+        }
+        map.get(key).push(record);
+    });
+    return map;
+};
 
 const buildCanonicalUrl = (slug) => {
     const baseUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
@@ -301,6 +330,9 @@ module.exports.listAllProducts = async (req, res, next) => {
         if (deleted !== undefined && (deleted === "true" || deleted === true)) {
             whereClause.deletedAt = { [Op.ne]: null }
         }
+
+        const includeDeleted = deleted === "true" || deleted === true;
+
         // Optimized include clause - only essential relationships for better performance
         const includeClause = [
             { 
@@ -308,117 +340,49 @@ module.exports.listAllProducts = async (req, res, next) => {
                 as: 'Categories',
                 required: false,
                 through: { attributes: ['is_primary'] },
-                attributes: ['id', 'name', 'slug'] // Limit attributes
+                attributes: ['id', 'name', 'slug']
             },
             { 
                 model: Brand, 
                 as: 'Brands',
                 required: false,
                 through: { attributes: ['is_primary'] },
-                attributes: ['id', 'name', 'slug'] // Limit attributes
+                attributes: ['id', 'name', 'slug']
             },
             { 
                 model: ProductImage, 
                 as: 'ProductImages',
                 required: false,
-                attributes: ['id', 'product_id', 'image_url', 'is_primary'] // Limit attributes
+                separate: true,
+                limit: 1,
+                order: [['is_primary', 'DESC'], ['id', 'ASC']],
+                attributes: ['id', 'product_id', 'image_url', 'is_primary']
             }
         ];
 
-        // Separate query for variants and attributes to reduce JOIN complexity
-        const variantIncludeClause = [
+        const variantNestedIncludes = [
             {
-                model: ProductVariant,
-                as: "variants",
+                model: ProductVariantImage,
+                as: "variantImages",
                 attributes: [
                     "id",
-                    "product_id",
-                    "sku",
-                    "slug",
-                    "price",
-                    "discount_price",
-                    "purchase_price",
-                    "weight",
-                    "length",
-                    "width",
-                    "height",
-                    "description",
-                    "barcode",
-                    "stock",
-                    "low_stock_threshold",
-                    "stock_status",
-                    "status",
-                    "is_discontinued"
-                ],
-                include: [
-                    {
-                        model: ProductVariantImage,
-                        as: "variantImages",
-                        attributes: [
-                            "id",
-                            "variant_id",
-                            "image_url",
-                            "is_primary"
-                        ]
-                    },
-                    {
-                        model: ProductVariantAttribute,
-                        as: "variantAttributes",
-                        attributes: [
-                            "id",
-                            "variant_id",
-                            "attribute_id",
-                            "term_id",
-                            "is_visible",
-                            "used_in_variation"
-                        ],
-                        include: [
-                            {
-                                model: AttributeTerm,
-                                as: "term",
-                                attributes: [
-                                    "id",
-                                    "name",
-                                    "slug"
-                                ]
-                            },
-                            {
-                                model: Attribute,
-                                as: "attribute",
-                                attributes: [
-                                    "id",
-                                    "name",
-                                    "type"
-                                ]
-                            }
-                        ]
-                    }
+                    "variant_id",
+                    "image_url",
+                    "is_primary"
                 ]
-            }
-        ];
-
-        const attributeIncludeClause = [
+            },
             {
-                model: ProductAttributeTerm,
-                as: "productAttributeTerms",
+                model: ProductVariantAttribute,
+                as: "variantAttributes",
                 attributes: [
                     "id",
-                    "product_id",
+                    "variant_id",
                     "attribute_id",
                     "term_id",
-                    "is_visible_page",
+                    "is_visible",
                     "used_in_variation"
                 ],
-                include: [  
-                    {
-                        model: Attribute,
-                        as: "attribute",
-                        attributes: [
-                            "id",
-                            "name",
-                            "slug"
-                        ]
-                    },
+                include: [
                     {
                         model: AttributeTerm,
                         as: "term",
@@ -427,18 +391,66 @@ module.exports.listAllProducts = async (req, res, next) => {
                             "name",
                             "slug"
                         ]
+                    },
+                    {
+                        model: Attribute,
+                        as: "attribute",
+                        attributes: [
+                            "id",
+                            "name",
+                            "type"
+                        ]
                     }
                 ]
             }
         ];
 
-        // Optimized query execution - separate count and data queries
-        const totalCount = await Product.count({
-            where: whereClause,
-            paranoid: deleted === "true" || deleted === true ? false : true
-        });
+        const attributeNestedIncludes = [
+            {
+                model: Attribute,
+                as: "attribute",
+                attributes: [
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            },
+            {
+                model: AttributeTerm,
+                as: "term",
+                attributes: [
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            }
+        ];
 
-        // Calculate pagination details
+        const productAttributeTermAttributes = [
+            "id",
+            "product_id",
+            "attribute_id",
+            "term_id",
+            "is_visible_page",
+            "used_in_variation"
+        ];
+
+        const [totalCount, products] = await Promise.all([
+            Product.count({
+                where: whereClause,
+                paranoid: !includeDeleted
+            }),
+            Product.findAll({
+                where: whereClause,
+                attributes: ADMIN_LIST_PRODUCT_ATTRIBUTES,
+                include: includeClause,
+                order: [[sort_by, order]],
+                limit: parsedLimit,
+                offset: parsedOffset,
+                paranoid: !includeDeleted
+            })
+        ]);
+
         const totalPages = totalCount > 0 ? Math.ceil(totalCount / parsedLimit) : 1;
         const currentPage = Math.floor(parsedOffset / parsedLimit) + 1;
 
@@ -450,38 +462,28 @@ module.exports.listAllProducts = async (req, res, next) => {
             offset: parsedOffset
         };
 
-        // Fetch basic product data first (faster)
-        const products = await Product.findAll({
-            where: whereClause,
-            include: includeClause,
-            order: [[sort_by, order]],
-            limit: parsedLimit,
-            offset: parsedOffset,
-            paranoid: !(deleted === "true" || deleted === true)
-        });
-
-        // Fetch variants and attributes separately for better performance
         if (products.length > 0) {
             const productIds = products.map(p => p.id);
-            
-            // Get variants for these products
-            const variants = await ProductVariant.findAll({
-                where: { product_id: { [Op.in]: productIds } },
-                include: variantIncludeClause[0].include,
-                attributes: variantIncludeClause[0].attributes
-            });
 
-            // Get attributes for these products
-            const attributes = await ProductAttributeTerm.findAll({
-                where: { product_id: { [Op.in]: productIds } },
-                include: attributeIncludeClause[0].include,
-                attributes: attributeIncludeClause[0].attributes
-            });
+            const [variants, attributes] = await Promise.all([
+                ProductVariant.findAll({
+                    where: { product_id: { [Op.in]: productIds } },
+                    include: variantNestedIncludes,
+                    attributes: ADMIN_LIST_VARIANT_ATTRIBUTES
+                }),
+                ProductAttributeTerm.findAll({
+                    where: { product_id: { [Op.in]: productIds } },
+                    include: attributeNestedIncludes,
+                    attributes: productAttributeTermAttributes
+                })
+            ]);
 
-            // Attach variants and attributes to products
+            const variantsByProductId = groupRecordsByForeignKey(variants, 'product_id');
+            const attributesByProductId = groupRecordsByForeignKey(attributes, 'product_id');
+
             products.forEach(product => {
-                product.dataValues.variants = variants.filter(v => v.product_id === product.id);
-                product.dataValues.productAttributeTerms = attributes.filter(a => a.product_id === product.id);
+                product.dataValues.variants = variantsByProductId.get(product.id) || [];
+                product.dataValues.productAttributeTerms = attributesByProductId.get(product.id) || [];
             });
         }
         
@@ -2551,69 +2553,36 @@ module.exports.deleteProductImage = async (req, res) => {
             return errorResponse(res, { message: "Product image not found" }, "Image not found", 404);
         }
 
-        // Helper function to extract S3 key from URL
-        const extractS3Key = (imageUrl) => {
-            if (!imageUrl) return null;
-            
-            try {
-                let s3Key;
-                
-                // Extract S3 key based on URL format
-                if (imageUrl.includes('.amazonaws.com/')) {
-                    // S3 direct URL format: https://bucket.s3.region.amazonaws.com/folder/filename
-                    s3Key = imageUrl.split('.amazonaws.com/')[1];
-                } else if (imageUrl.includes('cloudfront') || imageUrl.includes('cf-')) {
-                    // CloudFront URL format: https://d1234567890.cloudfront.net/folder/filename
-                    const urlParts = imageUrl.split('/');
-                    s3Key = urlParts.slice(3).join('/'); // Remove domain parts
-                } else if (imageUrl.includes('.com/')) {
-                    // Fallback: try splitting on .com/
-                    s3Key = imageUrl.split('.com/')[1];
-                } else {
-                    // Last resort: assume last two parts are folder/filename
-                    const urlParts = imageUrl.split('/');
-                    s3Key = urlParts.slice(-2).join('/');
-                }
-                
-                // Remove query parameters if any
-                if (s3Key) {
-                    s3Key = s3Key.split('?')[0];
-                }
-                
-                return s3Key;
-            } catch (error) {
-                logger.error(`Error extracting S3 key from URL: ${imageUrl}`, error);
-                return null;
-            }
-        };
+        const sharedCount = await ProductImage.count({
+            where: { image_url: productImage.image_url },
+            transaction
+        });
 
-        // Extract the S3 key from the image URL
-        const imageKey = extractS3Key(productImage.image_url);
-        
+        const imageKey = extractS3KeyFromUrl(productImage.image_url);
+
         if (!imageKey) {
             logger.warn(`Could not extract S3 key from image URL: ${productImage.image_url}`);
-            // Continue with database deletion even if S3 key extraction fails
-        } else {
-            // Delete the original image from AWS S3
+        } else if (sharedCount === 1) {
             try {
                 await deleteFile(imageKey);
                 logger.info(`✅ Deleted original image from S3: ${imageKey}`);
             } catch (s3Error) {
                 logger.error(`Error deleting image from S3: ${imageKey}`, s3Error);
-                // Continue with database deletion even if S3 deletion fails
             }
+        } else {
+            logger.info(`Skipped S3 delete for shared product image URL (${sharedCount} references): ${productImage.image_url}`);
         }
-        
-        // Delete resized versions if they exist
+
+        // Delete resized versions if they exist (unique to this product image row)
         const resizedUrls = [
             productImage.image_url_low,
             productImage.image_url_mid,
             productImage.image_url_high
         ].filter(url => url);
-        
+
         if (resizedUrls.length > 0) {
             const deletePromises = resizedUrls.map(async (url) => {
-                const resizedKey = extractS3Key(url);
+                const resizedKey = extractS3KeyFromUrl(url);
                 if (resizedKey) {
                     try {
                         await deleteFile(resizedKey);
