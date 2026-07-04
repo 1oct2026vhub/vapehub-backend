@@ -2,9 +2,11 @@ const { body, query, param } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 
-// Multer configuration for multiple image uploads
+const { createTempDiskStorage } = require('../../../../library/multer/tempDiskStorage');
+
+// Multer configuration for multiple image uploads (disk-backed temp files)
 const uploadImageMiddleware = multer({
-    storage: multer.memoryStorage(),
+    storage: createTempDiskStorage('banners'),
     limits: {
         fileSize: 5 * 1024 * 1024, // 5MB limit
     },

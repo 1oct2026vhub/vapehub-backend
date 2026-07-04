@@ -1,8 +1,10 @@
 const { body, query, param } = require('express-validator');
 const multer = require('multer');
 
+const { createTempDiskStorage } = require('../../../../library/multer/tempDiskStorage');
+
 const uploadImageMiddleware = multer({
-    storage: multer.memoryStorage(),
+    storage: createTempDiskStorage('carousels'),
     limits: {
         fileSize: 5 * 1024 * 1024,
     },

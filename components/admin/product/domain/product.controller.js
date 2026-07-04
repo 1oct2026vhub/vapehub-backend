@@ -10,6 +10,7 @@ const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
+const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -2357,7 +2358,8 @@ module.exports.uploadImage = async (req, res) => {
         // Upload files to AWS S3 and generate resized versions
         const uploadedImages = await Promise.all(
             files.map(async (image) => {
-                const { originalname, mimetype, buffer } = image;
+                const { originalname, mimetype } = image;
+                const buffer = await readUploadFile(image);
                 const { getUniqueFileNameWithPrefix } = require("../../../../library/s3/s3Helper");
                 const fileName = await getUniqueFileNameWithPrefix(originalname, 'products', product_id);
                 const s3Key = `products/${product_id}/${fileName}`;
@@ -2420,6 +2422,17 @@ module.exports.uploadImage = async (req, res) => {
                 };
             })
         );
+
+        const failedUploads = uploadedImages.filter((img) => !img?.Location);
+        if (failedUploads.length > 0) {
+            await transaction.rollback();
+            return errorResponse(
+                res,
+                { message: 'One or more images failed to upload to storage' },
+                'Upload failed',
+                500
+            );
+        }
 
                 // Save uploaded images in ProductImage table with resized URLs
                 // Support both single alt_text (for all images) or array of alt_texts (one per image)
@@ -2491,9 +2504,13 @@ module.exports.uploadImage = async (req, res) => {
         });
 
     } catch (error) {
-        await transaction.rollback();
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
         logger.error(error);
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 };
 
