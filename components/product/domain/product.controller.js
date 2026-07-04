@@ -5,6 +5,7 @@ const logger = require("../../../library/logger");
 const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
+const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 
@@ -1425,7 +1426,8 @@ module.exports.uploadImage = async (req, res) => {
         }
 
         const uploadPromise = files.map(async (image) => {
-            const { originalname, mimetype, buffer } = image;
+            const { originalname, mimetype } = image;
+            const buffer = await readUploadFile(image);
             
             // Resize to max 1920x1080 if larger
             let processedBuffer = buffer;
@@ -1472,6 +1474,8 @@ module.exports.uploadImage = async (req, res) => {
         console.log("🚀 ~ module.exports.uploadImage= ~ error:", error)
         logger.error(error)
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 }
 

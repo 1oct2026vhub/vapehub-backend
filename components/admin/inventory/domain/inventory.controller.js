@@ -3,6 +3,7 @@ const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../../../../models');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Parser: Json2csvParser } = require('json2csv');
+const { buildGetProductsQuery } = require('../helper/inventorySql.helper');
 
 // "Successful" orders = payment confirmed and in fulfillment/fulfilled flow.
 // (We intentionally exclude: draft, pending, fail, cancel, returns/refunds.)
@@ -14,6 +15,17 @@ const SUCCESSFUL_ORDER_STATUSES = [
   'delivered',
   'completed'
 ];
+
+const getLast28DaysStart = () => {
+  const start = new Date();
+  start.setDate(start.getDate() - 28);
+  return start;
+};
+
+const last28DaysOrderWhere = () => ({
+  status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
+  createdAt: { [Op.gte]: getLast28DaysStart() },
+});
 
 const parseIncludeDiscontinued = (req) => {
   const value = req?.query?.include_discontinued;
@@ -1039,179 +1051,73 @@ module.exports = {
   // Get products for inventory selection
   async getProducts(req, res) {
     try {
-      const { 
-        q, 
-        page = 1, 
-        limit = 10, 
-        sort_by = 'salesLast28Days', 
-        order = 'DESC' 
+      const {
+        q,
+        page = 1,
+        limit = 10,
+        sort_by = 'salesLast28Days',
+        order = 'DESC',
       } = req.query;
-      
+
       const parsedPage = parseInt(page, 10);
       const parsedLimit = parseInt(limit, 10);
       const parsedOffset = (parsedPage - 1) * parsedLimit;
-      
-      // Build where clause for products
-      const productWhereClause = {
-        deletedAt: null,
-        status: 'published'
-      };
-      
-      if (q && q.length > 0) {
-        productWhereClause.name = { [Op.like]: `%${q}%` };
-      }
-      
-      // Fetch all matching products (we need all to calculate sales and sort)
-      const allProducts = await Product.findAll({
-        where: productWhereClause,
-        attributes: ['id', 'name', 'slug'],
-        include: [
-          {
-            model: ProductImage,
-            as: 'ProductImages',
-            where: { is_primary: true },
-            required: false,
-            attributes: ['image_url']
-          }
-        ],
-        order: [['name', 'ASC']] // Initial order, will be re-sorted after calculating sales
-      });
 
-      // Get total count for pagination
-      const totalCount = allProducts.length;
-
-      // Calculate date range for last 28 days
       const now = new Date();
-      const last28Days = new Date(now);
-      last28Days.setDate(now.getDate() - 28);
+      const last28Days = getLast28DaysStart();
 
-      // Get order IDs for orders (excluding canceled) in last 28 days (once for all products)
-      const orderIds = await Order.findAll({
-        attributes: ['id'],
-        where: {
-          status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: { [Op.gte]: last28Days }
+      const { dataSql, countSql, replacements } = buildGetProductsQuery(req, {
+        q,
+        sort_by,
+        order,
+        last28Days,
+        now,
+      });
+
+      const [countRow] = await sequelize.query(countSql, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+      const totalCount = Number(countRow?.total) || 0;
+
+      const rows = await sequelize.query(dataSql, {
+        replacements: {
+          ...replacements,
+          limit: parsedLimit,
+          offset: parsedOffset,
         },
-        raw: true
-      }).then(orders => orders.map(o => o.id));
-
-      // Get all product IDs
-      const productIds = allProducts.map(p => p.id);
-
-      // Fetch all variants for these products
-      const allVariants = await ProductVariant.findAll({
-        where: applyActiveInventoryVariantFilter({
-          product_id: { [Op.in]: productIds },
-          deleted_at: null
-        }, req),
-        attributes: ['id', 'product_id', 'stock', 'low_stock_threshold']
+        type: sequelize.QueryTypes.SELECT,
       });
 
-      // Group variants by product_id
-      const variantsByProduct = {};
-      allVariants.forEach(variant => {
-        if (!variantsByProduct[variant.product_id]) {
-          variantsByProduct[variant.product_id] = [];
-        }
-        variantsByProduct[variant.product_id].push(variant);
-      });
-
-      // Calculate products with inventory details
-      const productsWithInventory = await Promise.all(allProducts.map(async (product) => {
-        const productVariants = variantsByProduct[product.id] || [];
-        const variantIds = productVariants.map(v => v.id);
-
-        // Calculate product-level total stock (sum of all variant stocks)
-        const currentStock = productVariants.reduce((sum, variant) => sum + variant.stock, 0);
-
-        // Calculate minimum low_stock_threshold across all variants (most conservative)
-        const lowStockThreshold = productVariants.length > 0
-          ? Math.min(...productVariants.map(v => v.low_stock_threshold || 5))
-          : 5; // Default to 5 if no variants
-
-        // Calculate stock on hold (active reservations) for all variants of this product
-        const stockOnHold = variantIds.length > 0
-          ? await StockReservation.sum('quantity', {
-              where: {
-                variant_id: { [Op.in]: variantIds },
-                expires_at: { [Op.gt]: now }
-              }
-            }) || 0
-          : 0;
-
-        // Calculate product-level sales last 28 days (aggregated across all variants)
-        const salesLast28Days = orderIds.length > 0 && variantIds.length > 0
-          ? await OrderItem.sum('quantity', {
-              where: {
-                variant_id: { [Op.in]: variantIds },
-                order_id: { [Op.in]: orderIds }
-              }
-            }) || 0
-          : 0;
-
-        // Calculate product-level stock will last (in days)
-        const avgDailySales = salesLast28Days / 28;
-        const stockWillLastDays = avgDailySales > 0
-          ? Math.round(currentStock / avgDailySales)
-          : null;
-
+      const paginatedProducts = rows.map((row) => {
+        const stockOnHold = Number(row.stockOnHold) || 0;
         return {
-          id: product.id,
-          name: product.name,
-          slug: product.slug,
-          image: product.ProductImages?.[0]?.image_url || null,
-          currentStock: currentStock,
-          stockOnHold: stockOnHold,
-          reservedStock: stockOnHold, // Same as stockOnHold
-          salesLast28Days: salesLast28Days || 0,
-          stockWillLastDays: stockWillLastDays,
-          low_stock_threshold: lowStockThreshold
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          image: row.image || null,
+          currentStock: Number(row.currentStock) || 0,
+          stockOnHold,
+          reservedStock: stockOnHold,
+          salesLast28Days: Number(row.salesLast28Days) || 0,
+          stockWillLastDays:
+            row.stockWillLastDays != null ? Number(row.stockWillLastDays) : null,
+          low_stock_threshold: Number(row.low_stock_threshold) || 5,
         };
-      }));
-
-      // Sort products based on sort_by and order
-      productsWithInventory.sort((a, b) => {
-        let aValue = a[sort_by];
-        let bValue = b[sort_by];
-        
-        // Handle null/undefined values
-        if (aValue === null || aValue === undefined) aValue = 0;
-        if (bValue === null || bValue === undefined) bValue = 0;
-        
-        // Handle string comparison for name
-        if (sort_by === 'name') {
-          aValue = aValue.toString().toLowerCase();
-          bValue = bValue.toString().toLowerCase();
-          return order === 'ASC' 
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue);
-        }
-        
-        // Numeric comparison
-        const comparison = aValue - bValue;
-        return order === 'ASC' ? comparison : -comparison;
       });
 
-      // Apply pagination
-      const paginatedProducts = productsWithInventory.slice(
-        parsedOffset, 
-        parsedOffset + parsedLimit
-      );
-
-      // Calculate pagination metadata
       const totalPages = Math.ceil(totalCount / parsedLimit);
-      const pagination = {
-        total_count: totalCount,
-        total_pages: totalPages,
-        current_page: parsedPage,
-        limit: parsedLimit
-      };
 
       return res.status(200).json({
         success: true,
-        message: "Products retrieved successfully",
+        message: 'Products retrieved successfully',
         data: paginatedProducts,
-        pagination: pagination
+        pagination: {
+          total_count: totalCount,
+          total_pages: totalPages,
+          current_page: parsedPage,
+          limit: parsedLimit,
+        },
       });
     } catch (error) {
       return errorResponse(res, error, error.message);
@@ -1306,7 +1212,7 @@ module.exports = {
         attributes: ['id'],
         where: {
           status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: { [Op.gte]: last28Days }
+          createdAt: { [Op.gte]: last28Days }
         },
         raw: true
       }).then(orders => orders.map(o => o.id));
@@ -1486,7 +1392,7 @@ module.exports = {
           attributes: ['id'],
           where: {
             status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-            updatedAt: { [Op.gte]: last28Days }
+            createdAt: { [Op.gte]: last28Days }
           },
           raw: true
         }).then(orders => orders.map(o => o.id));
@@ -1528,48 +1434,40 @@ module.exports = {
     }
   },
 
-  // Get sold quantity for each product in the previous calendar month
+  // Get sold quantity for each product in the last 28 days
   async getProductsSoldLast28Days(req, res) {
     try {
-      // Calculate previous month's start and end
-      const now = new Date();
-      const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfLastMonth = new Date(startOfThisMonth - 1);
-      const startOfLastMonth = new Date(endOfLastMonth.getFullYear(), endOfLastMonth.getMonth(), 1);
+      const last28Days = getLast28DaysStart();
 
-      // Use direct SQL query for maximum performance
       const results = await sequelize.query(`
-        SELECT 
+        SELECT
           p.id,
           p.name,
-          pi.image_url as image,
-          COALESCE(SUM(oi.quantity), 0) as soldLastMonth
+          pi.image_url AS image,
+          COALESCE(SUM(oi.quantity), 0) AS soldLast28Days
         FROM products p
         LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
-        LEFT JOIN order_items oi ON p.id = oi.product_id
-        LEFT JOIN orders o ON oi.order_id = o.id 
+        LEFT JOIN order_items oi ON p.id = oi.product_id AND oi.deletedAt IS NULL
+        LEFT JOIN orders o ON oi.order_id = o.id
+          AND o.deletedAt IS NULL
           AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
-          AND o.updatedAt >= :startDate 
-          AND o.updatedAt <= :endDate
+          AND o.createdAt >= :last28Days
+        WHERE p.deletedAt IS NULL
         GROUP BY p.id, p.name, pi.image_url
-        ORDER BY p.name ASC
+        ORDER BY soldLast28Days DESC
       `, {
-        replacements: {
-          startDate: startOfLastMonth,
-          endDate: endOfLastMonth
-        },
+        replacements: { last28Days },
         type: sequelize.QueryTypes.SELECT
       });
 
-      // Transform to match expected format
       const data = results.map(row => ({
         id: row.id,
         name: row.name,
         image: row.image,
-        soldLastMonth: parseInt(row.soldLastMonth) || 0
+        soldLast28Days: parseInt(row.soldLast28Days, 10) || 0
       }));
 
-      return successResponse(res, data, "Products sold quantity in previous month retrieved successfully");
+      return successResponse(res, data, 'Products sold quantity in last 28 days retrieved successfully');
     } catch (error) {
       return errorResponse(res, error, error.message);
     }
@@ -1652,8 +1550,8 @@ module.exports = {
           LEFT JOIN order_items oi ON pv.id = oi.variant_id
           LEFT JOIN orders o ON oi.order_id = o.id 
             AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
-            AND o.updatedAt >= :startDate 
-            AND o.updatedAt <= :endDate
+            AND o.createdAt >= :startDate 
+            AND o.createdAt <= :endDate
           WHERE 1=1 ${productWhereClause}${!parseIncludeDiscontinued(req) ? ' AND pv.is_discontinued = 0' : ''}
           GROUP BY pv.id, p.name, pv.slug, pvi.image_url, p.category_id, p.brand_id, pv.stock, pv.low_stock_threshold
         `;
@@ -1675,8 +1573,8 @@ module.exports = {
           LEFT JOIN order_items oi ON p.id = oi.product_id
           LEFT JOIN orders o ON oi.order_id = o.id 
             AND o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
-            AND o.updatedAt >= :startDate 
-            AND o.updatedAt <= :endDate
+            AND o.createdAt >= :startDate 
+            AND o.createdAt <= :endDate
           WHERE 1=1 ${productWhereClause}
           GROUP BY p.id, p.name, pi.image_url, p.category_id, p.brand_id, p.stock_quantity
         `;
@@ -1735,7 +1633,7 @@ module.exports = {
           attributes: ['id'],
           where: {
             status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-            updatedAt: {
+            createdAt: {
               [Op.gte]: prevStart,
               [Op.lte]: prevEnd
             }
@@ -1846,7 +1744,7 @@ module.exports = {
         attributes: ['id'],
         where: {
           status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: { [Op.gte]: last28Days }
+          createdAt: { [Op.gte]: last28Days }
         },
         raw: true
       }).then(orders => orders.map(o => o.id));
@@ -1856,7 +1754,7 @@ module.exports = {
         attributes: ['id'],
         where: {
           status: { [Op.in]: SUCCESSFUL_ORDER_STATUSES },
-          updatedAt: {
+          createdAt: {
             [Op.gte]: startOfLastMonth,
             [Op.lte]: endOfLastMonth
           }
@@ -2026,8 +1924,8 @@ module.exports = {
             CASE WHEN pv.stock > 0 THEN 1 ELSE 0 END as isInStock,
             CASE WHEN pv.stock = 0 THEN 1 ELSE 0 END as isOutOfStock,
             CASE WHEN pv.stock > 0 AND pv.stock <= pv.low_stock_threshold THEN 1 ELSE 0 END as isLowStock,
-            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDate28Days AND o.updatedAt <= :endDate28Days THEN oi.quantity ELSE 0 END), 0) as salesLast28Days,
-            COALESCE(SUM(CASE WHEN o.updatedAt >= :startDateLastMonth AND o.updatedAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
+            COALESCE(SUM(CASE WHEN o.createdAt >= :startDate28Days AND o.createdAt <= :endDate28Days THEN oi.quantity ELSE 0 END), 0) as salesLast28Days,
+            COALESCE(SUM(CASE WHEN o.createdAt >= :startDateLastMonth AND o.createdAt <= :endDateLastMonth THEN oi.quantity ELSE 0 END), 0) as salesLastMonth,
             COALESCE(SUM(oi.quantity), 0) as totalSales
           FROM product_variants pv
           INNER JOIN products p ON pv.product_id = p.id AND p.deletedAt IS NULL AND p.status = 'published'
@@ -2496,7 +2394,7 @@ module.exports = {
           FROM order_items oi
           INNER JOIN orders o ON oi.order_id = o.id
           WHERE o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
-            AND o.updatedAt >= :last28Days
+            AND o.createdAt >= :last28Days
             AND oi.variant_id IS NOT NULL
             AND oi.deletedAt IS NULL
           GROUP BY oi.variant_id
@@ -2579,7 +2477,7 @@ module.exports = {
             INNER JOIN products p ON pv.product_id = p.id
             WHERE o.status IN ('processing','packed','shipped','out_for_delivery','delivered','completed')
               AND oi.variant_id IN (:variantIds)
-              AND o.updatedAt >= p.createdAt
+              AND o.createdAt >= p.createdAt
               AND oi.variant_id IS NOT NULL
               AND oi.deletedAt IS NULL
             GROUP BY oi.variant_id
@@ -2684,7 +2582,7 @@ module.exports = {
           `
           SELECT 
             oi.variant_id,
-            MAX(o.updatedAt) as last_sold_at
+            MAX(o.createdAt) as last_sold_at
           FROM order_items oi
           INNER JOIN orders o ON oi.order_id = o.id
           WHERE o.status IN (:statuses)

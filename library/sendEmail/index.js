@@ -14,6 +14,15 @@ Handlebars.registerHelper('eq', function(a, b) {
     return a === b;
 });
 
+const templateCompileCache = new Map();
+
+function getCompiledTemplate(filePath, source) {
+    if (!templateCompileCache.has(filePath)) {
+        templateCompileCache.set(filePath, Handlebars.compile(source));
+    }
+    return templateCompileCache.get(filePath);
+}
+
 let transporter;
 
 if (process.env.EMAIL_TEST_MODE !== 'true') {
@@ -49,7 +58,7 @@ if (process.env.EMAIL_TEST_MODE !== 'true') {
 }
 
 
-module.exports = async (to, emailType, context = {}, attachments = []) => {
+module.exports = async function sendEmail(to, emailType, context = {}, attachments = []) {
     try {
         // if unknown type, throw error
         if (!constants.emailTypes[emailType]) {
@@ -137,8 +146,8 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
                 emailEncoded,
                 currentYear: new Date().getFullYear()
             };
-            data.text = Handlebars.compile(text)(templateContext);
-            data.html = Handlebars.compile(html)(templateContext);
+            data.text = getCompiledTemplate(textPath, text)(templateContext);
+            data.html = getCompiledTemplate(htmlPath, html)(templateContext);
         } catch (error) {
             throw {
                 message: "Email template render failed",
@@ -179,4 +188,12 @@ module.exports = async (to, emailType, context = {}, attachments = []) => {
         });
         throw error;
     }
+};
+
+async function closeEmailTransport() {
+    if (transporter && typeof transporter.close === 'function') {
+        await transporter.close();
+    }
 }
+
+module.exports.closeEmailTransport = closeEmailTransport;

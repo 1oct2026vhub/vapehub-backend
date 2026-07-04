@@ -25,6 +25,86 @@ function getOrderCustomerEmail(order) {
     return order.user?.email || order.email || null;
 }
 
+const ORDER_REPORT_CHUNK_SIZE = 500;
+const ORDER_REPORT_MAX_DAYS = 90;
+
+const ORDER_REPORT_INCLUDES = [
+    {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
+        required: false,
+        paranoid: false
+    },
+    {
+        model: OrderAddress,
+        as: 'orderShippingAddress',
+        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
+        required: false
+    },
+    {
+        model: OrderAddress,
+        as: 'orderBillingAddress',
+        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
+        required: false
+    },
+    {
+        model: OrderItem,
+        as: 'orderItems',
+        include: [
+            {
+                model: Product,
+                as: 'product',
+                attributes: ['name'],
+                required: false
+            },
+            {
+                model: ProductVariant,
+                as: 'variant',
+                attributes: ['price'],
+                required: false
+            }
+        ]
+    }
+];
+
+function formatOrderReportRow(order) {
+    const customerName = order.user
+        ? `${order.user.first_name || ''} ${order.user.last_name || ''}`.trim()
+        : 'N/A';
+    const customerEmail = order.user?.email || 'N/A';
+    const customerPhone = order.user?.phone || 'N/A';
+
+    const shippingAddress = order.orderShippingAddress
+        ? `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || order.orderShippingAddress.region || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim()
+        : 'N/A';
+
+    const billingAddress = order.orderBillingAddress
+        ? `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || order.orderBillingAddress.region || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim()
+        : 'N/A';
+
+    const productDetails = order.orderItems?.map((item) => {
+        const productName = item.product?.name || 'Unknown Product';
+        const quantity = item.quantity || 0;
+        const price = item.variant?.price || 0;
+        return `${productName} (${quantity}x) - ${price}`;
+    }).join('\n') || 'N/A';
+
+    return {
+        orderId: order.id,
+        orderUniqueId: order.order_unique_id,
+        orderDate: moment(order.createdAt).format('YYYY-MM-DD HH:mm:ss'),
+        orderStatus: order.status,
+        customerName,
+        customerEmail,
+        customerPhone,
+        shippingAddress,
+        billingAddress,
+        productDetails,
+        totalAmount: order.total
+    };
+}
+
 /**
  * List all orders with filtering and pagination
  * Supports filtering by:
@@ -1074,73 +1154,51 @@ module.exports.generateOrderReport = async (req, res, next) => {
             start_date, 
             end_date 
         } = req.query;
-        console.log(req.query);
+
+        if (!start_date || !end_date) {
+            return errorResponse(res, {
+                message: 'start_date and end_date are required'
+            }, 'Bad Request', 400);
+        }
+
+        const rangeDays = moment(end_date).diff(moment(start_date), 'days');
+        if (rangeDays < 0) {
+            return errorResponse(res, {
+                message: 'end_date must be on or after start_date'
+            }, 'Bad Request', 400);
+        }
+        if (rangeDays > ORDER_REPORT_MAX_DAYS) {
+            return errorResponse(res, {
+                message: `Date range cannot exceed ${ORDER_REPORT_MAX_DAYS} days`
+            }, 'Bad Request', 400);
+        }
+
         let whereCondition = {};
 
-        // Status filter
         if (status) {
             whereCondition.status = status;
         }
 
-        // Date range filter
-        if (start_date && end_date) {
-            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endMoment = moment(end_date);
-            const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
-            
-            whereCondition.createdAt = {
-                [Op.between]: [startDateTime, endDateTime]
-            };
-        }
-        const orders = await Order.findAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
-                    required: false,
-                    paranoid: false
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
-                    required: false
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderBillingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
-                    required: false
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['name'],
-                            required: false
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['price'],
-                            required: false
-                        }
-                    ]
-                }
-            ],
-            order: [['createdAt', 'DESC']]
-        });
+        const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
+        const endMoment = moment(end_date);
+        const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
 
-        // Create a new workbook
-        const workbook = new ExcelJS.Workbook();
+        whereCondition.createdAt = {
+            [Op.between]: [startDateTime, endDateTime]
+        };
+
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename=orders-report-${moment().format('YYYY-MM-DD')}.xlsx`
+        );
+
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
         const worksheet = workbook.addWorksheet('Orders');
 
-        // Define columns
         worksheet.columns = [
             { header: 'Order ID', key: 'orderId', width: 15 },
             { header: 'Unique Order ID', key: 'orderUniqueId', width: 20 },
@@ -1155,70 +1213,31 @@ module.exports.generateOrderReport = async (req, res, next) => {
             { header: 'Total Amount', key: 'totalAmount', width: 15 }
         ];
 
-        // Add data rows
-        orders.forEach(order => {
-            // Safely handle null values
-            const customerName = order.user ? `${order.user.first_name || ''} ${order.user.last_name || ''}`.trim() : 'N/A';
-            const customerEmail = order.user?.email || 'N/A';
-            const customerPhone = order.user?.phone || 'N/A';
-            
-            // Safely handle shipping address
-            const shippingAddress = order.orderShippingAddress ? 
-                `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim() : 
-                'N/A';
+        let lastId = null;
 
-            // Safely handle billing address
-            const billingAddress = order.orderBillingAddress ? 
-                `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim() : 
-                'N/A';
-
-            // Safely handle product details
-            const productDetails = order.orderItems?.map(item => {
-                const productName = item.product?.name || 'Unknown Product';
-                const quantity = item.quantity || 0;
-                const price = item.variant?.price || 0;
-                return `${productName} (${quantity}x) - ${price}`;
-            }).join('\n') || 'N/A';
-
-            worksheet.addRow({
-                orderId: order.id,
-                orderUniqueId: order.order_unique_id,
-                orderDate: moment(order.createdAt).format('YYYY-MM-DD HH:mm:ss'),
-                orderStatus: order.status,
-                customerName,
-                customerEmail,
-                customerPhone,
-                shippingAddress,
-                billingAddress,
-                productDetails,
-                totalAmount: order.total
+        while (true) {
+            const idFilter = lastId ? { id: { [Op.lt]: lastId } } : {};
+            const orders = await Order.findAll({
+                where: { ...whereCondition, ...idFilter },
+                include: ORDER_REPORT_INCLUDES,
+                limit: ORDER_REPORT_CHUNK_SIZE,
+                order: [['id', 'DESC']]
             });
-        });
 
-        // Style the header row
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFE0E0E0' }
-        };
+            if (!orders.length) break;
 
-        // Set response headers
-        res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        );
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename=orders-report-${moment().format('YYYY-MM-DD')}.xlsx`
-        );
+            for (const order of orders) {
+                worksheet.addRow(formatOrderReportRow(order)).commit();
+            }
 
-        // Send the workbook
-        await workbook.xlsx.write(res);
-        res.end();
+            lastId = orders[orders.length - 1].id;
+        }
+
+        await workbook.commit();
     } catch (error) {
-        console.log(error);
         console.error("generateOrderReport error:", error);
-        return errorResponse(res, error, error.message);
+        if (!res.headersSent) {
+            return errorResponse(res, error, error.message);
+        }
     }
 }; 

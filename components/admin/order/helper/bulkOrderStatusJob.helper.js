@@ -437,92 +437,6 @@ async function claimSpecificPendingJobItem(jobItemId) {
     return item;
 }
 
-async function releaseProcessingJobItem(jobItemId, reason = 'worker_release') {
-    let jobIdToFinalize = null;
-
-    const outcome = await sequelize.transaction(async (transaction) => {
-        const item = await BulkOrderStatusJobItem.findByPk(jobItemId, {
-            lock: transaction.LOCK.UPDATE,
-            transaction,
-        });
-
-        if (!item) {
-            return { found: false };
-        }
-
-        if (['success', 'failed', 'skipped'].includes(item.status)) {
-            return {
-                found: true,
-                released: false,
-                finalized: true,
-                item_status: item.status,
-            };
-        }
-
-        if (item.status !== 'processing') {
-            return {
-                found: true,
-                released: false,
-                finalized: false,
-                item_status: item.status,
-            };
-        }
-
-        const job = await BulkOrderStatusJob.findByPk(item.job_id, { transaction });
-        if (!job) {
-            return { found: true, released: false, finalized: false, item_status: item.status };
-        }
-
-        const order = await Order.findByPk(item.order_id, {
-            attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
-            transaction,
-        });
-
-        if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
-            const skipped = await finalizeJobItemAsSkippedTx(
-                item,
-                job,
-                order,
-                `release: order already processed (${reason})`,
-                transaction
-            );
-            if (skipped) {
-                jobIdToFinalize = job.id;
-            }
-            return {
-                found: true,
-                released: false,
-                finalized: skipped,
-                item_status: skipped ? 'skipped' : item.status,
-            };
-        }
-
-        const [updated] = await BulkOrderStatusJobItem.update(
-            {
-                status: 'pending',
-                error_message: `released: ${reason}`,
-            },
-            {
-                where: { id: jobItemId, status: 'processing' },
-                transaction,
-            }
-        );
-
-        return {
-            found: true,
-            released: updated > 0,
-            finalized: false,
-            item_status: updated > 0 ? 'pending' : item.status,
-        };
-    });
-
-    if (jobIdToFinalize) {
-        await finalizeJobIfComplete(jobIdToFinalize);
-    }
-
-    return outcome;
-}
-
 async function finalizeJobIfComplete(jobId) {
     const pendingOrProcessing = await BulkOrderStatusJobItem.count({
         where: {
@@ -880,7 +794,6 @@ module.exports = {
     createBulkOrderStatusJob,
     claimNextPendingJobItem,
     claimSpecificPendingJobItem,
-    releaseProcessingJobItem,
     processBulkOrderStatusJobItem,
     getBulkOrderStatusJobDetails,
     listBulkOrderStatusJobs,
