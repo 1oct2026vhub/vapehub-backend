@@ -93,9 +93,21 @@ const invalidateCachePattern = async (pattern) => {
     }
 };
 
+async function closeRedis() {
+    if (redis.status === 'end' || redis.status === 'close') {
+        return;
+    }
+    try {
+        await redis.quit();
+    } catch (err) {
+        logger.logError({ message: 'Redis quit error', error: err.message });
+    }
+}
+
 module.exports = {
     redis,
     cacheOrFetch,
     invalidateCache,
-    invalidateCachePattern
+    invalidateCachePattern,
+    closeRedis
 };

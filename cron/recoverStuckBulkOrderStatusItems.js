@@ -138,12 +138,14 @@ async function recoverStalePendingBulkOrderStatusItems() {
 
     const stalePending = await BulkOrderStatusJobItem.findAll({
         where: {
-            status: 'pending',
-            attempts: { [Op.lt]: MAX_ATTEMPTS },
-            createdAt: { [Op.lt]: cutoff },
+            [Op.and]: [
+                { status: 'pending' },
+                { attempts: { [Op.lt]: MAX_ATTEMPTS } },
+                sequelize.where(sequelize.col('created_at'), Op.lt, cutoff),
+            ],
         },
         attributes: ['id', 'job_id'],
-        order: [['createdAt', 'ASC']],
+        order: [[sequelize.col('created_at'), 'ASC']],
         limit: BATCH_LIMIT,
     });
 
