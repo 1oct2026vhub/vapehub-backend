@@ -28,6 +28,7 @@ const {
     generatePaymentReference,
 } = require('./paymentSuccessUrl.helper');
 const { generateTransactionReference } = require('./worldpay.helper');
+const { ensurePendingWorldpayTransaction } = require('../../payment/helper/worldpayPendingTransaction.helper');
 const constants = require('../../../config/constants');
 const { v4: uuidv4 } = require('uuid');
 
@@ -813,6 +814,14 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     if (worldpayCheckoutRequest && order) {
         worldpayCheckoutRequest.logContext.orderId = order.id;
+        await ensurePendingWorldpayTransaction({
+            userId: user_id,
+            orderId: order.id,
+            orderCode: order.order_code,
+            amount: parseFloat(order.total),
+            currency: 'GBP',
+            dbTransaction: transaction
+        });
     }
 
     let responseSubTotal = subTotal;
