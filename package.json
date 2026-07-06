@@ -15,7 +15,8 @@
     "worker:email-campaign": "node workers/emailCampaignWorker.js",
     "worker:email-campaign:dev": "nodemon workers/emailCampaignWorker.js",
     "worker:bulk-order-status-sqs": "node workers/bulkOrderStatusSqsWorker.js",
-    "worker:bulk-order-status-sqs:dev": "nodemon workers/bulkOrderStatusSqsWorker.js"
+    "worker:bulk-order-status-sqs:dev": "nodemon workers/bulkOrderStatusSqsWorker.js",
+    "reconcile:worldpay": "node scripts/runWorldpayReconcile.js"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",

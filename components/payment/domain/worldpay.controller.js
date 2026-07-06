@@ -839,10 +839,23 @@ const handleSentForAuthorization = async (order, webhookData) => {
 
 const handleSentForSettlement = async (order, webhookData) => {
     try {
-        await processSettlementWebhook(webhookData, 'webhook:settlement', parseFloat(order.total));
+        const result = await processSettlementWebhook(
+            webhookData,
+            'webhook:settlement',
+            parseFloat(order.total)
+        );
 
-        
+        if (result?.skipped || result?.result?.skipped) {
+            paymentWebhookLogger.logInfo({
+                type: 'worldpay_settlement_skipped',
+                order_id: order.id,
+                order_status: order.status,
+                transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+                reason: result?.reason || result?.result?.reason || 'ORDER_NOT_ELIGIBLE'
+            });
+        }
 
+        return webhookData.eventDetails.transactionReference;
         // for (const item of order.orderItems) {
         //     if (item.variant) {
         //         // Update variant stock

@@ -5,12 +5,16 @@ const { createDomainLogger } = require('../library/logging/domainLogger');
 const { Order, PaymentMethod, Transaction, sequelize } = require('../models');
 const { confirmWorldpayPayment } = require('../components/payment/domain/worldpayPaymentFinalize.service');
 const { getWorldpayPaymentState } = require('../components/payment/helper/worldpayPaymentQuery.helper');
+const {
+    RECONCILE_ELIGIBLE_STATUSES,
+    RECONCILE_MAX_AGE_DAYS
+} = require('../components/payment/helper/worldpayPaymentEligibility.helper');
 
 const reconcileLog = createDomainLogger('payment-reconcile');
 
 const SCHEDULE = process.env.WORLDPAY_RECONCILE_CRON || '*/15 * * * *';
 const MIN_AGE_MINUTES = Math.max(5, Number(process.env.WORLDPAY_RECONCILE_MIN_AGE_MINUTES || 15));
-const MAX_AGE_DAYS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_AGE_DAYS || 30));
+const MAX_AGE_DAYS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_AGE_DAYS || RECONCILE_MAX_AGE_DAYS));
 const BATCH_LIMIT = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_BATCH_LIMIT || 100));
 const DRY_RUN = String(process.env.WORLDPAY_RECONCILE_DRY_RUN || 'false').toLowerCase() === 'true';
 
@@ -38,6 +42,7 @@ async function findOrphanWorldpayOrders(limit = BATCH_LIMIT) {
         ordered: false,
         order_code: { [Op.ne]: null },
         payment_method_id: worldpayMethod.id,
+        status: { [Op.in]: RECONCILE_ELIGIBLE_STATUSES },
         createdAt: {
             [Op.between]: [minCreatedAt, maxCreatedAt]
         }
@@ -62,6 +67,7 @@ async function reconcileUnpaidWorldpayOrders() {
         reconciled: 0,
         skippedNotSettled: 0,
         skippedQueryUnavailable: 0,
+        skippedIneligible: 0,
         dryRun: DRY_RUN,
         errors: []
     };
@@ -107,6 +113,8 @@ async function reconcileUnpaidWorldpayOrders() {
 
             if (result.ok) {
                 summary.reconciled += 1;
+            } else if (result.reason === 'ORDER_NOT_ELIGIBLE') {
+                summary.skippedIneligible += 1;
             } else {
                 summary.errors.push({
                     order_id: order.id,
@@ -129,9 +137,7 @@ async function reconcileUnpaidWorldpayOrders() {
         }
     }
 
-    if (summary.reconciled > 0 || summary.errors.length > 0) {
-        logger.info('Worldpay reconcile tick', summary);
-    }
+    logger.info('Worldpay reconcile tick', summary);
 
     return summary;
 }

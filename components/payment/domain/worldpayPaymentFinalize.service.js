@@ -4,6 +4,10 @@ const {
     findWorldpayOrderByCode,
     runPostPaymentSideEffects
 } = require('./worldpay.paidOrder.helper');
+const {
+    isWorldpayPaymentFinalizeEligible,
+    requiresPaymentFinalizeEligibility
+} = require('../helper/worldpayPaymentEligibility.helper');
 
 const POST_PAYMENT_MARKER_STATUS = 'post_payment_processed';
 
@@ -62,12 +66,14 @@ const finalizePaidOrder = async ({
             throw new Error('Order not found during payment finalization');
         }
 
-        if (
-            ['processing', 'shipped', 'delivered', 'completed'].includes(lockedOrder.status) &&
-            lockedOrder.ordered
-        ) {
+        if (lockedOrder.ordered) {
             await transaction.commit();
             return { noOp: true, order: lockedOrder };
+        }
+
+        if (!['pending', 'cancel'].includes(lockedOrder.status)) {
+            await transaction.commit();
+            return { noOp: true, skippedIneligible: true, order: lockedOrder };
         }
 
         await lockedOrder.update(
@@ -220,6 +226,23 @@ const processWorldpayPaidOrder = async ({
     order.status = finalizationResult.order.status;
     order.ordered = finalizationResult.order.ordered;
 
+    if (finalizationResult.skippedIneligible) {
+        return {
+            finalized: false,
+            skippedIneligible: true,
+            order
+        };
+    }
+
+    if (finalizationResult.noOp) {
+        return {
+            finalized: true,
+            postProcessed: false,
+            alreadyDone: true,
+            order
+        };
+    }
+
     if (await hasPostPaymentProcessed(order.id, order.user_id)) {
         return {
             finalized: true,
@@ -288,6 +311,15 @@ const confirmWorldpayPayment = async ({
         };
     }
 
+    if (requiresPaymentFinalizeEligibility(source) && !isWorldpayPaymentFinalizeEligible(order)) {
+        return {
+            ok: false,
+            reason: 'ORDER_NOT_ELIGIBLE',
+            orderStatus: order.status,
+            orderCode
+        };
+    }
+
     const referenceNumber = orderCode || order.order_code;
     const paymentAmount = amount != null ? amount : parseFloat(order.total);
 
@@ -300,6 +332,15 @@ const confirmWorldpayPayment = async ({
         metadata,
         orderCodeForEffects: referenceNumber
     });
+
+    if (result.skippedIneligible) {
+        return {
+            ok: false,
+            reason: 'ORDER_NOT_ELIGIBLE',
+            orderStatus: order.status,
+            orderCode: referenceNumber
+        };
+    }
 
     return {
         ok: true,

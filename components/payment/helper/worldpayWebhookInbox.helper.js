@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const { PaymentWebhookInbox } = require('../../../models');
 const { confirmWorldpayPayment } = require('../domain/worldpayPaymentFinalize.service');
+const { findWorldpayOrderByCode } = require('../domain/worldpay.paidOrder.helper');
+const { isWorldpayPaymentFinalizeEligible } = require('./worldpayPaymentEligibility.helper');
 
 const SETTLEMENT_EVENT = 'sentForSettlement';
 
@@ -73,6 +75,22 @@ async function processSettlementFromInbox(inboxRow, source, orderTotalFallback =
         attempts: inboxRow.attempts + 1
     });
 
+    const order = await findWorldpayOrderByCode(transactionReference);
+
+    if (!order || !isWorldpayPaymentFinalizeEligible(order)) {
+        const skipReason = order
+            ? `Skipped: order status ${order.status} (only pending/cancel are eligible)`
+            : 'Skipped: order not found';
+
+        await inboxRow.update({
+            status: 'processed',
+            processed_at: new Date(),
+            last_error: skipReason
+        });
+
+        return { skipped: true, reason: 'ORDER_NOT_ELIGIBLE', orderStatus: order?.status || null };
+    }
+
     let amount;
     let currency = webhookData?.eventDetails?.amount?.currencyCode || 'GBP';
 
@@ -101,10 +119,19 @@ async function processSettlementFromInbox(inboxRow, source, orderTotalFallback =
             classification: webhookData.eventDetails?.classification,
             paymentLink: webhookData.eventDetails?._links?.payment?.href,
             inboxId: inboxRow.id
-        }
+        },
+        order
     });
 
     if (!result.ok) {
+        if (result.reason === 'ORDER_NOT_ELIGIBLE') {
+            await inboxRow.update({
+                status: 'processed',
+                processed_at: new Date(),
+                last_error: `Skipped: order status ${result.orderStatus || 'unknown'}`
+            });
+            return { skipped: true, reason: result.reason, orderStatus: result.orderStatus };
+        }
         throw new Error(result.reason || 'Payment confirmation failed');
     }
 
@@ -126,6 +153,9 @@ async function processSettlementWebhook(webhookData, source = 'webhook:settlemen
 
     try {
         const result = await processSettlementFromInbox(row, source, orderTotalFallback);
+        if (result?.skipped) {
+            return { skipped: true, reason: result.reason, inboxId: row.id, result };
+        }
         return { skipped: false, inboxId: row.id, result };
     } catch (error) {
         await row.update({

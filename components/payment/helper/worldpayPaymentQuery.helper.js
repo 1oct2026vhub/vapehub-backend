@@ -45,6 +45,9 @@ const extractPaymentCandidates = (data) => {
     if (Array.isArray(data._embedded?.payments)) {
         candidates.push(...data._embedded.payments);
     }
+    if (Array.isArray(data.payments)) {
+        candidates.push(...data.payments);
+    }
     if (data.payment) {
         candidates.push(data.payment);
     }
@@ -55,9 +58,9 @@ const extractPaymentCandidates = (data) => {
     return candidates;
 };
 
-const isSettledPayment = (payment) => {
+const collectLastEventHints = (payment) => {
     if (!payment || typeof payment !== 'object') {
-        return false;
+        return [];
     }
 
     const hints = [
@@ -65,10 +68,25 @@ const isSettledPayment = (payment) => {
         payment.status,
         payment.paymentStatus,
         payment.outcome,
-        payment?.settlement?.status
-    ]
-        .filter(Boolean)
-        .map((v) => String(v).toLowerCase());
+        payment?.settlement?.status,
+        payment?.authorization?.status
+    ];
+
+    if (Array.isArray(payment.events)) {
+        for (const event of payment.events) {
+            hints.push(event?.type, event?.name, event?.status);
+        }
+    }
+
+    return hints.filter(Boolean).map((v) => String(v).toLowerCase());
+};
+
+const isSettledPayment = (payment) => {
+    if (!payment || typeof payment !== 'object') {
+        return false;
+    }
+
+    const hints = collectLastEventHints(payment);
 
     return hints.some((hint) => {
         if (SETTLED_EVENT_HINTS.has(hint)) {
@@ -160,7 +178,11 @@ async function getWorldpayPaymentState(transactionReference) {
                 queryUnavailable: false,
                 amount: parseAmountFromWorldpayValue(payment?.value) || null,
                 currency: payment?.value?.currency || payment?.currency || 'GBP',
-                lastEvent: payment?.lastEvent || payment?.status || null,
+                lastEvent:
+                    payment?.lastEvent ||
+                    collectLastEventHints(payment).find(Boolean) ||
+                    payment?.status ||
+                    null,
                 endpoint: endpoint.name,
                 raw: payment || response.data
             };
