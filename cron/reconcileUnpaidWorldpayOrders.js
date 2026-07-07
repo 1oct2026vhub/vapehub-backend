@@ -12,8 +12,8 @@ const {
 
 const reconcileLog = createDomainLogger('payment-reconcile');
 
-const SCHEDULE = process.env.WORLDPAY_RECONCILE_CRON || '*/15 * * * *';
-const MIN_AGE_MINUTES = Math.max(5, Number(process.env.WORLDPAY_RECONCILE_MIN_AGE_MINUTES || 15));
+const SCHEDULE = process.env.WORLDPAY_RECONCILE_CRON || '*/5 * * * *';
+const MIN_AGE_MINUTES = Math.max(5, Number(process.env.WORLDPAY_RECONCILE_MIN_AGE_MINUTES || 5));
 const MAX_AGE_DAYS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_AGE_DAYS || RECONCILE_MAX_AGE_DAYS));
 const BATCH_LIMIT = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_BATCH_LIMIT || 100));
 const DRY_RUN = String(process.env.WORLDPAY_RECONCILE_DRY_RUN || 'false').toLowerCase() === 'true';

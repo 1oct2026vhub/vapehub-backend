@@ -12,9 +12,13 @@ async function retryFailedWorldpayWebhooks() {
         maxAttempts: MAX_ATTEMPTS
     });
 
-    if (result.retried.length > 0 || result.exhausted.length > 0) {
-        logger.info('Worldpay webhook retry tick', result);
-    }
+    logger.info('Worldpay webhook retry tick', {
+        scanned: result.scanned,
+        retriedCount: result.retried.length,
+        exhaustedCount: result.exhausted.length,
+        retried: result.retried,
+        exhausted: result.exhausted
+    });
 
     return result;
 }
