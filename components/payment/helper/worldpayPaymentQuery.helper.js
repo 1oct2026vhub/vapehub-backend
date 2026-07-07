@@ -3,8 +3,25 @@ const { createDomainLogger } = require('../../../library/logging/domainLogger');
 
 const paymentQueryLog = createDomainLogger('payment-reconcile');
 
-const PAYMENT_QUERIES_ACCEPT =
-    'application/vnd.worldpay.payment-queries-v1.hal+json, application/vnd.worldpay.payments-v1.hal+json';
+const PAYMENT_QUERIES_ACCEPT = 'application/vnd.worldpay.payment-queries-v1.hal+json';
+const PAYMENTS_ACCEPT = 'application/vnd.worldpay.payments-v1.hal+json';
+
+const buildWorldpayHeaders = (auth, accept) => ({
+    Authorization: auth,
+    Accept: accept,
+    'User-Agent': 'VapeHub/1.0'
+});
+
+const resolveAcceptHeaderForUrl = (url) => {
+    const normalized = String(url || '').toLowerCase();
+    if (normalized.includes('/paymentqueries/')) {
+        return PAYMENT_QUERIES_ACCEPT;
+    }
+    if (normalized.includes('/payments/')) {
+        return PAYMENTS_ACCEPT;
+    }
+    return PAYMENT_QUERIES_ACCEPT;
+};
 
 /**
  * Webhook event names and Payment Queries API lastEvent values that indicate
@@ -198,7 +215,7 @@ const logPaymentQueryResult = (transactionReference, result) => {
     });
 };
 
-async function fetchPaymentDetail(baseUrl, headers, timeout, payment) {
+async function fetchPaymentDetail(baseUrl, auth, timeout, payment) {
     const detailHref = payment?._links?.self?.href;
     if (!detailHref) {
         return payment;
@@ -206,7 +223,8 @@ async function fetchPaymentDetail(baseUrl, headers, timeout, payment) {
 
     try {
         const detailUrl = resolveWorldpayUrl(baseUrl, detailHref);
-        const detailResponse = await worldpayGet(detailUrl, headers, timeout);
+        const detailHeaders = buildWorldpayHeaders(auth, resolveAcceptHeaderForUrl(detailUrl));
+        const detailResponse = await worldpayGet(detailUrl, detailHeaders, timeout);
 
         if (detailResponse.status >= 400 || !detailResponse.data) {
             return payment;
@@ -266,11 +284,7 @@ async function getWorldpayPaymentState(transactionReference) {
     }
 
     const timeout = Number(process.env.WORLDPAY_TIMEOUT_MS) || 15000;
-    const headers = {
-        Authorization: auth,
-        Accept: PAYMENT_QUERIES_ACCEPT,
-        'User-Agent': 'VapeHub/1.0'
-    };
+    const headers = buildWorldpayHeaders(auth, PAYMENT_QUERIES_ACCEPT);
 
     let lastError = null;
 
@@ -314,7 +328,7 @@ async function getWorldpayPaymentState(transactionReference) {
             let payment = pickMatchingPayment(candidates, transactionReference);
 
             if (payment) {
-                payment = await fetchPaymentDetail(baseUrl, headers, timeout, payment);
+                payment = await fetchPaymentDetail(baseUrl, auth, timeout, payment);
                 const result = buildPaymentStateResult(payment, 'paymentQueries', transactionReference);
                 logPaymentQueryResult(transactionReference, result);
                 return result;
