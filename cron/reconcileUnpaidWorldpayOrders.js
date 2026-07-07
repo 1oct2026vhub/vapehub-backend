@@ -7,13 +7,18 @@ const { confirmWorldpayPayment } = require('../components/payment/domain/worldpa
 const { getWorldpayPaymentState } = require('../components/payment/helper/worldpayPaymentQuery.helper');
 const {
     RECONCILE_ELIGIBLE_STATUSES,
-    RECONCILE_MAX_AGE_DAYS
+    RECONCILE_MAX_AGE_DAYS,
+    DEFAULT_RECONCILE_MIN_AGE_MINUTES,
+    DEFAULT_RECONCILE_CRON
 } = require('../components/payment/helper/worldpayPaymentEligibility.helper');
 
 const reconcileLog = createDomainLogger('payment-reconcile');
 
-const SCHEDULE = process.env.WORLDPAY_RECONCILE_CRON || '*/5 * * * *';
-const MIN_AGE_MINUTES = Math.max(5, Number(process.env.WORLDPAY_RECONCILE_MIN_AGE_MINUTES || 5));
+const SCHEDULE = process.env.WORLDPAY_RECONCILE_CRON || DEFAULT_RECONCILE_CRON;
+const MIN_AGE_MINUTES = Math.max(
+    DEFAULT_RECONCILE_MIN_AGE_MINUTES,
+    Number(process.env.WORLDPAY_RECONCILE_MIN_AGE_MINUTES || DEFAULT_RECONCILE_MIN_AGE_MINUTES)
+);
 const MAX_AGE_DAYS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_AGE_DAYS || RECONCILE_MAX_AGE_DAYS));
 const BATCH_LIMIT = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_BATCH_LIMIT || 100));
 const DRY_RUN = String(process.env.WORLDPAY_RECONCILE_DRY_RUN || 'false').toLowerCase() === 'true';
