@@ -83,11 +83,27 @@ async function reconcileUnpaidWorldpayOrders() {
 
             if (state.queryUnavailable) {
                 summary.skippedQueryUnavailable += 1;
+                reconcileLog.logInfo({
+                    event: 'worldpay_reconcile_skipped',
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    reason: state.reason || 'QUERY_UNAVAILABLE',
+                    last_error: state.lastError || null
+                });
                 continue;
             }
 
             if (!state.settled) {
                 summary.skippedNotSettled += 1;
+                reconcileLog.logInfo({
+                    event: 'worldpay_reconcile_skipped',
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    reason: state.reason || 'NOT_SETTLED',
+                    worldpay_last_event: state.lastEvent || null,
+                    worldpay_event_hints: state.eventHints || null,
+                    worldpay_endpoint: state.endpoint || null
+                });
                 continue;
             }
 
