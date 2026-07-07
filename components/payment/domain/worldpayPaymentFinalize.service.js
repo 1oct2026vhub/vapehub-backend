@@ -205,6 +205,81 @@ const markPostPaymentProcessed = async (order, source) => {
     });
 };
 
+const resolveWorldpayOrderForFinalize = async (orderCode, orderInstance = null) => {
+    const lookupCode = orderCode || orderInstance?.order_code;
+    if (!lookupCode) {
+        return null;
+    }
+
+    return findWorldpayOrderByCode(lookupCode);
+};
+
+const AUTOMATED_SOURCES_WITH_SWALLOWED_SIDE_EFFECT_ERRORS = new Set([
+    'webhook:settlement',
+    'cron:webhook-retry',
+    'cron:reconcile',
+    'cron:reconcile-recovery'
+]);
+
+const runPostPaymentSideEffectsIfNeeded = async ({
+    order,
+    amount,
+    currency,
+    source,
+    orderCodeForEffects,
+    recovered = false
+}) => {
+    if (await hasPostPaymentProcessed(order.id, order.user_id)) {
+        return {
+            postProcessed: false,
+            alreadyDone: true,
+            recovered
+        };
+    }
+
+    const effectOrderCode = orderCodeForEffects || order.order_code;
+
+    try {
+        await runPostPaymentSideEffects(order, {
+            amount,
+            currency,
+            orderCode: effectOrderCode
+        });
+        await markPostPaymentProcessed(order, source);
+
+        if (recovered) {
+            paymentWebhookLogger.logInfo({
+                type: 'worldpay_post_payment_recovered',
+                order_id: order.id,
+                order_code: order.order_code,
+                source
+            });
+        }
+
+        return {
+            postProcessed: true,
+            alreadyDone: false,
+            recovered
+        };
+    } catch (sideEffectError) {
+        if (AUTOMATED_SOURCES_WITH_SWALLOWED_SIDE_EFFECT_ERRORS.has(source)) {
+            logPaymentFinalizeError('worldpay_settlement_post_process_error', sideEffectError, {
+                order_id: order.id,
+                order_code: order.order_code,
+                source
+            });
+            return {
+                postProcessed: false,
+                sideEffectFailed: true,
+                alreadyDone: false,
+                recovered
+            };
+        }
+
+        throw sideEffectError;
+    }
+};
+
 const processWorldpayPaidOrder = async ({
     order,
     referenceNumber,
@@ -234,60 +309,64 @@ const processWorldpayPaidOrder = async ({
         };
     }
 
-    if (finalizationResult.noOp) {
+    const sideEffectResult = await runPostPaymentSideEffectsIfNeeded({
+        order,
+        amount,
+        currency,
+        source,
+        orderCodeForEffects: orderCodeForEffects || referenceNumber || order.order_code,
+        recovered: finalizationResult.noOp
+    });
+
+    return {
+        finalized: true,
+        ...sideEffectResult,
+        order
+    };
+};
+
+/**
+ * Recover post-payment side effects for orders already marked paid/processing.
+ */
+const recoverWorldpayPostPaymentEffects = async ({
+    orderCode,
+    amount,
+    currency = 'GBP',
+    source = 'cron:reconcile-recovery'
+}) => {
+    const order = await resolveWorldpayOrderForFinalize(orderCode);
+
+    if (!order) {
         return {
-            finalized: true,
-            postProcessed: false,
-            alreadyDone: true,
-            order
+            ok: false,
+            reason: 'ORDER_NOT_FOUND',
+            orderCode
         };
     }
 
-    if (await hasPostPaymentProcessed(order.id, order.user_id)) {
+    if (!order.ordered) {
         return {
-            finalized: true,
-            postProcessed: false,
-            alreadyDone: true,
-            order
+            ok: false,
+            reason: 'ORDER_NOT_PAID',
+            orderCode
         };
     }
 
-    const effectOrderCode = orderCodeForEffects || referenceNumber || order.order_code;
+    const paymentAmount = amount != null ? amount : parseFloat(order.total);
+    const sideEffectResult = await runPostPaymentSideEffectsIfNeeded({
+        order,
+        amount: paymentAmount,
+        currency,
+        source,
+        orderCodeForEffects: orderCode || order.order_code,
+        recovered: true
+    });
 
-    try {
-        await runPostPaymentSideEffects(order, {
-            amount,
-            currency,
-            orderCode: effectOrderCode
-        });
-        await markPostPaymentProcessed(order, source);
-        return {
-            finalized: true,
-            postProcessed: true,
-            alreadyDone: false,
-            order
-        };
-    } catch (sideEffectError) {
-        if (
-            source === 'webhook:settlement' ||
-            source === 'cron:webhook-retry' ||
-            source === 'cron:reconcile'
-        ) {
-            logPaymentFinalizeError('worldpay_settlement_post_process_error', sideEffectError, {
-                order_id: order.id,
-                order_code: order.order_code,
-                source
-            });
-            return {
-                finalized: true,
-                postProcessed: false,
-                sideEffectFailed: true,
-                alreadyDone: false,
-                order
-            };
-        }
-        throw sideEffectError;
-    }
+    return {
+        ok: true,
+        orderCode: orderCode || order.order_code,
+        ...sideEffectResult
+    };
 };
 
 /**
@@ -301,13 +380,13 @@ const confirmWorldpayPayment = async ({
     metadata = {},
     order: orderInstance = null
 }) => {
-    const order = orderInstance || (await findWorldpayOrderByCode(orderCode));
+    const order = await resolveWorldpayOrderForFinalize(orderCode, orderInstance);
 
     if (!order) {
         return {
             ok: false,
             reason: 'ORDER_NOT_FOUND',
-            orderCode
+            orderCode: orderCode || orderInstance?.order_code
         };
     }
 
@@ -351,6 +430,7 @@ const confirmWorldpayPayment = async ({
 
 module.exports = {
     confirmWorldpayPayment,
+    recoverWorldpayPostPaymentEffects,
     processWorldpayPaidOrder,
     finalizePaidOrder,
     hasPostPaymentProcessed,

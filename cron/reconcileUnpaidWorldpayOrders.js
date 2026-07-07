@@ -2,8 +2,12 @@ const cron = require('node-cron');
 const { Op } = require('sequelize');
 const logger = require('../library/logger');
 const { createDomainLogger } = require('../library/logging/domainLogger');
-const { Order, PaymentMethod, Transaction, sequelize } = require('../models');
-const { confirmWorldpayPayment } = require('../components/payment/domain/worldpayPaymentFinalize.service');
+const { Order, PaymentMethod, Transaction, OrderLog, sequelize } = require('../models');
+const {
+    confirmWorldpayPayment,
+    recoverWorldpayPostPaymentEffects,
+    POST_PAYMENT_MARKER_STATUS
+} = require('../components/payment/domain/worldpayPaymentFinalize.service');
 const { getWorldpayPaymentState } = require('../components/payment/helper/worldpayPaymentQuery.helper');
 const {
     RECONCILE_ELIGIBLE_STATUSES,
@@ -65,6 +69,107 @@ async function findOrphanWorldpayOrders(limit = BATCH_LIMIT) {
     });
 }
 
+async function findWorldpayOrdersMissingPostPayment(limit = BATCH_LIMIT) {
+    const minCreatedAt = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+
+    const worldpayMethod = await PaymentMethod.findOne({
+        where: { payment_method: 'Worldpay' },
+        attributes: ['id']
+    });
+
+    if (!worldpayMethod) {
+        return [];
+    }
+
+    const processedRows = await OrderLog.findAll({
+        where: { status: POST_PAYMENT_MARKER_STATUS },
+        attributes: ['order_id'],
+        raw: true
+    });
+    const processedOrderIds = processedRows.map((row) => row.order_id).filter(Boolean);
+
+    const where = {
+        ordered: true,
+        order_code: { [Op.ne]: null },
+        payment_method_id: worldpayMethod.id,
+        status: 'processing',
+        createdAt: {
+            [Op.gte]: minCreatedAt
+        }
+    };
+
+    if (processedOrderIds.length > 0) {
+        where.id = { [Op.notIn]: processedOrderIds };
+    }
+
+    return Order.findAll({
+        where,
+        attributes: ['id', 'order_code', 'order_unique_id', 'total', 'status', 'ordered', 'createdAt'],
+        include: [
+            {
+                model: Transaction,
+                as: 'transactions',
+                where: { status: 'COMPLETED' },
+                required: true,
+                attributes: ['amount', 'currency']
+            }
+        ],
+        order: [['createdAt', 'ASC']],
+        limit
+    });
+}
+
+async function recoverMissingPostPaymentEffects(summary) {
+    const orders = await findWorldpayOrdersMissingPostPayment();
+    summary.postPaymentRecoveryScanned = orders.length;
+
+    for (const order of orders) {
+        try {
+            if (DRY_RUN) {
+                summary.postPaymentRecovered += 1;
+                continue;
+            }
+
+            const completedTransaction = Array.isArray(order.transactions)
+                ? order.transactions[0]
+                : null;
+
+            const result = await recoverWorldpayPostPaymentEffects({
+                orderCode: order.order_code,
+                amount: completedTransaction?.amount ?? parseFloat(order.total),
+                currency: completedTransaction?.currency || 'GBP',
+                source: 'cron:reconcile-recovery'
+            });
+
+            if (result.ok && result.postProcessed) {
+                summary.postPaymentRecovered += 1;
+            } else if (result.ok && result.alreadyDone) {
+                summary.postPaymentAlreadyDone += 1;
+            } else if (result.sideEffectFailed) {
+                summary.postPaymentRecoveryFailed += 1;
+                summary.errors.push({
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    reason: 'POST_PAYMENT_RECOVERY_FAILED'
+                });
+            }
+        } catch (error) {
+            summary.postPaymentRecoveryFailed += 1;
+            summary.errors.push({
+                order_id: order.id,
+                order_code: order.order_code,
+                message: error.message
+            });
+            reconcileLog.logError({
+                event: 'worldpay_post_payment_recovery_error',
+                order_id: order.id,
+                order_code: order.order_code,
+                message: error.message
+            });
+        }
+    }
+}
+
 async function reconcileUnpaidWorldpayOrders() {
     const orders = await findOrphanWorldpayOrders();
     const summary = {
@@ -73,6 +178,10 @@ async function reconcileUnpaidWorldpayOrders() {
         skippedNotSettled: 0,
         skippedQueryUnavailable: 0,
         skippedIneligible: 0,
+        postPaymentRecoveryScanned: 0,
+        postPaymentRecovered: 0,
+        postPaymentAlreadyDone: 0,
+        postPaymentRecoveryFailed: 0,
         dryRun: DRY_RUN,
         errors: []
     };
@@ -128,8 +237,7 @@ async function reconcileUnpaidWorldpayOrders() {
                 metadata: {
                     reconciledAt: new Date().toISOString(),
                     worldpayLastEvent: state.lastEvent || null
-                },
-                order
+                }
             });
 
             if (result.ok) {
@@ -158,6 +266,8 @@ async function reconcileUnpaidWorldpayOrders() {
         }
     }
 
+    await recoverMissingPostPaymentEffects(summary);
+
     logger.info('Worldpay reconcile tick', summary);
 
     return summary;
@@ -175,4 +285,8 @@ logger.info(
     `Worldpay reconcile cron scheduled (cron='${SCHEDULE}', min_age=${MIN_AGE_MINUTES}m, max_age=${MAX_AGE_DAYS}d, batch=${BATCH_LIMIT}, dry_run=${DRY_RUN})`
 );
 
-module.exports = { reconcileUnpaidWorldpayOrders, findOrphanWorldpayOrders };
+module.exports = {
+    reconcileUnpaidWorldpayOrders,
+    findOrphanWorldpayOrders,
+    findWorldpayOrdersMissingPostPayment
+};
