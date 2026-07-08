@@ -13,8 +13,14 @@ const {
     RECONCILE_ELIGIBLE_STATUSES,
     RECONCILE_MAX_AGE_DAYS,
     DEFAULT_RECONCILE_MIN_AGE_MINUTES,
-    DEFAULT_RECONCILE_CRON
+    DEFAULT_RECONCILE_CRON,
+    RECONCILE_ABANDONED_STATUS
 } = require('../components/payment/helper/worldpayPaymentEligibility.helper');
+const {
+    isDefinitiveUnpaidState,
+    incrementReconcileAttempt,
+    markOrderReconcileAbandoned
+} = require('../components/payment/helper/worldpayReconcileAbandon.helper');
 
 const reconcileLog = createDomainLogger('payment-reconcile');
 
@@ -26,6 +32,9 @@ const MIN_AGE_MINUTES = Math.max(
 const MAX_AGE_DAYS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_AGE_DAYS || RECONCILE_MAX_AGE_DAYS));
 const BATCH_LIMIT = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_BATCH_LIMIT || 100));
 const DRY_RUN = String(process.env.WORLDPAY_RECONCILE_DRY_RUN || 'false').toLowerCase() === 'true';
+const MAX_RECONCILE_ATTEMPTS = Math.max(1, Number(process.env.WORLDPAY_RECONCILE_MAX_ATTEMPTS || 3));
+const CANCEL_ON_EXHAUST =
+    String(process.env.WORLDPAY_RECONCILE_CANCEL_ON_EXHAUST || 'true').toLowerCase() === 'true';
 
 async function findOrphanWorldpayOrders(limit = BATCH_LIMIT) {
     const minCreatedAt = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
@@ -46,6 +55,12 @@ async function findOrphanWorldpayOrders(limit = BATCH_LIMIT) {
         raw: true
     });
     const completedIds = completedOrderIds.map((row) => row.orderId).filter(Boolean);
+    const abandonedRows = await OrderLog.findAll({
+        where: { status: RECONCILE_ABANDONED_STATUS },
+        attributes: ['order_id'],
+        raw: true
+    });
+    const abandonedIds = abandonedRows.map((row) => row.order_id).filter(Boolean);
 
     const where = {
         ordered: false,
@@ -57,8 +72,9 @@ async function findOrphanWorldpayOrders(limit = BATCH_LIMIT) {
         }
     };
 
-    if (completedIds.length > 0) {
-        where.id = { [Op.notIn]: completedIds };
+    const excludedIds = [...completedIds, ...abandonedIds];
+    if (excludedIds.length > 0) {
+        where.id = { [Op.notIn]: excludedIds };
     }
 
     return Order.findAll({
@@ -178,6 +194,8 @@ async function reconcileUnpaidWorldpayOrders() {
         skippedNotSettled: 0,
         skippedQueryUnavailable: 0,
         skippedIneligible: 0,
+        attemptsIncremented: 0,
+        cancelledAfterExhaust: 0,
         postPaymentRecoveryScanned: 0,
         postPaymentRecovered: 0,
         postPaymentAlreadyDone: 0,
@@ -192,6 +210,25 @@ async function reconcileUnpaidWorldpayOrders() {
 
             if (state.queryUnavailable) {
                 summary.skippedQueryUnavailable += 1;
+                const shouldCountAttempt = !DRY_RUN && isDefinitiveUnpaidState(state);
+                if (shouldCountAttempt) {
+                    const attempts = await incrementReconcileAttempt(order, state);
+                    if (attempts > 0) {
+                        summary.attemptsIncremented += 1;
+                    }
+                    if (CANCEL_ON_EXHAUST && attempts >= MAX_RECONCILE_ATTEMPTS) {
+                        await markOrderReconcileAbandoned(order, state, 'cron:reconcile');
+                        summary.cancelledAfterExhaust += 1;
+                        reconcileLog.logInfo({
+                            event: 'worldpay_reconcile_abandoned',
+                            order_id: order.id,
+                            order_code: order.order_code,
+                            attempts,
+                            reason: state.reason || null,
+                            worldpay_last_event: state.lastEvent || null
+                        });
+                    }
+                }
                 reconcileLog.logInfo({
                     event: 'worldpay_reconcile_skipped',
                     order_id: order.id,
@@ -204,6 +241,25 @@ async function reconcileUnpaidWorldpayOrders() {
 
             if (!state.settled) {
                 summary.skippedNotSettled += 1;
+                const shouldCountAttempt = !DRY_RUN && isDefinitiveUnpaidState(state);
+                if (shouldCountAttempt) {
+                    const attempts = await incrementReconcileAttempt(order, state);
+                    if (attempts > 0) {
+                        summary.attemptsIncremented += 1;
+                    }
+                    if (CANCEL_ON_EXHAUST && attempts >= MAX_RECONCILE_ATTEMPTS) {
+                        await markOrderReconcileAbandoned(order, state, 'cron:reconcile');
+                        summary.cancelledAfterExhaust += 1;
+                        reconcileLog.logInfo({
+                            event: 'worldpay_reconcile_abandoned',
+                            order_id: order.id,
+                            order_code: order.order_code,
+                            attempts,
+                            reason: state.reason || null,
+                            worldpay_last_event: state.lastEvent || null
+                        });
+                    }
+                }
                 reconcileLog.logInfo({
                     event: 'worldpay_reconcile_skipped',
                     order_id: order.id,
@@ -282,7 +338,7 @@ cron.schedule(SCHEDULE, async () => {
 });
 
 logger.info(
-    `Worldpay reconcile cron scheduled (cron='${SCHEDULE}', min_age=${MIN_AGE_MINUTES}m, max_age=${MAX_AGE_DAYS}d, batch=${BATCH_LIMIT}, dry_run=${DRY_RUN})`
+    `Worldpay reconcile cron scheduled (cron='${SCHEDULE}', min_age=${MIN_AGE_MINUTES}m, max_age=${MAX_AGE_DAYS}d, batch=${BATCH_LIMIT}, dry_run=${DRY_RUN}, max_attempts=${MAX_RECONCILE_ATTEMPTS}, cancel_on_exhaust=${CANCEL_ON_EXHAUST})`
 );
 
 module.exports = {
