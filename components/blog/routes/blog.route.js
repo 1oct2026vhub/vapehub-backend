@@ -506,6 +506,25 @@ router.get('/id/:id', blogController.getBlogById);
  *           format: uri
  *         description:
  *           type: string
+ *     StorefrontBlogPullQuote:
+ *       type: object
+ *       nullable: true
+ *       description: Single optional pull quote with external authoritative attribution
+ *       properties:
+ *         body:
+ *           type: string
+ *         attribution:
+ *           type: string
+ *           example: "UK Vaping Industry Association, E-Liquid Storage Guidance"
+ *         source_url:
+ *           type: string
+ *           format: uri
+ *         source_type:
+ *           type: string
+ *           enum: [UKVIA, MHRA, OHID, peer_reviewed]
+ *         location:
+ *           type: string
+ *           enum: [mid_body_after_h2]
  *     StorefrontRelatedBlogCard:
  *       type: object
  *       properties:
@@ -606,6 +625,10 @@ router.get('/id/:id', blogController.getBlogById);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/StorefrontBlogSourceItem'
+ *         pull_quote:
+ *           $ref: '#/components/schemas/StorefrontBlogPullQuote'
+ *           nullable: true
+ *           description: Optional single pull quote displayed mid-body after a major H2
  *         related_blogs:
  *           type: array
  *           maxItems: 3

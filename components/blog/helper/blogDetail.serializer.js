@@ -164,6 +164,7 @@ const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
         slug: formatSlug(blogData.slug),
         author: formatMergedAuthor(blogData.author, authorOverride),
         sources: resolveSources(blogData),
+        pull_quote: blogData.pull_quote ?? null,
         related_blogs: relatedBlogs
     };
 };

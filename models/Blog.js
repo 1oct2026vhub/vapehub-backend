@@ -98,6 +98,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        pull_quote: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         author_override: {
             type: DataTypes.JSON,
             allowNull: true

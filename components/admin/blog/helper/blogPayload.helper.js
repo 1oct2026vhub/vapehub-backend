@@ -97,6 +97,84 @@ const parseSourcesField = (field) => {
     });
 };
 
+const PULL_QUOTE_SOURCE_TYPES = ['UKVIA', 'MHRA', 'OHID', 'peer_reviewed'];
+const PULL_QUOTE_LOCATION = 'mid_body_after_h2';
+const INTERNAL_ATTRIBUTION_PATTERN = /\b(vape\s*hub|geek\s*zone|editorial\s*team|product\s*team)\b/i;
+const INTERNAL_SOURCE_HOST_PATTERN = /vapehub/i;
+
+const parsePullQuoteField = (field) => {
+    if (field == null || field === '' || field === '{}' || field === 'null') {
+        return null;
+    }
+
+    let pullQuote = field;
+    if (typeof field === 'string') {
+        const trimmed = field.trim();
+        if (!trimmed || trimmed === '{}' || trimmed === 'null') {
+            return null;
+        }
+        pullQuote = JSON.parse(trimmed);
+    }
+
+    if (pullQuote == null) {
+        return null;
+    }
+
+    if (typeof pullQuote !== 'object' || Array.isArray(pullQuote)) {
+        throw new Error('pull_quote must be a JSON object');
+    }
+
+    const body = pullQuote.body != null ? String(pullQuote.body).trim() : '';
+    const attribution = pullQuote.attribution != null ? String(pullQuote.attribution).trim() : '';
+    const sourceUrl = pullQuote.source_url != null ? String(pullQuote.source_url).trim() : '';
+    const sourceType = pullQuote.source_type != null ? String(pullQuote.source_type).trim() : '';
+
+    if (!body) {
+        throw new Error('pull_quote.body is required');
+    }
+    if (body.length > 1000) {
+        throw new Error('pull_quote.body must be 1000 characters or fewer');
+    }
+    if (!attribution) {
+        throw new Error('pull_quote.attribution is required');
+    }
+    if (attribution.length > 255) {
+        throw new Error('pull_quote.attribution must be 255 characters or fewer');
+    }
+    if (INTERNAL_ATTRIBUTION_PATTERN.test(attribution)) {
+        throw new Error('pull_quote.attribution must reference an authoritative external source, not internal staff or brand');
+    }
+    if (!sourceUrl) {
+        throw new Error('pull_quote.source_url is required');
+    }
+
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(sourceUrl);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            throw new Error('invalid protocol');
+        }
+    } catch {
+        throw new Error('pull_quote.source_url must be a valid URL with http or https');
+    }
+
+    if (INTERNAL_SOURCE_HOST_PATTERN.test(parsedUrl.hostname)) {
+        throw new Error('pull_quote.source_url must point to an external authoritative source');
+    }
+
+    if (!sourceType || !PULL_QUOTE_SOURCE_TYPES.includes(sourceType)) {
+        throw new Error(`pull_quote.source_type must be one of: ${PULL_QUOTE_SOURCE_TYPES.join(', ')}`);
+    }
+
+    return {
+        body,
+        attribution,
+        source_url: sourceUrl,
+        source_type: sourceType,
+        location: PULL_QUOTE_LOCATION
+    };
+};
+
 const parseRelatedBlogIdsField = (field, blogId = null) => {
     const ids = parseJsonOrCsvIds(field, 'related_blog_ids');
     const uniqueIds = [...new Set(ids)];
@@ -160,6 +238,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
     return {
         ...blogData,
         sources: blogData.sources ?? [],
+        pull_quote: blogData.pull_quote ?? null,
         author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
@@ -168,8 +247,11 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
 
 module.exports = {
     AUTHOR_ATTRIBUTES,
+    PULL_QUOTE_SOURCE_TYPES,
+    PULL_QUOTE_LOCATION,
     parseJsonOrCsvIds,
     parseSourcesField,
+    parsePullQuoteField,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields

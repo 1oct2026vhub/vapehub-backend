@@ -2,6 +2,7 @@ const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const { Blog, User } = require('../../../../models');
+const { parsePullQuoteField } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -132,6 +133,13 @@ const sourcesValidation = body('sources')
     .optional()
     .custom((value) => {
         parseSourcesForValidation(value);
+        return true;
+    });
+
+const pullQuoteValidation = body('pull_quote')
+    .optional()
+    .custom((value) => {
+        parsePullQuoteField(value);
         return true;
     });
 
@@ -283,6 +291,7 @@ const blogValidation = [
 
     authorIdValidation(true),
     sourcesValidation,
+    pullQuoteValidation,
     relatedBlogIdsValidation(false),
     ...authorOverrideValidations
 ];
@@ -386,6 +395,7 @@ const blogUpdateValidation = [
 
     authorIdValidation(true),
     sourcesValidation,
+    pullQuoteValidation,
     relatedBlogIdsValidation(true),
     ...authorOverrideValidations
 ];

@@ -205,6 +205,10 @@ router.get('/posts/:id',
  *                 type: string
  *                 description: JSON array of source objects with label, href, and optional description
  *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               pull_quote:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
+ *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -444,6 +448,10 @@ router.put('/posts/bulk-restore',
  *                 type: string
  *                 description: JSON array of source objects with label, href, and optional description
  *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               pull_quote:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
+ *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -605,6 +613,10 @@ router.use('/tags', blogTagRoute);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/BlogSourceItem'
+ *         pull_quote:
+ *           $ref: '#/components/schemas/BlogPullQuote'
+ *           nullable: true
+ *           description: Optional single pull quote displayed mid-body after a major H2
  *         related_blog_ids:
  *           type: array
  *           items:
@@ -657,6 +669,35 @@ router.use('/tags', blogTagRoute);
  *         description:
  *           type: string
  *           example: "e-cigarette product notification scheme & manufacturer guidance"
+ *     BlogPullQuote:
+ *       type: object
+ *       nullable: true
+ *       description: Single optional pull quote with external authoritative attribution
+ *       required:
+ *         - body
+ *         - attribution
+ *         - source_url
+ *         - source_type
+ *         - location
+ *       properties:
+ *         body:
+ *           type: string
+ *           example: "Nicotine oxidation is the limiting factor in e-liquid shelf life — the PG/VG base will outlast the active ingredient by years."
+ *         attribution:
+ *           type: string
+ *           example: "UK Vaping Industry Association, E-Liquid Storage Guidance"
+ *         source_url:
+ *           type: string
+ *           format: uri
+ *           example: "https://www.ukvia.co.uk/"
+ *         source_type:
+ *           type: string
+ *           enum: [UKVIA, MHRA, OHID, peer_reviewed]
+ *           example: "UKVIA"
+ *         location:
+ *           type: string
+ *           enum: [mid_body_after_h2]
+ *           example: "mid_body_after_h2"
  *     RelatedBlogPreview:
  *       type: object
  *       properties:
