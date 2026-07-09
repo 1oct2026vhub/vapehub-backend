@@ -525,6 +525,32 @@ router.get('/id/:id', blogController.getBlogById);
  *         location:
  *           type: string
  *           enum: [mid_body_after_h2]
+ *     StorefrontBlogInlineProductCard:
+ *       type: object
+ *       nullable: true
+ *       description: Hydrated inline product or category spotlight card for mid-article placement
+ *       properties:
+ *         location:
+ *           type: string
+ *           enum: [mid_article]
+ *         cta_label:
+ *           type: string
+ *           nullable: true
+ *           example: "SHOP NIC SALTS"
+ *         product:
+ *           type: object
+ *           properties:
+ *             image:
+ *               type: string
+ *               format: uri
+ *               nullable: true
+ *             title:
+ *               type: string
+ *             blurb:
+ *               type: string
+ *             url:
+ *               type: string
+ *               example: "/nic-salts"
  *     StorefrontRelatedBlogCard:
  *       type: object
  *       properties:
@@ -629,6 +655,10 @@ router.get('/id/:id', blogController.getBlogById);
  *           $ref: '#/components/schemas/StorefrontBlogPullQuote'
  *           nullable: true
  *           description: Optional single pull quote displayed mid-body after a major H2
+ *         inline_product_card:
+ *           $ref: '#/components/schemas/StorefrontBlogInlineProductCard'
+ *           nullable: true
+ *           description: Optional single inline product or category spotlight card for mid-article placement
  *         related_blogs:
  *           type: array
  *           maxItems: 3

@@ -209,6 +209,10 @@ router.get('/posts/:id',
  *                 type: string
  *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
  *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
+ *               inline_product_card:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
+ *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -452,6 +456,10 @@ router.put('/posts/bulk-restore',
  *                 type: string
  *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
  *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
+ *               inline_product_card:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
+ *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -617,6 +625,10 @@ router.use('/tags', blogTagRoute);
  *           $ref: '#/components/schemas/BlogPullQuote'
  *           nullable: true
  *           description: Optional single pull quote displayed mid-body after a major H2
+ *         inline_product_card:
+ *           $ref: '#/components/schemas/BlogInlineProductCard'
+ *           nullable: true
+ *           description: Optional single inline product or category spotlight card for mid-article placement
  *         related_blog_ids:
  *           type: array
  *           items:
@@ -698,6 +710,38 @@ router.use('/tags', blogTagRoute);
  *           type: string
  *           enum: [mid_body_after_h2]
  *           example: "mid_body_after_h2"
+ *     BlogInlineProductCard:
+ *       type: object
+ *       nullable: true
+ *       description: Stored inline product/category card config (admin). Customer API hydrates image, title, and url.
+ *       required:
+ *         - entity_type
+ *         - entity_id
+ *         - blurb
+ *         - location
+ *       properties:
+ *         entity_type:
+ *           type: string
+ *           enum: [product, category]
+ *           example: "category"
+ *         entity_id:
+ *           type: integer
+ *           example: 12
+ *         blurb:
+ *           type: string
+ *           example: "Every bottle on our shelf is checked for batch code and best-before before it ships."
+ *         title:
+ *           type: string
+ *           nullable: true
+ *           description: Optional display title override
+ *         cta_label:
+ *           type: string
+ *           nullable: true
+ *           example: "SHOP NIC SALTS"
+ *         location:
+ *           type: string
+ *           enum: [mid_article]
+ *           example: "mid_article"
  *     RelatedBlogPreview:
  *       type: object
  *       properties:

@@ -1,4 +1,4 @@
-const { User } = require('../../../../models');
+const { User, Product, Category } = require('../../../../models');
 
 const AUTHOR_ATTRIBUTES = [
     'id',
@@ -175,6 +175,89 @@ const parsePullQuoteField = (field) => {
     };
 };
 
+const INLINE_PRODUCT_CARD_ENTITY_TYPES = ['product', 'category'];
+const INLINE_PRODUCT_CARD_LOCATION = 'mid_article';
+
+const parseInlineProductCardField = async (field) => {
+    if (field == null || field === '' || field === '{}' || field === 'null') {
+        return null;
+    }
+
+    let inlineProductCard = field;
+    if (typeof field === 'string') {
+        const trimmed = field.trim();
+        if (!trimmed || trimmed === '{}' || trimmed === 'null') {
+            return null;
+        }
+        inlineProductCard = JSON.parse(trimmed);
+    }
+
+    if (inlineProductCard == null) {
+        return null;
+    }
+
+    if (typeof inlineProductCard !== 'object' || Array.isArray(inlineProductCard)) {
+        throw new Error('inline_product_card must be a JSON object');
+    }
+
+    const entityType = inlineProductCard.entity_type != null
+        ? String(inlineProductCard.entity_type).trim().toLowerCase()
+        : '';
+    const entityId = inlineProductCard.entity_id != null
+        ? parseInt(inlineProductCard.entity_id, 10)
+        : NaN;
+    const blurb = inlineProductCard.blurb != null ? String(inlineProductCard.blurb).trim() : '';
+    const title = inlineProductCard.title != null && String(inlineProductCard.title).trim() !== ''
+        ? String(inlineProductCard.title).trim()
+        : null;
+    const ctaLabel = inlineProductCard.cta_label != null && String(inlineProductCard.cta_label).trim() !== ''
+        ? String(inlineProductCard.cta_label).trim()
+        : null;
+
+    if (!INLINE_PRODUCT_CARD_ENTITY_TYPES.includes(entityType)) {
+        throw new Error(`inline_product_card.entity_type must be one of: ${INLINE_PRODUCT_CARD_ENTITY_TYPES.join(', ')}`);
+    }
+    if (Number.isNaN(entityId) || entityId <= 0) {
+        throw new Error('inline_product_card.entity_id must be a valid positive integer');
+    }
+    if (!blurb) {
+        throw new Error('inline_product_card.blurb is required');
+    }
+    if (blurb.length > 500) {
+        throw new Error('inline_product_card.blurb must be 500 characters or fewer');
+    }
+    if (title && title.length > 255) {
+        throw new Error('inline_product_card.title must be 255 characters or fewer');
+    }
+    if (ctaLabel && ctaLabel.length > 80) {
+        throw new Error('inline_product_card.cta_label must be 80 characters or fewer');
+    }
+
+    if (entityType === 'product') {
+        const product = await Product.findOne({
+            where: { id: entityId, status: 'published' },
+            attributes: ['id']
+        });
+        if (!product) {
+            throw new Error('inline_product_card.entity_id does not match a published product');
+        }
+    } else {
+        const category = await Category.findByPk(entityId, { attributes: ['id'] });
+        if (!category) {
+            throw new Error('inline_product_card.entity_id does not match an existing category');
+        }
+    }
+
+    return {
+        entity_type: entityType,
+        entity_id: entityId,
+        blurb,
+        ...(title ? { title } : {}),
+        ...(ctaLabel ? { cta_label: ctaLabel } : {}),
+        location: INLINE_PRODUCT_CARD_LOCATION
+    };
+};
+
 const parseRelatedBlogIdsField = (field, blogId = null) => {
     const ids = parseJsonOrCsvIds(field, 'related_blog_ids');
     const uniqueIds = [...new Set(ids)];
@@ -239,6 +322,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
         ...blogData,
         sources: blogData.sources ?? [],
         pull_quote: blogData.pull_quote ?? null,
+        inline_product_card: blogData.inline_product_card ?? null,
         author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
@@ -249,9 +333,12 @@ module.exports = {
     AUTHOR_ATTRIBUTES,
     PULL_QUOTE_SOURCE_TYPES,
     PULL_QUOTE_LOCATION,
+    INLINE_PRODUCT_CARD_ENTITY_TYPES,
+    INLINE_PRODUCT_CARD_LOCATION,
     parseJsonOrCsvIds,
     parseSourcesField,
     parsePullQuoteField,
+    parseInlineProductCardField,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields

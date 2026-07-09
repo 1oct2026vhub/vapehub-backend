@@ -2,7 +2,7 @@ const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const { Blog, User } = require('../../../../models');
-const { parsePullQuoteField } = require('./blogPayload.helper');
+const { parsePullQuoteField, parseInlineProductCardField } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -140,6 +140,13 @@ const pullQuoteValidation = body('pull_quote')
     .optional()
     .custom((value) => {
         parsePullQuoteField(value);
+        return true;
+    });
+
+const inlineProductCardValidation = body('inline_product_card')
+    .optional()
+    .custom(async (value) => {
+        await parseInlineProductCardField(value);
         return true;
     });
 
@@ -292,6 +299,7 @@ const blogValidation = [
     authorIdValidation(true),
     sourcesValidation,
     pullQuoteValidation,
+    inlineProductCardValidation,
     relatedBlogIdsValidation(false),
     ...authorOverrideValidations
 ];
@@ -396,6 +404,7 @@ const blogUpdateValidation = [
     authorIdValidation(true),
     sourcesValidation,
     pullQuoteValidation,
+    inlineProductCardValidation,
     relatedBlogIdsValidation(true),
     ...authorOverrideValidations
 ];

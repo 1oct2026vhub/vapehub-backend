@@ -102,6 +102,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        inline_product_card: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         author_override: {
             type: DataTypes.JSON,
             allowNull: true

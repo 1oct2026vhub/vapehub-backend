@@ -518,7 +518,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
         }
 
         const relatedBlogs = await resolveRelatedBlogs(blog, currentDate);
-        const response = formatBlogDetailResponse(blog, relatedBlogs);
+        const response = await formatBlogDetailResponse(blog, relatedBlogs);
 
         return successResponse(res, response, "Success");
     } catch (error) {

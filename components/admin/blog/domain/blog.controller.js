@@ -13,6 +13,7 @@ const {
     AUTHOR_ATTRIBUTES,
     parseSourcesField,
     parsePullQuoteField,
+    parseInlineProductCardField,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields
@@ -256,6 +257,9 @@ module.exports.createBlog = async (req, res) => {
         const pullQuote = req.body.pull_quote !== undefined
             ? parsePullQuoteField(req.body.pull_quote)
             : null;
+        const inlineProductCard = req.body.inline_product_card !== undefined
+            ? await parseInlineProductCardField(req.body.inline_product_card)
+            : null;
         const status = req.body.status || 'draft';
 
         const heroFile = req.files?.image?.[0];
@@ -281,6 +285,7 @@ module.exports.createBlog = async (req, res) => {
             author_id,
             sources,
             pull_quote: pullQuote,
+            inline_product_card: inlineProductCard,
             author_override: author_override ?? null,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
@@ -398,6 +403,9 @@ module.exports.updateBlog = async (req, res) => {
         const parsedPullQuote = req.body.pull_quote !== undefined
             ? parsePullQuoteField(req.body.pull_quote)
             : undefined;
+        const parsedInlineProductCard = req.body.inline_product_card !== undefined
+            ? await parseInlineProductCardField(req.body.inline_product_card)
+            : undefined;
         const parsedAuthorId = req.body.author_id !== undefined
             ? await resolveAuthorId(req.body.author_id, updated_by)
             : undefined;
@@ -437,6 +445,7 @@ module.exports.updateBlog = async (req, res) => {
             ...(status && { status }),
             ...(parsedSources !== undefined && { sources: parsedSources }),
             ...(parsedPullQuote !== undefined && { pull_quote: parsedPullQuote }),
+            ...(parsedInlineProductCard !== undefined && { inline_product_card: parsedInlineProductCard }),
             ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
             ...(author_override !== undefined && { author_override }),
             updated_by

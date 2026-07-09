@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Blog, BlogCategory, BlogRelatedPost } = require('../../../models');
+const { Blog, BlogCategory, BlogRelatedPost, Product, ProductImage, Category } = require('../../../models');
 const { AUTHOR_ATTRIBUTES } = require('../../admin/blog/helper/blogPayload.helper');
 const { formatMergedAuthor } = require('./blogAuthor.formatter');
 const formatSlug = (slug) => {
@@ -155,7 +155,94 @@ const resolveRelatedBlogs = async (blog, currentDate) => {
     return [...relatedBlogs, ...autoRelated.map(formatRelatedBlogCard)].slice(0, 3);
 };
 
-const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
+const getPrimaryProductImageUrl = (productImages = []) => {
+    if (!productImages.length) {
+        return null;
+    }
+
+    const primaryImage = productImages.find((image) => image.is_primary) || productImages[0];
+    return primaryImage?.image_url || null;
+};
+
+const resolveInlineProductCard = async (blogData) => {
+    const card = blogData.inline_product_card;
+    if (!card || typeof card !== 'object') {
+        return null;
+    }
+
+    const {
+        entity_type: entityType,
+        entity_id: entityId,
+        blurb,
+        title,
+        cta_label: ctaLabel,
+        location
+    } = card;
+
+    if (!entityType || !entityId || !blurb) {
+        return null;
+    }
+
+    if (entityType === 'product') {
+        const product = await Product.findOne({
+            where: {
+                id: entityId,
+                status: 'published'
+            },
+            attributes: ['id', 'name', 'slug'],
+            include: [{
+                model: ProductImage,
+                as: 'ProductImages',
+                attributes: ['image_url', 'is_primary'],
+                required: false
+            }]
+        });
+
+        if (!product) {
+            return null;
+        }
+
+        const productData = product.toJSON ? product.toJSON() : product;
+
+        return {
+            location: location || 'mid_article',
+            ...(ctaLabel ? { cta_label: ctaLabel } : {}),
+            product: {
+                image: getPrimaryProductImageUrl(productData.ProductImages),
+                title: title || productData.name,
+                blurb,
+                url: formatSlug(productData.slug)
+            }
+        };
+    }
+
+    if (entityType === 'category') {
+        const category = await Category.findByPk(entityId, {
+            attributes: ['id', 'name', 'slug', 'logo_url']
+        });
+
+        if (!category) {
+            return null;
+        }
+
+        const categoryData = category.toJSON ? category.toJSON() : category;
+
+        return {
+            location: location || 'mid_article',
+            ...(ctaLabel ? { cta_label: ctaLabel } : {}),
+            product: {
+                image: categoryData.logo_url || null,
+                title: title || categoryData.name,
+                blurb,
+                url: formatSlug(categoryData.slug)
+            }
+        };
+    }
+
+    return null;
+};
+
+const formatBlogDetailResponse = async (blog, relatedBlogs = []) => {
     const blogData = blog.toJSON ? blog.toJSON() : blog;
     const { author_override: authorOverride, ...publicBlogData } = blogData;
 
@@ -165,6 +252,7 @@ const formatBlogDetailResponse = (blog, relatedBlogs = []) => {
         author: formatMergedAuthor(blogData.author, authorOverride),
         sources: resolveSources(blogData),
         pull_quote: blogData.pull_quote ?? null,
+        inline_product_card: await resolveInlineProductCard(blogData),
         related_blogs: relatedBlogs
     };
 };
@@ -177,5 +265,6 @@ module.exports = {
     formatProductRelatedBlogCard,
     resolveSources,
     resolveRelatedBlogs,
+    resolveInlineProductCard,
     formatBlogDetailResponse
 };
