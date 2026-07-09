@@ -1,7 +1,8 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Carousel } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
-const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3 } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3, downloadS3ObjectBuffer } = require("../../../../library/s3/s3Helper");
+const { readUploadFile, cleanupMulterFiles } = require("../../../../library/multer/tempDiskStorage");
 const path = require('path');
 
 // Carousel image configurations - NO RESIZING, PRESERVE ORIGINAL FORMAT
@@ -189,29 +190,32 @@ module.exports.createCarousel = async (req, res) => {
         // Get next display order automatically
         const display_order = await getNextDisplayOrder();
 
+        const imageFile = files.image[0];
+        const imageBuffer = await readUploadFile(imageFile);
+
         // Validate input image
         console.log('📊 Input image validation:');
-        console.log(`📁 File name: ${files.image[0].originalname}`);
-        console.log(`📊 File size: ${files.image[0].buffer.length} bytes`);
-        console.log(`📋 MIME type: ${files.image[0].mimetype}`);
+        console.log(`📁 File name: ${imageFile.originalname}`);
+        console.log(`📊 File size: ${imageBuffer.length} bytes`);
+        console.log(`📋 MIME type: ${imageFile.mimetype}`);
         
-        if (!files.image[0].buffer || files.image[0].buffer.length === 0) {
+        if (!imageBuffer || imageBuffer.length === 0) {
             const error = new Error("Uploaded image is empty or corrupted");
             error.statusCode = 400;
             throw error;
         }
 
         // Generate base S3 key for the original image (using simple path like migration)
-        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
-        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const fileExtension = path.extname(imageFile.originalname) || '.jpg';
+        const baseFileName = path.basename(imageFile.originalname, fileExtension);
         const baseS3Key = `carousels/${baseFileName}${fileExtension}`;
         
         // Upload original image to S3 first
         const image_url = await uploadFiletToS3({
             Bucket: process.env.AWS_S3_BUCKET,
             Key: baseS3Key,
-            Body: files.image[0].buffer,
-            ContentType: files.image[0].mimetype
+            Body: imageBuffer,
+            ContentType: imageFile.mimetype
         }).then(response => response.Location);
         
         console.log('✅ Original carousel image uploaded successfully');
@@ -235,43 +239,47 @@ module.exports.createCarousel = async (req, res) => {
         console.log('🔄 Generating responsive carousel images using migration approach...');
         console.log('📁 Base S3 Key:', baseS3Key);
         console.log('📊 Image buffer for processing:', {
-            length: files.image[0].buffer.length,
-            type: typeof files.image[0].buffer,
-            isBuffer: Buffer.isBuffer(files.image[0].buffer)
+            length: imageBuffer.length,
+            type: typeof imageBuffer,
+            isBuffer: Buffer.isBuffer(imageBuffer)
         });
         
         // Generate critical images first for fast response, then background generate others
         const useFastMode = process.env.NODE_ENV === 'development' || process.env.FAST_IMAGE_GENERATION === 'true';
         const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
-            files.image[0].buffer, 
+            imageBuffer, 
             baseS3Key,
             useFastMode // Use fast mode in development or when explicitly enabled
         );
 
         // Schedule background generation of remaining images (only if fast mode was used)
         if (useFastMode && responsiveUrls) {
+            const backgroundS3Key = baseS3Key;
+            const savedImageUrl = image_url;
+            const partialResponsiveUrls = { ...responsiveUrls };
             setTimeout(async () => {
                 try {
                     console.log('🔄 Starting background generation of remaining responsive images...');
+                    const imageBuffer = await downloadS3ObjectBuffer(backgroundS3Key);
                     const remainingUrls = await generateResponsiveImagesWithMigrationStyle(
-                        files.image[0].buffer, 
-                        baseS3Key,
+                        imageBuffer,
+                        backgroundS3Key,
                         false // Full mode for background generation
                     );
                     
                     // Update carousel with remaining URLs
-                    const carouselToUpdate = await Carousel.findOne({ where: { image_url } });
+                    const carouselToUpdate = await Carousel.findOne({ where: { image_url: savedImageUrl } });
                     if (carouselToUpdate) {
                         // Update only the missing fields
                         const updateData = {};
                         Object.entries(remainingUrls).forEach(([sizeKey, url]) => {
-                            if (url && !responsiveUrls[sizeKey]) {
+                            if (url && !partialResponsiveUrls[sizeKey]) {
                                 updateData[`image_url_${sizeKey}`] = url;
                             }
                         });
                         
                         if (Object.keys(updateData).length > 0) {
-                            updateData.responsive_urls = { ...responsiveUrls, ...remainingUrls };
+                            updateData.responsive_urls = { ...partialResponsiveUrls, ...remainingUrls };
                             await carouselToUpdate.update(updateData);
                             console.log('✅ Background responsive images generated and saved');
                         }
@@ -334,6 +342,8 @@ module.exports.createCarousel = async (req, res) => {
         return successResponse(res, formattedCarousel, 'Carousel created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 };
 
@@ -351,10 +361,11 @@ const validateDisplayOrder = async (display_order, currentOrder) => {
 
 // Helper function to handle image upload
 const uploadImageToS3 = async (file, prefix) => {
+    const body = await readUploadFile(file);
     const response = await uploadFiletToS3({
         Bucket: process.env.AWS_S3_BUCKET,
         Key: `carousels/${prefix}-${Date.now()}-${file.originalname}`,
-        Body: file.buffer,
+        Body: body,
         ContentType: file.mimetype
     });
     
@@ -449,23 +460,26 @@ const updateCarouselImages = async (carousel, files) => {
             await deleteAllResizedImages(baseS3Key);
         }
 
+        const imageFile = files.image[0];
+        const imageBuffer = await readUploadFile(imageFile);
+
         // Generate new base S3 key
-        const fileExtension = path.extname(files.image[0].originalname) || '.jpg';
-        const baseFileName = path.basename(files.image[0].originalname, fileExtension);
+        const fileExtension = path.extname(imageFile.originalname) || '.jpg';
+        const baseFileName = path.basename(imageFile.originalname, fileExtension);
         const newBaseS3Key = `carousels/${baseFileName}${fileExtension}`;
         
         // Upload new original image
         carousel.image_url = await uploadFiletToS3({
             Bucket: process.env.AWS_S3_BUCKET,
             Key: newBaseS3Key,
-            Body: files.image[0].buffer,
-            ContentType: files.image[0].mimetype
+            Body: imageBuffer,
+            ContentType: imageFile.mimetype
         }).then(response => response.Location);
 
         // Generate responsive images using migration-style resizing
         console.log('🔄 Updating responsive carousel images using migration approach...');
         const responsiveUrls = await generateResponsiveImagesWithMigrationStyle(
-            files.image[0].buffer, 
+            imageBuffer, 
             newBaseS3Key
         );
 
@@ -519,6 +533,8 @@ module.exports.updateCarousel = async (req, res) => {
         return successResponse(res, formattedCarousel, 'Carousel updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 };
 

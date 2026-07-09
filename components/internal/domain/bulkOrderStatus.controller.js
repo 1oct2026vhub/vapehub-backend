@@ -5,10 +5,18 @@ const {
     processBulkOrderStatusJobItem,
 } = require('../../admin/order/helper/bulkOrderStatusJob.helper');
 
+function parseJobItemId(body) {
+    const { jobItemId } = body || {};
+    if (!Number.isInteger(jobItemId) || jobItemId <= 0) {
+        return null;
+    }
+    return jobItemId;
+}
+
 async function processBulkOrderStatusItem(req, res) {
     try {
-        const { jobItemId } = req.body || {};
-        if (!Number.isInteger(jobItemId) || jobItemId <= 0) {
+        const jobItemId = parseJobItemId(req.body);
+        if (!jobItemId) {
             return errorResponse(res, {}, 'jobItemId must be a positive integer', 400);
         }
 
@@ -27,10 +35,11 @@ async function processBulkOrderStatusItem(req, res) {
 
         const claimed = await claimSpecificPendingJobItem(jobItemId);
         if (!claimed) {
+            const refreshed = await BulkOrderStatusJobItem.findByPk(jobItemId);
             return successResponse(res, {
                 finalized: false,
                 deduped: false,
-                item_status: existing.status
+                item_status: refreshed?.status || existing.status
             }, 'Job item is not claimable right now');
         }
 
@@ -58,5 +67,5 @@ async function processBulkOrderStatusItem(req, res) {
 }
 
 module.exports = {
-    processBulkOrderStatusItem
+    processBulkOrderStatusItem,
 };

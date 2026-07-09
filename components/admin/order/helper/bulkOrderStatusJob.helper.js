@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const moment = require('moment');
 const { Op } = require('sequelize');
 const {
     BulkOrderStatusJob,
@@ -11,7 +12,210 @@ const { enqueueBulkOrderStatusItems } = require('../../../../library/bulkOrderSt
 
 const ASYNC_BULK_MAX_ORDERS = Number(process.env.BULK_ORDER_STATUS_ASYNC_MAX || 500);
 const MAX_ERROR_SAMPLES = 50;
+const JOB_RETENTION_DAYS = Math.max(1, Number(process.env.BULK_ORDER_STATUS_JOB_RETENTION_DAYS || 7));
 const DELIVERY_MODE = process.env.BULK_ORDER_STATUS_DELIVERY_MODE || 'db_poll';
+const CLAIM_STALE_MINUTES = Math.max(1, Number(process.env.BULK_ORDER_STATUS_CLAIM_STALE_MINUTES || 3));
+const MAX_ATTEMPTS = Math.max(1, Number(process.env.BULK_ORDER_STATUS_MAX_ATTEMPTS || 5));
+
+const DB_TO_API_ITEM_STATUS = {
+    pending: 'queued',
+    processing: 'processing',
+    success: 'completed',
+    failed: 'failed',
+    skipped: 'skipped',
+};
+
+const API_TO_DB_ITEM_STATUS = {
+    queued: 'pending',
+    processing: 'processing',
+    completed: 'success',
+    failed: 'failed',
+    skipped: 'skipped',
+};
+
+function mapDbItemStatusToApi(dbStatus) {
+    return DB_TO_API_ITEM_STATUS[dbStatus] || dbStatus;
+}
+
+function mapApiItemStatusToDb(apiStatus) {
+    return API_TO_DB_ITEM_STATUS[apiStatus] || null;
+}
+
+function getJobRetentionCutoff() {
+    return new Date(Date.now() - JOB_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+}
+
+function resolveJobListCreatedAtWhere({ startDate, endDate, date } = {}) {
+    const retentionCutoff = getJobRetentionCutoff();
+    let rangeStart;
+    let rangeEnd;
+
+    if (date === 'today') {
+        rangeStart = moment().startOf('day').toDate();
+        rangeEnd = moment().endOf('day').toDate();
+    } else if (date === 'all') {
+        rangeStart = retentionCutoff;
+        rangeEnd = null;
+    } else if (startDate || endDate) {
+        rangeStart = startDate
+            ? moment(startDate).startOf('day').toDate()
+            : retentionCutoff;
+        rangeEnd = endDate ? moment(endDate).endOf('day').toDate() : null;
+    } else {
+        rangeStart = moment().startOf('day').toDate();
+        rangeEnd = moment().endOf('day').toDate();
+    }
+
+    if (rangeStart < retentionCutoff) {
+        rangeStart = retentionCutoff;
+    }
+
+    if (rangeEnd) {
+        return { [Op.gte]: rangeStart, [Op.lte]: rangeEnd };
+    }
+
+    return { [Op.gte]: rangeStart };
+}
+
+function isJobExpired(job) {
+    if (!job) {
+        return true;
+    }
+    const createdAt = job.createdAt || job.created_at;
+    return Boolean(createdAt && new Date(createdAt) < getJobRetentionCutoff());
+}
+
+function resolveJobStatusFilter(statusParam) {
+    if (!statusParam) {
+        return null;
+    }
+    switch (statusParam) {
+        case 'active':
+            return { [Op.in]: ['queued', 'processing'] };
+        case 'completed':
+            return { [Op.in]: ['completed', 'partial_failed'] };
+        case 'failed':
+            return 'failed';
+        default:
+            return statusParam;
+    }
+}
+
+function formatJobSummary(job, { pending = null, errors } = {}) {
+    const processed = job.successful + job.failed + job.skipped;
+    const total = job.total;
+    const resolvedPending = pending !== null ? pending : Math.max(0, total - processed);
+    const progressPercent = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+    const summary = {
+        job_id: job.id,
+        job_key: job.job_key,
+        status: job.status,
+        target_status: job.target_status,
+        order_count: total,
+        total,
+        successful: job.successful,
+        failed: job.failed,
+        skipped: job.skipped,
+        pending: resolvedPending,
+        progress_percent: progressPercent,
+        created_at: job.createdAt,
+        started_at: job.started_at,
+        completed_at: job.completed_at,
+        created_by: job.initiated_by ?? null,
+    };
+
+    if (errors !== undefined) {
+        summary.errors = errors;
+    }
+
+    return summary;
+}
+
+function isStaleProcessingItem(item) {
+    if (!item || item.status !== 'processing') {
+        return false;
+    }
+    const updatedAt = item.updatedAt || item.updated_at;
+    if (!updatedAt) {
+        return false;
+    }
+    const cutoff = Date.now() - CLAIM_STALE_MINUTES * 60 * 1000;
+    return new Date(updatedAt).getTime() < cutoff;
+}
+
+async function finalizeJobItemAsSkippedTx(item, job, order, message, transaction, { fromStatus = 'processing' } = {}) {
+    const [updated] = await BulkOrderStatusJobItem.update(
+        {
+            status: 'skipped',
+            error_message: message,
+            shipstation_order_id: order?.shipstation_order_id || null,
+            processed_at: new Date(),
+        },
+        {
+            where: { id: item.id, status: fromStatus },
+            transaction,
+        }
+    );
+
+    if (updated === 0) {
+        return false;
+    }
+
+    await job.increment('skipped', { transaction });
+    return true;
+}
+
+async function findOrdersInActiveBulkJobs(orderIds, targetStatus) {
+    if (!orderIds.length) {
+        return [];
+    }
+
+    return BulkOrderStatusJobItem.findAll({
+        attributes: ['order_id', 'job_id'],
+        where: {
+            order_id: { [Op.in]: orderIds },
+            status: { [Op.in]: ['pending', 'processing'] },
+        },
+        include: [{
+            model: BulkOrderStatusJob,
+            as: 'job',
+            required: true,
+            attributes: ['id', 'status', 'target_status'],
+            where: {
+                target_status: targetStatus,
+                status: { [Op.in]: ['queued', 'processing'] },
+            },
+        }],
+    });
+}
+
+async function findOrdersAlreadyAtTargetStatus(orderIds, targetStatus) {
+    if (!orderIds.length) {
+        return [];
+    }
+
+    return Order.findAll({
+        where: {
+            id: { [Op.in]: orderIds },
+            status: targetStatus,
+        },
+        attributes: ['id', 'order_unique_id', 'shipstation_order_id'],
+    });
+}
+
+function isOrderAlreadyProcessedForTarget(order, targetStatus) {
+    if (!order || !targetStatus) {
+        return false;
+    }
+    if (order.status === targetStatus) {
+        return true;
+    }
+    if (targetStatus === 'packed' && order.shipstation_order_id) {
+        return true;
+    }
+    return false;
+}
 
 async function createBulkOrderStatusJob({ orderIds, status, userId }) {
     const uniqueOrderIds = [...new Set(orderIds)];
@@ -31,16 +235,51 @@ async function createBulkOrderStatusJob({ orderIds, status, userId }) {
         throw error;
     }
 
+    const inFlight = await findOrdersInActiveBulkJobs(uniqueOrderIds, status);
+    if (inFlight.length > 0) {
+        const error = new Error(
+            'Some orders are already being processed in an active bulk job. ' +
+            'Wait for the current batch to finish before submitting again.'
+        );
+        error.statusCode = 409;
+        error.code = 'BULK_ORDERS_ALREADY_QUEUED';
+        error.orderIds = [...new Set(inFlight.map((i) => i.order_id))];
+        error.jobIds = [...new Set(inFlight.map((i) => i.job_id))];
+        error.data = {
+            conflicting_order_ids: error.orderIds,
+            active_job_ids: error.jobIds,
+        };
+        throw error;
+    }
+
+    const alreadyDone = await findOrdersAlreadyAtTargetStatus(uniqueOrderIds, status);
+    const alreadyDoneIds = new Set(alreadyDone.map((o) => o.id));
+    const orderIdsToQueue = uniqueOrderIds.filter((id) => !alreadyDoneIds.has(id));
+
+    if (orderIdsToQueue.length === 0) {
+        const error = new Error('All selected orders already have the target status');
+        error.statusCode = 409;
+        error.code = 'BULK_ORDERS_ALREADY_AT_STATUS';
+        error.orderIds = uniqueOrderIds;
+        error.data = {
+            conflicting_order_ids: uniqueOrderIds,
+            active_job_ids: [],
+        };
+        throw error;
+    }
+
+    const ordersToQueue = orders.filter((o) => orderIdsToQueue.includes(o.id));
+
     const job = await BulkOrderStatusJob.create({
         job_key: crypto.randomUUID(),
         status: 'queued',
         target_status: status,
-        total: uniqueOrderIds.length,
+        total: orderIdsToQueue.length,
         initiated_by: userId
     });
 
-    const orderById = new Map(orders.map(o => [o.id, o]));
-    const jobItemsPayload = uniqueOrderIds.map(orderId => ({
+    const orderById = new Map(ordersToQueue.map(o => [o.id, o]));
+    const jobItemsPayload = orderIdsToQueue.map(orderId => ({
         job_id: job.id,
         order_id: orderId,
         order_unique_id: orderById.get(orderId)?.order_unique_id || null,
@@ -107,30 +346,77 @@ async function claimNextPendingJobItem() {
 }
 
 async function claimSpecificPendingJobItem(jobItemId) {
-    return sequelize.transaction(async (transaction) => {
-        const item = await BulkOrderStatusJobItem.findByPk(jobItemId, {
+    let jobIdToFinalize = null;
+
+    const item = await sequelize.transaction(async (transaction) => {
+        const row = await BulkOrderStatusJobItem.findByPk(jobItemId, {
             lock: transaction.LOCK.UPDATE,
             transaction
         });
-        if (!item) return null;
+        if (!row) return null;
 
-        const job = await BulkOrderStatusJob.findByPk(item.job_id, { transaction });
+        const job = await BulkOrderStatusJob.findByPk(row.job_id, { transaction });
         if (!job || !['queued', 'processing'].includes(job.status)) {
             return null;
         }
 
-        if (['success', 'failed', 'skipped'].includes(item.status)) {
-            item.job = job;
-            return item;
+        if (['success', 'failed', 'skipped'].includes(row.status)) {
+            row.job = job;
+            return row;
         }
 
-        if (item.status !== 'pending') {
+        if (row.status === 'processing') {
+            if (!isStaleProcessingItem(row)) {
+                return null;
+            }
+
+            if (row.attempts >= MAX_ATTEMPTS) {
+                await row.update({
+                    status: 'failed',
+                    error_message: `failed after ${MAX_ATTEMPTS} processing attempts (stale reclaim)`,
+                    processed_at: new Date(),
+                }, { transaction });
+                await job.increment('failed', { transaction });
+                jobIdToFinalize = job.id;
+                row.job = job;
+                return row;
+            }
+
+            const order = await Order.findByPk(row.order_id, {
+                attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+                transaction,
+            });
+
+            if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
+                const skipped = await finalizeJobItemAsSkippedTx(
+                    row,
+                    job,
+                    order,
+                    'reclaimed: order already at target status',
+                    transaction
+                );
+                if (skipped) {
+                    jobIdToFinalize = job.id;
+                    await row.reload({ transaction });
+                }
+                row.job = job;
+                return row;
+            }
+
+            await row.update({
+                status: 'pending',
+                error_message: `reclaimed from stale processing (>${CLAIM_STALE_MINUTES}m)`,
+            }, { transaction });
+            await row.reload({ transaction });
+        }
+
+        if (row.status !== 'pending') {
             return null;
         }
 
-        await item.update({
+        await row.update({
             status: 'processing',
-            attempts: item.attempts + 1
+            attempts: row.attempts + 1
         }, { transaction });
 
         if (job.status === 'queued') {
@@ -140,9 +426,15 @@ async function claimSpecificPendingJobItem(jobItemId) {
             }, { transaction });
         }
 
-        item.job = job;
-        return item;
+        row.job = job;
+        return row;
     });
+
+    if (jobIdToFinalize) {
+        await finalizeJobIfComplete(jobIdToFinalize);
+    }
+
+    return item;
 }
 
 async function finalizeJobIfComplete(jobId) {
@@ -175,6 +467,31 @@ async function finalizeJobIfComplete(jobId) {
     });
 }
 
+async function finalizeJobItemAsSkipped(jobItem, order, message) {
+    const job = await BulkOrderStatusJob.findByPk(jobItem.job_id);
+    if (!job) {
+        return false;
+    }
+
+    const [updated] = await BulkOrderStatusJobItem.update(
+        {
+            status: 'skipped',
+            error_message: message,
+            shipstation_order_id: order?.shipstation_order_id || null,
+            processed_at: new Date(),
+        },
+        { where: { id: jobItem.id, status: 'processing' } }
+    );
+
+    if (updated === 0) {
+        return false;
+    }
+
+    await job.increment('skipped');
+    await finalizeJobIfComplete(job.id);
+    return true;
+}
+
 async function processBulkOrderStatusJobItem(jobItem) {
     const job = jobItem.job || await BulkOrderStatusJob.findByPk(jobItem.job_id);
     if (!job) {
@@ -182,6 +499,29 @@ async function processBulkOrderStatusJobItem(jobItem) {
     }
 
     try {
+        const order = await Order.findByPk(jobItem.order_id, {
+            attributes: ['id', 'order_unique_id', 'status', 'shipstation_order_id'],
+        });
+
+        if (order && isOrderAlreadyProcessedForTarget(order, job.target_status)) {
+            const processedAt = new Date();
+            await jobItem.update({
+                status: 'skipped',
+                error_message: 'Order already at target status or already sent to ShipStation (duplicate batch item)',
+                shipstation_order_id: order.shipstation_order_id || null,
+                processed_at: processedAt,
+            });
+            await job.increment('skipped');
+            await finalizeJobIfComplete(job.id);
+            return {
+                success: true,
+                skipped: true,
+                order_id: order.id,
+                order_unique_id: order.order_unique_id,
+                message: 'Order already processed',
+            };
+        }
+
         const result = await processOrderStatusUpdate({
             orderId: jobItem.order_id,
             status: job.target_status,
@@ -238,7 +578,7 @@ async function processBulkOrderStatusJobItem(jobItem) {
 
 async function getBulkOrderStatusJobDetails(jobId, { errorLimit = MAX_ERROR_SAMPLES } = {}) {
     const job = await BulkOrderStatusJob.findByPk(jobId);
-    if (!job) {
+    if (!job || isJobExpired(job)) {
         return null;
     }
 
@@ -253,37 +593,215 @@ async function getBulkOrderStatusJobDetails(jobId, { errorLimit = MAX_ERROR_SAMP
         limit: errorLimit
     });
 
-    const processed = job.successful + job.failed + job.skipped;
-    const progressPercent = job.total > 0 ? Math.round((processed / job.total) * 100) : 0;
-
-    return {
-        job_id: job.id,
-        job_key: job.job_key,
-        status: job.status,
-        target_status: job.target_status,
-        total: job.total,
-        successful: job.successful,
-        failed: job.failed,
-        skipped: job.skipped,
+    return formatJobSummary(job, {
         pending,
-        progress_percent: progressPercent,
-        started_at: job.started_at,
-        completed_at: job.completed_at,
-        created_at: job.createdAt,
         errors: failedItems.map(item => ({
             order_id: item.order_id,
             order_unique_id: item.order_unique_id,
             error: item.error_message
-        }))
+        })),
+    });
+}
+
+async function listBulkOrderStatusJobs({
+    status,
+    startDate,
+    endDate,
+    date,
+    page = 1,
+    limit = 20,
+    sort = 'created_at',
+    order = 'DESC',
+} = {}) {
+    const where = {
+        created_at: resolveJobListCreatedAtWhere({ startDate, endDate, date }),
+    };
+
+    const statusFilter = resolveJobStatusFilter(status);
+    if (statusFilter) {
+        where.status = statusFilter;
+    }
+
+    const sortField = sort === 'completed_at' ? 'completed_at' : 'created_at';
+    const sortOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const parsedLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+    const parsedPage = Math.max(1, Number(page) || 1);
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    const { count, rows } = await BulkOrderStatusJob.findAndCountAll({
+        where,
+        order: [[sortField, sortOrder]],
+        limit: parsedLimit,
+        offset,
+    });
+
+    return {
+        jobs: rows.map((job) => formatJobSummary(job, {
+            pending: Math.max(0, job.total - job.successful - job.failed - job.skipped),
+        })),
+        pagination: {
+            page: parsedPage,
+            limit: parsedLimit,
+            total: count,
+            total_pages: Math.ceil(count / parsedLimit) || 0,
+        },
+    };
+}
+
+async function buildJobItemSummary(jobId) {
+    const summaryRows = await BulkOrderStatusJobItem.findAll({
+        where: { job_id: jobId },
+        attributes: [
+            'status',
+            [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+        ],
+        group: ['status'],
+        raw: true,
+    });
+
+    const summary = {
+        queued: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0,
+        skipped: 0,
+    };
+
+    for (const row of summaryRows) {
+        const apiStatus = mapDbItemStatusToApi(row.status);
+        if (Object.prototype.hasOwnProperty.call(summary, apiStatus)) {
+            summary[apiStatus] = Number(row.count);
+        }
+    }
+
+    return summary;
+}
+
+async function getBulkOrderStatusJobOrders(jobId, {
+    itemStatus,
+    page = 1,
+    limit = 50,
+    search,
+} = {}) {
+    const job = await BulkOrderStatusJob.findByPk(jobId);
+    if (!job || isJobExpired(job)) {
+        return null;
+    }
+
+    if (itemStatus && !mapApiItemStatusToDb(itemStatus)) {
+        return { invalidItemStatus: true };
+    }
+
+    const where = { job_id: jobId };
+    if (itemStatus) {
+        where.status = mapApiItemStatusToDb(itemStatus);
+    }
+    if (search && String(search).trim()) {
+        where.order_unique_id = { [Op.like]: `%${String(search).trim()}%` };
+    }
+
+    const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const parsedPage = Math.max(1, Number(page) || 1);
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    const { count, rows } = await BulkOrderStatusJobItem.findAndCountAll({
+        where,
+        order: [['id', 'ASC']],
+        limit: parsedLimit,
+        offset,
+    });
+
+    const orderIds = rows.map((row) => row.order_id);
+    const orders = orderIds.length
+        ? await Order.findAll({
+            where: { id: { [Op.in]: orderIds } },
+            attributes: ['id', 'status'],
+        })
+        : [];
+    const orderStatusById = new Map(orders.map((order) => [order.id, order.status]));
+    const summary = await buildJobItemSummary(jobId);
+
+    return {
+        job_id: job.id,
+        target_status: job.target_status,
+        job_status: job.status,
+        orders: rows.map((item) => {
+            const apiStatus = mapDbItemStatusToApi(item.status);
+            const liveStatus = orderStatusById.get(item.order_id) || null;
+
+            return {
+                order_id: item.order_id,
+                order_unique_id: item.order_unique_id,
+                item_status: apiStatus,
+                previous_status: null,
+                new_status: apiStatus === 'completed' ? (liveStatus || job.target_status) : null,
+                error: item.error_message || null,
+                processed_at: item.processed_at || null,
+            };
+        }),
+        pagination: {
+            page: parsedPage,
+            limit: parsedLimit,
+            total: count,
+            total_pages: Math.ceil(count / parsedLimit) || 0,
+        },
+        summary,
+    };
+}
+
+async function getActiveBulkOrderItems({ targetStatus } = {}) {
+    const jobWhere = {
+        status: { [Op.in]: ['queued', 'processing'] },
+        created_at: { [Op.gte]: getJobRetentionCutoff() },
+    };
+
+    if (targetStatus) {
+        jobWhere.target_status = targetStatus;
+    }
+
+    const items = await BulkOrderStatusJobItem.findAll({
+        attributes: ['order_id', 'job_id', 'status'],
+        where: {
+            status: { [Op.in]: ['pending', 'processing'] },
+        },
+        include: [{
+            model: BulkOrderStatusJob,
+            as: 'job',
+            required: true,
+            attributes: ['id', 'target_status', 'status'],
+            where: jobWhere,
+        }],
+    });
+
+    return {
+        order_ids: [...new Set(items.map((item) => item.order_id))],
+        items: items.map((item) => ({
+            order_id: item.order_id,
+            job_id: item.job_id,
+            item_status: mapDbItemStatusToApi(item.status),
+            target_status: item.job.target_status,
+        })),
     };
 }
 
 module.exports = {
     ASYNC_BULK_MAX_ORDERS,
+    JOB_RETENTION_DAYS,
+    CLAIM_STALE_MINUTES,
+    MAX_ATTEMPTS,
+    mapDbItemStatusToApi,
+    mapApiItemStatusToDb,
     createBulkOrderStatusJob,
     claimNextPendingJobItem,
     claimSpecificPendingJobItem,
     processBulkOrderStatusJobItem,
     getBulkOrderStatusJobDetails,
+    listBulkOrderStatusJobs,
+    getBulkOrderStatusJobOrders,
+    getActiveBulkOrderItems,
     finalizeJobIfComplete,
+    finalizeJobItemAsSkipped,
+    findOrdersInActiveBulkJobs,
+    isOrderAlreadyProcessedForTarget,
+    isStaleProcessingItem,
 };

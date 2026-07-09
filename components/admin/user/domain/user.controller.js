@@ -28,6 +28,7 @@ const EXPORT_CONFIG = {
     DB_QUERY_TIMEOUT: 30000, // 30 seconds per query
     CHUNK_DELAY: 100, // 100ms delay between chunks to prevent connection pool exhaustion
     MAX_FILE_SIZE_MEMORY: 50 * 1024 * 1024, // 50MB - files larger use streaming
+    MAX_EXCEL_EXPORT_ROWS: 25000, // Excel background exports above this should use CSV
     S3_UPLOAD_RETRIES: 3, // Retry S3 uploads 3 times
     S3_RETRY_DELAY: 1000 // 1 second base delay for retries
 };
@@ -680,6 +681,13 @@ module.exports.initiateUserExport = async (req, res) => {
             return errorResponse(res, { message: "No users found to export" }, "Not Found", 404);
         }
 
+        if (format === 'excel' && totalCount > EXPORT_CONFIG.MAX_EXCEL_EXPORT_ROWS) {
+            return errorResponse(res, {
+                message: `Excel export supports up to ${EXPORT_CONFIG.MAX_EXCEL_EXPORT_ROWS} rows. Use format=csv for larger exports.`,
+                totalRecords: totalCount,
+            }, "Bad Request", 400);
+        }
+
         // Generate unique job ID
         const jobId = `user-export-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         
@@ -771,8 +779,7 @@ async function processExportInBackground(jobId, whereCondition, format, totalCou
             const contentType = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
             
             let uploadResult;
-            if (fileSize > EXPORT_CONFIG.MAX_FILE_SIZE_MEMORY) {
-                // Use streaming upload for large files
+            if (format === 'excel' || fileSize > EXPORT_CONFIG.MAX_FILE_SIZE_MEMORY) {
                 uploadResult = await uploadLargeFileToS3(tempFilePath, s3Key, contentType);
             } else {
                 // Read into memory for smaller files
@@ -1048,9 +1055,9 @@ async function processCSVExport(whereCondition, filePath, chunkSize, totalChunks
     });
 }
 
-// Excel Export with chunking
+// Excel Export with streaming writer (rows flushed to disk as they are added)
 async function processExcelExport(whereCondition, filePath, chunkSize, totalChunks) {
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: filePath });
     const worksheet = workbook.addWorksheet('Users');
 
     worksheet.columns = [
@@ -1060,15 +1067,6 @@ async function processExcelExport(whereCondition, filePath, chunkSize, totalChun
         { header: 'Phone', key: 'phone', width: 20 }
     ];
 
-    // Style header
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE0E0E0' }
-    };
-
-    // Process in chunks using cursor-based pagination
     let lastId = 0;
     let processedCount = 0;
 
@@ -1094,21 +1092,19 @@ async function processExcelExport(whereCondition, filePath, chunkSize, totalChun
 
             if (users.length === 0) break;
 
-            // Add delay between chunks to prevent connection pool exhaustion
             if (chunkIndex < totalChunks - 1) {
                 await new Promise(resolve => setTimeout(resolve, EXPORT_CONFIG.CHUNK_DELAY));
             }
 
-            // Add rows with error handling
             try {
-                users.forEach(user => {
+                for (const user of users) {
                     worksheet.addRow({
                         first_name: user.first_name || '',
                         last_name: user.last_name || '',
                         email: user.email || '',
                         phone: user.phone || ''
-                    });
-                });
+                    }).commit();
+                }
             } catch (rowError) {
                 throw new Error(`Failed to add rows at chunk ${chunkIndex + 1}: ${rowError.message}`);
             }
@@ -1116,16 +1112,14 @@ async function processExcelExport(whereCondition, filePath, chunkSize, totalChun
             lastId = users[users.length - 1].id;
             processedCount += users.length;
 
-            // Log progress
             if (chunkIndex % 10 === 0 || chunkIndex === totalChunks - 1) {
-                console.log(`Export progress: ${chunkIndex + 1}/${totalChunks} chunks (${processedCount}/${totalChunks * chunkSize} records)`);
+                console.log(`Export progress: ${chunkIndex + 1}/${totalChunks} chunks (${processedCount} records)`);
             }
         }
 
-        // Write file with timeout
         await Promise.race([
-            workbook.xlsx.writeFile(filePath),
-            new Promise((_, reject) => 
+            workbook.commit(),
+            new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Excel file write timeout')), 10 * 60 * 1000)
             )
         ]);
@@ -1213,14 +1207,12 @@ module.exports.exportUsersStream = async (req, res) => {
         let hasMore = true;
         const parser = new Parser({ fields: ['First Name', 'Last Name', 'Email', 'Phone'] });
 
-        // Handle client disconnect
-        req.on('close', () => {
-            if (!res.headersSent) {
-                console.log('Client disconnected during export stream');
-            }
-        });
+        let aborted = false;
+        const onAbort = () => { aborted = true; };
+        req.on('aborted', onAbort);
+        req.on('close', onAbort);
 
-        while (hasMore) {
+        while (hasMore && !aborted) {
             let users;
             try {
                 users = await User.findAll({
@@ -1238,11 +1230,12 @@ module.exports.exportUsersStream = async (req, res) => {
                         message: "Database query failed during export" 
                     }, "Database Error", 500);
                 }
-                // If headers already sent, we can't send error response
                 console.error("Database error during stream:", dbError);
                 res.end();
                 return;
             }
+
+            if (aborted) break;
 
             if (users.length === 0) {
                 hasMore = false;
@@ -1275,7 +1268,9 @@ module.exports.exportUsersStream = async (req, res) => {
             lastId = users[users.length - 1].id;
         }
         
-        res.end();
+        if (!aborted) {
+            res.end();
+        }
         return;
 
     } catch (error) {
@@ -1320,18 +1315,6 @@ module.exports.checkExportStatus = async (req, res) => {
         return errorResponse(res, error, error.message);
     }
 };
-
-// Graceful shutdown handling - cleanup temp files
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, cleaning up export temp files...');
-    cleanupAllTempFiles();
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, cleaning up export temp files...');
-    cleanupAllTempFiles();
-    process.exit(0);
-});
 
 // Cleanup all temp files on shutdown
 function cleanupAllTempFiles() {
@@ -1504,5 +1487,6 @@ async function cleanupS3ExportFilesDirectly(retentionDays) {
     }
 }
 
-// Export cleanup function for manual/cron use
+// Export cleanup functions for manual/cron/shutdown use
+module.exports.cleanupAllTempFiles = cleanupAllTempFiles;
 module.exports.cleanupOldExportFiles = cleanupOldExportFiles;

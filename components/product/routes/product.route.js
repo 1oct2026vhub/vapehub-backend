@@ -1056,8 +1056,10 @@ router.delete('/:id', authenticateJWT,
 router.get("/trending", productController.trendingProduct)
 
 // api for file upload
+const { createTempDiskStorage } = require("../../../library/multer/tempDiskStorage");
+
 // Configure multer for handling file uploads
-const storage = multer.memoryStorage();
+const storage = createTempDiskStorage('products');
 const upload = multer({
     storage: storage,
     limits: {

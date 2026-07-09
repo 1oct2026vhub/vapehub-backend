@@ -28,6 +28,7 @@ const {
     generatePaymentReference,
 } = require('./paymentSuccessUrl.helper');
 const { generateTransactionReference } = require('./worldpay.helper');
+const { ensurePendingWorldpayTransaction } = require('../../payment/helper/worldpayPendingTransaction.helper');
 const constants = require('../../../config/constants');
 const { v4: uuidv4 } = require('uuid');
 
@@ -604,7 +605,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             id: shippingMethodId,
             is_enabled: true,
         },
-        attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+        attributes: ["id", "shipping_cost", "service_code", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
         transaction,
     });
 
@@ -675,25 +676,22 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     calculatedTotal = pricing.grandTotal !== null ? pricing.grandTotal : 0;
     calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
-    const serverPaymentRequired = pricing.paymentRequired && calculatedTotal > 0;
-    const skipGateway = !serverPaymentRequired;
+    const serverPaymentRequired = calculatedTotal > 0;
+    const pointsOnlyCheckout = !serverPaymentRequired;
 
-    const clientSaysNoPayment = clientPaymentRequiredFlag === false;
-    if (clientSaysNoPayment && serverPaymentRequired) {
+    if (clientPaymentRequiredFlag === false && serverPaymentRequired) {
         throw {
             statusCode: 400,
             message: 'Payment is required for this order',
         };
     }
 
-    const deferFinalizeToPaymentSuccess = skipGateway && clientSaysNoPayment;
-
     let orderCode = 0;
     let worldpayCheckoutRequest = null;
     let reusedPendingOrder = false;
     let order = null;
 
-    if (!skipGateway && payMethod === "VivaWallet") {
+    if (serverPaymentRequired && payMethod === "VivaWallet") {
         try {
             const accessToken = await getVivaAccessToken();
             orderCode = await createVivaOrder(accessToken, calculatedTotal);
@@ -703,7 +701,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         } catch (error) {
             throw new Error("Failed to process payment with Viva Wallet: " + error.message);
         }
-    } else if (!skipGateway && payMethod === "Worldpay") {
+    } else if (serverPaymentRequired && payMethod === "Worldpay") {
         const billingAddrForPayment = useShippingAsBilling ? shipping_address : (billing_address || shipping_address);
 
         let countryCode = (billingAddrForPayment.country || shipping_address.country || 'GB').toUpperCase();
@@ -748,7 +746,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
                 orderId: order?.id ?? null
             }
         };
-    } else if (skipGateway) {
+    } else if (pointsOnlyCheckout) {
         orderCode = generatePaymentReference();
     }
 
@@ -766,7 +764,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             order_billing_address_id: billingAddrs.id,
             shipping_method_id: shippingMethodId ? shippingMethodId : null,
             order_unique_id: orderUniqueId,
-            order_code: skipGateway
+            order_code: pointsOnlyCheckout
                 ? String(orderCode)
                 : (payMethod === "Worldpay" ? orderCode : parseInt(String(orderCode), 10).toString()),
             shipping_cost: shippingCostUsed,
@@ -787,7 +785,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
-        if (skipGateway && !deferFinalizeToPaymentSuccess) {
+        if (pointsOnlyCheckout) {
             await finalizePointsOnlyOrder(order.id, transaction);
         }
 
@@ -816,6 +814,14 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
     if (worldpayCheckoutRequest && order) {
         worldpayCheckoutRequest.logContext.orderId = order.id;
+        await ensurePendingWorldpayTransaction({
+            userId: user_id,
+            orderId: order.id,
+            orderCode: order.order_code,
+            amount: parseFloat(order.total),
+            currency: 'GBP',
+            dbTransaction: transaction
+        });
     }
 
     let responseSubTotal = subTotal;
@@ -840,7 +846,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         responseTotal = parseFloat(order.total);
     }
 
-    const redirect_url = skipGateway
+    const redirect_url = pointsOnlyCheckout
         ? buildPaymentSuccessRedirectUrl(order.order_code, order.total)
         : null;
 
@@ -850,7 +856,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         reused_pending_order: reusedPendingOrder,
         is_payment_required: serverPaymentRequired,
         payment_required: serverPaymentRequired,
-        finalize_deferred: deferFinalizeToPaymentSuccess,
         redirect_url,
         payment_success_url: redirect_url,
         loyalty_points_used: responseLoyaltyPointsUsed,
@@ -862,7 +867,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             status: order.status,
             is_payment_required: serverPaymentRequired,
             payment_required: serverPaymentRequired,
-            finalize_deferred: deferFinalizeToPaymentSuccess,
             redirect_url,
             payment_success_url: redirect_url,
             total: responseTotal,
