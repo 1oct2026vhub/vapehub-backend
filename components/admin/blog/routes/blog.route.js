@@ -213,6 +213,10 @@ router.get('/posts/:id',
  *                 type: string
  *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
  *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
+ *               first_person_callouts:
+ *                 type: string
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -460,6 +464,10 @@ router.put('/posts/bulk-restore',
  *                 type: string
  *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
  *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
+ *               first_person_callouts:
+ *                 type: string
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
  *               related_blog_ids:
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
@@ -629,6 +637,12 @@ router.use('/tags', blogTagRoute);
  *           $ref: '#/components/schemas/BlogInlineProductCard'
  *           nullable: true
  *           description: Optional single inline product or category spotlight card for mid-article placement
+ *         first_person_callouts:
+ *           type: array
+ *           maxItems: 2
+ *           items:
+ *             $ref: '#/components/schemas/BlogFirstPersonCallout'
+ *           description: Optional first-person warehouse/team callouts for inline body placement
  *         related_blog_ids:
  *           type: array
  *           items:
@@ -742,6 +756,31 @@ router.use('/tags', blogTagRoute);
  *           type: string
  *           enum: [mid_article]
  *           example: "mid_article"
+ *     BlogFirstPersonCallout:
+ *       type: object
+ *       required:
+ *         - heading
+ *         - body
+ *         - insert_after_paragraph
+ *         - location
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "FROM OUR WAREHOUSE"
+ *         heading:
+ *           type: string
+ *           example: "We rotate stock by batch code — here's what ages fastest."
+ *         body:
+ *           type: string
+ *           description: Rich-text HTML from CMS
+ *         insert_after_paragraph:
+ *           type: integer
+ *           minimum: 1
+ *           example: 3
+ *         location:
+ *           type: string
+ *           enum: [inline_body]
+ *           example: "inline_body"
  *     RelatedBlogPreview:
  *       type: object
  *       properties:

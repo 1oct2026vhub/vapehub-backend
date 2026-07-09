@@ -258,6 +258,100 @@ const parseInlineProductCardField = async (field) => {
     };
 };
 
+const FIRST_PERSON_CALLOUT_DEFAULT_LABEL = 'FROM OUR WAREHOUSE';
+const FIRST_PERSON_CALLOUT_LOCATION = 'inline_body';
+const FIRST_PERSON_CALLOUT_MAX_ITEMS = 2;
+const FIRST_PERSON_CALLOUT_BODY_MAX_CHARS = 2000;
+const FIRST_PERSON_CALLOUT_HEADING_MAX_CHARS = 255;
+const FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS = 80;
+
+const parseFirstPersonCalloutsField = (field) => {
+    if (field == null || field === '' || field === '[]' || field === 'null') {
+        return [];
+    }
+
+    let callouts = field;
+    if (typeof field === 'string') {
+        const trimmed = field.trim();
+        if (!trimmed || trimmed === '[]' || trimmed === 'null') {
+            return [];
+        }
+        callouts = JSON.parse(trimmed);
+    }
+
+    if (!Array.isArray(callouts)) {
+        throw new Error('first_person_callouts must be a JSON array');
+    }
+
+    if (callouts.length > FIRST_PERSON_CALLOUT_MAX_ITEMS) {
+        throw new Error(`first_person_callouts cannot contain more than ${FIRST_PERSON_CALLOUT_MAX_ITEMS} items`);
+    }
+
+    const normalized = callouts.map((item, index) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            throw new Error(`first_person_callouts[${index}] must be an object`);
+        }
+
+        const labelRaw = item.label != null ? String(item.label).trim() : '';
+        const label = labelRaw || FIRST_PERSON_CALLOUT_DEFAULT_LABEL;
+        const heading = item.heading != null ? String(item.heading).trim() : '';
+        const body = item.body != null ? String(item.body).trim() : '';
+        const insertAfterParagraph = item.insert_after_paragraph != null
+            ? parseInt(item.insert_after_paragraph, 10)
+            : NaN;
+
+        if (label.length > FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS) {
+            throw new Error(`first_person_callouts[${index}].label must be ${FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS} characters or fewer`);
+        }
+        if (!heading) {
+            throw new Error(`first_person_callouts[${index}].heading is required`);
+        }
+        if (heading.length > FIRST_PERSON_CALLOUT_HEADING_MAX_CHARS) {
+            throw new Error(`first_person_callouts[${index}].heading must be ${FIRST_PERSON_CALLOUT_HEADING_MAX_CHARS} characters or fewer`);
+        }
+        if (!body) {
+            throw new Error(`first_person_callouts[${index}].body is required`);
+        }
+        if (body.length > FIRST_PERSON_CALLOUT_BODY_MAX_CHARS) {
+            throw new Error(`first_person_callouts[${index}].body must be ${FIRST_PERSON_CALLOUT_BODY_MAX_CHARS} characters or fewer`);
+        }
+        if (Number.isNaN(insertAfterParagraph) || insertAfterParagraph < 1) {
+            throw new Error(`first_person_callouts[${index}].insert_after_paragraph must be a positive integer`);
+        }
+
+        return {
+            label,
+            heading,
+            body,
+            insert_after_paragraph: insertAfterParagraph,
+            location: FIRST_PERSON_CALLOUT_LOCATION
+        };
+    });
+
+    const paragraphPositions = normalized.map((item) => item.insert_after_paragraph);
+    if (new Set(paragraphPositions).size !== paragraphPositions.length) {
+        throw new Error('first_person_callouts cannot share the same insert_after_paragraph value');
+    }
+
+    return normalized.sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+};
+
+const formatFirstPersonCallouts = (callouts) => {
+    if (!Array.isArray(callouts) || callouts.length === 0) {
+        return [];
+    }
+
+    return callouts
+        .map((item) => ({
+            label: item.label || FIRST_PERSON_CALLOUT_DEFAULT_LABEL,
+            heading: item.heading,
+            body: item.body,
+            insert_after_paragraph: item.insert_after_paragraph,
+            location: item.location || FIRST_PERSON_CALLOUT_LOCATION
+        }))
+        .sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+};
+
 const parseRelatedBlogIdsField = (field, blogId = null) => {
     const ids = parseJsonOrCsvIds(field, 'related_blog_ids');
     const uniqueIds = [...new Set(ids)];
@@ -323,6 +417,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
         sources: blogData.sources ?? [],
         pull_quote: blogData.pull_quote ?? null,
         inline_product_card: blogData.inline_product_card ?? null,
+        first_person_callouts: blogData.first_person_callouts ?? [],
         author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
@@ -335,10 +430,15 @@ module.exports = {
     PULL_QUOTE_LOCATION,
     INLINE_PRODUCT_CARD_ENTITY_TYPES,
     INLINE_PRODUCT_CARD_LOCATION,
+    FIRST_PERSON_CALLOUT_DEFAULT_LABEL,
+    FIRST_PERSON_CALLOUT_LOCATION,
+    FIRST_PERSON_CALLOUT_MAX_ITEMS,
     parseJsonOrCsvIds,
     parseSourcesField,
     parsePullQuoteField,
     parseInlineProductCardField,
+    parseFirstPersonCalloutsField,
+    formatFirstPersonCallouts,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields

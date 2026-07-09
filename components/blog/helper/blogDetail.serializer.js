@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Blog, BlogCategory, BlogRelatedPost, Product, ProductImage, Category } = require('../../../models');
-const { AUTHOR_ATTRIBUTES } = require('../../admin/blog/helper/blogPayload.helper');
+const { AUTHOR_ATTRIBUTES, formatFirstPersonCallouts } = require('../../admin/blog/helper/blogPayload.helper');
 const { formatMergedAuthor } = require('./blogAuthor.formatter');
 const formatSlug = (slug) => {
     if (!slug) {
@@ -253,6 +253,7 @@ const formatBlogDetailResponse = async (blog, relatedBlogs = []) => {
         sources: resolveSources(blogData),
         pull_quote: blogData.pull_quote ?? null,
         inline_product_card: await resolveInlineProductCard(blogData),
+        first_person_callouts: formatFirstPersonCallouts(blogData.first_person_callouts),
         related_blogs: relatedBlogs
     };
 };

@@ -106,6 +106,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.JSON,
             allowNull: true
         },
+        first_person_callouts: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
         author_override: {
             type: DataTypes.JSON,
             allowNull: true

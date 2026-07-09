@@ -2,7 +2,7 @@ const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const { Blog, User } = require('../../../../models');
-const { parsePullQuoteField, parseInlineProductCardField } = require('./blogPayload.helper');
+const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -147,6 +147,13 @@ const inlineProductCardValidation = body('inline_product_card')
     .optional()
     .custom(async (value) => {
         await parseInlineProductCardField(value);
+        return true;
+    });
+
+const firstPersonCalloutsValidation = body('first_person_callouts')
+    .optional()
+    .custom((value) => {
+        parseFirstPersonCalloutsField(value);
         return true;
     });
 
@@ -300,6 +307,7 @@ const blogValidation = [
     sourcesValidation,
     pullQuoteValidation,
     inlineProductCardValidation,
+    firstPersonCalloutsValidation,
     relatedBlogIdsValidation(false),
     ...authorOverrideValidations
 ];
@@ -405,6 +413,7 @@ const blogUpdateValidation = [
     sourcesValidation,
     pullQuoteValidation,
     inlineProductCardValidation,
+    firstPersonCalloutsValidation,
     relatedBlogIdsValidation(true),
     ...authorOverrideValidations
 ];

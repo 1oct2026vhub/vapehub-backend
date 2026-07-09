@@ -14,6 +14,7 @@ const {
     parseSourcesField,
     parsePullQuoteField,
     parseInlineProductCardField,
+    parseFirstPersonCalloutsField,
     parseRelatedBlogIdsField,
     resolveAuthorId,
     attachRelatedBlogFields
@@ -260,6 +261,9 @@ module.exports.createBlog = async (req, res) => {
         const inlineProductCard = req.body.inline_product_card !== undefined
             ? await parseInlineProductCardField(req.body.inline_product_card)
             : null;
+        const firstPersonCallouts = req.body.first_person_callouts !== undefined
+            ? parseFirstPersonCalloutsField(req.body.first_person_callouts)
+            : [];
         const status = req.body.status || 'draft';
 
         const heroFile = req.files?.image?.[0];
@@ -286,6 +290,7 @@ module.exports.createBlog = async (req, res) => {
             sources,
             pull_quote: pullQuote,
             inline_product_card: inlineProductCard,
+            first_person_callouts: firstPersonCallouts,
             author_override: author_override ?? null,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
@@ -406,6 +411,9 @@ module.exports.updateBlog = async (req, res) => {
         const parsedInlineProductCard = req.body.inline_product_card !== undefined
             ? await parseInlineProductCardField(req.body.inline_product_card)
             : undefined;
+        const parsedFirstPersonCallouts = req.body.first_person_callouts !== undefined
+            ? parseFirstPersonCalloutsField(req.body.first_person_callouts)
+            : undefined;
         const parsedAuthorId = req.body.author_id !== undefined
             ? await resolveAuthorId(req.body.author_id, updated_by)
             : undefined;
@@ -446,6 +454,7 @@ module.exports.updateBlog = async (req, res) => {
             ...(parsedSources !== undefined && { sources: parsedSources }),
             ...(parsedPullQuote !== undefined && { pull_quote: parsedPullQuote }),
             ...(parsedInlineProductCard !== undefined && { inline_product_card: parsedInlineProductCard }),
+            ...(parsedFirstPersonCallouts !== undefined && { first_person_callouts: parsedFirstPersonCallouts }),
             ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
             ...(author_override !== undefined && { author_override }),
             updated_by

@@ -551,6 +551,23 @@ router.get('/id/:id', blogController.getBlogById);
  *             url:
  *               type: string
  *               example: "/nic-salts"
+ *     StorefrontBlogFirstPersonCallout:
+ *       type: object
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "FROM OUR WAREHOUSE"
+ *         heading:
+ *           type: string
+ *         body:
+ *           type: string
+ *           description: Rich-text HTML
+ *         insert_after_paragraph:
+ *           type: integer
+ *           minimum: 1
+ *         location:
+ *           type: string
+ *           enum: [inline_body]
  *     StorefrontRelatedBlogCard:
  *       type: object
  *       properties:
@@ -659,6 +676,12 @@ router.get('/id/:id', blogController.getBlogById);
  *           $ref: '#/components/schemas/StorefrontBlogInlineProductCard'
  *           nullable: true
  *           description: Optional single inline product or category spotlight card for mid-article placement
+ *         first_person_callouts:
+ *           type: array
+ *           maxItems: 2
+ *           items:
+ *             $ref: '#/components/schemas/StorefrontBlogFirstPersonCallout'
+ *           description: Optional first-person warehouse/team callouts for inline body placement
  *         related_blogs:
  *           type: array
  *           maxItems: 3
