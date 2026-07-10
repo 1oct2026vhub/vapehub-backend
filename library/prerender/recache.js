@@ -4,7 +4,7 @@ const axios = require('axios');
 const logger = require('../logger');
 const { buildPublicUrl, buildHomeUrl, urlsForEntity } = require('./urlBuilder');
 
-const RECACHE_URL = 'https://api.prerender.io/recache';
+const RECACHE_URL = process.env.PRERENDER_RECACHE_URL || 'https://api.prerender.io/recache';
 const MAX_URLS_PER_REQUEST = 1000;
 const REQUEST_TIMEOUT_MS = 15000;
 
