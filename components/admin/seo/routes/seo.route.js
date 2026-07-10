@@ -135,6 +135,12 @@ router.post(
     }
 );
 
+router.post(
+    '/prerender/recache',
+    [authMiddleware(true)],
+    seoController.manualRecache
+);
+
 /**
  * @swagger
  * /api/admin/seo:

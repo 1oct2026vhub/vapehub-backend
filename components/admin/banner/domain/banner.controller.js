@@ -5,6 +5,7 @@ const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFro
 const { readUploadFile, cleanupMulterFiles } = require("../../../../library/multer/tempDiskStorage");
 // Removed old imports - using new migration-style system
 const path = require('path');
+const { recacheHomeFireAndForget } = require('../../../../library/prerender');
 
 // Banner image configurations - NO RESIZING, PRESERVE ORIGINAL FORMAT
 const BANNER_RESIZE_CONFIGS = {
@@ -298,6 +299,7 @@ module.exports.createBanner = async (req, res) => {
             responsive_images: banner.getResponsiveUrls()
         };
 
+        recacheHomeFireAndForget({ source: 'createBanner', bannerId: banner.id });
         return successResponse(res, formattedBanner, 'Banner created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -524,6 +526,7 @@ module.exports.updateBanner = async (req, res) => {
             responsive_images: banner.getResponsiveUrls()
         };
         
+        recacheHomeFireAndForget({ source: 'updateBanner', bannerId: banner.id });
         return successResponse(res, formattedBanner, 'Banner updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -575,6 +578,7 @@ module.exports.deleteBanner = async (req, res) => {
             await banner.destroy({ transaction: t });
         });
 
+        recacheHomeFireAndForget({ source: 'deleteBanner' });
         return successResponse(res, null, 'Banner deleted successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -685,6 +689,7 @@ module.exports.shuffleDisplayOrder = async (req, res) => {
             };
         });
 
+        recacheHomeFireAndForget({ source: 'updateBannerDisplayOrder' });
         return successResponse(res, formattedBanners, 'Display order updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
