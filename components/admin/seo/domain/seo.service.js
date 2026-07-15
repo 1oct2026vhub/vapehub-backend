@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { SeoMeta, Product, ProductVariant, Category, Brand, BlogCategory, Blog, Deal } = require('../../../../models');
 const logger = require('../../../../library/logger');
 const { cacheOrFetch, invalidateCachePattern } = require('../../../../library/cache');
+const { recacheEntityFireAndForget, recacheHomeFireAndForget } = require('../../../../library/prerender');
 
 // SEO Health Status Constants
 const SEO_HEALTH_STATUS = {
@@ -591,6 +592,8 @@ class SeoService {
         throw new Error('SEO metadata not found');
       }
 
+      const oldSlug = seoMeta.slug;
+
       // Update only the slug and canonical URL
       const updatedSeoMeta = await seoMeta.update({
         slug: newSlug,
@@ -599,6 +602,10 @@ class SeoService {
 
       invalidateCachePattern('seo:*').catch(() => {});
       invalidateCachePattern('sitemap:*').catch(() => {});
+      recacheEntityFireAndForget(entityType, newSlug, oldSlug !== newSlug ? oldSlug : null, {
+        source: 'updateSeoSlug',
+        entityId
+      });
       this.logger.info({ entityType, entityId, newSlug }, 'Successfully updated SEO slug');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {

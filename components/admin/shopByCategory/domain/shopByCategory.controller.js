@@ -3,6 +3,7 @@ const { ShopByCategory, Category, sequelize } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
 const { uploadFiletToS3, deleteFile } = require("../../../../library/s3/s3Helper");
 const path = require("path");
+const { recacheHomeFireAndForget } = require("../../../../library/prerender");
 
 /**
  * Get the next available order number
@@ -208,6 +209,7 @@ module.exports.createShopByCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'createShopByCategory' });
         return successResponse(res, createdCategory, "Shop by category created successfully", 201);
     } catch (error) {
         if (t && !t.finished) await t.rollback();
@@ -285,6 +287,7 @@ module.exports.updateShopByCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'updateShopByCategory' });
         return successResponse(res, updatedCategory, "Shop by category updated successfully");
     } catch (error) {
         if (t && !t.finished) await t.rollback();
@@ -359,6 +362,7 @@ module.exports.deleteShopByCategory = async (req, res, next) => {
         await shopByCategory.destroy({ transaction: t });
         await t.commit();
 
+        recacheHomeFireAndForget({ source: 'deleteShopByCategory' });
         return successResponse(res, null, "Shop by category deleted successfully");
     } catch (error) {
         await t.rollback();
@@ -393,6 +397,7 @@ module.exports.restoreShopByCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'restoreShopByCategory' });
         return successResponse(res, restoredCategory, "Shop by category restored successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -464,6 +469,7 @@ module.exports.shuffleOrder = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'updateShopByCategoryOrder' });
         return successResponse(res, updated, "Order updated successfully");
     } catch (error) {
         await t.rollback();
