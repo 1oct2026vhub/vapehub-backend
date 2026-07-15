@@ -573,6 +573,37 @@ class SeoService {
   }
 
   /**
+   * Build public canonical URL for an entity slug.
+   * Brands must use /brand/<slug>/ to match storefront routes and sitemap paths.
+   * @param {string} entityType
+   * @param {string} slug
+   * @returns {string|null}
+   */
+  buildCanonicalUrl(entityType, slug) {
+    const base = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+    if (!base || !slug) return null;
+
+    const cleanSlug = String(slug).replace(/^\/+|\/+$/g, '');
+    if (!cleanSlug) return null;
+
+    let path;
+    switch (entityType) {
+      case 'brand':
+        path = `/brand/${cleanSlug}/`;
+        break;
+      case 'deals':
+        path = `/product-deals/${cleanSlug}/`;
+        break;
+      default:
+        // product, category, blog_post/blog, blog_category, page
+        path = `/${cleanSlug}/`;
+        break;
+    }
+
+    return `${base}${path}`;
+  }
+
+  /**
    * Update only the slug in SEO metadata
    * @param {string} entityType - Type of entity (product, category, brand, blog_category, blog_post)
    * @param {string} entityId - ID of the entity
@@ -593,11 +624,12 @@ class SeoService {
       }
 
       const oldSlug = seoMeta.slug;
+      const canonicalUrl = this.buildCanonicalUrl(entityType, newSlug);
 
       // Update only the slug and canonical URL
       const updatedSeoMeta = await seoMeta.update({
         slug: newSlug,
-        canonicalUrl: `${process.env.FRONTEND_URL}/${newSlug}`
+        canonicalUrl
       });
 
       invalidateCachePattern('seo:*').catch(() => {});
@@ -606,7 +638,7 @@ class SeoService {
         source: 'updateSeoSlug',
         entityId
       });
-      this.logger.info({ entityType, entityId, newSlug }, 'Successfully updated SEO slug');
+      this.logger.info({ entityType, entityId, newSlug, canonicalUrl }, 'Successfully updated SEO slug');
       return { seoMeta: updatedSeoMeta };
     } catch (error) {
       this.logger.error({ error, entityType, entityId, newSlug }, 'Error updating SEO slug');
