@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const brandController = require("../domain/brand.controller");
+const buyingGuideController = require('../domain/buyingGuide.controller');
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
 const { 
@@ -11,6 +12,11 @@ const {
     bulkUpdateBrandsValidation,
     uploadXlxFileMiddleware
 } = require("../helper/brand.validator");
+const {
+    buyingGuideIdValidation,
+    buyingGuideBodyValidation,
+    buyingGuideUploadValidation
+} = require('../helper/buyingGuide.validator');
 
 /**
  * @swagger
@@ -93,6 +99,20 @@ const {
  *         description: Invalid request parameters
  */
 router.get('/', authMiddleware(true), brandController.listAllBrands);
+
+router.get('/:id/buying-guide',
+    [authMiddleware(true), validateRequest(buyingGuideIdValidation)],
+    buyingGuideController.getBuyingGuide
+);
+
+router.post('/:id/buying-guide',
+    [
+        authMiddleware(true),
+        buyingGuideUploadValidation,
+        buyingGuideBodyValidation
+    ],
+    buyingGuideController.saveBuyingGuide
+);
 
 /**
  * @swagger

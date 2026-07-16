@@ -41,9 +41,8 @@ const formatAdminBuyingGuide = (guideInstance) => {
         })
         .filter(Boolean);
 
-    return {
+    const formatted = {
         id: guide.id,
-        category_id: guide.category_id,
         is_enabled: guide.is_enabled,
         guide_label: guide.guide_label || '',
         title: guide.title || '',
@@ -55,6 +54,15 @@ const formatAdminBuyingGuide = (guideInstance) => {
         related_blog_ids,
         related_blogs
     };
+
+    if (guide.category_id != null) {
+        formatted.category_id = guide.category_id;
+    }
+    if (guide.brand_id != null) {
+        formatted.brand_id = guide.brand_id;
+    }
+
+    return formatted;
 };
 
 const formatPublicBuyingGuide = (guideInstance) => {
@@ -77,6 +85,7 @@ const formatPublicBuyingGuide = (guideInstance) => {
     const {
         id: _id,
         category_id: _categoryId,
+        brand_id: _brandId,
         related_blog_ids: _relatedBlogIds,
         related_blogs: _relatedBlogs,
         ...publicFields
