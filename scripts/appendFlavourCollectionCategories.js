@@ -1,18 +1,21 @@
 /**
- * Append flavour collection categories to products from Matt's CSV (additive only).
+ * Append flavour collection attribute terms to products from Matt's CSV (additive only).
+ *
+ * Resolves CSV "Categories Needed" values against Flavour/Flavor attribute terms
+ * and inserts missing product_attribute_terms rows. Does not create variants,
+ * does not set used_in_variation, and does not remove existing links.
  *
  * Usage:
  *   npm run append:flavour-categories -- --dry-run
- *   npm run append:flavour-categories -- --apply
- *   npm run append:flavour-categories -- --csv "path/to/file.csv" --apply
+ *   npm run append:flavour-categories -- --apply --updated-by 1
+ *   npm run append:flavour-categories -- --csv "path/to/file.csv" --apply --updated-by 1
  *
  * Options:
  *   --dry-run          Report planned inserts without writing (default)
- *   --apply            Insert missing product_categories rows
- *   --csv <path>       CSV file path (defaults to repo-root flavour assignments CSV)
+ *   --apply            Insert missing product_attribute_terms rows
+ *   --csv <path>       CSV file path (defaults to public/docs flavour assignments CSV)
  *   --skip-cache       Skip Redis cache invalidation
- *   --skip-menu-sync   Skip syncProductToMenus for published products
- *   --updated-by <id>  User ID for menu sync audit fields (optional)
+ *   --updated-by <id>  User ID for product_attribute_terms.updated_by (required with --apply)
  */
 
 const fs = require('fs');
@@ -21,7 +24,7 @@ const { Op } = require('sequelize');
 
 const DEFAULT_CSV = path.resolve(
     __dirname,
-    '../../VapeHub — Flavour Collection Product Assignments (June 2026) - Flavour Assignments (1).csv'
+    '../public/docs/VapeHub — Flavour Collection Product Assignments (June 2026) - Flavour Assignments.csv'
 );
 
 const FLAVOUR_NAMES = [
@@ -37,23 +40,25 @@ const FLAVOUR_NAMES = [
 ];
 
 const SLUG_ALIASES = {
-    'Cherry': ['cherry'],
-    'Blueberry': ['blueberry'],
-    'Mango': ['mango'],
-    'Grape': ['grape'],
+    Cherry: ['cherry'],
+    Blueberry: ['blueberry'],
+    Mango: ['mango'],
+    Grape: ['grape'],
     'Blue Raspberry': ['blue-raspberry', 'blue-raspbery'],
-    'Apple': ['apple'],
-    'Watermelon': ['watermelon'],
-    'Candy': ['candy'],
-    'Berry': ['berry']
+    Apple: ['apple'],
+    Watermelon: ['watermelon'],
+    Candy: ['candy'],
+    Berry: ['berry']
 };
+
+const FLAVOUR_ATTRIBUTE_NAMES = ['Flavour', 'Flavor'];
+const FLAVOUR_ATTRIBUTE_SLUGS = ['flavour', 'flavor', 'pa_flavour', 'pa_flavor'];
 
 function parseArgs(argv) {
     const args = {
         dryRun: true,
         csvPath: DEFAULT_CSV,
         skipCache: false,
-        skipMenuSync: false,
         updatedBy: null
     };
 
@@ -66,7 +71,7 @@ function parseArgs(argv) {
         } else if (arg === '--skip-cache') {
             args.skipCache = true;
         } else if (arg === '--skip-menu-sync') {
-            args.skipMenuSync = true;
+            // Kept for backward compatibility with older invocations; no-op now.
         } else if (arg === '--csv') {
             args.csvPath = path.resolve(argv[i + 1]);
             i += 1;
@@ -135,29 +140,51 @@ function slugFromProductUrl(url) {
     }
 }
 
-function parseCategoryNames(categoriesNeeded) {
+function parseFlavourNames(categoriesNeeded) {
     return (categoriesNeeded || '')
         .split(',')
         .map((name) => name.trim())
         .filter(Boolean);
 }
 
-async function buildFlavourCategoryMap(Category) {
-    const categories = await Category.findAll({
+async function resolveFlavourAttribute(Attribute) {
+    const attribute = await Attribute.findOne({
         where: {
             [Op.or]: [
-                { name: { [Op.in]: FLAVOUR_NAMES } },
-                { slug: { [Op.in]: Object.values(SLUG_ALIASES).flat() } }
+                { name: { [Op.in]: FLAVOUR_ATTRIBUTE_NAMES } },
+                { slug: { [Op.in]: FLAVOUR_ATTRIBUTE_SLUGS } }
             ]
         },
         attributes: ['id', 'name', 'slug']
     });
 
+    if (!attribute) {
+        throw new Error(
+            'Flavour attribute not found. Expected attribute name Flavour/Flavor ' +
+            `or slug ${FLAVOUR_ATTRIBUTE_SLUGS.join(', ')}.`
+        );
+    }
+
+    return attribute;
+}
+
+async function buildFlavourTermMap(AttributeTerm, attributeId) {
+    const terms = await AttributeTerm.findAll({
+        where: {
+            attribute_id: attributeId,
+            [Op.or]: [
+                { name: { [Op.in]: FLAVOUR_NAMES } },
+                { slug: { [Op.in]: Object.values(SLUG_ALIASES).flat() } }
+            ]
+        },
+        attributes: ['id', 'name', 'slug', 'attribute_id']
+    });
+
     const byName = new Map();
     const bySlug = new Map();
-    for (const category of categories) {
-        byName.set(category.name.trim().toLowerCase(), category);
-        bySlug.set(category.slug.trim().toLowerCase(), category);
+    for (const term of terms) {
+        byName.set(term.name.trim().toLowerCase(), term);
+        bySlug.set(term.slug.trim().toLowerCase(), term);
     }
 
     const map = new Map();
@@ -221,16 +248,16 @@ async function resolveProductId(row, Product) {
 async function invalidateProductCaches(invalidateCachePattern, invalidateCache, productIds) {
     await invalidateCachePattern('products:*');
     await invalidateCachePattern('product:new:*');
-    await invalidateCachePattern('category:products:*');
     if (productIds.length) {
         await invalidateCache(productIds.map((id) => `product:detail:${id}`));
     }
 }
 
 function printSummary(summary) {
-    console.log('\n=== Flavour collection category append summary ===');
+    console.log('\n=== Flavour collection attribute-term append summary ===');
     console.log(`Mode:                 ${summary.mode}`);
     console.log(`CSV:                  ${summary.csvPath}`);
+    console.log(`Flavour attribute:    ${summary.flavourAttribute}`);
     console.log(`Rows in CSV:          ${summary.totalRows}`);
     console.log(`Rows processed:       ${summary.processedRows}`);
     console.log(`Rows skipped:         ${summary.skippedRows}`);
@@ -238,8 +265,6 @@ function printSummary(summary) {
     console.log(`Links to insert:      ${summary.linksToInsert}`);
     console.log(`Links already exist:  ${summary.linksAlreadyExist}`);
     console.log(`Links inserted:       ${summary.linksInserted}`);
-    console.log(`Menu sync attempted:  ${summary.menuSyncAttempted}`);
-    console.log(`Menu sync succeeded:  ${summary.menuSyncSucceeded}`);
     console.log(`Report file:          ${summary.reportPath}`);
 
     if (summary.errors.length) {
@@ -264,20 +289,32 @@ async function main() {
         throw new Error(`CSV file not found: ${args.csvPath}`);
     }
 
+    if (!args.dryRun) {
+        if (!Number.isInteger(args.updatedBy) || args.updatedBy <= 0) {
+            throw new Error('--updated-by <positive user id> is required with --apply');
+        }
+    }
+
     await require('../config/dotenv').loadEnvFile();
 
     const db = require('../models');
-    const { Product, Category, ProductCategory, sequelize } = db;
+    const { Product, Attribute, AttributeTerm, ProductAttributeTerm, sequelize } = db;
 
     await sequelize.authenticate();
 
     const csvContent = fs.readFileSync(args.csvPath, 'utf8');
     const rows = parseCsv(csvContent);
 
-    const { map: flavourCategoryMap, missing: missingFlavours } = await buildFlavourCategoryMap(Category);
+    const flavourAttribute = await resolveFlavourAttribute(Attribute);
+    const { map: flavourTermMap, missing: missingFlavours } = await buildFlavourTermMap(
+        AttributeTerm,
+        flavourAttribute.id
+    );
+
     if (missingFlavours.length) {
         throw new Error(
-            `Missing flavour categories in database: ${missingFlavours.join(', ')}. ` +
+            `Missing flavour attribute terms under "${flavourAttribute.name}" ` +
+            `(id ${flavourAttribute.id}): ${missingFlavours.join(', ')}. ` +
             'Create them before running this script.'
         );
     }
@@ -285,6 +322,7 @@ async function main() {
     const summary = {
         mode: args.dryRun ? 'dry-run' : 'apply',
         csvPath: args.csvPath,
+        flavourAttribute: `${flavourAttribute.name} (id ${flavourAttribute.id}, slug ${flavourAttribute.slug})`,
         totalRows: rows.length,
         processedRows: 0,
         skippedRows: 0,
@@ -292,8 +330,6 @@ async function main() {
         linksToInsert: 0,
         linksAlreadyExist: 0,
         linksInserted: 0,
-        menuSyncAttempted: 0,
-        menuSyncSucceeded: 0,
         errors: [],
         skipped: [],
         details: [],
@@ -303,24 +339,22 @@ async function main() {
     const touchedProductIds = new Set();
     const transaction = args.dryRun ? null : await sequelize.transaction();
 
-    let syncProductToMenus;
     let invalidateCachePattern;
     let invalidateCache;
     let closeRedis;
 
     if (!args.dryRun) {
         ({ invalidateCachePattern, invalidateCache, closeRedis } = require('../library/cache'));
-        ({ syncProductToMenus } = require('../components/admin/menu/domain/menu.controller'));
     }
 
     try {
         for (const row of rows) {
             const productName = row['Product Name'] || 'Unknown product';
-            const categoryNames = parseCategoryNames(row['Categories Needed']);
+            const flavourNames = parseFlavourNames(row['Categories Needed']);
 
-            if (!categoryNames.length) {
+            if (!flavourNames.length) {
                 summary.skippedRows += 1;
-                summary.skipped.push(`${productName}: no categories listed`);
+                summary.skipped.push(`${productName}: no flavour terms listed`);
                 continue;
             }
 
@@ -332,47 +366,47 @@ async function main() {
             }
 
             const { product, resolvedBy } = resolution;
-            const categoryIds = categoryNames.map((name) => {
-                const category = flavourCategoryMap.get(name);
-                if (!category) {
-                    return null;
-                }
-                return category.id;
-            });
-
-            const unknownNames = categoryNames.filter((name) => !flavourCategoryMap.has(name));
+            const unknownNames = flavourNames.filter((name) => !flavourTermMap.has(name));
             if (unknownNames.length) {
                 summary.errorRows += 1;
-                summary.errors.push(`${productName}: unknown category names in CSV: ${unknownNames.join(', ')}`);
+                summary.errors.push(
+                    `${productName}: unknown flavour terms in CSV: ${unknownNames.join(', ')}`
+                );
                 continue;
             }
 
-            const existingLinks = await ProductCategory.findAll({
-                where: { product_id: product.id },
-                attributes: ['category_id', 'is_primary'],
+            const termIds = flavourNames.map((name) => flavourTermMap.get(name).id);
+
+            const existingLinks = await ProductAttributeTerm.findAll({
+                where: {
+                    product_id: product.id,
+                    attribute_id: flavourAttribute.id,
+                    term_id: { [Op.in]: [...new Set(termIds)] }
+                },
+                attributes: ['id', 'term_id'],
                 ...(transaction ? { transaction } : {})
             });
-            const existingCategoryIds = new Set(existingLinks.map((link) => link.category_id));
-            const toInsert = [...new Set(categoryIds)].filter((categoryId) => !existingCategoryIds.has(categoryId));
-            const alreadyLinked = categoryIds.filter((categoryId) => existingCategoryIds.has(categoryId));
+            const existingTermIds = new Set(existingLinks.map((link) => Number(link.term_id)));
+            const uniqueTermIds = [...new Set(termIds)];
+            const toInsert = uniqueTermIds.filter((termId) => !existingTermIds.has(Number(termId)));
+            const alreadyLinked = uniqueTermIds.filter((termId) => existingTermIds.has(Number(termId)));
 
             summary.processedRows += 1;
             summary.linksToInsert += toInsert.length;
             summary.linksAlreadyExist += alreadyLinked.length;
 
+            const findTermMeta = (termId) => {
+                const term = [...flavourTermMap.values()].find((item) => Number(item.id) === Number(termId));
+                return { id: termId, name: term?.name || termId, slug: term?.slug || null };
+            };
+
             const detail = {
                 productId: product.id,
                 productName: product.name,
                 resolvedBy: resolvedBy || 'id',
-                categoriesRequested: categoryNames,
-                categoriesToInsert: toInsert.map((categoryId) => {
-                    const category = [...flavourCategoryMap.values()].find((item) => item.id === categoryId);
-                    return { id: categoryId, name: category?.name || categoryId };
-                }),
-                categoriesAlreadyLinked: alreadyLinked.map((categoryId) => {
-                    const category = [...flavourCategoryMap.values()].find((item) => item.id === categoryId);
-                    return { id: categoryId, name: category?.name || categoryId };
-                })
+                termsRequested: flavourNames,
+                termsToInsert: toInsert.map(findTermMeta),
+                termsAlreadyLinked: alreadyLinked.map(findTermMeta)
             };
             summary.details.push(detail);
 
@@ -384,11 +418,14 @@ async function main() {
                 continue;
             }
 
-            const created = await ProductCategory.bulkCreate(
-                toInsert.map((categoryId) => ({
+            const created = await ProductAttributeTerm.bulkCreate(
+                toInsert.map((termId) => ({
                     product_id: product.id,
-                    category_id: categoryId,
-                    is_primary: false
+                    attribute_id: flavourAttribute.id,
+                    term_id: termId,
+                    is_visible_page: true,
+                    used_in_variation: false,
+                    updated_by: args.updatedBy
                 })),
                 { transaction, ignoreDuplicates: true }
             );
@@ -398,24 +435,11 @@ async function main() {
 
             for (const link of created) {
                 summary.inserted.push({
-                    product_category_id: link.id,
+                    product_attribute_term_id: link.id,
                     product_id: product.id,
-                    category_id: link.category_id
+                    attribute_id: flavourAttribute.id,
+                    term_id: link.term_id
                 });
-            }
-
-            if (!args.skipMenuSync && product.status === 'published') {
-                summary.menuSyncAttempted += 1;
-                try {
-                    const menuResult = await syncProductToMenus(product.id, transaction, args.updatedBy);
-                    if (menuResult?.synced) {
-                        summary.menuSyncSucceeded += 1;
-                    }
-                } catch (menuError) {
-                    summary.errors.push(
-                        `${product.name} (ID ${product.id}): menu sync failed - ${menuError.message}`
-                    );
-                }
             }
         }
 
@@ -445,7 +469,7 @@ async function main() {
     const outputDir = path.resolve(__dirname, 'output');
     fs.mkdirSync(outputDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const reportPath = path.join(outputDir, `append-flavour-categories-${timestamp}.json`);
+    const reportPath = path.join(outputDir, `append-flavour-attribute-terms-${timestamp}.json`);
     summary.reportPath = reportPath;
     fs.writeFileSync(reportPath, JSON.stringify(summary, null, 2));
 
