@@ -124,11 +124,24 @@ const parseBuyingGuideBody = (body = {}) => {
     }
 
     const is_enabled = parseBooleanField(body.is_enabled);
-    const payload = { is_enabled };
+    const contentFieldKeys = [
+        'guide_label',
+        'title',
+        'intro_content',
+        'banner_alt',
+        'banner_image',
+        'highlights',
+        'tabs',
+        'related_blog_ids'
+    ];
+    const hasContentFields = contentFieldKeys.some((key) => body[key] !== undefined);
 
-    if (!is_enabled) {
-        return payload;
+    // Unpublish-only: flip flag and keep existing content when no content fields are sent
+    if (!is_enabled && !hasContentFields) {
+        return { is_enabled: false, preserveContent: true };
     }
+
+    const payload = { is_enabled, preserveContent: false };
 
     payload.guide_label = body.guide_label != null ? String(body.guide_label).trim() : '';
     payload.title = body.title != null ? String(body.title).trim() : '';
@@ -181,12 +194,26 @@ const validateEnabledBuyingGuide = (payload) => {
     });
 };
 
+const validateDraftBuyingGuide = (payload) => {
+    if (!payload.tabs?.length) {
+        return;
+    }
+
+    const orders = payload.tabs.map((tab) => tab.order);
+    if (orders.length !== new Set(orders).size) {
+        throw new Error('Tab order values must be unique');
+    }
+};
+
 const validateBuyingGuidePayload = (payload) => {
+    if (payload.preserveContent) {
+        return;
+    }
+
     if (payload.is_enabled) {
         validateEnabledBuyingGuide(payload);
-        if (payload.related_blog_ids) {
-            normalizeRelatedBlogIds(payload.related_blog_ids);
-        }
+    } else {
+        validateDraftBuyingGuide(payload);
     }
 };
 

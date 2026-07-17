@@ -63,7 +63,7 @@ const validateRelatedBlogsExist = async (relatedBlogIds, transaction) => {
 };
 
 const replaceBuyingGuideChildren = async (buyingGuideId, payload, transaction) => {
-    if (!payload.is_enabled) {
+    if (payload.preserveContent) {
         return;
     }
 
@@ -98,9 +98,9 @@ const replaceBuyingGuideChildren = async (buyingGuideId, payload, transaction) =
         await CategoryBuyingGuideTab.bulkCreate(
             sortedTabs.map((tab, index) => ({
                 buying_guide_id: buyingGuideId,
-                tab_title: tab.tab_title,
-                section_heading: tab.section_heading,
-                section_body: tab.section_body,
+                tab_title: tab.tab_title || '',
+                section_heading: tab.section_heading || '',
+                section_body: tab.section_body || '',
                 sort_order: tab.order != null ? tab.order : index
             })),
             { transaction }
@@ -125,12 +125,12 @@ const buildParentAttributes = (payload, existingGuide = null) => {
         is_enabled: payload.is_enabled
     };
 
-    if (!payload.is_enabled) {
+    if (payload.preserveContent) {
         return attributes;
     }
 
-    attributes.guide_label = payload.guide_label;
-    attributes.title = payload.title;
+    attributes.guide_label = payload.guide_label || null;
+    attributes.title = payload.title || null;
     attributes.intro_content = payload.intro_content || '';
     attributes.banner_alt = payload.banner_alt || null;
 
