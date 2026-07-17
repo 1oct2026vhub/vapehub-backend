@@ -150,6 +150,15 @@ const seoController = {
       });
       const oldSlug = existingSeoMeta?.slug;
 
+      // Brands/deals: keep canonical aligned with public route even if admin UI omits the field
+      if (entityType === 'brand' || entityType === 'deals') {
+        const slugForCanonical = seoData.slug || existingSeoMeta?.slug;
+        const built = seoService.buildCanonicalUrl(entityType, slugForCanonical);
+        if (built) {
+          seoData.canonicalUrl = built;
+        }
+      }
+
       // Create or update SEO metadata
       const [seoMeta, created] = await SeoMeta.upsert({
         entityType,
