@@ -3,6 +3,7 @@ const { BlogCategory, SlugRelation, sequelize, Redirect } = require("../../../..
 const { Op } = require("sequelize");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const { invalidateCachePattern } = require("../../../../library/cache");
+const { recacheEntityFireAndForget, recacheHomeFireAndForget } = require("../../../../library/prerender");
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
 
@@ -178,6 +179,10 @@ module.exports.createBlogCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_category', category.slug, null, { source: 'createBlogCategory', categoryId: category.id });
+        if (category.show_home_page) {
+            recacheHomeFireAndForget({ source: 'createBlogCategory', categoryId: category.id });
+        }
         return successResponse(res, category, "Blog category created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -201,6 +206,9 @@ module.exports.updateBlogCategory = async (req, res, next) => {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Not found", 404);
         }
+
+        const oldBlogCategorySlug = category.slug;
+        const hadHomeVisibility = category.show_home_page;
 
         // Check if name is being changed and if it's already taken
         if (name && name !== category.name) {
@@ -320,6 +328,15 @@ module.exports.updateBlogCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget(
+            'blog_category',
+            category.slug,
+            oldBlogCategorySlug !== category.slug ? oldBlogCategorySlug : null,
+            { source: 'updateBlogCategory', categoryId: id }
+        );
+        if (category.show_home_page || hadHomeVisibility) {
+            recacheHomeFireAndForget({ source: 'updateBlogCategory', categoryId: id });
+        }
 
         let responseData = category;
         if (categoryIsDeleted) {
@@ -402,6 +419,10 @@ module.exports.deleteBlogCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_category', category.slug, null, { source: 'deleteBlogCategory', categoryId: id });
+        if (category.show_home_page) {
+            recacheHomeFireAndForget({ source: 'deleteBlogCategory', categoryId: id });
+        }
         return successResponse(res, null, "Blog category deleted successfully");
     } catch (error) {
         await t.rollback();
@@ -445,6 +466,10 @@ module.exports.restoreBlogCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_category', category.slug, null, { source: 'restoreBlogCategory', categoryId: id });
+        if (category.show_home_page) {
+            recacheHomeFireAndForget({ source: 'restoreBlogCategory', categoryId: id });
+        }
         return successResponse(res, category, "Blog category restored successfully");
     } catch (error) {
         await t.rollback();

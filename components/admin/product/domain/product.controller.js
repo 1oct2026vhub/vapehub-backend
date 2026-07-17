@@ -10,6 +10,7 @@ const SlugManager = require("../../../../utils/slugManager");
 const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
+const { recacheProductFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require('../../../../library/prerender');
 const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
 
 const slugManager = new SlugManager(SlugRelation);
@@ -1209,6 +1210,7 @@ module.exports.createProduct = async (req, res, next) => {
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${product.id}`).catch(() => {});
+        recacheProductFireAndForget(cleanSlug, null, { source: 'createProduct', productId: product.id });
 
         // Fetch and return the created product with related models
         const newProduct = await Product.findByPk(product.id, {
@@ -1308,6 +1310,8 @@ module.exports.updateProduct = async (req, res, next) => {
             await transaction.rollback();
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
+
+        const oldProductSlug = product.slug;
 
         // Clean the input values if provided
         const cleanName = name?.trim();
@@ -1948,6 +1952,11 @@ module.exports.updateProduct = async (req, res, next) => {
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
+        recacheProductFireAndForget(
+            updatedProduct.slug,
+            shouldUpdateSeoSlug ? oldProductSlug : null,
+            { source: 'updateProduct', productId: id }
+        );
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
         if (shouldUpdateSeoSlug && cleanSlug) {
@@ -2054,6 +2063,7 @@ module.exports.deleteProduct = async (req, res, next) => {
         invalidateCachePattern('product:new:*').catch(() => {});
         invalidateCachePattern('category:products:*').catch(() => {});
         invalidateCache(`product:detail:${id}`).catch(() => {});
+        recacheProductFireAndForget(product.slug, null, { source: 'deleteProduct', productId: id });
         logger.info(`Product ID ${id} deleted successfully`);
 
         return successResponse(res, { message: "Product deleted successfully" });
@@ -2142,6 +2152,10 @@ module.exports.bulkDeleteProducts = async (req, res, next) => {
             invalidateCachePattern('product:new:*').catch(() => {});
             invalidateCachePattern('category:products:*').catch(() => {});
             invalidateCache(deletedProducts.map(p => `product:detail:${p.id}`)).catch(() => {});
+            recacheUrlsFireAndForget(
+                deletedProducts.map((p) => buildPublicUrl(`/${p.slug}/`)),
+                { source: 'bulkDeleteProducts', count: deletedProducts.length }
+            );
         }
 
         const responseData = {
@@ -2214,6 +2228,7 @@ module.exports.restoreProduct = async (req, res, next) => {
         await SeoService.updateNoIndex('product', id, noIndex);
 
         await transaction.commit();
+        recacheProductFireAndForget(product.slug, null, { source: 'restoreProduct', productId: id });
         logger.info(`Product ID ${id} restored successfully`);
 
         return successResponse(res, { message: "Product restored successfully" });
@@ -2320,6 +2335,13 @@ module.exports.bulkRestoreProducts = async (req, res, next) => {
             : restoredProducts.length > 0
                 ? 'Some products restored successfully'
                 : 'No products were restored';
+
+        if (restoredProducts.length > 0) {
+            recacheUrlsFireAndForget(
+                restoredProducts.map((p) => buildPublicUrl(`/${p.slug}/`)),
+                { source: 'bulkRestoreProducts', count: restoredProducts.length }
+            );
+        }
 
         return successResponse(res, responseData, message, statusCode);
     } catch (error) {
@@ -2804,6 +2826,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
             products: [],
             attributes: []
         };
+        const recacheSlugs = new Set();
         
         // First, process all products
         if (productSheet) {
@@ -2839,7 +2862,8 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
                 await processProductRow({
                     id, name, slug, description, 
                     brand_slugs, category_slugs, updated_by, 
-                    results
+                    results,
+                    recacheSlugs
                 });
             }
         }
@@ -2896,6 +2920,13 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
             attributes: generateSummary(results.attributes)
         };
 
+        if (recacheSlugs.size > 0) {
+            recacheUrlsFireAndForget(
+                [...recacheSlugs].map((s) => buildPublicUrl(`/${s}/`)),
+                { source: 'bulkUpdateProducts', count: recacheSlugs.size }
+            );
+        }
+
         return successResponse(res, {
             summary,
             results
@@ -2908,7 +2939,7 @@ module.exports.bulkUpdateProducts = async (req, res, next) => {
 };
 
 // Helper function to process a product row
-const processProductRow = async ({ id, name, slug, description, brand_slugs, category_slugs, updated_by, results }) => {
+const processProductRow = async ({ id, name, slug, description, brand_slugs, category_slugs, updated_by, results, recacheSlugs }) => {
     try {
         // Find brands if brand_slugs exists
         let brands = [];
@@ -2958,6 +2989,9 @@ const processProductRow = async ({ id, name, slug, description, brand_slugs, cat
             product = await Product.findByPk(id);
             if (product) {
                 if (product.slug !== productData.slug) {
+                    if (recacheSlugs) {
+                        recacheSlugs.add(product.slug);
+                    }
                     const existingProductWithSlug = await Product.findOne({
                         where: { 
                             slug: productData.slug,
@@ -3020,6 +3054,10 @@ const processProductRow = async ({ id, name, slug, description, brand_slugs, cat
 
         // Create or update slug relation
         await slugManager.createOrUpdateSlug(product.slug, 'product', product.id);
+
+        if (recacheSlugs) {
+            recacheSlugs.add(product.slug);
+        }
 
         results.products.push({
             id: product.id,
@@ -3346,6 +3384,12 @@ module.exports.updateProductStatus = async (req, res, next) => {
             await removeProductMenus(productId, transaction);
             await transaction.commit();
 
+            recacheProductFireAndForget(product.slug, null, {
+                source: 'updateProductStatus',
+                productId,
+                status
+            });
+
             // Update SEO AFTER transaction commit (non-blocking)
             if (shouldUpdateSeoNoIndex) {
                 SeoService.updateProductNoIndex(productId, status).catch(seoError => {
@@ -3457,6 +3501,12 @@ module.exports.updateProductStatus = async (req, res, next) => {
         };
 
         await transaction.commit();
+
+        recacheProductFireAndForget(product.slug, null, {
+            source: 'updateProductStatus',
+            productId,
+            status
+        });
 
         // Update SEO AFTER transaction commit (non-blocking)
         if (shouldUpdateSeoNoIndex) {

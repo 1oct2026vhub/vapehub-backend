@@ -11,6 +11,22 @@ const { sequelize } = require("../../../../models");
 
 const slugManager = new SlugManager(SlugRelation);
 
+const { recacheProductFireAndForget } = require('../../../../library/prerender');
+
+function recacheProductPageById(productId, context = {}) {
+    if (!productId) {
+        return;
+    }
+
+    Product.findByPk(productId, { attributes: ['slug'] })
+        .then((product) => {
+            if (product?.slug) {
+                recacheProductFireAndForget(product.slug, null, { productId, ...context });
+            }
+        })
+        .catch(() => {});
+}
+
 const ERROR_MESSAGES = {
     VARIANT_NOT_FOUND: "Variant not found",
     PRODUCT_NOT_FOUND: "Product not found",
@@ -104,6 +120,7 @@ module.exports.addProductAttributes = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'addProductAttributes' });
 
         // Fetch updated product with attributes
         const updatedProduct = await Product.findByPk(product_id, {
@@ -357,6 +374,7 @@ module.exports.updateProductAttributes = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'updateProductAttributes' });
 
         // Fetch updated product with attributes
         const updatedProduct = await Product.findByPk(product_id, {
@@ -534,6 +552,7 @@ module.exports.createProductVariants = async (req, res) => {
         }));
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'createProductVariants' });
         
         try {
             const newVariants = await fetchCreatedVariants(createdVariants);
@@ -862,6 +881,7 @@ module.exports.updateProductVariant = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(existingVariant.product_id, { source: 'updateProductVariant', variantId: variant_id });
 
         // Fetch updated variant with relations
         const updatedVariantWithRelations = await ProductVariant.findByPk(variant_id, {
@@ -904,6 +924,7 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
 
         const updatedVariants = [];
         const errors = [];
+        const recacheProductIds = new Set();
 
         // Process each variant update
         for (const variantUpdate of variants) {
@@ -1020,6 +1041,7 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
                 });
 
                 updatedVariants.push(updatedVariantWithRelations);
+                recacheProductIds.add(Number(product_id));
             } catch (error) {
                 errors.push({ product_id, variant_id, error: error.message });
                 logger.error(`Bulk Update Variant Error for product ${product_id}, variant ${variant_id}:`, {
@@ -1038,6 +1060,9 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductIds.forEach((pid) => {
+            recacheProductPageById(pid, { source: 'bulkUpdateVariantsMultiple' });
+        });
 
         return successResponse(res, {
             updated: updatedVariants,
@@ -1104,6 +1129,7 @@ module.exports.removeProductVariant = async (req, res) => {
         await variant.destroy({ transaction });
 
         await transaction.commit();
+        recacheProductPageById(variant.product_id, { source: 'removeProductVariant', variantId: variant_id });
 
         return successResponse(res, null, "Product variant removed successfully");
     } catch (error) {
@@ -2007,6 +2033,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
 
         const results = [];
         const promises = [];
+        const recacheProductIds = new Set();
 
         // Convert worksheet rows to array and skip header
         const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
@@ -2228,6 +2255,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                         status: action,
                         message: `Variant successfully ${action.toLowerCase()}`
                     });
+                    recacheProductIds.add(product.id);
 
                 } catch (error) {
                     results.push({
@@ -2262,6 +2290,9 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
         };
 
         await transaction.commit();
+        recacheProductIds.forEach((pid) => {
+            recacheProductPageById(pid, { source: 'bulkUpdateVariants' });
+        });
         return successResponse(res, { summary, results }, "Product variants processed successfully");
 
     } catch (error) {
@@ -2721,6 +2752,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         });
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'bulkUpdateVariantsDirect' });
         return successResponse(res, productUpdatedVariants, 'Variants updated successfully');
     } catch (error) {
         await transaction.rollback();

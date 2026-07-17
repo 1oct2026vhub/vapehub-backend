@@ -4,6 +4,7 @@ const { Op, Sequelize } = require("sequelize");
 const { uploadFiletToS3, deleteFile, uploadImageToS3WithResize, generateCloudFrontUrlForS3, downloadS3ObjectBuffer } = require("../../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../../library/multer/tempDiskStorage");
 const path = require('path');
+const { recacheHomeFireAndForget } = require('../../../../library/prerender');
 
 // Carousel image configurations - NO RESIZING, PRESERVE ORIGINAL FORMAT
 const CAROUSEL_RESIZE_CONFIGS = {
@@ -339,6 +340,7 @@ module.exports.createCarousel = async (req, res) => {
             responsive_images: carousel.getResponsiveUrls()
         };
 
+        recacheHomeFireAndForget({ source: 'createCarousel', carouselId: carousel.id });
         return successResponse(res, formattedCarousel, 'Carousel created successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -530,6 +532,7 @@ module.exports.updateCarousel = async (req, res) => {
             responsive_images: carousel.getResponsiveUrls()
         };
         
+        recacheHomeFireAndForget({ source: 'updateCarousel', carouselId: carousel.id });
         return successResponse(res, formattedCarousel, 'Carousel updated successfully with responsive images');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -581,6 +584,7 @@ module.exports.deleteCarousel = async (req, res) => {
             await carousel.destroy({ transaction: t });
         });
 
+        recacheHomeFireAndForget({ source: 'deleteCarousel' });
         return successResponse(res, null, 'Carousel deleted successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -686,6 +690,7 @@ module.exports.shuffleDisplayOrder = async (req, res) => {
             };
         });
 
+        recacheHomeFireAndForget({ source: 'updateCarouselDisplayOrder' });
         return successResponse(res, formattedCarousels, 'Display order updated successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);

@@ -5,6 +5,7 @@ const { Op, Sequelize } = require('sequelize');
 const { DEAL_TYPES } = require('../../../../config/constants');
 const SlugManager = require('../../../../utils/slugManager');
 const slugManager = new SlugManager(SlugRelation);
+const { recacheEntityFireAndForget, recacheHomeFireAndForget } = require('../../../../library/prerender');
 const { uploadFiletToS3, generateUniqueFileName } = require('../../../../library/s3');
 const moment = require('moment-timezone');
 
@@ -160,6 +161,10 @@ module.exports.createDeal = async (req, res, next) => {
         });
 
         await transaction.commit();
+        recacheEntityFireAndForget('deals', createdDeal.slug, null, { source: 'createDeal', dealId: deal.id });
+        if (createdDeal.show_home_page) {
+            recacheHomeFireAndForget({ source: 'createDeal', dealId: deal.id });
+        }
         successResponse(res, createdDeal, 'Deal created successfully', 201);
     } catch (error) {
         if (transaction && !transaction.finished) {
@@ -212,6 +217,9 @@ module.exports.updateDeal = async (req, res, next) => {
             error.statusCode = 404;
             throw error;
         }
+
+        const oldDealSlug = deal.slug;
+        const hadHomeVisibility = deal.show_home_page;
 
         // Handle image upload if file is provided
         if (req.file) {
@@ -507,6 +515,16 @@ module.exports.updateDeal = async (req, res, next) => {
         });
 
         await transaction.commit();
+
+        recacheEntityFireAndForget(
+            'deals',
+            updatedDeal.slug,
+            oldDealSlug !== updatedDeal.slug ? oldDealSlug : null,
+            { source: 'updateDeal', dealId: id }
+        );
+        if (updatedDeal.show_home_page || hadHomeVisibility) {
+            recacheHomeFireAndForget({ source: 'updateDeal', dealId: id });
+        }
 
         let responseData = updatedDeal;
         if (updatedDeal && updatedDeal.deletedAt) {
@@ -808,6 +826,10 @@ module.exports.deleteDeal = async (req, res, next) => {
 
         await deal.destroy({ transaction });
         await transaction.commit();
+        recacheEntityFireAndForget('deals', deal.slug, null, { source: 'deleteDeal', dealId: id });
+        if (deal.show_home_page) {
+            recacheHomeFireAndForget({ source: 'deleteDeal', dealId: id });
+        }
         successResponse(res, null, 'Deal deleted successfully');
     } catch (error) {
         if (transaction && !transaction.finished) {
@@ -857,6 +879,10 @@ module.exports.restoreDeal = async (req, res, next) => {
         await slugManager.createOrUpdateSlug(deal.slug, 'deal', deal.id, transaction);
 
         await transaction.commit();
+        recacheEntityFireAndForget('deals', deal.slug, null, { source: 'restoreDeal', dealId: id });
+        if (deal.show_home_page) {
+            recacheHomeFireAndForget({ source: 'restoreDeal', dealId: id });
+        }
         successResponse(res, deal, 'Deal restored successfully');
     } catch (error) {
         if (transaction && !transaction.finished) {

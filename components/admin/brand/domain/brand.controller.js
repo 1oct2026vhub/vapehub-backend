@@ -5,6 +5,7 @@ const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../.
 const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
+const { recacheEntityFireAndForget } = require('../../../../library/prerender');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -178,6 +179,7 @@ module.exports.createBrand = async (req, res, next) => {
         await slugManager.createOrUpdateSlug(slug, 'brand', brand.id, t);
 
         await t.commit();
+        recacheEntityFireAndForget('brand', slug, null, { source: 'createBrand', brandId: brand.id });
         return successResponse(res, brand, "Brand created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -202,6 +204,8 @@ module.exports.updateBrand = async (req, res, next) => {
             await t.rollback();
             return errorResponse(res, { message: "Brand not found" }, "Brand not found", 404);
         }
+
+        const oldBrandSlug = brand.slug;
 
         // Check for name uniqueness (excluding the current brand)
         const existingBrand = await Brand.findOne({
@@ -301,6 +305,12 @@ module.exports.updateBrand = async (req, res, next) => {
         }
 
         await t.commit();
+        recacheEntityFireAndForget(
+            'brand',
+            brand.slug,
+            oldBrandSlug !== brand.slug ? oldBrandSlug : null,
+            { source: 'updateBrand', brandId: id }
+        );
 
         let responseData = brand;
         if (brand.deletedAt) {
@@ -403,6 +413,7 @@ module.exports.deleteBrand = async (req, res, next) => {
         await seoService.updateNoIndex('brand', id, true);
 
         await t.commit();
+        recacheEntityFireAndForget('brand', brand.slug, null, { source: 'deleteBrand', brandId: id });
         return successResponse(res, {}, "Brand soft deleted successfully", 200);
     } catch (error) {
         await t.rollback();

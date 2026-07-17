@@ -18,7 +18,8 @@
     "worker:bulk-order-status-sqs:dev": "nodemon workers/bulkOrderStatusSqsWorker.js",
     "reconcile:worldpay": "node scripts/runWorldpayReconcile.js",
     "query:worldpay": "node scripts/queryWorldpayPaymentState.js",
-    "append:flavour-categories": "node scripts/appendFlavourCollectionCategories.js"
+    "append:flavour-categories": "node scripts/appendFlavourCollectionCategories.js",
+    "recache:sitemap": "node scripts/recache-from-sitemap.js"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
