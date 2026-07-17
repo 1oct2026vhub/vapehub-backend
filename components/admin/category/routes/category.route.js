@@ -5,7 +5,12 @@ const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
 const { categoryIdValidation, categoryValidation, categoryUpdatesValidation, uploadFileValidation, bulkUpdateCategoriesValidation, uploadXlxFileMiddleware } = require("../helper/category.validator");
 const buyingGuideController = require('../domain/buyingGuide.controller');
+const relatedCategoriesController = require('../domain/relatedCategories.controller');
 const { buyingGuideIdValidation, buyingGuideBodyValidation, buyingGuideUploadValidation } = require('../helper/buyingGuide.validator');
+const {
+    relatedCategoriesIdValidation,
+    relatedCategoriesBodyValidation
+} = require('../helper/relatedCategories.validator');
 
 /**
  * @swagger
@@ -119,6 +124,19 @@ router.post('/:id/buying-guide',
         buyingGuideBodyValidation
     ],
     buyingGuideController.saveBuyingGuide
+);
+
+router.get('/:id/related-categories',
+    [authMiddleware(true), validateRequest(relatedCategoriesIdValidation)],
+    relatedCategoriesController.getRelatedCategories
+);
+
+router.post('/:id/related-categories',
+    [
+        authMiddleware(true),
+        relatedCategoriesBodyValidation
+    ],
+    relatedCategoriesController.saveRelatedCategories
 );
 
 /**

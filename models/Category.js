@@ -21,6 +21,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'category_id',
                 as: 'buyingGuide'
             });
+            this.hasMany(models.CategoryRelatedCategory, {
+                foreignKey: 'category_id',
+                as: 'relatedCategoryLinks'
+            });
         }
     }
 
