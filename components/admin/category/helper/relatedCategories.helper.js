@@ -1,7 +1,5 @@
 const { CategoryRelatedCategory } = require('../../../../models');
 
-const MAX_RELATED_CATEGORIES = 3;
-
 const URL_PATTERN = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
 const SLUG_OR_PATH_PATTERN = /^(\/)?[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 
@@ -78,10 +76,6 @@ const parseRelatedLinks = (field) => {
         return { text, url };
     });
 
-    if (normalized.length > MAX_RELATED_CATEGORIES) {
-        throw new Error(`Maximum ${MAX_RELATED_CATEGORIES} related links allowed`);
-    }
-
     return normalized;
 };
 
@@ -107,7 +101,6 @@ const replaceRelatedCategories = async (categoryId, relatedLinks, transaction) =
 };
 
 module.exports = {
-    MAX_RELATED_CATEGORIES,
     findRelatedCategoriesByCategoryId,
     parseRelatedLinks,
     replaceRelatedCategories,

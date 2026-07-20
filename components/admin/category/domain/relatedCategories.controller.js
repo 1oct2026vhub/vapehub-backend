@@ -56,7 +56,6 @@ module.exports.saveRelatedCategories = async (req, res) => {
         const clientErrors = [
             'related_links is required',
             'related_links must be a JSON array',
-            'Maximum 3 related links allowed',
             'URL must be a valid URL, slug, or path (e.g. /disposable-vapes)'
         ];
         const isClientError = clientErrors.includes(error.message)
