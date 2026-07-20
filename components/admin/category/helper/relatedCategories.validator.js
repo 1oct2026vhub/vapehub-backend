@@ -1,5 +1,5 @@
 const { param } = require('express-validator');
-const { parseRelatedCategoryIds } = require('./relatedCategories.helper');
+const { parseRelatedLinks } = require('./relatedCategories.helper');
 
 const relatedCategoriesIdValidation = [
     param('id').isInt().withMessage('Category ID must be an integer')
@@ -16,16 +16,16 @@ const relatedCategoriesBodyValidation = (req, res, next) => {
     }
 
     try {
-        if (req.body.related_category_ids === undefined) {
-            throw new Error('related_category_ids is required');
+        if (req.body.related_links === undefined) {
+            throw new Error('related_links is required');
         }
-        req.relatedCategoryIds = parseRelatedCategoryIds(req.body.related_category_ids);
+        req.relatedLinks = parseRelatedLinks(req.body.related_links);
         next();
     } catch (error) {
         return res.status(400).json({
             success: false,
             message: error.message || 'Validation failed',
-            errors: [{ field: 'related_category_ids', message: error.message }]
+            errors: [{ field: 'related_links', message: error.message }]
         });
     }
 };

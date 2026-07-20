@@ -15,14 +15,11 @@ module.exports.getRelatedCategories = async (req, res) => {
             return errorResponse(res, { message: 'Category not found' }, 'Category not found', 404);
         }
 
-        const related_categories = await findRelatedCategoriesByCategoryId(categoryId);
+        const related_links = await findRelatedCategoriesByCategoryId(categoryId);
 
         return successResponse(
             res,
-            {
-                related_category_ids: related_categories.map((item) => item.id),
-                related_categories
-            },
+            { related_links },
             'Related categories fetched successfully'
         );
     } catch (error) {
@@ -35,7 +32,7 @@ module.exports.saveRelatedCategories = async (req, res) => {
 
     try {
         const categoryId = parseInt(req.params.id, 10);
-        const relatedCategoryIds = req.relatedCategoryIds;
+        const relatedLinks = req.relatedLinks;
         const category = await Category.findByPk(categoryId, { paranoid: true, transaction });
 
         if (!category) {
@@ -43,31 +40,28 @@ module.exports.saveRelatedCategories = async (req, res) => {
             return errorResponse(res, { message: 'Category not found' }, 'Category not found', 404);
         }
 
-        await replaceRelatedCategories(categoryId, relatedCategoryIds, transaction);
-        const related_categories = await findRelatedCategoriesByCategoryId(categoryId, transaction);
+        await replaceRelatedCategories(categoryId, relatedLinks, transaction);
+        const related_links = await findRelatedCategoriesByCategoryId(categoryId, transaction);
         await transaction.commit();
 
         invalidateCachePattern('category:*').catch(() => {});
 
         return successResponse(
             res,
-            {
-                related_category_ids: related_categories.map((item) => item.id),
-                related_categories
-            },
+            { related_links },
             'Related categories saved successfully'
         );
     } catch (error) {
         await transaction.rollback();
         const clientErrors = [
-            'Invalid related category ID',
-            'Duplicate related category IDs are not allowed',
-            'Maximum 3 related categories allowed',
-            'A category cannot be related to itself',
-            'related_category_ids must be a JSON array',
-            'related_category_ids is required'
+            'related_links is required',
+            'related_links must be a JSON array',
+            'Maximum 3 related links allowed',
+            'URL must be a valid URL, slug, or path (e.g. /disposable-vapes)'
         ];
-        const statusCode = clientErrors.includes(error.message) ? 400 : 500;
+        const isClientError = clientErrors.includes(error.message)
+            || /^related_links\[\d+\]/.test(error.message);
+        const statusCode = isClientError ? 400 : 500;
         return errorResponse(res, error, error.message || 'Failed to save related categories', statusCode);
     }
 };

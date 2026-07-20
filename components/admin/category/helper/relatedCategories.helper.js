@@ -1,116 +1,105 @@
-const { Op } = require('sequelize');
-const { Category, CategoryRelatedCategory } = require('../../../../models');
+const { CategoryRelatedCategory } = require('../../../../models');
 
 const MAX_RELATED_CATEGORIES = 3;
 
-const RELATED_CATEGORY_INCLUDE = {
-    model: Category,
-    as: 'relatedCategory',
-    attributes: ['id', 'name', 'slug', 'logo_url', 'alt_text'],
-    required: true,
-    paranoid: true
-};
+const URL_PATTERN = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
+const SLUG_OR_PATH_PATTERN = /^(\/)?[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 
-const formatRelatedCategory = (categoryInstance) => {
-    if (!categoryInstance) {
-        return null;
-    }
-    const data = categoryInstance.toJSON ? categoryInstance.toJSON() : categoryInstance;
+const formatRelatedLink = (row) => {
+    const data = row.toJSON ? row.toJSON() : row;
     return {
-        id: data.id,
-        name: data.name,
-        slug: data.slug,
-        logo_url: data.logo_url,
-        alt_text: data.alt_text || ''
+        text: data.text,
+        url: data.url,
+        sort_order: data.sort_order
     };
 };
 
 const findRelatedCategoriesByCategoryId = async (categoryId, transaction = null) => {
     const links = await CategoryRelatedCategory.findAll({
         where: { category_id: categoryId },
-        include: [RELATED_CATEGORY_INCLUDE],
         order: [['sort_order', 'ASC']],
         transaction
     });
 
-    return links
-        .map((link) => formatRelatedCategory(link.relatedCategory))
-        .filter(Boolean);
+    return links.map(formatRelatedLink);
 };
 
-const parseRelatedCategoryIds = (field) => {
+const parseJsonArrayField = (field, fieldName) => {
     if (field == null || field === '') {
         return [];
     }
 
-    let values = field;
+    if (Array.isArray(field)) {
+        return field;
+    }
+
     if (typeof field === 'string') {
         const trimmed = field.trim();
         if (!trimmed) {
             return [];
         }
-        values = JSON.parse(trimmed);
+        const parsed = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+            throw new Error(`${fieldName} must be a JSON array`);
+        }
+        return parsed;
     }
 
-    if (!Array.isArray(values)) {
-        throw new Error('related_category_ids must be a JSON array');
-    }
-
-    const ids = values
-        .map((id) => parseInt(id, 10))
-        .filter((id) => !Number.isNaN(id));
-
-    const uniqueIds = [...new Set(ids)];
-    if (ids.length !== uniqueIds.length) {
-        throw new Error('Duplicate related category IDs are not allowed');
-    }
-
-    if (uniqueIds.length > MAX_RELATED_CATEGORIES) {
-        throw new Error(`Maximum ${MAX_RELATED_CATEGORIES} related categories allowed`);
-    }
-
-    return uniqueIds;
+    throw new Error(`${fieldName} must be a JSON array`);
 };
 
-const validateRelatedCategoriesExist = async (categoryId, relatedCategoryIds, transaction) => {
-    if (!relatedCategoryIds.length) {
+const validateUrl = (url) => {
+    if (URL_PATTERN.test(url) || SLUG_OR_PATH_PATTERN.test(url)) {
         return;
     }
-
-    if (relatedCategoryIds.includes(categoryId)) {
-        throw new Error('A category cannot be related to itself');
-    }
-
-    const categories = await Category.findAll({
-        where: {
-            id: { [Op.in]: relatedCategoryIds }
-        },
-        attributes: ['id'],
-        paranoid: true,
-        transaction
-    });
-
-    if (categories.length !== relatedCategoryIds.length) {
-        throw new Error('Invalid related category ID');
-    }
+    throw new Error('URL must be a valid URL, slug, or path (e.g. /disposable-vapes)');
 };
 
-const replaceRelatedCategories = async (categoryId, relatedCategoryIds, transaction) => {
-    await validateRelatedCategoriesExist(categoryId, relatedCategoryIds, transaction);
+const parseRelatedLinks = (field) => {
+    const items = parseJsonArrayField(field, 'related_links');
 
+    const normalized = items.map((item, index) => {
+        if (!item || typeof item !== 'object') {
+            throw new Error(`related_links[${index}] must be an object`);
+        }
+
+        const text = item.text != null ? String(item.text).trim() : '';
+        const url = item.url != null ? String(item.url).trim() : '';
+
+        if (!text) {
+            throw new Error(`related_links[${index}].text is required`);
+        }
+        if (!url) {
+            throw new Error(`related_links[${index}].url is required`);
+        }
+
+        validateUrl(url);
+
+        return { text, url };
+    });
+
+    if (normalized.length > MAX_RELATED_CATEGORIES) {
+        throw new Error(`Maximum ${MAX_RELATED_CATEGORIES} related links allowed`);
+    }
+
+    return normalized;
+};
+
+const replaceRelatedCategories = async (categoryId, relatedLinks, transaction) => {
     await CategoryRelatedCategory.destroy({
         where: { category_id: categoryId },
         transaction
     });
 
-    if (!relatedCategoryIds.length) {
+    if (!relatedLinks.length) {
         return;
     }
 
     await CategoryRelatedCategory.bulkCreate(
-        relatedCategoryIds.map((relatedCategoryId, index) => ({
+        relatedLinks.map((link, index) => ({
             category_id: categoryId,
-            related_category_id: relatedCategoryId,
+            text: link.text,
+            url: link.url,
             sort_order: index
         })),
         { transaction }
@@ -120,8 +109,7 @@ const replaceRelatedCategories = async (categoryId, relatedCategoryIds, transact
 module.exports = {
     MAX_RELATED_CATEGORIES,
     findRelatedCategoriesByCategoryId,
-    parseRelatedCategoryIds,
-    validateRelatedCategoriesExist,
+    parseRelatedLinks,
     replaceRelatedCategories,
-    formatRelatedCategory
+    formatRelatedLink
 };

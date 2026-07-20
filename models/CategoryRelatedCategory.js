@@ -8,10 +8,6 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'category_id',
                 as: 'category'
             });
-            this.belongsTo(models.Category, {
-                foreignKey: 'related_category_id',
-                as: 'relatedCategory'
-            });
         }
     }
 
@@ -26,8 +22,12 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false
         },
-        related_category_id: {
-            type: DataTypes.INTEGER,
+        text: {
+            type: DataTypes.STRING(255),
+            allowNull: false
+        },
+        url: {
+            type: DataTypes.STRING(500),
             allowNull: false
         },
         sort_order: {

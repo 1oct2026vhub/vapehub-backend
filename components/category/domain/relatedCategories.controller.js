@@ -13,11 +13,11 @@ module.exports.getRelatedCategoriesBySlug = async (req, res) => {
             return errorResponse(res, { message: 'Category not found' }, 'Category not found', 404);
         }
 
-        const related_categories = await findRelatedCategoriesByCategoryId(category.id);
+        const related_links = await findRelatedCategoriesByCategoryId(category.id);
 
         return successResponse(
             res,
-            { related_categories },
+            { related_links },
             'Related categories fetched successfully'
         );
     } catch (error) {
