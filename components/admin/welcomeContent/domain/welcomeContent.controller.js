@@ -3,6 +3,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { WelcomeContent, User } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
 const { invalidateCache } = require("../../../../library/cache");
+const { recacheHomeFireAndForget } = require("../../../../library/prerender");
 
 // Handle image upload to S3
 const handleImageUpload = async (file) => {
@@ -243,6 +244,7 @@ module.exports.createOrUpdateWelcomeContent = async (req, res) => {
       : 'Welcome content updated successfully';
 
     invalidateCache('welcome:content:active').catch(() => {});
+    recacheHomeFireAndForget({ source: 'welcomeContent' });
     return successResponse(res, { 
       welcomeContent: finalContent,
       message,
@@ -273,6 +275,7 @@ module.exports.deleteWelcomeContent = async (req, res) => {
     await welcomeContent.destroy();
 
     invalidateCache('welcome:content:active').catch(() => {});
+    recacheHomeFireAndForget({ source: 'welcomeContent' });
     return successResponse(res, {
       message: 'Welcome content deleted successfully'
     });
@@ -299,6 +302,7 @@ module.exports.restoreWelcomeContent = async (req, res) => {
     await welcomeContent.restore();
 
     invalidateCache('welcome:content:active').catch(() => {});
+    recacheHomeFireAndForget({ source: 'welcomeContent' });
     return successResponse(res, {
       message: 'Welcome content restored successfully'
     });
@@ -328,6 +332,7 @@ module.exports.permanentDeleteWelcomeContent = async (req, res) => {
     await welcomeContent.destroy({ force: true });
 
     invalidateCache('welcome:content:active').catch(() => {});
+    recacheHomeFireAndForget({ source: 'welcomeContent' });
     return successResponse(res, {
       message: 'Welcome content permanently deleted successfully'
     });
@@ -399,6 +404,7 @@ module.exports.removeWelcomeContentImage = async (req, res) => {
     });
 
     invalidateCache('welcome:content:active').catch(() => {});
+    recacheHomeFireAndForget({ source: 'welcomeContent' });
     return successResponse(res, {
       welcomeContent: updatedContent,
       message: 'Image removed successfully from S3 and database'

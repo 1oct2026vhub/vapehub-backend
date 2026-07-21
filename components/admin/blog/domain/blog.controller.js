@@ -3,6 +3,7 @@ const { errorResponse, successResponse } = require("../../../../utils/responseUt
 const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const { invalidateCachePattern } = require("../../../../library/cache");
+const { recacheEntityFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require("../../../../library/prerender");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);
 const seoService = require('../../seo/domain/seo.service');
@@ -338,7 +339,10 @@ module.exports.createBlog = async (req, res) => {
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
         const responseData = await formatAdminBlogResponse(createdBlog);
-        successResponse(res, responseData, 'Blog post created successfully', 201);
+        if (status === 'published') {
+            recacheEntityFireAndForget('blog_post', slug, null, { source: 'createBlog', blogId: blog.id });
+        }
+        successResponse(res, createdBlog, 'Blog post created successfully', 201);
     } catch (error) {
         if (transaction) {
             try {
@@ -424,6 +428,7 @@ module.exports.updateBlog = async (req, res) => {
         }
         // Use slug before update for redirect lookup (redirect was created at delete time with this slug)
         const slugForRedirect = blog.slug;
+        const oldBlogSlug = blog.slug;
 
         const heroFile = req.files?.image?.[0];
         const authorAvatarFile = req.files?.author_avatar?.[0];
@@ -546,6 +551,12 @@ module.exports.updateBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget(
+            'blog_post',
+            updatedBlog.slug,
+            oldBlogSlug !== updatedBlog.slug ? oldBlogSlug : null,
+            { source: 'updateBlog', blogId: id }
+        );
 
         let responseData = await formatAdminBlogResponse(updatedBlog);
         const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
@@ -627,6 +638,7 @@ module.exports.deleteBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_post', blog.slug, null, { source: 'deleteBlog', blogId: req.params.id });
         successResponse(res, null, 'Blog post deleted successfully');
     } catch (error) {
         await transaction.rollback();
@@ -673,6 +685,7 @@ module.exports.restoreBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_post', blog.slug, null, { source: 'restoreBlog', blogId: blog.id });
         successResponse(res, blog, 'Blog post restored successfully');
     } catch (error) {
         await transaction.rollback();
@@ -761,6 +774,11 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                 summary
             }, 'No blog posts were deleted', 400);
         }
+
+        recacheUrlsFireAndForget(
+            deletedBlogs.map((b) => buildPublicUrl(`/${b.slug}/`)),
+            { source: 'bulkDeleteBlogs', count: deletedBlogs.length }
+        );
 
         successResponse(res, {
             deleted: deletedBlogs,
@@ -860,6 +878,11 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                 summary
             }, 'No blog posts were restored', 400);
         }
+
+        recacheUrlsFireAndForget(
+            restoredBlogs.map((b) => buildPublicUrl(`/${b.slug}/`)),
+            { source: 'bulkRestoreBlogs', count: restoredBlogs.length }
+        );
 
         successResponse(res, {
             restored: restoredBlogs,

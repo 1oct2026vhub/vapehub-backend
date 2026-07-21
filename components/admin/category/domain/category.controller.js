@@ -6,6 +6,7 @@ const ExcelJS = require("exceljs"); // Import the exceljs library
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
 const { invalidateCachePattern } = require("../../../../library/cache");
+const { recacheEntityFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require("../../../../library/prerender");
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -239,6 +240,7 @@ module.exports.createCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('category:products:*').catch(() => {});
+        recacheEntityFireAndForget('category', slug, null, { source: 'createCategory', categoryId: category.id });
         return successResponse(res, category, "Category created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -263,6 +265,8 @@ module.exports.updateCategory = async (req, res, next) => {
             await t.rollback();
             return errorResponse(res, { message: "Category not found" }, "Category not found", 404);
         }
+
+        const oldCategorySlug = category.slug;
 
         // Check for name and slug uniqueness
         const existingCategory = await Category.findOne({ where: { name, id: { [Op.ne]: id } } });
@@ -374,6 +378,12 @@ module.exports.updateCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('category:products:*').catch(() => {});
+        recacheEntityFireAndForget(
+            'category',
+            category.slug,
+            oldCategorySlug !== category.slug ? oldCategorySlug : null,
+            { source: 'updateCategory', categoryId: id }
+        );
 
         let responseData = category;
         if (category.deletedAt) {
@@ -480,6 +490,7 @@ module.exports.deleteCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('category:products:*').catch(() => {});
+        recacheEntityFireAndForget('category', category.slug, null, { source: 'deleteCategory', categoryId: id });
         return successResponse(res, {}, "Category deleted successfully", 200);
     } catch (error) {
         await t.rollback();
@@ -576,7 +587,7 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
                 await seoService.updateNoIndex('category', id, true);
 
                 await t.commit();
-                deletedCategories.push({ id, name: category.name });
+                deletedCategories.push({ id, name: category.name, slug: category.slug });
             } catch (error) {
                 await t.rollback();
                 notDeletedCategories.push({ id: Number(rawId), reason: error.message || 'Failed to delete category' });
@@ -599,6 +610,13 @@ module.exports.bulkDeleteCategories = async (req, res, next) => {
             : deletedCategories.length > 0
                 ? 'Some categories deleted successfully'
                 : 'No categories were deleted';
+
+        if (deletedCategories.length > 0) {
+            recacheUrlsFireAndForget(
+                deletedCategories.map((c) => buildPublicUrl(`/${c.slug}/`)),
+                { source: 'bulkDeleteCategories', count: deletedCategories.length }
+            );
+        }
 
         return successResponse(res, responseData, message, statusCode);
     } catch (error) {
@@ -639,6 +657,7 @@ module.exports.restoreCategory = async (req, res, next) => {
 
         await t.commit();
         invalidateCachePattern('category:products:*').catch(() => {});
+        recacheEntityFireAndForget('category', category.slug, null, { source: 'restoreCategory', categoryId: id });
 
         // Update SEO noIndex based on category status
         await seoService.updateCategoryNoIndex(id);
@@ -743,6 +762,13 @@ module.exports.bulkRestoreCategories = async (req, res, next) => {
             : restoredCategories.length > 0
                 ? 'Some categories restored successfully'
                 : 'No categories were restored';
+
+        if (restoredCategories.length > 0) {
+            recacheUrlsFireAndForget(
+                restoredCategories.map((c) => buildPublicUrl(`/${c.slug}/`)),
+                { source: 'bulkRestoreCategories', count: restoredCategories.length }
+            );
+        }
 
         return successResponse(res, responseData, message, statusCode);
     } catch (error) {
