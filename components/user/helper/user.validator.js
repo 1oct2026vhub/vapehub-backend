@@ -80,9 +80,9 @@ exports.validateCreateUserAddress = [
         }),
 
     body('region')
-        .notEmpty().withMessage('Region is required')
+        .optional()
         .custom((value) => {
-            if (value.trim().length === 0) {
+            if (value && value.trim().length === 0) {
                 throw new Error('Region cannot be empty or contain only spaces');
             }
             return true;
