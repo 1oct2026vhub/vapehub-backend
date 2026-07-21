@@ -51,6 +51,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.TEXT('long'),
             allowNull: true
         },
+        type_cards_html: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
         slug: {
             type: DataTypes.STRING,
             allowNull: false,

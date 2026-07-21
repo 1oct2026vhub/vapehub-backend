@@ -1484,7 +1484,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (categoryIds.length > 0) {
             const categories = await Category.findAll({
                 where: { id: { [Op.in]: categoryIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'slug']
             });
             categoryMap = new Map(categories.map(cat => [cat.id, cat]));
         }
@@ -1560,6 +1560,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 const category = categoryMap.get(slugRelations[0].entity_id);
                 if (category) {
                     response.description = category.description;
+                    response.type_cards_html = category.type_cards_html || null;
                     response.name = category.name;
                 }
             }
@@ -1657,6 +1658,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         const category = categoryMap.get(relation.entity_id);
                         if (category) {
                             item.description = category.description;
+                            item.type_cards_html = category.type_cards_html || null;
                             item.name = category.name;
                         }
                     }
@@ -1815,6 +1817,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     const category = categoryMap.get(relation.entity_id);
                     if (category) {
                         item.description = category.description;
+                        item.type_cards_html = category.type_cards_html || null;
                         item.name = category.name;
                     }
                 }
