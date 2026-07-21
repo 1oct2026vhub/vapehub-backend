@@ -80,14 +80,10 @@ exports.validateCreateUserAddress = [
         }),
 
     body('region')
-        .optional()
-        .custom((value) => {
-            if (value && value.trim().length === 0) {
-                throw new Error('Region cannot be empty or contain only spaces');
-            }
-            return true;
-        })
-        .isLength({ min: 2 }).withMessage('Region must be at least 2 characters long'),
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .withMessage('Region must be a string')
+        .trim(),
 
     body('country')
         .notEmpty().withMessage('Country is required')
@@ -160,14 +156,10 @@ exports.validateUpdateUserAddress = [
         }),
     
     check('region')
-        .optional()
-        .custom((value) => {
-            if (value && value.trim().length === 0) {
-                throw new Error('Region cannot be empty or contain only spaces');
-            }
-            return true;
-        })
-        .isLength({ min: 2 }).withMessage('Region must be at least 2 characters long'),
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .withMessage('Region must be a string')
+        .trim(),
     
     check('country')
         .optional()
