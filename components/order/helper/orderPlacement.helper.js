@@ -785,6 +785,24 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 
+        // Stop abandoned-cart reminders on older pending checkouts for this user.
+        await AbandonedCartFlow.update(
+            {
+                status: 'superseded',
+                last_error: null
+            },
+            {
+                where: {
+                    user_id,
+                    order_id: { [Op.ne]: order.id },
+                    recovered_at: null,
+                    cancelled_at: null,
+                    status: { [Op.in]: ['entered', 'email1_sent', 'email2_sent'] }
+                },
+                transaction
+            }
+        );
+
         if (pointsOnlyCheckout) {
             await finalizePointsOnlyOrder(order.id, transaction);
         }
