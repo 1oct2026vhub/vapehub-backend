@@ -364,7 +364,6 @@ router.get('/user-address', authenticateJWT, userController.fetchUserAddress)
  *               - town
  *               - post_code
  *               - phone
- *               - region
  *             properties:
  *               name:
  *                 type: string
