@@ -1002,7 +1002,7 @@ module.exports.getProductByid = async (req, res, next) => {
         const attributeTerms = Array.from(attributeTermsMap.values());
 
         const hide_variant_selector = shouldHideVariantSelector(
-            product.variants.length,
+            product.variants,
             product.productAttributeTerms
         );
         const soleVariant = hide_variant_selector ? product.variants[0] : null;
@@ -1530,7 +1530,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             variantsResult,
             variantImagesResult,
             dealsResult,
-            attributeTermsResult
+            attributeTermsResult,
+            variantAttributesResult
         ] = await Promise.all([
             // Categories query
             Product.sequelize.query(`
@@ -1626,6 +1627,20 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Variant attributes (needed for hide_variant_selector)
+            Product.sequelize.query(`
+                SELECT 
+                    pva.variant_id, pva.attribute_id, pva.term_id
+                FROM product_variant_attributes pva
+                WHERE pva.variant_id IN (
+                    SELECT id FROM product_variants
+                    WHERE product_id = :productId AND status = 'active'
+                )
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
             })
         ]);
         // Parse and structure the data
@@ -1717,6 +1732,18 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 is_primary: img.is_primary
             });
         });
+
+        // Create variant attributes map
+        const variantAttributesMap = new Map();
+        variantAttributesResult.forEach(va => {
+            if (!variantAttributesMap.has(va.variant_id)) {
+                variantAttributesMap.set(va.variant_id, []);
+            }
+            variantAttributesMap.get(va.variant_id).push({
+                attribute_id: va.attribute_id,
+                term_id: va.term_id
+            });
+        });
         
         // Parse Variants with Images
         product.variants = variantsResult.map(variant => ({
@@ -1741,7 +1768,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             created_at: variant.created_at,
             updated_at: variant.updated_at,
             deleted_at: variant.deleted_at,
-            variantImages: variantImagesMap.get(variant.id) || []
+            variantImages: variantImagesMap.get(variant.id) || [],
+            variantAttributes: variantAttributesMap.get(variant.id) || []
         }));
         
         // Parse Deals
@@ -1854,7 +1882,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         const attributeTerms = Array.from(attributeTermsMap.values());
 
         const hide_variant_selector = shouldHideVariantSelector(
-            product.variants.length,
+            product.variants,
             product.productAttributeTerms
         );
         const soleVariant = hide_variant_selector ? product.variants[0] : null;
@@ -2782,7 +2810,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const keyHighlights = keyHighlightsSetting ? keyHighlightsSetting.content : null;
 
         const hide_variant_selector = shouldHideVariantSelector(
-            structuredVariants.length,
+            structuredVariants,
             productAttributeTermsResult
         );
         const soleVariant = hide_variant_selector ? structuredVariants[0] : null;

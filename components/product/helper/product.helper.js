@@ -1899,18 +1899,44 @@ const fetchProductsCached = async (query, status = 'published') => {
 };
 
 /**
- * True when product has exactly 1 active variant and no page-visible attributes.
- * @param {number} activeVariantCount
- * @param {Array<{ is_visible_page?: boolean|number }>} attributeTerms - ALL product_attribute_terms (not only visible)
+ * Hide selector when there is exactly 1 active variant and none of that
+ * variant's attributes are page-visible (is_visible_page on product_attribute_terms).
+ * Product-level attributes not linked to the variant are ignored.
+ *
+ * @param {Array} activeVariants - variants with variantAttributes / attributes
+ * @param {Array} productAttributeTerms - ALL product_attribute_terms for the product
  */
-function shouldHideVariantSelector(activeVariantCount, attributeTerms = []) {
-  if (activeVariantCount !== 1) return false;
+function shouldHideVariantSelector(activeVariants = [], productAttributeTerms = []) {
+  if (!Array.isArray(activeVariants) || activeVariants.length !== 1) {
+    return false;
+  }
 
-  const hasVisiblePageAttribute = attributeTerms.some(
-    (pat) => pat.is_visible_page === true || pat.is_visible_page === 1
-  );
+  const variant = activeVariants[0];
+  const variantAttrs =
+    variant.variantAttributes ||
+    variant.attributes ||
+    [];
 
-  return !hasVisiblePageAttribute;
+  if (variantAttrs.length === 0) return true;
+
+  const visibilityByAttrTerm = new Map();
+  for (const pat of productAttributeTerms) {
+    const attrId = pat.attribute_id ?? pat.attr_id;
+    const termId = pat.term_id;
+    if (attrId == null || termId == null) continue;
+    visibilityByAttrTerm.set(
+      `${attrId}-${termId}`,
+      pat.is_visible_page === true || pat.is_visible_page === 1
+    );
+  }
+
+  const hasVisibleVariantAttr = variantAttrs.some((va) => {
+    const attrId = va.attribute?.id ?? va.attribute_id;
+    const termId = va.term?.id ?? va.term_id;
+    return visibilityByAttrTerm.get(`${attrId}-${termId}`) === true;
+  });
+
+  return !hasVisibleVariantAttr;
 }
 
 module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern, shouldHideVariantSelector };
