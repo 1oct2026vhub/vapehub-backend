@@ -211,6 +211,17 @@ module.exports.listNewProducts = async (req, res, next) => {
             ? "WHERE " + productFilterConditions.join(" AND ") 
             : "";
 
+        // Whitelist sort fields/order to avoid SQL injection and map aliases to columns
+        const sortColumnMap = {
+            id: 'id',
+            name: 'name',
+            price: 'price',
+            createdAt: 'createdAt',
+            stock: 'stock_quantity'
+        };
+        const safeSortBy = sortColumnMap[sort_by] || 'createdAt';
+        const safeOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
         // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
@@ -218,7 +229,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.createdAt DESC, p.${sort_by} ${order}
+            ORDER BY p.${safeSortBy} ${safeOrder}
             LIMIT :limit OFFSET :offset
         `;
 
