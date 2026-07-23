@@ -572,12 +572,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
-            // Check stock status
+            // Check stock status (low_stock still means sellable inventory)
             const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
                 !variant.is_discontinued &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );
@@ -5166,7 +5166,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             const hasInStockVariant = variants && variants.some(variant =>
                 variant.status === 'active' &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );

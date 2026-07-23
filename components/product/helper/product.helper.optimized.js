@@ -622,11 +622,11 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         testimonials: testimonialCount
       };
 
-      // Check stock status efficiently
+      // Check stock status efficiently (low_stock still means sellable inventory)
       const hasInStockVariant = productVariantsData.some(variant =>
         variant.status === 'active' &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock' &&
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );
@@ -636,7 +636,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         variant.status === 'active' && 
         parseFloat(variant.price) > 0 &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock'
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock')
       );
       
       let minPriceVariantData = null;
