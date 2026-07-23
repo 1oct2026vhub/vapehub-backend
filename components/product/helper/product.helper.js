@@ -1149,10 +1149,9 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
-      // Add out_of_stock flag (low_stock still means sellable inventory)
-      const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
+      // out_of_stock = stock only; is_discontinued stays a separate flag (FE / cart)
+      const hasInStockVariant = product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
-        !variant.is_discontinued &&
         variant.stock > 0 &&
         (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&
         variant.price !== null &&
@@ -1244,7 +1243,7 @@ const fetchProducts = async (query, status = 'published') => {
         puff_count: puffCount,
         flavors: flavorTerms,
         flavor_count,
-        out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
+        out_of_stock: !hasInStockVariant,
         min_price_variant: product.min_price_variant || null,
         order_count: product.order_count ? parseInt(product.order_count) : 0,
         reviews: processedReviews,
