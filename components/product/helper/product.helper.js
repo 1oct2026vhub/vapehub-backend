@@ -1149,12 +1149,12 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
-      // Add out_of_stock flag
+      // Add out_of_stock flag (low_stock still means sellable inventory)
       const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
         !variant.is_discontinued &&
         variant.stock > 0 &&
-        variant.stock_status === stockStatus.IN_STOCK &&
+        (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );

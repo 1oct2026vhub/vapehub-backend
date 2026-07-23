@@ -167,6 +167,7 @@ module.exports = {
     productVariants: {
         stockStatus: {
             IN_STOCK: 'in_stock',
+            LOW_STOCK: 'low_stock',
             OUT_OF_STOCK: 'out_of_stock',
             BACKORDER: 'backorder'
         }
@@ -180,7 +181,7 @@ module.exports = {
         }
     },
     productVariantEnums: {
-        stockStatus: ['in_stock', 'out_of_stock', 'backorder']
+        stockStatus: ['in_stock', 'low_stock', 'out_of_stock', 'backorder']
     },
     stockMovementEnums: {
         changeTypes: ['addition', 'deduction', 'adjustment', 'reservation']
