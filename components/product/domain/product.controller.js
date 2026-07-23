@@ -2273,11 +2273,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             variantImages: variantImagesMap.get(variant.id) || []
         }));
 
-        // Group attributes and their terms (OPTIMIZED) — only page-visible attributes for UI
+        // Group attributes and their terms (all product_attribute_terms; FE uses is_visible_page)
         const attributeTermsMap = new Map();
         productAttributeTermsResult.forEach((pat) => {
-            if (!(pat.is_visible_page === true || pat.is_visible_page === 1)) return;
-
             const attributeId = pat.attr_id;
             if (!attributeTermsMap.has(attributeId)) {
                 attributeTermsMap.set(attributeId, {
