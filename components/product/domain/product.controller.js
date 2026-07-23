@@ -2,7 +2,7 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order, Settings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
-const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
+const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant, shouldHideVariantSelector } = require("../helper/product.helper");
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
@@ -1000,6 +1000,12 @@ module.exports.getProductByid = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants.length,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Fetch loyalty points settings
         const loyaltySettings = await LoyaltyPointsSettings.findOne({
@@ -1089,6 +1095,9 @@ module.exports.getProductByid = async (req, res, next) => {
         // Prepare the response
         const response = {
             ...product.toJSON(),
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: productPrice,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -1843,6 +1852,12 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants.length,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Get primary product image
         const primaryProductImage = product.ProductImages && product.ProductImages.length > 0 
@@ -1870,6 +1885,9 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // **Modify the response** (same logic as original)
         const response = {
             ...product,  // Use parsed product object instead of toJSON()
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: minPriceVariant ? minPriceVariant.price : product.price,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -2029,7 +2047,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
-            // Get product attribute terms with raw SQL
+            // Get product attribute terms with raw SQL (include hidden; filter visibility when building attribute_terms)
             Product.sequelize.query(`
                 SELECT 
                     pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page,
@@ -2040,7 +2058,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :product_id
                 AND pat.deleted_at IS NULL
-                AND pat.is_visible_page = true
             `, {
                 replacements: { product_id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2218,9 +2235,11 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             variantImages: variantImagesMap.get(variant.id) || []
         }));
 
-        // Group attributes and their terms (OPTIMIZED)
+        // Group attributes and their terms (OPTIMIZED) — only page-visible attributes for UI
         const attributeTermsMap = new Map();
         productAttributeTermsResult.forEach((pat) => {
+            if (!(pat.is_visible_page === true || pat.is_visible_page === 1)) return;
+
             const attributeId = pat.attr_id;
             if (!attributeTermsMap.has(attributeId)) {
                 attributeTermsMap.set(attributeId, {
@@ -2325,11 +2344,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get available terms for other attributes
         const availableTermsMap = new Map();
         
-        // Create a lookup map for used_in_variation from productAttributeTermsResult
+        // Create a lookup map for used_in_variation / is_visible_page from productAttributeTermsResult
         const usedInVariationMap = new Map();
+        const isVisiblePageMap = new Map();
         productAttributeTermsResult.forEach(pat => {
             const key = `${pat.attr_id}-${pat.term_id}`;
             usedInVariationMap.set(key, Boolean(pat.used_in_variation));
+            isVisiblePageMap.set(key, pat.is_visible_page === true || pat.is_visible_page === 1);
         });
         
         filteredVariants.forEach(variant => {
@@ -2342,9 +2363,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     // Check if this attribute-term combination has used_in_variation = true
                     const key = `${attributeId}-${termId}`;
                     const usedInVariation = usedInVariationMap.get(key);
+                    const isVisiblePage = isVisiblePageMap.get(key);
                     
-                    // Only include terms with used_in_variation = true
-                    if (usedInVariation === true) {
+                    // Only include terms with used_in_variation = true and visible on page
+                    if (usedInVariation === true && isVisiblePage === true) {
                         if (!availableTermsMap.has(attributeId)) {
                             availableTermsMap.set(attributeId, {
                                 attribute: {
@@ -2759,6 +2781,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get key highlights content from settings
         const keyHighlights = keyHighlightsSetting ? keyHighlightsSetting.content : null;
 
+        const hide_variant_selector = shouldHideVariantSelector(
+            structuredVariants.length,
+            productAttributeTermsResult
+        );
+        const soleVariant = hide_variant_selector ? structuredVariants[0] : null;
+
         const response = {
             product: {
                 id: product.id,
@@ -2781,6 +2809,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
+                hide_variant_selector,
+                default_variant_id: soleVariant ? soleVariant.id : null,
+                default_variant_slug: soleVariant ? soleVariant.slug : null,
                 deals: dealsResult, // Use raw SQL result
                 loyaltySettings: loyaltySettings ? {
                     program_name: loyaltySettings.program_name,

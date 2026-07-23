@@ -1898,5 +1898,20 @@ const fetchProductsCached = async (query, status = 'published') => {
   return cacheOrFetch(cacheKey, () => fetchProducts(query, status), 30);
 };
 
-module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern };
+/**
+ * True when product has exactly 1 active variant and no page-visible attributes.
+ * @param {number} activeVariantCount
+ * @param {Array<{ is_visible_page?: boolean|number }>} attributeTerms - ALL product_attribute_terms (not only visible)
+ */
+function shouldHideVariantSelector(activeVariantCount, attributeTerms = []) {
+  if (activeVariantCount !== 1) return false;
+
+  const hasVisiblePageAttribute = attributeTerms.some(
+    (pat) => pat.is_visible_page === true || pat.is_visible_page === 1
+  );
+
+  return !hasVisiblePageAttribute;
+}
+
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern, shouldHideVariantSelector };
 
