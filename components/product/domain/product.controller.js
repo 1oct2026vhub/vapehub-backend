@@ -71,6 +71,22 @@ module.exports.listNewProducts = async (req, res, next) => {
             deal_id
         } = req.query;
 
+        // Whitelist sort_by / order for ORDER BY (prevents SQL injection + fixes ignored order)
+        const productSortMap = {
+            id: 'id',
+            name: 'name',
+            slug: 'slug',
+            createdAt: 'createdAt',
+            updatedAt: 'updatedAt',
+            price: 'price',
+            stock_quantity: 'stock_quantity',
+            puff_count: 'puff_count',
+        };
+        const safeProductSortBy = Object.prototype.hasOwnProperty.call(productSortMap, sort_by)
+            ? productSortMap[sort_by]
+            : 'createdAt';
+        const safeOrder = (String(order).toUpperCase() === 'ASC') ? 'ASC' : 'DESC';
+
         // Parse limit and offset as integers
         const parsedLimit = parseInt(limit);
         const parsedOffset = parseInt(offset);
@@ -126,9 +142,9 @@ module.exports.listNewProducts = async (req, res, next) => {
             return acc;
         }, {});
 
-        const cacheKey = `product:new:${JSON.stringify({
-            sort_by,
-            order,
+        const cacheKey = `product:new:v2:${JSON.stringify({
+            sort_by: safeProductSortBy,
+            order: safeOrder,
             limit: parsedLimit,
             offset: parsedOffset,
             keyword: keyword || '',
@@ -218,7 +234,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.createdAt DESC, p.${sort_by} ${order}
+            ORDER BY p.${safeProductSortBy} ${safeOrder}, p.id ${safeOrder}
             LIMIT :limit OFFSET :offset
         `;
 
