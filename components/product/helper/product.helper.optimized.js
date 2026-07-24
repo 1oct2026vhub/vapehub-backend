@@ -230,7 +230,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
             ? `(SELECT COUNT(DISTINCT o.id) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed') AND o.deletedAt IS NULL) ${orderValue}`
             : sort_by === 'price'
             ? `min_variant_price ${orderValue}`
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }
         LIMIT ${parsedLimit} OFFSET ${parsedOffset}
       )
