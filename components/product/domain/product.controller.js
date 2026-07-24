@@ -8,6 +8,7 @@ const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
+const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -1103,6 +1104,7 @@ module.exports.getProductByid = async (req, res, next) => {
         }
 
         // Prepare the response
+        const relatedBlogs = await getPublishedProductRelatedBlogs(productId);
         const response = {
             ...product.toJSON(),
             hide_variant_selector,
@@ -1136,7 +1138,8 @@ module.exports.getProductByid = async (req, res, next) => {
                 min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                 status: loyaltySettings.status
             } : null,
-            min_price_variant: minPriceVariant
+            min_price_variant: minPriceVariant,
+            related_blogs: relatedBlogs
         };
 
         return response;
@@ -1182,6 +1185,41 @@ module.exports.getProductDescription = async (req, res, next) => {
             return errorResponse(res, {}, 'Product not found', 404);
         }
         return successResponse(res, responseData, 'Product description fetched successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getProductRelatedBlogs = async (req, res, next) => {
+    try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:related-blogs:${productId}`, async () => {
+            const productResult = await Product.sequelize.query(`
+                SELECT p.id
+                FROM products p
+                WHERE p.id = :product_id
+                AND p.status = 'published'
+                AND p.deletedAt IS NULL
+            `, {
+                replacements: { product_id: productId },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!productResult.length) {
+                return null;
+            }
+
+            const related_blogs = await getPublishedProductRelatedBlogCards(productId);
+            return {
+                product_id: productResult[0].id,
+                related_blogs
+            };
+        }, 300);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Product related blogs fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -1387,7 +1425,7 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         await transaction.commit();
 
-        await invalidateCache([`product:detail:${id}`, `product:description:${id}`]);
+        await invalidateCache([`product:detail:${id}`, `product:description:${id}`, `product:related-blogs:${id}`]);
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {

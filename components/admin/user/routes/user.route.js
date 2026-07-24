@@ -73,6 +73,24 @@ router.get(
  *           type: string
  *           format: date
  *           description: Date of birth of the user
+ *         profile_pic_url:
+ *           type: string
+ *           description: Avatar image URL for the user
+ *         blog_author_role:
+ *           type: string
+ *           description: Blog byline role/subtitle (e.g. VapeHub product team)
+ *         blog_author_bio:
+ *           type: string
+ *           description: Author bio shown on Geek Zone blog detail pages
+ *         blog_author_slug:
+ *           type: string
+ *           description: URL-safe slug used to build author archive links
+ *         blog_author_archive_url:
+ *           type: string
+ *           description: Override URL for “All articles by {name}” links
+ *         blog_author_team_url:
+ *           type: string
+ *           description: URL for “Meet the team” links
  */
  
 /**
@@ -111,6 +129,24 @@ router.get(
  *           type: string
  *           format: date
  *           description: Date of birth of the user
+ *         profile_pic_url:
+ *           type: string
+ *           description: Avatar image URL for the user
+ *         blog_author_role:
+ *           type: string
+ *           description: Blog byline role/subtitle (e.g. VapeHub product team)
+ *         blog_author_bio:
+ *           type: string
+ *           description: Author bio shown on Geek Zone blog detail pages
+ *         blog_author_slug:
+ *           type: string
+ *           description: URL-safe slug used to build author archive links
+ *         blog_author_archive_url:
+ *           type: string
+ *           description: Override URL for “All articles by {name}” links
+ *         blog_author_team_url:
+ *           type: string
+ *           description: URL for “Meet the team” links
  */
 
 /**
@@ -159,9 +195,43 @@ router.post(
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/UpdateUser'
+ *             type: object
+ *             properties:
+ *               first_name:
+ *                 type: string
+ *               last_name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               roleId:
+ *                 type: integer
+ *               gender:
+ *                 type: string
+ *                 enum: [male, female, other]
+ *               dob:
+ *                 type: string
+ *                 format: date
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Optional avatar image upload (jpeg, png, webp). Stored as profile_pic_url.
+ *               profile_pic_url:
+ *                 type: string
+ *                 description: Optional avatar URL when not uploading a file
+ *               blog_author_role:
+ *                 type: string
+ *               blog_author_bio:
+ *                 type: string
+ *               blog_author_slug:
+ *                 type: string
+ *               blog_author_archive_url:
+ *                 type: string
+ *               blog_author_team_url:
+ *                 type: string
  *     responses:
  *       200:
  *         description: User updated successfully
@@ -170,7 +240,11 @@ router.post(
  */
 router.put(
     "/:id",
-    [authMiddleware(true), validateRequest(validationRules.userUpdateValidationRules)],
+    [
+        authMiddleware(true),
+        validationRules.uploadFileValidation,
+        validateRequest(validationRules.userUpdateValidationRules)
+    ],
     userController.updateUser
 );
 

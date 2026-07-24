@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const brandController = require("../domain/brand.controller");
+const buyingGuideController = require("../domain/buyingGuide.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 
@@ -287,6 +288,13 @@ router.delete('/:id', authenticateJWT,
  *       200:
  *         description: A single category
  */
+router.get('/slug/:slug/buying-guide',
+    validateRequest([
+        param('slug').isString().withMessage('slug must be a string')
+    ]),
+    buyingGuideController.getBuyingGuideBySlug
+);
+
 router.get('/slug/:slug',
     validateRequest([
         param('slug').isString().withMessage('slug must be an string'),

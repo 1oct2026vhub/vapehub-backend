@@ -12,6 +12,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { uploadFiletToS3, generateUniqueFileName, generateSignedUrl, deleteFile } = require('../../../../library/s3/s3Helper');
+const { uploadUserAvatar } = require('../helper/userAvatar.helper');
+const { applyBlogAuthorArchiveUrl } = require('../helper/blogAuthor.helper');
 
 // Export job status tracking (in-memory, can be moved to Redis/DB)
 const exportJobs = new Map();
@@ -140,7 +142,21 @@ module.exports.createUser = async (req, res) => {
 module.exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, password, phone, roleId, gender, dob } = req.body;
+        const {
+            first_name,
+            last_name,
+            password,
+            phone,
+            roleId,
+            gender,
+            dob,
+            blog_author_role,
+            blog_author_bio,
+            blog_author_slug,
+            blog_author_archive_url,
+            blog_author_team_url,
+            profile_pic_url
+        } = req.body;
 
         // Find the user
         const user = await User.findByPk(id);
@@ -169,13 +185,43 @@ module.exports.updateUser = async (req, res) => {
         if (roleId !== undefined) updatePayload.roleId = roleId;
         if (gender !== undefined) updatePayload.gender = gender;
         if (dob !== undefined) updatePayload.dob = dob;
+        if (blog_author_role !== undefined) {
+            updatePayload.blog_author_role = blog_author_role === '' ? null : blog_author_role;
+        }
+        if (blog_author_bio !== undefined) {
+            updatePayload.blog_author_bio = blog_author_bio === '' ? null : blog_author_bio;
+        }
+        if (blog_author_slug !== undefined) {
+            updatePayload.blog_author_slug = blog_author_slug === '' ? null : String(blog_author_slug).trim();
+        }
+        if (blog_author_archive_url !== undefined) {
+            updatePayload.blog_author_archive_url = blog_author_archive_url === ''
+                ? null
+                : blog_author_archive_url;
+        }
+        if (blog_author_team_url !== undefined) {
+            updatePayload.blog_author_team_url = blog_author_team_url === '' ? null : blog_author_team_url;
+        }
+
         const updated_by = req.user?.id ?? null;
         if (updated_by != null) updatePayload.updated_by = updated_by;
         if (password) {
             updatePayload.password = await bcrypt.hashSync(password, 10);
         }
 
+        if (req.file) {
+            updatePayload.profile_pic_url = await uploadUserAvatar(req.file);
+        } else if (profile_pic_url !== undefined) {
+            updatePayload.profile_pic_url = profile_pic_url === '' ? null : profile_pic_url;
+        }
+
+        applyBlogAuthorArchiveUrl(updatePayload, user);
+
         await user.update(updatePayload);
+        await user.reload({
+            include: [{ model: Role, as: 'roles', attributes: ['id', 'role'] }],
+            attributes: { exclude: ['password', 'token', 'remember_token'] }
+        });
 
         return successResponse(res, { user }, "User updated successfully", 200);
     } catch (error) {
