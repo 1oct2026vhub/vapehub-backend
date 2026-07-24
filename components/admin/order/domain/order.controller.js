@@ -7,6 +7,7 @@ const { orderStatusEnums, orderStatus} = require('../../../../config/constants')
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
+const { enrichOrderItemsWithHideVariantSelector } = require('../../../order/helper/orderItemDisplayName.helper');
 const {
     ASYNC_BULK_MAX_ORDERS,
     createBulkOrderStatusJob,
@@ -354,6 +355,9 @@ module.exports.listAllOrders = async (req, res, next) => {
             })
         ]);
 
+        const allOrderItems = orders.flatMap((ord) => ord.orderItems || []);
+        await enrichOrderItemsWithHideVariantSelector(allOrderItems);
+
         const response = {
             orders: orders,
             pagination: {
@@ -492,6 +496,8 @@ module.exports.getOrderById = async (req, res, next) => {
 
         // Get the status timeline
         const statusTimeline = await order.getStatusTimeline();
+
+        await enrichOrderItemsWithHideVariantSelector(order.orderItems || []);
 
         // Add status timeline to the response
         const orderResponse = order.toJSON();
