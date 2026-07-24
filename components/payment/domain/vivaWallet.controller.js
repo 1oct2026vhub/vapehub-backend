@@ -9,6 +9,7 @@ const axios = require("axios");
 const logger = require('../../../library/logger');
 const utilsLogger = require('../../../utils/logger');
 const { redeemLoyaltyPointsForOrder } = require('../../order/helper/loyaltyPointsRedemption.helper');
+const { mapOrderItemsForEmail } = require('../../order/helper/orderItemDisplayName.helper');
 module.exports.handleVivaWalletWebhook = async (req, res) => {
     try {
         if (req.method === 'POST') {
@@ -609,28 +610,7 @@ module.exports.handleVivaWalletWebhook = async (req, res) => {
                             shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
                             shippingCost: order.shipping_cost || 0,
                             totalAmount: order.total || 0,
-                            items: order.orderItems ? order.orderItems.map(item => {
-                                let productName = item.product?.name || 'Product';
-                                
-                                // Append variant attribute values in format: "Product Name - Value1, Value2"
-                                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
-                                    const attributeTerms = item.variant.variantAttributes
-                                        .filter(va => va.term) // Ensure term exists
-                                        .map(va => va.term.name)
-                                        .filter(Boolean); // Remove any empty strings
-                                    
-                                    if (attributeTerms.length > 0) {
-                                        productName = `${productName} - ${attributeTerms.join(', ')}`;
-                                    }
-                                }
-                                
-                                return {
-                                    name: productName,
-                                    quantity: item.quantity || 0,
-                                    price: item.unit_price || 0,
-                                    total: item.total || 0
-                                };
-                            }) : [],
+                            items: await mapOrderItemsForEmail(order.orderItems || []),
                             shippingAddress: order.orderShippingAddress || {},
                             billingAddress: order.orderBillingAddress || {},
                             paymentMethod: 'VivaWallet',

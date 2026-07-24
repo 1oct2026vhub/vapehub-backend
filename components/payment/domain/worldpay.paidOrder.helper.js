@@ -24,6 +24,7 @@ const {
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
 const { redeemLoyaltyPointsForOrder } = require('../../order/helper/loyaltyPointsRedemption.helper');
+const { mapOrderItemsForEmail } = require('../../order/helper/orderItemDisplayName.helper');
 
 const WORLDPAY_PAID_ORDER_INCLUDES = [
     { model: User, as: 'user' },
@@ -507,29 +508,7 @@ const runPostPaymentSideEffects = async (order, { amount, currency, orderCode })
             shippingMethod: order.shippingMethod ? order.shippingMethod.shipping_method : 'Standard Shipping',
             shippingCost: order.shipping_cost || 0,
             totalAmount: order.total || 0,
-            items: order.orderItems
-                ? order.orderItems.map((item) => {
-                      let productName = item.product?.name || 'Product';
-
-                      if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
-                          const attributeTerms = item.variant.variantAttributes
-                              .filter((va) => va.term)
-                              .map((va) => va.term.name)
-                              .filter(Boolean);
-
-                          if (attributeTerms.length > 0) {
-                              productName = `${productName} - ${attributeTerms.join(', ')}`;
-                          }
-                      }
-
-                      return {
-                          name: productName,
-                          quantity: item.quantity || 0,
-                          price: item.unit_price || 0,
-                          total: item.total || 0
-                      };
-                  })
-                : [],
+            items: await mapOrderItemsForEmail(order.orderItems || []),
             shippingAddress: order.orderShippingAddress
                 ? {
                       name: order.orderShippingAddress.name || '',
