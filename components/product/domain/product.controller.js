@@ -188,7 +188,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         }
 
         if (variantFilters.id) {
-            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)");
+            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId AND pv.deleted_at IS NULL)");
             productFilterParams.variantId = variantFilters.id;
         }
 
@@ -350,12 +350,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Variants query - only essential fields
+            // Variants query - only essential fields (exclude soft-deleted)
             Product.sequelize.query(`
                 SELECT 
                     id, product_id, price, discount_price, stock, stock_status, status, is_discontinued
                 FROM product_variants
-                WHERE product_id IN (:productIds) AND status = 'active'
+                WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -366,7 +366,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
                 LIMIT 50
             `, {
@@ -1587,7 +1587,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     weight, length, width, height, description, barcode, stock, low_stock_threshold,
                     stock_status, status, updated_by, created_at, updated_at, deleted_at
                 FROM product_variants
-                WHERE product_id = :productId AND status = 'active'
+                WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1598,7 +1598,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 SELECT 
                     id, variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
@@ -1646,7 +1646,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 FROM product_variant_attributes pva
                 WHERE pva.variant_id IN (
                     SELECT id FROM product_variants
-                    WHERE product_id = :productId AND status = 'active'
+                    WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
                 )
             `, {
                 replacements: { productId: productResult.id },
@@ -2156,7 +2156,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pva.term_id = t.id
                 WHERE pva.variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND pva.is_visible = true
             `, {
@@ -2171,7 +2171,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 FROM product_variant_images
                 WHERE variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND deleted_at IS NULL
             `, {
@@ -2997,7 +2997,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             JOIN attribute_terms t ON pva.term_id = t.id
             WHERE pva.variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND pva.is_visible = true
         `, {
@@ -3012,7 +3012,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             FROM product_variant_images
             WHERE variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND deleted_at IS NULL
         `, {
@@ -4900,6 +4900,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -4913,6 +4914,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5424,6 +5426,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
@@ -5436,6 +5439,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
                 AND pvi.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5454,6 +5458,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                     SELECT pv.id FROM product_variants pv 
                     WHERE pv.product_id IN (${productIds.join(',')}) 
                     AND pv.status = 'active'
+                    AND pv.deleted_at IS NULL
                 )
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
