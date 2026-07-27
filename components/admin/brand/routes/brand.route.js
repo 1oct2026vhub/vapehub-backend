@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const brandController = require("../domain/brand.controller");
 const buyingGuideController = require('../domain/buyingGuide.controller');
+const relatedLinksController = require('../domain/relatedLinks.controller');
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
 const { 
@@ -17,6 +18,10 @@ const {
     buyingGuideBodyValidation,
     buyingGuideUploadValidation
 } = require('../helper/buyingGuide.validator');
+const {
+    relatedLinksIdValidation,
+    relatedLinksBodyValidation
+} = require('../helper/relatedLinks.validator');
 
 /**
  * @swagger
@@ -112,6 +117,19 @@ router.post('/:id/buying-guide',
         buyingGuideBodyValidation
     ],
     buyingGuideController.saveBuyingGuide
+);
+
+router.get('/:id/related-categories',
+    [authMiddleware(true), validateRequest(relatedLinksIdValidation)],
+    relatedLinksController.getRelatedLinks
+);
+
+router.post('/:id/related-categories',
+    [
+        authMiddleware(true),
+        relatedLinksBodyValidation
+    ],
+    relatedLinksController.saveRelatedLinks
 );
 
 /**

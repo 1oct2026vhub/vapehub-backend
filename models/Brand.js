@@ -20,6 +20,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'brand_id',
                 as: 'buyingGuide'
             });
+            this.hasMany(models.BrandRelatedLink, {
+                foreignKey: 'brand_id',
+                as: 'relatedLinks'
+            });
         }
     }
 
@@ -51,6 +55,10 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false
         },
         description: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
+        type_cards_html: {
             type: DataTypes.TEXT('long'),
             allowNull: true
         },
