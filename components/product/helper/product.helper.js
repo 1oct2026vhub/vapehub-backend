@@ -1896,8 +1896,10 @@ const fetchProductsCached = async (query, status = 'published') => {
 
 /**
  * Hide selector when there is exactly 1 active variant and none of that
- * variant's attributes are page-visible (is_visible_page on product_attribute_terms).
+ * variant's attributes are both used for variations and page-visible
+ * (same filters as PDP available_terms / picker).
  * Product-level attributes not linked to the variant are ignored.
+ * Display-only attrs (used_in_variation = false) do not keep the selector open.
  *
  * @param {Array} activeVariants - variants with variantAttributes / attributes
  * @param {Array} productAttributeTerms - ALL product_attribute_terms for the product
@@ -1915,24 +1917,24 @@ function shouldHideVariantSelector(activeVariants = [], productAttributeTerms = 
 
   if (variantAttrs.length === 0) return true;
 
-  const visibilityByAttrTerm = new Map();
+  // Picker-relevant: used_in_variation + is_visible_page
+  const pickerVisibleByAttrTerm = new Map();
   for (const pat of productAttributeTerms) {
     const attrId = pat.attribute_id ?? pat.attr_id;
     const termId = pat.term_id;
     if (attrId == null || termId == null) continue;
-    visibilityByAttrTerm.set(
-      `${attrId}-${termId}`,
-      pat.is_visible_page === true || pat.is_visible_page === 1
-    );
+    const usedInVariation = pat.used_in_variation === true || pat.used_in_variation === 1;
+    const isVisiblePage = pat.is_visible_page === true || pat.is_visible_page === 1;
+    pickerVisibleByAttrTerm.set(`${attrId}-${termId}`, usedInVariation && isVisiblePage);
   }
 
-  const hasVisibleVariantAttr = variantAttrs.some((va) => {
+  const hasPickerVisibleVariantAttr = variantAttrs.some((va) => {
     const attrId = va.attribute?.id ?? va.attribute_id;
     const termId = va.term?.id ?? va.term_id;
-    return visibilityByAttrTerm.get(`${attrId}-${termId}`) === true;
+    return pickerVisibleByAttrTerm.get(`${attrId}-${termId}`) === true;
   });
 
-  return !hasVisibleVariantAttr;
+  return !hasPickerVisibleVariantAttr;
 }
 
 module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern, shouldHideVariantSelector };
