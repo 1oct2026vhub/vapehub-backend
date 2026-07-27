@@ -318,7 +318,7 @@ const processAbandonedCart = async () => {
   }
 };
 
-cron.schedule('*/15 * * * *', async () => {
+cron.schedule('*/5 * * * *', async () => {
   await processAbandonedCart();
 }, { timezone: UK_TIMEZONE });
 
