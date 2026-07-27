@@ -1497,7 +1497,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (brandIds.length > 0) {
             const brands = await Brand.findAll({
                 where: { id: { [Op.in]: brandIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'slug']
             });
             brandMap = new Map(brands.map(brand => [brand.id, brand]));
         }
@@ -1570,6 +1570,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 const brand = brandMap.get(slugRelations[0].entity_id);
                 if (brand) {
                     response.description = brand.description;
+                    response.type_cards_html = brand.type_cards_html || null;
                     response.name = brand.name;
                 }
             }
@@ -1668,6 +1669,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         const brand = brandMap.get(relation.entity_id);
                         if (brand) {
                             item.description = brand.description;
+                            item.type_cards_html = brand.type_cards_html || null;
                             item.name = brand.name;
                         }
                     }
@@ -1827,6 +1829,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     const brand = brandMap.get(relation.entity_id);
                     if (brand) {
                         item.description = brand.description;
+                        item.type_cards_html = brand.type_cards_html || null;
                         item.name = brand.name;
                     }
                 }

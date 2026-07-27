@@ -6,8 +6,22 @@ const ExcelJS = require('exceljs');
 const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
 const { recacheEntityFireAndForget } = require('../../../../library/prerender');
+const { replaceInlineBase64ImagesWithS3Urls } = require("../../blog/helper/blogContent.helper");
 
 const slugManager = new SlugManager(SlugRelation);
+
+const resolveTypeCardsHtml = async (value) => {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || String(value).trim() === '') {
+        return null;
+    }
+    return replaceInlineBase64ImagesWithS3Urls(String(value), {
+        keyPrefix: 'brands/type-cards',
+        filePrefix: 'brand-type-cards'
+    });
+};
 
 /**
  * Retrieves all brands with pagination and optional search.
@@ -118,7 +132,7 @@ module.exports.getBrandById = async (req, res, next) => {
 module.exports.createBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        let { name, slug, description } = req.body;
+        let { name, slug, description, type_cards_html } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
         const { file } = req;
@@ -127,6 +141,9 @@ module.exports.createBrand = async (req, res, next) => {
         name = name?.trim();
         slug = slug?.trim();
         description = description?.trim();
+        type_cards_html = await resolveTypeCardsHtml(
+            type_cards_html === undefined ? null : type_cards_html
+        );
 
         // Check if the brand name already exists
         const brandExists = await Brand.findOne({ where: { name } });
@@ -172,7 +189,8 @@ module.exports.createBrand = async (req, res, next) => {
             slug, 
             description, 
             updated_by, 
-            logo_url 
+            logo_url,
+            type_cards_html: type_cards_html || null
         }, { transaction: t });
 
         // Create slug relation
@@ -194,7 +212,7 @@ module.exports.updateBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        let { name, slug, description, redirect_url } = req.body;
+        let { name, slug, description, redirect_url, type_cards_html } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
@@ -250,12 +268,16 @@ module.exports.updateBrand = async (req, res, next) => {
             await seoService.updateSeoSlug('brand', id, slug);
         }
         // Update brand
+        const resolvedTypeCardsHtml = await resolveTypeCardsHtml(type_cards_html);
         await brand.update({
             name: name?.trim() || brand.name,
             slug: slug?.trim() || brand.slug,
             description: description?.trim() || brand.description,
             logo_url,
-            updated_by
+            updated_by,
+            ...(resolvedTypeCardsHtml !== undefined
+                ? { type_cards_html: resolvedTypeCardsHtml }
+                : {})
         }, { transaction: t });
         const menu = await Menu.findOne({ where: { entity_id: id} });
         if (menu) {

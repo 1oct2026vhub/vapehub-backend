@@ -2,6 +2,7 @@ const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
 const brandController = require("../domain/brand.controller");
 const buyingGuideController = require("../domain/buyingGuide.controller");
+const relatedLinksController = require("../domain/relatedLinks.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
 
@@ -293,6 +294,13 @@ router.get('/slug/:slug/buying-guide',
         param('slug').isString().withMessage('slug must be a string')
     ]),
     buyingGuideController.getBuyingGuideBySlug
+);
+
+router.get('/slug/:slug/related-categories',
+    validateRequest([
+        param('slug').isString().withMessage('slug must be a string')
+    ]),
+    relatedLinksController.getRelatedLinksBySlug
 );
 
 router.get('/slug/:slug',

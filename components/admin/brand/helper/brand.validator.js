@@ -26,8 +26,13 @@ const brandValidation = [
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
       .isString().withMessage("Description must be a string"),
-    check("parent_id")
+    check("type_cards_html")
       .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("type_cards_html must be a string"),
+    check("parent_id")
+    .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
       .custom((value) => {
           if (value !== null && isNaN(Number(value))) {
@@ -52,6 +57,11 @@ const brandUpdatesValidation = [
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
       .trim().isString().withMessage("Description must be a string"),
+    check("type_cards_html")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("type_cards_html must be a string"),
     check("logo_url")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
