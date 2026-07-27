@@ -1,28 +1,42 @@
 const { ProductAttributeTerm, ProductVariant, sequelize } = require('../../../models');
 const { shouldHideVariantSelector } = require('../../product/helper/product.helper');
 
-/**
- * Load is_visible_page flags for product attribute terms.
- * Key: `${product_id}-${attribute_id}-${term_id}` → boolean
- */
-async function loadVisibleAttributeTermMap(productIds = []) {
-  const ids = [...new Set(productIds.filter(Boolean))];
-  const visibilityByProductAttrTerm = new Map();
+function isTruthyFlag(value) {
+  return value === true || value === 1;
+}
 
-  if (ids.length === 0) return visibilityByProductAttrTerm;
+/**
+ * Load PAT flags for product attribute terms.
+ * Key: `${product_id}-${attribute_id}-${term_id}` → { is_visible_page, used_in_variation }
+ */
+async function loadAttributeTermFlagsMap(productIds = []) {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  const flagsByProductAttrTerm = new Map();
+
+  if (ids.length === 0) return flagsByProductAttrTerm;
 
   const pats = await ProductAttributeTerm.findAll({
     where: { product_id: ids },
-    attributes: ['product_id', 'attribute_id', 'term_id', 'is_visible_page']
+    attributes: ['product_id', 'attribute_id', 'term_id', 'is_visible_page', 'used_in_variation']
   });
 
   for (const pat of pats) {
-    visibilityByProductAttrTerm.set(
-      `${pat.product_id}-${pat.attribute_id}-${pat.term_id}`,
-      pat.is_visible_page === true || pat.is_visible_page === 1
-    );
+    flagsByProductAttrTerm.set(`${pat.product_id}-${pat.attribute_id}-${pat.term_id}`, {
+      is_visible_page: isTruthyFlag(pat.is_visible_page),
+      used_in_variation: isTruthyFlag(pat.used_in_variation)
+    });
   }
 
+  return flagsByProductAttrTerm;
+}
+
+/** @deprecated prefer loadAttributeTermFlagsMap */
+async function loadVisibleAttributeTermMap(productIds = []) {
+  const flagsMap = await loadAttributeTermFlagsMap(productIds);
+  const visibilityByProductAttrTerm = new Map();
+  for (const [key, flags] of flagsMap.entries()) {
+    visibilityByProductAttrTerm.set(key, flags.is_visible_page);
+  }
   return visibilityByProductAttrTerm;
 }
 
@@ -54,17 +68,17 @@ async function loadActiveVariantCountByProduct(productIds = []) {
 }
 
 /**
- * Full display context for order items (visibility + variant counts + PAT rows by product).
+ * Full display context for order items.
  */
 async function loadOrderItemDisplayContext(productIds = []) {
   const ids = [...new Set(productIds.filter(Boolean))];
-  const [visibilityMap, activeVariantCounts, pats] = await Promise.all([
-    loadVisibleAttributeTermMap(ids),
+  const [flagsMap, activeVariantCounts, pats] = await Promise.all([
+    loadAttributeTermFlagsMap(ids),
     loadActiveVariantCountByProduct(ids),
     ids.length
       ? ProductAttributeTerm.findAll({
           where: { product_id: ids },
-          attributes: ['product_id', 'attribute_id', 'term_id', 'is_visible_page']
+          attributes: ['product_id', 'attribute_id', 'term_id', 'is_visible_page', 'used_in_variation']
         })
       : Promise.resolve([])
   ]);
@@ -76,7 +90,12 @@ async function loadOrderItemDisplayContext(productIds = []) {
     patsByProduct.get(pid).push(pat);
   }
 
-  return { visibilityMap, activeVariantCounts, patsByProduct };
+  const visibilityMap = new Map();
+  for (const [key, flags] of flagsMap.entries()) {
+    visibilityMap.set(key, flags.is_visible_page);
+  }
+
+  return { flagsMap, visibilityMap, activeVariantCounts, patsByProduct };
 }
 
 function getProductId(item) {
@@ -101,7 +120,12 @@ function shouldHideVariantNameForOrderItem(item, context) {
   return shouldHideVariantSelector([variant], pats);
 }
 
-function getVisibleVariantAttrs(item, visibilityMap) {
+/**
+ * Attrs to append on email/ShipStation names.
+ * Only picker-relevant attrs: used_in_variation AND is_visible_page.
+ * Hidden variation attrs (visible=false, used_in_variation=true) are omitted.
+ */
+function getNameVariantAttrs(item, flagsMap) {
   const productId = getProductId(item);
   const variantAttrs = item.variant?.variantAttributes || [];
   if (!productId || variantAttrs.length === 0) return [];
@@ -111,22 +135,23 @@ function getVisibleVariantAttrs(item, visibilityMap) {
     const attrId = va.attribute_id ?? va.attribute?.id;
     const termId = va.term_id ?? va.term?.id;
     if (attrId == null || termId == null) return false;
-    return visibilityMap.get(`${productId}-${attrId}-${termId}`) === true;
+    const flags = flagsMap.get(`${productId}-${attrId}-${termId}`);
+    return flags?.used_in_variation === true && flags?.is_visible_page === true;
   });
 }
 
 /**
  * Build display name for an order line.
- * @param {'email'|'labeled'} format - email: "Name - a, b"; labeled: "Name, Attr: Term"
+ * @param {'email'|'labeled'} format
  */
 function buildOrderItemDisplayName(item, contextOrVisibilityMap = new Map(), options = {}) {
   const format = options.format || 'email';
   const productName = item.product?.name || 'Product';
 
-  // Backward compatible: second arg can be visibility Map only
   const context =
     contextOrVisibilityMap instanceof Map
       ? {
+          flagsMap: null,
           visibilityMap: contextOrVisibilityMap,
           activeVariantCounts: new Map(),
           patsByProduct: new Map()
@@ -137,24 +162,37 @@ function buildOrderItemDisplayName(item, contextOrVisibilityMap = new Map(), opt
     return productName;
   }
 
-  const visibleAttrs = getVisibleVariantAttrs(item, context.visibilityMap || contextOrVisibilityMap);
-  if (visibleAttrs.length === 0) return productName;
+  let nameAttrs = [];
+  if (context.flagsMap instanceof Map) {
+    nameAttrs = getNameVariantAttrs(item, context.flagsMap);
+  } else if (context.visibilityMap instanceof Map || contextOrVisibilityMap instanceof Map) {
+    // Legacy visibility-only map
+    const visibilityMap = context.visibilityMap || contextOrVisibilityMap;
+    const productId = getProductId(item);
+    const variantAttrs = item.variant?.variantAttributes || [];
+    nameAttrs = variantAttrs.filter((va) => {
+      if (!va.term) return false;
+      const attrId = va.attribute_id ?? va.attribute?.id;
+      const termId = va.term_id ?? va.term?.id;
+      if (attrId == null || termId == null || !productId) return false;
+      return visibilityMap.get(`${productId}-${attrId}-${termId}`) === true;
+    });
+  }
+
+  if (nameAttrs.length === 0) return productName;
 
   if (format === 'labeled') {
-    const parts = visibleAttrs
+    const parts = nameAttrs
       .filter((va) => va.attribute && va.term)
       .map((va) => `${va.attribute.name}: ${va.term.name}`)
       .filter(Boolean);
     return parts.length > 0 ? `${productName}, ${parts.join(', ')}` : productName;
   }
 
-  const terms = visibleAttrs.map((va) => va.term.name).filter(Boolean);
+  const terms = nameAttrs.map((va) => va.term.name).filter(Boolean);
   return terms.length > 0 ? `${productName} - ${terms.join(', ')}` : productName;
 }
 
-/**
- * Map order items to email line items, filtering hidden variant attribute terms.
- */
 async function mapOrderItemsForEmail(orderItems = []) {
   const items = orderItems || [];
   const productIds = items.map(getProductId);
@@ -168,9 +206,6 @@ async function mapOrderItemsForEmail(orderItems = []) {
   }));
 }
 
-/**
- * Map order items for ShipStation payload (labeled attrs; hide when hide_variant_selector).
- */
 async function mapOrderItemsForShipStation(orderItems = []) {
   const items = orderItems || [];
   const productIds = items.map(getProductId);
@@ -200,10 +235,6 @@ async function mapOrderItemsForShipStation(orderItems = []) {
   });
 }
 
-/**
- * Enrich order items (Sequelize or plain) with hide_variant_selector.
- * When true, clears variantAttributes so admin UI does not show attr lines.
- */
 async function enrichOrderItemsWithHideVariantSelector(orderItems = []) {
   const items = orderItems || [];
   if (items.length === 0) return items;
@@ -218,7 +249,6 @@ async function enrichOrderItemsWithHideVariantSelector(orderItems = []) {
     if (item.product) {
       if (typeof item.setDataValue === 'function') {
         item.setDataValue('hide_variant_selector', hide);
-        // Also set on nested product for FE that reads product.hide_variant_selector
         if (item.product.setDataValue) {
           item.product.setDataValue('hide_variant_selector', hide);
         } else {
@@ -240,20 +270,23 @@ async function enrichOrderItemsWithHideVariantSelector(orderItems = []) {
       } else if (item.variant.variantAttributes) {
         item.variant.variantAttributes = [];
       }
-    } else if (item.variant?.variantAttributes?.length && context.visibilityMap) {
-      // Attach is_visible_page for FE; keep only visible if we want — keep all with flag
+    } else if (item.variant?.variantAttributes?.length && context.flagsMap) {
       const productId = getProductId(item);
       for (const va of item.variant.variantAttributes) {
         const attrId = va.attribute_id ?? va.attribute?.id;
         const termId = va.term_id ?? va.term?.id;
-        const visible =
+        const flags =
           productId != null && attrId != null && termId != null
-            ? context.visibilityMap.get(`${productId}-${attrId}-${termId}`) === true
-            : false;
+            ? context.flagsMap.get(`${productId}-${attrId}-${termId}`)
+            : null;
+        const isVisible = flags?.is_visible_page === true;
+        const usedInVariation = flags?.used_in_variation === true;
         if (typeof va.setDataValue === 'function') {
-          va.setDataValue('is_visible_page', visible);
+          va.setDataValue('is_visible_page', isVisible);
+          va.setDataValue('used_in_variation', usedInVariation);
         } else {
-          va.is_visible_page = visible;
+          va.is_visible_page = isVisible;
+          va.used_in_variation = usedInVariation;
         }
       }
     }
@@ -264,9 +297,11 @@ async function enrichOrderItemsWithHideVariantSelector(orderItems = []) {
 
 module.exports = {
   loadVisibleAttributeTermMap,
+  loadAttributeTermFlagsMap,
   loadActiveVariantCountByProduct,
   loadOrderItemDisplayContext,
   shouldHideVariantNameForOrderItem,
+  getNameVariantAttrs,
   buildOrderItemDisplayName,
   mapOrderItemsForEmail,
   mapOrderItemsForShipStation,
