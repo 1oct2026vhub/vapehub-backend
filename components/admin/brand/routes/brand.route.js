@@ -119,12 +119,12 @@ router.post('/:id/buying-guide',
     buyingGuideController.saveBuyingGuide
 );
 
-router.get('/:id/related-categories',
+router.get('/:id/related-brand',
     [authMiddleware(true), validateRequest(relatedLinksIdValidation)],
     relatedLinksController.getRelatedLinks
 );
 
-router.post('/:id/related-categories',
+router.post('/:id/related-brand',
     [
         authMiddleware(true),
         relatedLinksBodyValidation
