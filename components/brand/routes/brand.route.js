@@ -296,7 +296,7 @@ router.get('/slug/:slug/buying-guide',
     buyingGuideController.getBuyingGuideBySlug
 );
 
-router.get('/slug/:slug/related-categories',
+router.get('/slug/:slug/related-brand',
     validateRequest([
         param('slug').isString().withMessage('slug must be a string')
     ]),
