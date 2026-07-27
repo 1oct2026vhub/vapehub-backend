@@ -30,7 +30,7 @@ async function loadAttributeTermFlagsMap(productIds = []) {
   return flagsByProductAttrTerm;
 }
 
-/** @deprecated use loadAttributeTermFlagsMap — kept for callers expecting a boolean visibility map */
+/** @deprecated prefer loadAttributeTermFlagsMap */
 async function loadVisibleAttributeTermMap(productIds = []) {
   const flagsMap = await loadAttributeTermFlagsMap(productIds);
   const visibilityByProductAttrTerm = new Map();
@@ -68,7 +68,7 @@ async function loadActiveVariantCountByProduct(productIds = []) {
 }
 
 /**
- * Full display context for order items (PAT flags + variant counts + PAT rows by product).
+ * Full display context for order items.
  */
 async function loadOrderItemDisplayContext(productIds = []) {
   const ids = [...new Set(productIds.filter(Boolean))];
@@ -90,7 +90,6 @@ async function loadOrderItemDisplayContext(productIds = []) {
     patsByProduct.get(pid).push(pat);
   }
 
-  // Boolean map of is_visible_page only (backward compatible)
   const visibilityMap = new Map();
   for (const [key, flags] of flagsMap.entries()) {
     visibilityMap.set(key, flags.is_visible_page);
@@ -122,9 +121,9 @@ function shouldHideVariantNameForOrderItem(item, context) {
 }
 
 /**
- * Attrs to append on email/ShipStation names: used for variations only.
- * Display-only attrs (e.g. Colour/Tank with used_in_variation=false) are omitted
- * even if is_visible_page is true.
+ * Attrs to append on email/ShipStation names.
+ * Only picker-relevant attrs: used_in_variation AND is_visible_page.
+ * Hidden variation attrs (visible=false, used_in_variation=true) are omitted.
  */
 function getNameVariantAttrs(item, flagsMap) {
   const productId = getProductId(item);
@@ -137,34 +136,18 @@ function getNameVariantAttrs(item, flagsMap) {
     const termId = va.term_id ?? va.term?.id;
     if (attrId == null || termId == null) return false;
     const flags = flagsMap.get(`${productId}-${attrId}-${termId}`);
-    return flags?.used_in_variation === true;
-  });
-}
-
-/** @deprecated use getNameVariantAttrs */
-function getVisibleVariantAttrs(item, visibilityMap) {
-  const productId = getProductId(item);
-  const variantAttrs = item.variant?.variantAttributes || [];
-  if (!productId || variantAttrs.length === 0) return [];
-
-  return variantAttrs.filter((va) => {
-    if (!va.term) return false;
-    const attrId = va.attribute_id ?? va.attribute?.id;
-    const termId = va.term_id ?? va.term?.id;
-    if (attrId == null || termId == null) return false;
-    return visibilityMap.get(`${productId}-${attrId}-${termId}`) === true;
+    return flags?.used_in_variation === true && flags?.is_visible_page === true;
   });
 }
 
 /**
  * Build display name for an order line.
- * @param {'email'|'labeled'} format - email: "Name - a, b"; labeled: "Name, Attr: Term"
+ * @param {'email'|'labeled'} format
  */
 function buildOrderItemDisplayName(item, contextOrVisibilityMap = new Map(), options = {}) {
   const format = options.format || 'email';
   const productName = item.product?.name || 'Product';
 
-  // Backward compatible: second arg can be visibility Map only
   const context =
     contextOrVisibilityMap instanceof Map
       ? {
@@ -182,9 +165,18 @@ function buildOrderItemDisplayName(item, contextOrVisibilityMap = new Map(), opt
   let nameAttrs = [];
   if (context.flagsMap instanceof Map) {
     nameAttrs = getNameVariantAttrs(item, context.flagsMap);
-  } else {
-    // Legacy: visibility-only map — keep previous behaviour for any old callers
-    nameAttrs = getVisibleVariantAttrs(item, context.visibilityMap || contextOrVisibilityMap);
+  } else if (context.visibilityMap instanceof Map || contextOrVisibilityMap instanceof Map) {
+    // Legacy visibility-only map
+    const visibilityMap = context.visibilityMap || contextOrVisibilityMap;
+    const productId = getProductId(item);
+    const variantAttrs = item.variant?.variantAttributes || [];
+    nameAttrs = variantAttrs.filter((va) => {
+      if (!va.term) return false;
+      const attrId = va.attribute_id ?? va.attribute?.id;
+      const termId = va.term_id ?? va.term?.id;
+      if (attrId == null || termId == null || !productId) return false;
+      return visibilityMap.get(`${productId}-${attrId}-${termId}`) === true;
+    });
   }
 
   if (nameAttrs.length === 0) return productName;
@@ -201,9 +193,6 @@ function buildOrderItemDisplayName(item, contextOrVisibilityMap = new Map(), opt
   return terms.length > 0 ? `${productName} - ${terms.join(', ')}` : productName;
 }
 
-/**
- * Map order items to email line items (variation attrs only in the name).
- */
 async function mapOrderItemsForEmail(orderItems = []) {
   const items = orderItems || [];
   const productIds = items.map(getProductId);
@@ -217,9 +206,6 @@ async function mapOrderItemsForEmail(orderItems = []) {
   }));
 }
 
-/**
- * Map order items for ShipStation payload (variation attrs only; hide when hide_variant_selector).
- */
 async function mapOrderItemsForShipStation(orderItems = []) {
   const items = orderItems || [];
   const productIds = items.map(getProductId);
@@ -249,10 +235,6 @@ async function mapOrderItemsForShipStation(orderItems = []) {
   });
 }
 
-/**
- * Enrich order items (Sequelize or plain) with hide_variant_selector.
- * When true, clears variantAttributes so admin UI does not show attr lines.
- */
 async function enrichOrderItemsWithHideVariantSelector(orderItems = []) {
   const items = orderItems || [];
   if (items.length === 0) return items;
@@ -320,7 +302,6 @@ module.exports = {
   loadOrderItemDisplayContext,
   shouldHideVariantNameForOrderItem,
   getNameVariantAttrs,
-  getVisibleVariantAttrs,
   buildOrderItemDisplayName,
   mapOrderItemsForEmail,
   mapOrderItemsForShipStation,

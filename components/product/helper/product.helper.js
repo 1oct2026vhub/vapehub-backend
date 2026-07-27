@@ -1898,7 +1898,6 @@ const fetchProductsCached = async (query, status = 'published') => {
  * Hide selector when there is exactly 1 active variant and none of that
  * variant's attributes are both used for variations and page-visible
  * (same filters as PDP available_terms / picker).
- * Product-level attributes not linked to the variant are ignored.
  * Display-only attrs (used_in_variation = false) do not keep the selector open.
  *
  * @param {Array} activeVariants - variants with variantAttributes / attributes
@@ -1917,7 +1916,6 @@ function shouldHideVariantSelector(activeVariants = [], productAttributeTerms = 
 
   if (variantAttrs.length === 0) return true;
 
-  // Picker-relevant: used_in_variation + is_visible_page
   const pickerVisibleByAttrTerm = new Map();
   for (const pat of productAttributeTerms) {
     const attrId = pat.attribute_id ?? pat.attr_id;
