@@ -1,3 +1,14 @@
+const formatCategoryRefs = (categories = []) => (
+    categories.map((category) => {
+        const categoryData = category.toJSON ? category.toJSON() : category;
+        return {
+            id: categoryData.id,
+            name: categoryData.name,
+            slug: categoryData.slug
+        };
+    })
+);
+
 const formatAdminBuyingGuide = (guideInstance) => {
     if (!guideInstance) {
         return null;
@@ -36,7 +47,8 @@ const formatAdminBuyingGuide = (guideInstance) => {
                 image_url: data.image_url,
                 alt_text: data.alt_text,
                 status: data.status,
-                published_at: data.published_at
+                published_at: data.published_at,
+                categories: formatCategoryRefs(data.categories)
             };
         })
         .filter(Boolean);
@@ -79,7 +91,8 @@ const formatPublicBuyingGuide = (guideInstance) => {
             slug: blog.slug,
             image_url: blog.image_url,
             alt_text: blog.alt_text,
-            published_at: blog.published_at
+            published_at: blog.published_at,
+            categories: blog.categories || []
         }));
 
     const {
