@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const {
     Blog,
+    BlogCategory,
     BrandBuyingGuide,
     BrandBuyingGuideHighlight,
     BrandBuyingGuideTab,
@@ -30,7 +31,13 @@ const BUYING_GUIDE_INCLUDES = [
             as: 'relatedBlog',
             attributes: ['id', 'title', 'slug', 'image_url', 'alt_text', 'status', 'published_at'],
             required: true,
-            paranoid: true
+            paranoid: true,
+            include: [{
+                model: BlogCategory,
+                as: 'categories',
+                attributes: ['id', 'name', 'slug'],
+                through: { attributes: [] }
+            }]
         }]
     }
 ];
