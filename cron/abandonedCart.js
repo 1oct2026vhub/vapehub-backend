@@ -13,6 +13,25 @@ const EMAIL_TYPE_2 = 'ABANDONED_CART_REMINDER_2';
 const HOURS_2 = 2 * 60 * 60 * 1000;
 const HOURS_24 = 24 * 60 * 60 * 1000;
 
+/**
+ * Only orders created on/after this timestamp enter abandoned-cart flows.
+ * Required — when missing/invalid the cron skips so pre-deploy pendings are not emailed.
+ */
+const getAbandonedCartStartAt = () => {
+  const raw = process.env.ABANDONED_CART_START_AT;
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
+const buildOrderCreatedAtFilter = (upperBound = null) => {
+  const startAt = getAbandonedCartStartAt();
+  const createdAt = { [Op.gte]: startAt };
+  if (upperBound) createdAt[Op.lte] = upperBound;
+  return { createdAt };
+};
+
 const getCustomerName = (order) => {
   if (order?.user?.first_name) return order.user.first_name;
   if (order?.email) return String(order.email).split('@')[0];
@@ -112,7 +131,7 @@ const backfillPendingFlows = async () => {
   const pendingOrders = await Order.findAll({
     where: {
       status: constants.orderStatus.PENDING,
-      createdAt: { [Op.lte]: cutoff }
+      ...buildOrderCreatedAtFilter(cutoff)
     },
     include: [{
       model: User,
@@ -145,7 +164,7 @@ const sendFirstReminder = async () => {
       required: true,
       where: {
         status: constants.orderStatus.PENDING,
-        createdAt: { [Op.lte]: cutoff }
+        ...buildOrderCreatedAtFilter(cutoff)
       },
       include: [{
         model: User,
@@ -208,7 +227,8 @@ const sendSecondReminder = async () => {
       as: 'order',
       required: true,
       where: {
-        status: constants.orderStatus.PENDING
+        status: constants.orderStatus.PENDING,
+        ...buildOrderCreatedAtFilter()
       },
       include: [{
         model: User,
@@ -276,7 +296,8 @@ const autoCancelPendingOrders = async () => {
       as: 'order',
       required: true,
       where: {
-        status: constants.orderStatus.PENDING
+        status: constants.orderStatus.PENDING,
+        ...buildOrderCreatedAtFilter()
       },
       include: [{
         model: User,
@@ -309,6 +330,13 @@ const autoCancelPendingOrders = async () => {
 
 const processAbandonedCart = async () => {
   try {
+    if (!getAbandonedCartStartAt()) {
+      logger.warn(
+        'Skipping abandoned cart processor: set ABANDONED_CART_START_AT (ISO datetime) to enable'
+      );
+      return;
+    }
+
     await backfillPendingFlows();
     await sendFirstReminder();
     await sendSecondReminder();

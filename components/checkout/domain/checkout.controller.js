@@ -6,7 +6,7 @@ const moment = require('moment-timezone');
 const dealService = require('../../Cart/helper/deal.service');
 const { createTemporaryUser, findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { createGuestUser } = require('../helper/guestCheckout.helper');
-const { validateAndCalculateCouponForUser } = require('../helper/coupon.helper');
+const { validateAndCalculateCouponForUser, getCouponDateWindowError } = require('../helper/coupon.helper');
 const { placeOrderLogic } = require('../../order/helper/orderPlacement.helper');
 const { completeWorldpayCheckout } = require('../../order/helper/worldpay.helper');
 const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
@@ -460,42 +460,9 @@ module.exports.applyCoupon = async (req, res, next) => {
                     }
                 }
 
-                // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
-                const currentTime = new Date();
-                const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
-                const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
-                    String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
-                    String(currentUKTime.getHours()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getSeconds()).padStart(2, '0');
-
-                // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
-                const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-                const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-
-                // Check if coupon has started
-                if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
-                    throw {
-                        statusCode: 404,
-                        message: 'Coupon has not started yet',
-                        currentUKTime: currentUKTimeFormatted,
-                        startDate: startDateFormatted,
-                        endDate: endDateFormatted,
-                        note: 'Current UK time is before coupon start date'
-                    }
-                }
-
-                // Check if coupon has expired
-                if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
-                    throw {
-                        statusCode: 404,
-                        message: 'Coupon has expired',
-                        currentUKTime: currentUKTimeFormatted,
-                        startDate: startDateFormatted,
-                        endDate: endDateFormatted,
-                        note: 'Current UK time is after coupon end date'
-                    }
+                const dateError = getCouponDateWindowError(coupon);
+                if (dateError) {
+                    throw dateError;
                 }
                 if(coupon.coupon_user !== null && coupon.coupon_user !== userId){
                     throw {
@@ -1084,15 +1051,6 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                     coupon_type = 'referral';
                 } else {
                     // Regular coupon validation
-                    const currentTime = new Date();
-                    const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
-                    const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
-                        String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
-                        String(currentUKTime.getHours()).padStart(2, '0') + ':' +
-                        String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
-                        String(currentUKTime.getSeconds()).padStart(2, '0');
-
                     coupon = await Coupon.findOne({
                         where: {
                             code: normalizedCouponCode,
@@ -1107,22 +1065,9 @@ module.exports.applyCouponForGuest = async (req, res, next) => {
                         };
                     }
 
-                    // Check date validity
-                    const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-                    const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-
-                    if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
-                        throw {
-                            statusCode: 404,
-                            message: 'Coupon has not started yet'
-                        };
-                    }
-
-                    if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
-                        throw {
-                            statusCode: 404,
-                            message: 'Coupon has expired'
-                        };
+                    const dateError = getCouponDateWindowError(coupon);
+                    if (dateError) {
+                        throw dateError;
                     }
 
                     // Check usage limit (but not user-specific usage for guests)
