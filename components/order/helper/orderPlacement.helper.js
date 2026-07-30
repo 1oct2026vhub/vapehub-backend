@@ -30,6 +30,7 @@ const {
 const { generateTransactionReference } = require('./worldpay.helper');
 const { ensurePendingWorldpayTransaction } = require('../../payment/helper/worldpayPendingTransaction.helper');
 const constants = require('../../../config/constants');
+const { isCouponWithinDateWindow } = require('../../checkout/helper/coupon.helper');
 const { v4: uuidv4 } = require('uuid');
 
 const PENDING_WORLDPAY_ORDER_TTL_HOURS = Number(process.env.WORLDPAY_PENDING_ORDER_TTL_HOURS) || 24;
@@ -365,27 +366,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             });
 
             if (coupon) {
-                // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
-                const currentTime = new Date();
-                const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
-                const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
-                    String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
-                    String(currentUKTime.getHours()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getSeconds()).padStart(2, '0');
-
-                // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
-                const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-                const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-
-                // Check if coupon has started
-                if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
-                    coupon = null; // Mark as invalid
-                }
-
-                // Check if coupon has expired
-                if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                if (!isCouponWithinDateWindow(coupon)) {
                     coupon = null; // Mark as invalid
                 }
             }

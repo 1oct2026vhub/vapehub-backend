@@ -1,6 +1,5 @@
 'use strict';
 const { Model, Op } = require('sequelize');
-const moment = require('moment-timezone');
 
 module.exports = (sequelize, DataTypes) => {
   class Coupon extends Model {
@@ -45,23 +44,19 @@ module.exports = (sequelize, DataTypes) => {
     // Static method to update expired coupons
     static async updateExpiredCoupons() {
       try {
-        const currentUkTime = moment().tz(process.env.UK_TIMEZONE);
+        const now = new Date();
         
         const result = await this.update(
           { status: 'expired' },
           {
             where: {
               status: 'active',
-              end_date: { 
-                [Op.and]: [
-                  { [Op.lt]: currentUkTime }
-                ]
-              }
+              end_date: { [Op.lt]: now }
             }
           }
         );
         // Log performance metrics
-        console.log(`Coupon expiration check completed. Updated ${result[0]} coupons. Current UK time: ${currentUkTime.format()}. subtract: ${moment(currentUkTime).subtract(1, 'minute').format()}`);
+        console.log(`Coupon expiration check completed. Updated ${result[0]} coupons. Current time: ${now.toISOString()}`);
       } catch (error) {
         console.error('Error updating expired coupons:', error);
       }
