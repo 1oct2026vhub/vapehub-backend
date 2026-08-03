@@ -7,7 +7,6 @@ const { createNotification } = require('../../notification/helper/notification.h
 const sendEmail = require('../../../library/sendEmail');
 const axios = require("axios");
 const logger = require('../../../library/logger');
-const utilsLogger = require('../../../utils/logger');
 const { redeemLoyaltyPointsForOrder } = require('../../order/helper/loyaltyPointsRedemption.helper');
 const { mapOrderItemsForEmail } = require('../../order/helper/orderItemDisplayName.helper');
 module.exports.handleVivaWalletWebhook = async (req, res) => {
