@@ -9,7 +9,6 @@ const {
     EmailCampaignChunk
 } = require('../../../../models');
 const logger = require('../../../../library/logger');
-const utilsLogger = require('../../../../utils/logger');
 const { preparePromotionalCampaign } = require('../../../../library/promotionalEmail/preparePromotionalCampaign');
 const {
     buildCampaignPayload,
@@ -391,7 +390,7 @@ module.exports = {
             );
         } catch (error) {
             logger.error('Error queueing promotional emails:', error);
-            utilsLogger.logError(error);
+            logger.error({ err: error }, 'Mail subscription settings error');
             if (campaign) {
                 try {
                     await campaign.update({

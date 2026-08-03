@@ -6,6 +6,8 @@ const app = require('../app');
 const { closeAccessLogStream } = require('../app');
 const http = require('http');
 const logger = require('../library/logger');
+const s3LogWriter = require('../library/logging/s3LogWriter');
+// const { errorHandler, FatalError, AppError } = require('../library/errors')
 const { closeRedis } = require('../library/cache');
 const { closeDatabase } = require('../models');
 const sendEmail = require('../library/sendEmail');
@@ -123,3 +125,24 @@ function onListening() {
     : 'port ' + addr.port;
     console.log("Listening on "  + bind)
 }
+
+function gracefulShutdown(signal) {
+  console.log(`${signal} received, shutting down gracefully`);
+
+  server.close(async () => {
+    try {
+      await s3LogWriter.flushAll();
+    } catch (error) {
+      console.error('Final S3 log flush failed:', error.message);
+    }
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 25000));
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
