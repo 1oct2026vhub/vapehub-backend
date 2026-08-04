@@ -204,6 +204,7 @@ module.exports = {
                     where: {
                         id: { [Op.in]: productIds },
                         status: 'published',
+                        is_coming_soon: false,
                         createdAt: { [Op.gte]: twentyEightDaysAgo }
                     },
                     attributes: ['id'],

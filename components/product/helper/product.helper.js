@@ -27,6 +27,7 @@ async function getTrendingProducts(limit = 10) {
       WHERE 
         o.createdAt BETWEEN :startOfMonth AND :endOfMonth
         AND p.status = 'published'
+        AND p.is_coming_soon = false
         AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
       GROUP BY 
@@ -256,6 +257,7 @@ const fetchProducts = async (query, status = 'published') => {
       brand,
       variant,
       is_new,
+      is_coming_soon,
       source,
       deal_id
     } = query;
@@ -569,6 +571,12 @@ const fetchProducts = async (query, status = 'published') => {
         GROUP BY pv_min.product_id
       ) price_stats ON p.id = price_stats.product_id`;
 
+    // Coming Soon page: is_coming_soon=true. All other lists (incl. New Products): exclude.
+    const comingSoonSql =
+      is_coming_soon === true || is_coming_soon === 'true' || is_coming_soon === '1'
+        ? 'AND p.is_coming_soon = true'
+        : 'AND p.is_coming_soon = false';
+
     // OPTIMIZATION: Convert to raw SQL and execute in parallel to reduce round trips
     const [totalCount, products] = await Promise.all([
       // 1. Get total count with raw SQL (includes variant filtering like original)
@@ -577,6 +585,7 @@ const fetchProducts = async (query, status = 'published') => {
         FROM products p
         WHERE p.deletedAt IS NULL
         AND p.status = :status
+        ${comingSoonSql}
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
         ${categories ? (() => {
           const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
@@ -639,7 +648,7 @@ const fetchProducts = async (query, status = 'published') => {
       sequelize.query(`
         SELECT DISTINCT
           p.id, p.updated_by, p.name, p.slug, p.sku, p.price, p.discount_price,
-          p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity,
+          p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.battery_capacity,
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
@@ -651,6 +660,7 @@ const fetchProducts = async (query, status = 'published') => {
         ${minPriceJoin}
         WHERE p.deletedAt IS NULL
         AND p.status = :status
+        ${comingSoonSql}
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
         ${categories ? (() => {
           const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
@@ -1260,6 +1270,12 @@ const fetchProducts = async (query, status = 'published') => {
     // Build base product filter conditions for SQL queries
     let productFilterConditions = [];
     let productFilterParams = {};
+
+    if (is_coming_soon === true || is_coming_soon === 'true' || is_coming_soon === '1') {
+      productFilterConditions.push("p.is_coming_soon = true");
+    } else {
+      productFilterConditions.push("p.is_coming_soon = false");
+    }
     
     if (keyword) {
       productFilterConditions.push("p.name LIKE :keyword");
@@ -1891,6 +1907,7 @@ const fetchProductsCached = async (query, status = 'published') => {
     brand: query.brand,
     variant: query.variant,
     is_new: query.is_new,
+    is_coming_soon: query.is_coming_soon,
     source: query.source,
     deal_id: query.deal_id,
     status
