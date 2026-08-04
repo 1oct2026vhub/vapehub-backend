@@ -193,6 +193,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             )
             AND p.status = 'published'
             AND p.deletedAt IS NULL
+            AND p.is_coming_soon = false
             ORDER BY ${
               sort_by === 'popularity' || sort_by === 'order_count' 
                 ? `order_count ${orderValue}` 
@@ -213,6 +214,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             WHERE pc.category_id = ${categoryId}
             AND p.status = 'published'
             AND p.deletedAt IS NULL
+            AND p.is_coming_soon = false
         `;
 
         // Get product images for all products

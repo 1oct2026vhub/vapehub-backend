@@ -128,6 +128,7 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                 where: {
                     category_id: entityId,
                     status: 'published',
+                    is_coming_soon: false,
                     createdAt: {
                         [Op.gte]: twentyEightDaysAgo
                     }
@@ -161,6 +162,7 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                 }],
                 where: {
                     status: 'published',
+                    is_coming_soon: false,
                     createdAt: {
                         [Op.gte]: twentyEightDaysAgo
                     }
@@ -187,6 +189,7 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                 }],
                 where: {
                     status: 'published',
+                    is_coming_soon: false,
                     createdAt: {
                         [Op.gte]: twentyEightDaysAgo
                     }
@@ -204,7 +207,8 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                     createdAt: {
                         [Op.gte]: twentyEightDaysAgo
                     },
-                    status: 'published'
+                    status: 'published',
+                    is_coming_soon: false
                 },
                 attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
                 include: [{

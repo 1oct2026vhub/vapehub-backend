@@ -31,6 +31,9 @@ const createProductValidation = [
     check('is_discontinued')
         .optional()
         .isBoolean().withMessage('is_discontinued must be a boolean'),
+    check('is_coming_soon')
+        .optional()
+        .isBoolean().withMessage('is_coming_soon must be a boolean'),
     check('category_ids')
         .optional()
         .isArray({ min: 1 }).withMessage('Category IDs must be an array with at least one item')
@@ -103,6 +106,9 @@ const updateProductValidations = [
     check('is_discontinued')
         .optional()
         .isBoolean().withMessage('is_discontinued must be a boolean'),
+    check('is_coming_soon')
+        .optional()
+        .isBoolean().withMessage('is_coming_soon must be a boolean'),
     check('category_ids')
         .optional()
         .custom((value) => {

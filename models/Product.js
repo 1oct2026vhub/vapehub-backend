@@ -105,6 +105,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     is_new: { type: DataTypes.BOOLEAN, defaultValue: false },
+    is_coming_soon: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     battery_capacity: DataTypes.STRING,
     coil_style: DataTypes.STRING,
     device_style: DataTypes.STRING,

@@ -145,6 +145,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         let productFilterConditions = [
             "p.deletedAt IS NULL",
             "p.status = 'published'",
+            "p.is_coming_soon = false",
             "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL AND pv_active.price > 0)"
         ];
         let productFilterParams = {};
@@ -227,7 +228,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
+                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY p.${safeSortBy} ${safeOrder}
@@ -659,6 +660,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 is_new: isNewProduct,
+                is_coming_soon: Boolean(product.is_coming_soon),
                 is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
@@ -692,6 +694,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pc.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY c.id, c.name, c.slug
                 LIMIT 20
             `, {
@@ -708,6 +711,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pb.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY b.id, b.name, b.slug
                 LIMIT 20
             `, {
