@@ -18,7 +18,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    if (branchName != 'staging-v') {
+                    if (branchName != 'staging-v-1') {
                         echo "Branch ${branchName} not configured for deployment."
                         return
                     }
