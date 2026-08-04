@@ -18,7 +18,7 @@ const slugManager = new SlugManager(SlugRelation);
 /** Admin list columns — excludes LONGTEXT description (available via GET /fetch/:id). */
 const ADMIN_LIST_PRODUCT_ATTRIBUTES = [
     'id', 'updated_by', 'name', 'slug', 'sku', 'price', 'discount_price',
-    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity', 'is_discontinued',
+    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'battery_capacity', 'is_discontinued',
     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style',
     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type',
     'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status',
@@ -224,7 +224,7 @@ module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
-            categories, brands, deleted, is_new, variant_attributes, status
+            categories, brands, deleted, is_new, is_coming_soon, variant_attributes, status
         } = req.query;
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
@@ -325,6 +325,15 @@ module.exports.listAllProducts = async (req, res, next) => {
             const lastMonthDate = new Date();
             lastMonthDate.setDate(lastMonthDate.getDate() - 30);
             whereClause[Op.and].push({ createdAt: { [Op.gte]: lastMonthDate } });
+        }
+
+        // Coming Soon filter
+        if (is_coming_soon !== undefined && is_coming_soon !== '') {
+            const comingSoon =
+                is_coming_soon === true ||
+                is_coming_soon === 'true' ||
+                is_coming_soon === '1';
+            whereClause[Op.and].push({ is_coming_soon: comingSoon });
         }
 
         // Deleted filter (Soft-delete support)
@@ -509,7 +518,7 @@ module.exports.getProductById = async (req, res, next) => {
                 logging: false,
                 attributes: [
                     'id', 'updated_by', 'name', 'slug', 'description', 'price', 'discount_price', 
-                    'stock_quantity', 'puff_count', 'is_new', 'battery_capacity',  'is_discontinued',
+                    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'battery_capacity',  'is_discontinued',
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
                     'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
@@ -999,6 +1008,7 @@ module.exports.createProduct = async (req, res, next) => {
             vaping_style,
             bottle_size,
             is_discontinued,
+            is_coming_soon,
             category_ids,
             brand_ids,
             linked_product_ids
@@ -1156,6 +1166,7 @@ module.exports.createProduct = async (req, res, next) => {
                 vaping_style,
                 bottle_size,
                 is_discontinued,
+                is_coming_soon: is_coming_soon ?? false,
                 updated_by
             },
             { transaction }
@@ -1296,6 +1307,7 @@ module.exports.updateProduct = async (req, res, next) => {
             vaping_style,
             bottle_size,
             is_discontinued,
+            is_coming_soon,
             redirect_url,
             category_ids,
             brand_ids,
@@ -1526,6 +1538,9 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (is_discontinued !== undefined) {
             updatedFields.is_discontinued = is_discontinued;
+        }
+        if (is_coming_soon !== undefined) {
+            updatedFields.is_coming_soon = is_coming_soon;
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
