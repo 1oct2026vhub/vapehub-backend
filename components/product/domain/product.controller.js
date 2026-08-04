@@ -2015,7 +2015,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.is_discontinued, p.createdAt, p.updatedAt
+                p.is_discontinued, p.is_coming_soon, p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2872,6 +2872,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 slug: product.slug,
                 description: product.description, // Use direct description from SQL result
                 is_discontinued: Boolean(product.is_discontinued),
+                is_coming_soon: Boolean(product.is_coming_soon),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 key_highlights: keyHighlights,
