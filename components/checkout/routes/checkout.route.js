@@ -620,7 +620,6 @@ router.post("/guest",
  *                   - last_name
  *                   - address_line_1
  *                   - city
- *                   - region
  *                   - post_code
  *                 properties:
  *                   shipping_address_id:
