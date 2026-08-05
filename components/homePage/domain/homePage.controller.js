@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -1502,6 +1502,24 @@ module.exports.getSlugRelations = async (req, res, next) => {
             brandMap = new Map(brands.map(brand => [brand.id, brand]));
         }
 
+        let categoryGuideMap = new Map();
+        if (categoryIds.length > 0) {
+            const guides = await CategoryBuyingGuide.findAll({
+                where: { category_id: { [Op.in]: categoryIds } },
+                attributes: ['category_id', 'is_enabled']
+            });
+            categoryGuideMap = new Map(guides.map(g => [g.category_id, Boolean(g.is_enabled)]));
+        }
+
+        let brandGuideMap = new Map();
+        if (brandIds.length > 0) {
+            const guides = await BrandBuyingGuide.findAll({
+                where: { brand_id: { [Op.in]: brandIds } },
+                attributes: ['brand_id', 'is_enabled']
+            });
+            brandGuideMap = new Map(guides.map(g => [g.brand_id, Boolean(g.is_enabled)]));
+        }
+
         const blogCategoryIds = slugRelations
             .filter(rel => rel.entity_type === 'blog_category')
             .map(rel => rel.entity_id);
@@ -1564,6 +1582,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     response.additional_text_box = category.additional_text_box || null;
                     response.name = category.name;
                 }
+                response.buyingGuide = {
+                    is_enabled: categoryGuideMap.get(slugRelations[0].entity_id) ?? false
+                };
             }
 
             // Add brand description and name if entity is brand (using pre-fetched brand)
@@ -1575,6 +1596,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     response.additional_text_box = brand.additional_text_box || null;
                     response.name = brand.name;
                 }
+                response.buyingGuide = {
+                    is_enabled: brandGuideMap.get(slugRelations[0].entity_id) ?? false
+                };
             }
 
             // Add blog category description and name if entity is blog_category (using pre-fetched blog category)
@@ -1665,6 +1689,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                             item.additional_text_box = category.additional_text_box || null;
                             item.name = category.name;
                         }
+                        item.buyingGuide = {
+                            is_enabled: categoryGuideMap.get(relation.entity_id) ?? false
+                        };
                     }
                     
                     // Add brand description and name if entity is brand
@@ -1676,6 +1703,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                             item.additional_text_box = brand.additional_text_box || null;
                             item.name = brand.name;
                         }
+                        item.buyingGuide = {
+                            is_enabled: brandGuideMap.get(relation.entity_id) ?? false
+                        };
                     }
                     
                     // Add blog category description and name if entity is blog_category
@@ -1827,6 +1857,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         item.additional_text_box = category.additional_text_box || null;
                         item.name = category.name;
                     }
+                    item.buyingGuide = {
+                        is_enabled: categoryGuideMap.get(relation.entity_id) ?? false
+                    };
                 }
                 
                 // Add brand description and name if entity is brand
@@ -1838,6 +1871,9 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         item.additional_text_box = brand.additional_text_box || null;
                         item.name = brand.name;
                     }
+                    item.buyingGuide = {
+                        is_enabled: brandGuideMap.get(relation.entity_id) ?? false
+                    };
                 }
                 
                 // Add blog category description and name if entity is blog_category
