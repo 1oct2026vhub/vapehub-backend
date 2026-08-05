@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
-const { Category } = require('../../../models');
+const { Category, CategoryBuyingGuide } = require('../../../models');
 const { findRelatedCategoriesByCategoryId } = require('../../admin/category/helper/relatedCategories.helper');
 
 module.exports.getRelatedCategoriesBySlug = async (req, res) => {
@@ -13,11 +13,22 @@ module.exports.getRelatedCategoriesBySlug = async (req, res) => {
             return errorResponse(res, { message: 'Category not found' }, 'Category not found', 404);
         }
 
-        const related_links = await findRelatedCategoriesByCategoryId(category.id);
+        const [related_links, guide] = await Promise.all([
+            findRelatedCategoriesByCategoryId(category.id),
+            CategoryBuyingGuide.findOne({
+                where: { category_id: category.id },
+                attributes: ['is_enabled']
+            })
+        ]);
 
         return successResponse(
             res,
-            { related_links },
+            {
+                related_links,
+                buyingGuide: {
+                    is_enabled: Boolean(guide?.is_enabled)
+                }
+            },
             'Related categories fetched successfully'
         );
     } catch (error) {

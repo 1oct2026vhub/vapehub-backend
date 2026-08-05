@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
-const { Brand } = require('../../../models');
+const { Brand, BrandBuyingGuide } = require('../../../models');
 const { findRelatedLinksByBrandId } = require('../../admin/brand/helper/relatedLinks.helper');
 
 module.exports.getRelatedLinksBySlug = async (req, res) => {
@@ -13,11 +13,22 @@ module.exports.getRelatedLinksBySlug = async (req, res) => {
             return errorResponse(res, { message: 'Brand not found' }, 'Brand not found', 404);
         }
 
-        const related_links = await findRelatedLinksByBrandId(brand.id);
+        const [related_links, guide] = await Promise.all([
+            findRelatedLinksByBrandId(brand.id),
+            BrandBuyingGuide.findOne({
+                where: { brand_id: brand.id },
+                attributes: ['is_enabled']
+            })
+        ]);
 
         return successResponse(
             res,
-            { related_links },
+            {
+                related_links,
+                buyingGuide: {
+                    is_enabled: Boolean(guide?.is_enabled)
+                }
+            },
             'Related links fetched successfully'
         );
     } catch (error) {
