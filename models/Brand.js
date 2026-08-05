@@ -62,6 +62,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.TEXT('long'),
             allowNull: true
         },
+        additional_text_box: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
         logo_url: {
             type: DataTypes.STRING,
             allowNull: true

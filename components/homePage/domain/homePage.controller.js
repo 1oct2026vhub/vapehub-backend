@@ -1484,7 +1484,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (categoryIds.length > 0) {
             const categories = await Category.findAll({
                 where: { id: { [Op.in]: categoryIds } },
-                attributes: ['id', 'name', 'description', 'type_cards_html', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'additional_text_box', 'slug']
             });
             categoryMap = new Map(categories.map(cat => [cat.id, cat]));
         }
@@ -1497,7 +1497,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (brandIds.length > 0) {
             const brands = await Brand.findAll({
                 where: { id: { [Op.in]: brandIds } },
-                attributes: ['id', 'name', 'description', 'type_cards_html', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'additional_text_box', 'slug']
             });
             brandMap = new Map(brands.map(brand => [brand.id, brand]));
         }
@@ -1561,6 +1561,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (category) {
                     response.description = category.description;
                     response.type_cards_html = category.type_cards_html || null;
+                    response.additional_text_box = category.additional_text_box || null;
                     response.name = category.name;
                 }
             }
@@ -1571,6 +1572,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 if (brand) {
                     response.description = brand.description;
                     response.type_cards_html = brand.type_cards_html || null;
+                    response.additional_text_box = brand.additional_text_box || null;
                     response.name = brand.name;
                 }
             }
@@ -1660,6 +1662,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (category) {
                             item.description = category.description;
                             item.type_cards_html = category.type_cards_html || null;
+                            item.additional_text_box = category.additional_text_box || null;
                             item.name = category.name;
                         }
                     }
@@ -1670,6 +1673,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         if (brand) {
                             item.description = brand.description;
                             item.type_cards_html = brand.type_cards_html || null;
+                            item.additional_text_box = brand.additional_text_box || null;
                             item.name = brand.name;
                         }
                     }
@@ -1820,6 +1824,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (category) {
                         item.description = category.description;
                         item.type_cards_html = category.type_cards_html || null;
+                        item.additional_text_box = category.additional_text_box || null;
                         item.name = category.name;
                     }
                 }
@@ -1830,6 +1835,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     if (brand) {
                         item.description = brand.description;
                         item.type_cards_html = brand.type_cards_html || null;
+                        item.additional_text_box = brand.additional_text_box || null;
                         item.name = brand.name;
                     }
                 }

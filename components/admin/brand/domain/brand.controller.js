@@ -23,6 +23,19 @@ const resolveTypeCardsHtml = async (value) => {
     });
 };
 
+const resolveAdditionalTextBox = async (value) => {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || String(value).trim() === '') {
+        return null;
+    }
+    return replaceInlineBase64ImagesWithS3Urls(String(value), {
+        keyPrefix: 'brands/additional-text-box',
+        filePrefix: 'brand-additional-text-box'
+    });
+};
+
 /**
  * Retrieves all brands with pagination and optional search.
  */
@@ -132,7 +145,7 @@ module.exports.getBrandById = async (req, res, next) => {
 module.exports.createBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        let { name, slug, description, type_cards_html } = req.body;
+        let { name, slug, description, type_cards_html, additional_text_box } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
         const { file } = req;
@@ -143,6 +156,9 @@ module.exports.createBrand = async (req, res, next) => {
         description = description?.trim();
         type_cards_html = await resolveTypeCardsHtml(
             type_cards_html === undefined ? null : type_cards_html
+        );
+        additional_text_box = await resolveAdditionalTextBox(
+            additional_text_box === undefined ? null : additional_text_box
         );
 
         // Check if the brand name already exists
@@ -190,7 +206,8 @@ module.exports.createBrand = async (req, res, next) => {
             description, 
             updated_by, 
             logo_url,
-            type_cards_html: type_cards_html || null
+            type_cards_html: type_cards_html || null,
+            additional_text_box: additional_text_box || null
         }, { transaction: t });
 
         // Create slug relation
@@ -212,7 +229,7 @@ module.exports.updateBrand = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        let { name, slug, description, redirect_url, type_cards_html } = req.body;
+        let { name, slug, description, redirect_url, type_cards_html, additional_text_box } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
@@ -269,6 +286,7 @@ module.exports.updateBrand = async (req, res, next) => {
         }
         // Update brand
         const resolvedTypeCardsHtml = await resolveTypeCardsHtml(type_cards_html);
+        const resolvedAdditionalTextBox = await resolveAdditionalTextBox(additional_text_box);
         await brand.update({
             name: name?.trim() || brand.name,
             slug: slug?.trim() || brand.slug,
@@ -277,6 +295,9 @@ module.exports.updateBrand = async (req, res, next) => {
             updated_by,
             ...(resolvedTypeCardsHtml !== undefined
                 ? { type_cards_html: resolvedTypeCardsHtml }
+                : {}),
+            ...(resolvedAdditionalTextBox !== undefined
+                ? { additional_text_box: resolvedAdditionalTextBox }
                 : {})
         }, { transaction: t });
         const menu = await Menu.findOne({ where: { entity_id: id} });

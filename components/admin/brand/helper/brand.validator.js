@@ -57,6 +57,15 @@ const brandValidation = [
           assertTypeCardsWithinSizeLimit(value);
           return true;
       }),
+    check("additional_text_box")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("additional_text_box must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
     check("parent_id")
     .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
@@ -88,6 +97,15 @@ const brandUpdatesValidation = [
       .customSanitizer(value => (value === "" ? null : value))
       .isString()
       .withMessage("type_cards_html must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
+    check("additional_text_box")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("additional_text_box must be a string")
       .custom((value) => {
           assertTypeCardsWithinSizeLimit(value);
           return true;
