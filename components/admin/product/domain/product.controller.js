@@ -230,7 +230,7 @@ module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
-            categories, brands, deleted, is_new, is_coming_soon, variant_attributes, status
+            categories, brands, deleted, is_new, variant_attributes, status
         } = req.query;
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
@@ -333,14 +333,8 @@ module.exports.listAllProducts = async (req, res, next) => {
             whereClause[Op.and].push({ createdAt: { [Op.gte]: lastMonthDate } });
         }
 
-        // Coming Soon filter
-        if (is_coming_soon !== undefined && is_coming_soon !== '') {
-            const comingSoon =
-                is_coming_soon === true ||
-                is_coming_soon === 'true' ||
-                is_coming_soon === '1';
-            whereClause[Op.and].push({ is_coming_soon: comingSoon });
-        }
+        // Exclude coming soon products from admin list
+        whereClause[Op.and].push({ is_coming_soon: false });
 
         // Deleted filter (Soft-delete support)
         if (deleted !== undefined && (deleted === "true" || deleted === true)) {
