@@ -176,12 +176,6 @@ const validateEnabledBuyingGuide = (payload) => {
     if (!payload.title) {
         throw new Error('Title is required');
     }
-    if (!payload.cta_prompt) {
-        throw new Error('CTA prompt is required');
-    }
-    if (!payload.cta_label) {
-        throw new Error('CTA label is required');
-    }
     if (!payload.tabs || payload.tabs.length === 0) {
         throw new Error('At least one tab is required');
     }
