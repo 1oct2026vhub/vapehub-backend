@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
 const { Category, CategoryBuyingGuide } = require('../../../models');
 const { findRelatedCategoriesByCategoryId } = require('../../admin/category/helper/relatedCategories.helper');
+const { formatBuyingGuideCta } = require('../helper/buyingGuide.serializer');
 
 module.exports.getRelatedCategoriesBySlug = async (req, res) => {
     try {
@@ -17,7 +18,7 @@ module.exports.getRelatedCategoriesBySlug = async (req, res) => {
             findRelatedCategoriesByCategoryId(category.id),
             CategoryBuyingGuide.findOne({
                 where: { category_id: category.id },
-                attributes: ['is_enabled']
+                attributes: ['is_enabled', 'cta_prompt', 'cta_label']
             })
         ]);
 
@@ -25,9 +26,7 @@ module.exports.getRelatedCategoriesBySlug = async (req, res) => {
             res,
             {
                 related_links,
-                buyingGuide: {
-                    is_enabled: Boolean(guide?.is_enabled)
-                }
+                buyingGuide: formatBuyingGuideCta(guide)
             },
             'Related categories fetched successfully'
         );
