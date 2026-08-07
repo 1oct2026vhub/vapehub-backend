@@ -140,6 +140,8 @@ const buildParentAttributes = (payload, existingGuide = null) => {
     attributes.title = payload.title || null;
     attributes.intro_content = payload.intro_content || '';
     attributes.banner_alt = payload.banner_alt || null;
+    attributes.cta_prompt = payload.cta_prompt || null;
+    attributes.cta_label = payload.cta_label || null;
 
     if (payload.banner_image !== undefined) {
         attributes.banner_image = payload.banner_image;

@@ -130,6 +130,8 @@ const parseBuyingGuideBody = (body = {}) => {
         'intro_content',
         'banner_alt',
         'banner_image',
+        'cta_prompt',
+        'cta_label',
         'highlights',
         'tabs',
         'related_blog_ids'
@@ -147,6 +149,8 @@ const parseBuyingGuideBody = (body = {}) => {
     payload.title = body.title != null ? String(body.title).trim() : '';
     payload.intro_content = body.intro_content != null ? String(body.intro_content) : '';
     payload.banner_alt = body.banner_alt != null ? String(body.banner_alt).trim() : '';
+    payload.cta_prompt = body.cta_prompt != null ? String(body.cta_prompt).trim() : '';
+    payload.cta_label = body.cta_label != null ? String(body.cta_label).trim() : '';
     payload.highlights = normalizeHighlights(
         body.highlights !== undefined ? parseJsonArrayField(body.highlights, 'highlights') : []
     );
@@ -171,6 +175,12 @@ const validateEnabledBuyingGuide = (payload) => {
     }
     if (!payload.title) {
         throw new Error('Title is required');
+    }
+    if (!payload.cta_prompt) {
+        throw new Error('CTA prompt is required');
+    }
+    if (!payload.cta_label) {
+        throw new Error('CTA label is required');
     }
     if (!payload.tabs || payload.tabs.length === 0) {
         throw new Error('At least one tab is required');

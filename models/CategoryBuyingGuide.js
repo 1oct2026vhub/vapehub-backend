@@ -59,6 +59,14 @@ module.exports = (sequelize, DataTypes) => {
         banner_alt: {
             type: DataTypes.STRING(500),
             allowNull: true
+        },
+        cta_prompt: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        cta_label: {
+            type: DataTypes.STRING(255),
+            allowNull: true
         }
     }, {
         sequelize,

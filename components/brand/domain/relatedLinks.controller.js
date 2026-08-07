@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require('../../../utils/responseUtils');
 const { Brand, BrandBuyingGuide } = require('../../../models');
 const { findRelatedLinksByBrandId } = require('../../admin/brand/helper/relatedLinks.helper');
+const { formatBuyingGuideCta } = require('../../category/helper/buyingGuide.serializer');
 
 module.exports.getRelatedLinksBySlug = async (req, res) => {
     try {
@@ -17,7 +18,7 @@ module.exports.getRelatedLinksBySlug = async (req, res) => {
             findRelatedLinksByBrandId(brand.id),
             BrandBuyingGuide.findOne({
                 where: { brand_id: brand.id },
-                attributes: ['is_enabled']
+                attributes: ['is_enabled', 'cta_prompt', 'cta_label']
             })
         ]);
 
@@ -25,9 +26,7 @@ module.exports.getRelatedLinksBySlug = async (req, res) => {
             res,
             {
                 related_links,
-                buyingGuide: {
-                    is_enabled: Boolean(guide?.is_enabled)
-                }
+                buyingGuide: formatBuyingGuideCta(guide)
             },
             'Related links fetched successfully'
         );

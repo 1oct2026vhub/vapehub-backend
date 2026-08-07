@@ -8,6 +8,7 @@ const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
 const logger = require("../../../utils/logger");
 const { cacheOrFetch } = require('../../../library/cache');
+const { formatBuyingGuideCta } = require('../../category/helper/buyingGuide.serializer');
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -1506,18 +1507,18 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (categoryIds.length > 0) {
             const guides = await CategoryBuyingGuide.findAll({
                 where: { category_id: { [Op.in]: categoryIds } },
-                attributes: ['category_id', 'is_enabled']
+                attributes: ['category_id', 'is_enabled', 'cta_prompt', 'cta_label']
             });
-            categoryGuideMap = new Map(guides.map(g => [g.category_id, Boolean(g.is_enabled)]));
+            categoryGuideMap = new Map(guides.map(g => [g.category_id, formatBuyingGuideCta(g)]));
         }
 
         let brandGuideMap = new Map();
         if (brandIds.length > 0) {
             const guides = await BrandBuyingGuide.findAll({
                 where: { brand_id: { [Op.in]: brandIds } },
-                attributes: ['brand_id', 'is_enabled']
+                attributes: ['brand_id', 'is_enabled', 'cta_prompt', 'cta_label']
             });
-            brandGuideMap = new Map(guides.map(g => [g.brand_id, Boolean(g.is_enabled)]));
+            brandGuideMap = new Map(guides.map(g => [g.brand_id, formatBuyingGuideCta(g)]));
         }
 
         const blogCategoryIds = slugRelations
@@ -1582,9 +1583,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     response.additional_text_box = category.additional_text_box || null;
                     response.name = category.name;
                 }
-                response.buyingGuide = {
-                    is_enabled: categoryGuideMap.get(slugRelations[0].entity_id) ?? false
-                };
+                response.buyingGuide = categoryGuideMap.get(slugRelations[0].entity_id)
+                    || formatBuyingGuideCta(null);
             }
 
             // Add brand description and name if entity is brand (using pre-fetched brand)
@@ -1596,9 +1596,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     response.additional_text_box = brand.additional_text_box || null;
                     response.name = brand.name;
                 }
-                response.buyingGuide = {
-                    is_enabled: brandGuideMap.get(slugRelations[0].entity_id) ?? false
-                };
+                response.buyingGuide = brandGuideMap.get(slugRelations[0].entity_id)
+                    || formatBuyingGuideCta(null);
             }
 
             // Add blog category description and name if entity is blog_category (using pre-fetched blog category)
@@ -1689,9 +1688,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                             item.additional_text_box = category.additional_text_box || null;
                             item.name = category.name;
                         }
-                        item.buyingGuide = {
-                            is_enabled: categoryGuideMap.get(relation.entity_id) ?? false
-                        };
+                        item.buyingGuide = categoryGuideMap.get(relation.entity_id)
+                            || formatBuyingGuideCta(null);
                     }
                     
                     // Add brand description and name if entity is brand
@@ -1703,9 +1701,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                             item.additional_text_box = brand.additional_text_box || null;
                             item.name = brand.name;
                         }
-                        item.buyingGuide = {
-                            is_enabled: brandGuideMap.get(relation.entity_id) ?? false
-                        };
+                        item.buyingGuide = brandGuideMap.get(relation.entity_id)
+                            || formatBuyingGuideCta(null);
                     }
                     
                     // Add blog category description and name if entity is blog_category
@@ -1857,9 +1854,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         item.additional_text_box = category.additional_text_box || null;
                         item.name = category.name;
                     }
-                    item.buyingGuide = {
-                        is_enabled: categoryGuideMap.get(relation.entity_id) ?? false
-                    };
+                    item.buyingGuide = categoryGuideMap.get(relation.entity_id)
+                        || formatBuyingGuideCta(null);
                 }
                 
                 // Add brand description and name if entity is brand
@@ -1871,9 +1867,8 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         item.additional_text_box = brand.additional_text_box || null;
                         item.name = brand.name;
                     }
-                    item.buyingGuide = {
-                        is_enabled: brandGuideMap.get(relation.entity_id) ?? false
-                    };
+                    item.buyingGuide = brandGuideMap.get(relation.entity_id)
+                        || formatBuyingGuideCta(null);
                 }
                 
                 // Add blog category description and name if entity is blog_category

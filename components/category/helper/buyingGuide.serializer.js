@@ -61,6 +61,8 @@ const formatAdminBuyingGuide = (guideInstance) => {
         intro_content: guide.intro_content || '',
         banner_image: guide.banner_image,
         banner_alt: guide.banner_alt || '',
+        cta_prompt: guide.cta_prompt || '',
+        cta_label: guide.cta_label || '',
         highlights,
         tabs,
         related_blog_ids,
@@ -110,7 +112,17 @@ const formatPublicBuyingGuide = (guideInstance) => {
     };
 };
 
+const formatBuyingGuideCta = (guide) => {
+    const data = guide && guide.toJSON ? guide.toJSON() : guide;
+    return {
+        is_enabled: Boolean(data?.is_enabled),
+        cta_prompt: data?.cta_prompt || '',
+        cta_label: data?.cta_label || ''
+    };
+};
+
 module.exports = {
     formatAdminBuyingGuide,
-    formatPublicBuyingGuide
+    formatPublicBuyingGuide,
+    formatBuyingGuideCta
 };
