@@ -111,18 +111,13 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-        const userData = {
-            id: user.id,
-            first_name: user?.first_name,
-            last_name: user?.last_name,
-            email: user?.email,
-            phone: user?.phone,
-            profile_pic_url: user?.profile_pic_url,
-            gender: user?.gender,
-            dob: user?.dob,
-        }
-        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
-        return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
+        // M6: verify confirms email only — do not issue session JWTs
+        return successResponse(
+            res,
+            { message: "Email verified successfully" },
+            "Email verified successfully",
+            200
+        );
 
     } catch (error) {
         return errorResponse(res, error, error.message, 500);
