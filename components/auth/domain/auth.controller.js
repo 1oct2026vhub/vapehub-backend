@@ -719,8 +719,86 @@ module.exports.register = async (req, res, next) => {
 module.exports.verifyEmail = async (req, res, next) => {
     try {
         const { token } = req.query;
+        // Additional security checks for browser vs automated requests
+        const securityChecks = {
+            referer: req.headers.referer || req.headers.referrer,
+            origin: req.headers.origin,
+            secFetchDest: req.headers['sec-fetch-dest'],
+            secFetchMode: req.headers['sec-fetch-mode'],
+            secFetchSite: req.headers['sec-fetch-site'],
+            secFetchUser: req.headers['sec-fetch-user'],
+            acceptLanguage: req.headers['accept-language'],
+            connection: req.headers.connection,
+            cookie: req.headers.cookie,
+            host: req.headers.host,
+            userAgent: req.headers['user-agent']
+        };
 
-        // M6: rely on single-use token + expiry only (no UA/Accept theater; no JWTs on verify)
+        // Check if request is from a browser or valid client
+        const userAgent = req.headers['user-agent'];
+        const validUserAgents = [
+            // Browsers
+            'Mozilla', // Firefox, Chrome, Safari, Edge
+            'Chrome',
+            'Safari',
+            'Edge',
+            'Opera',
+            'Firefox',
+            'MSIE', // Internet Explorer
+            'Trident', // Internet Explorer
+            'Mobile Safari', // Mobile Safari
+            'Android', // Android Browser
+            'Edg', // Microsoft Edge
+            // API Clients
+            'node', // Node.js
+            'axios', // Axios HTTP client
+            'PostmanRuntime', // Postman
+            'curl', // cURL
+            'python-requests', // Python Requests
+            'Java-http-client', // Java HTTP Client
+            'Go-http-client', // Go HTTP Client
+            'PHP-http-client', // PHP HTTP Client
+            'Ruby', // Ruby HTTP Client
+            'fetch', // Fetch API
+            'XMLHttpRequest' // XHR
+        ];
+
+        // Check if user agent exists and contains any valid identifier
+        const isValidUserAgent = userAgent && validUserAgents.some(agent => {
+            // Case insensitive check
+            return userAgent.toLowerCase().includes(agent.toLowerCase());
+        });
+
+        if (!isValidUserAgent) {
+            throw {
+                message: "Invalid request source",
+                statusCode: 403,
+                errors: {
+                    source: "Verification must be done through a valid client"
+                }
+            }
+        }
+
+        // Check if request has proper headers
+        const acceptHeader = req.headers.accept || '';
+        const validAcceptTypes = [
+            'text/html',
+            'application/json',
+            '*/*',
+            'text/*',
+            'application/*'
+        ];
+
+        if (!validAcceptTypes.some(type => acceptHeader.includes(type))) {
+            throw {
+                message: "Invalid request format",
+                statusCode: 403,
+                errors: {
+                    format: "Request must be made through a valid client"
+                }
+            }
+        }
+
         const user = await User.findOne({ where: { token } });
         if (!user) {
             throw {
@@ -757,13 +835,47 @@ module.exports.verifyEmail = async (req, res, next) => {
         user.token = null;
         user.token_expiry = null;
         await user.save();
-
-        return successResponse(
-            res,
-            { message: "Email verified successfully" },
-            "Email verified successfully",
-            200
-        );
+        
+        // update referral record if referrer exists
+        // let referral_code = null;
+        // let referrer = null;
+        // if (user.referred_by) {
+        //     referrer = await User.findOne({
+        //         where: { id: user.referred_by },
+        //         attributes: ['id', 'referral_code', 'referral_points']
+        //     });
+        //     if (referrer) {
+        //         referral_code = referrer.referral_code;
+        //     }
+        // }
+        // if (referral_code) {
+        //     await Referral.update(
+        //         { 
+        //             points_awarded: 10,
+        //             status: 'completed'
+        //         },
+        //         { 
+        //             where: { 
+        //                 referrer_id: referrer.id,
+        //                 referred_user_id: user.id,
+        //                 referral_code: referral_code
+        //             }
+        //         }
+        //     );
+        //     await referrer.addReferralPoints(10); // Add 10 points for successful referral
+        // }
+        const userData = {
+            id: user.id,
+            first_name: user?.first_name,
+            last_name: user?.last_name,
+            email: user?.email,
+            phone: user?.phone,
+            profile_pic_url: user?.profile_pic_url,
+            gender: user?.gender,
+            dob: user?.dob,
+        }
+        const { accessToken, refreshToken } = generateAuthJwtToken({ id: user.id });
+        return successResponse(res, { message: "Email verified successfully", ...userData, accessToken, refreshToken }, "Email verified successfully", 200);
 
     } catch (error) {
         return errorResponse(res, error);
