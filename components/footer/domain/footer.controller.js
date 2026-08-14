@@ -1,4 +1,4 @@
-const { FooterSection, FooterLink, Connect } = require('../../../models');
+const { FooterSection, FooterLink, FooterBadge, Connect } = require('../../../models');
 const { cacheOrFetch } = require('../../../library/cache');
 
 const getFooterSections = async (req, res) => {
@@ -40,10 +40,17 @@ const getFooterSections = async (req, res) => {
         email: connect.email || null
       } : { facebook: null, instagram: null, twitter: null, phone_number: null, email: null };
 
+      const badges = await FooterBadge.findAll({
+        where: { is_active: true },
+        order: [['order', 'ASC']],
+        attributes: ['id', 'icon_url', 'heading', 'subtitle', 'url', 'order']
+      });
+
       return {
         success: true,
         data: sections,
-        socialLinks
+        socialLinks,
+        badges
       };
     }, 300);
 

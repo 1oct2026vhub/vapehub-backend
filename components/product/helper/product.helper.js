@@ -1159,8 +1159,8 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
-      // out_of_stock = stock only; is_discontinued stays a separate flag (FE / cart)
-      const hasInStockVariant = product.variants && product.variants.some(variant =>
+      // Add out_of_stock flag (low_stock still means sellable inventory)
+      const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
         variant.stock > 0 &&
         (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&

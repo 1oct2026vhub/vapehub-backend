@@ -176,7 +176,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                  JOIN deal_products dp ON d.id = dp.deal_id 
                  WHERE dp.product_id = p.id AND d.is_active = 1 AND d.is_deleted = 0 
                  AND d.valid_from <= NOW() AND d.valid_to >= NOW() LIMIT 1) as deal_data,
-                -- out_of_stock = stock only; discontinued is a separate flag
+                -- Check if product has in-stock variants (for out_of_stock flag; low_stock is sellable)
                 (SELECT COUNT(*) FROM product_variants pv_stock 
                  WHERE pv_stock.product_id = p.id 
                  AND pv_stock.status = 'active' 

@@ -1,5 +1,5 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FooterBadge, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
@@ -2186,9 +2186,17 @@ module.exports.getFooterSections = async (req, res) => {
           order: [['order', 'ASC']]
         }]
       });
+      const badges = await FooterBadge.findAll({
+        where: {
+          is_active: true
+        },
+        order: [['order', 'ASC']],
+        attributes: ['id', 'icon_url', 'heading', 'subtitle', 'url', 'order']
+      });
       res.json({
         success: true,
-        data: sections
+        data: sections,
+        badges
       });
     } catch (error) {
       res.status(500).json({

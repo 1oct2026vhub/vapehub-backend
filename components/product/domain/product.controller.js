@@ -573,8 +573,8 @@ module.exports.listNewProducts = async (req, res, next) => {
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
-            // out_of_stock = stock only; is_discontinued stays a separate flag (FE / cart)
-            const hasInStockVariant = variants.some(variant =>
+            // Check stock status (low_stock still means sellable inventory)
+            const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
                 variant.stock > 0 &&
                 (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
