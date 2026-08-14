@@ -4,6 +4,7 @@ const { sequelize } = require('../../../../models');
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { Parser: Json2csvParser } = require('json2csv');
 const { buildGetProductsQuery } = require('../helper/inventorySql.helper');
+const { notifyStockAlertSubscribersFireAndForget } = require('../../../product/helper/productStockAlert.helper');
 
 // "Successful" orders = payment confirmed and in fulfillment/fulfilled flow.
 // (We intentionally exclude: draft, pending, fail, cancel, returns/refunds.)
@@ -665,6 +666,9 @@ module.exports = {
         const results = await Promise.all(updatePromises);
 
         await transaction.commit();
+
+        const productIds = [...new Set(existingVariants.map((variant) => variant.product?.id).filter(Boolean))];
+        productIds.forEach((productId) => notifyStockAlertSubscribersFireAndForget(productId));
 
         const response = {
           total: updates.length,

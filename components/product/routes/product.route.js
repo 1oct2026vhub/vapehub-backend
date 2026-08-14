@@ -1312,6 +1312,50 @@ router.get('/:id/description',
 
 /**
  * @swagger
+ * /api/product/{id}/notify-me:
+ *   post:
+ *     tags:
+ *       - Product
+ *     summary: Subscribe to an email when a coming soon product is in stock
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               marketing_opt_in:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Subscription saved
+ *       400:
+ *         description: Invalid request or product is not coming soon
+ *       404:
+ *         description: Product not found
+ */
+router.post('/:id/notify-me',
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer'),
+        check('email').isEmail().withMessage('A valid email address is required').normalizeEmail(),
+        check('marketing_opt_in').optional().isBoolean().withMessage('marketing_opt_in must be a boolean')
+    ]),
+    productController.notifyMeWhenInStock
+);
+
+/**
+ * @swagger
  * /api/product/filter-variants:
  *   post:
  *     tags:

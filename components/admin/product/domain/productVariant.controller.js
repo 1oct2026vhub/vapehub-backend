@@ -12,6 +12,7 @@ const { sequelize } = require("../../../../models");
 const slugManager = new SlugManager(SlugRelation);
 
 const { recacheProductFireAndForget } = require('../../../../library/prerender');
+const { notifyStockAlertSubscribersFireAndForget } = require('../../../product/helper/productStockAlert.helper');
 
 function recacheProductPageById(productId, context = {}) {
     if (!productId) {
@@ -882,6 +883,7 @@ module.exports.updateProductVariant = async (req, res) => {
 
         await transaction.commit();
         recacheProductPageById(existingVariant.product_id, { source: 'updateProductVariant', variantId: variant_id });
+        notifyStockAlertSubscribersFireAndForget(existingVariant.product_id);
 
         // Fetch updated variant with relations
         const updatedVariantWithRelations = await ProductVariant.findByPk(variant_id, {
