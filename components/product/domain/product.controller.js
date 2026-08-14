@@ -8,6 +8,7 @@ const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
+const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -188,7 +189,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         }
 
         if (variantFilters.id) {
-            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)");
+            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId AND pv.deleted_at IS NULL)");
             productFilterParams.variantId = variantFilters.id;
         }
 
@@ -211,6 +212,17 @@ module.exports.listNewProducts = async (req, res, next) => {
             ? "WHERE " + productFilterConditions.join(" AND ") 
             : "";
 
+        // Whitelist sort fields/order to avoid SQL injection and map aliases to columns
+        const sortColumnMap = {
+            id: 'id',
+            name: 'name',
+            price: 'price',
+            createdAt: 'createdAt',
+            stock: 'stock_quantity'
+        };
+        const safeSortBy = sortColumnMap[sort_by] || 'createdAt';
+        const safeOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
         // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
@@ -218,7 +230,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.createdAt DESC, p.${sort_by} ${order}
+            ORDER BY p.${safeSortBy} ${safeOrder}
             LIMIT :limit OFFSET :offset
         `;
 
@@ -339,12 +351,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Variants query - only essential fields
+            // Variants query - only essential fields (exclude soft-deleted)
             Product.sequelize.query(`
                 SELECT 
                     id, product_id, price, discount_price, stock, stock_status, status, is_discontinued
                 FROM product_variants
-                WHERE product_id IN (:productIds) AND status = 'active'
+                WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -355,7 +367,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
                 LIMIT 50
             `, {
@@ -560,12 +572,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
-            // Check stock status
+            // Check stock status (low_stock still means sellable inventory)
             const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
                 !variant.is_discontinued &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );
@@ -1087,6 +1099,7 @@ module.exports.getProductByid = async (req, res, next) => {
         }
 
         // Prepare the response
+        const relatedBlogs = await getPublishedProductRelatedBlogs(productId);
         const response = {
             ...product.toJSON(),
             puff_count: puffCount,
@@ -1117,7 +1130,8 @@ module.exports.getProductByid = async (req, res, next) => {
                 min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                 status: loyaltySettings.status
             } : null,
-            min_price_variant: minPriceVariant
+            min_price_variant: minPriceVariant,
+            related_blogs: relatedBlogs
         };
 
         return response;
@@ -1163,6 +1177,41 @@ module.exports.getProductDescription = async (req, res, next) => {
             return errorResponse(res, {}, 'Product not found', 404);
         }
         return successResponse(res, responseData, 'Product description fetched successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getProductRelatedBlogs = async (req, res, next) => {
+    try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:related-blogs:${productId}`, async () => {
+            const productResult = await Product.sequelize.query(`
+                SELECT p.id
+                FROM products p
+                WHERE p.id = :product_id
+                AND p.status = 'published'
+                AND p.deletedAt IS NULL
+            `, {
+                replacements: { product_id: productId },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!productResult.length) {
+                return null;
+            }
+
+            const related_blogs = await getPublishedProductRelatedBlogCards(productId);
+            return {
+                product_id: productResult[0].id,
+                related_blogs
+            };
+        }, 300);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Product related blogs fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -1368,7 +1417,7 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         await transaction.commit();
 
-        await invalidateCache([`product:detail:${id}`, `product:description:${id}`]);
+        await invalidateCache([`product:detail:${id}`, `product:description:${id}`, `product:related-blogs:${id}`]);
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
@@ -1567,7 +1616,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     weight, length, width, height, description, barcode, stock, low_stock_threshold,
                     stock_status, status, updated_by, created_at, updated_at, deleted_at
                 FROM product_variants
-                WHERE product_id = :productId AND status = 'active'
+                WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1578,7 +1627,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 SELECT 
                     id, variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
@@ -1614,6 +1663,20 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Variant attributes (needed for hide_variant_selector)
+            Product.sequelize.query(`
+                SELECT 
+                    pva.variant_id, pva.attribute_id, pva.term_id
+                FROM product_variant_attributes pva
+                WHERE pva.variant_id IN (
+                    SELECT id FROM product_variants
+                    WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
+                )
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2101,7 +2164,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pva.term_id = t.id
                 WHERE pva.variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND pva.is_visible = true
             `, {
@@ -2116,7 +2179,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 FROM product_variant_images
                 WHERE variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND deleted_at IS NULL
             `, {
@@ -2930,7 +2993,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             JOIN attribute_terms t ON pva.term_id = t.id
             WHERE pva.variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND pva.is_visible = true
         `, {
@@ -2945,7 +3008,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             FROM product_variant_images
             WHERE variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND deleted_at IS NULL
         `, {
@@ -4833,6 +4896,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -4846,6 +4910,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5117,7 +5182,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             const hasInStockVariant = variants && variants.some(variant =>
                 variant.status === 'active' &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );
@@ -5357,6 +5422,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
@@ -5369,6 +5435,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
                 AND pvi.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5387,6 +5454,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                     SELECT pv.id FROM product_variants pv 
                     WHERE pv.product_id IN (${productIds.join(',')}) 
                     AND pv.status = 'active'
+                    AND pv.deleted_at IS NULL
                 )
             `, {
                 type: Product.sequelize.QueryTypes.SELECT

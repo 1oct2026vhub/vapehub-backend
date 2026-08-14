@@ -202,7 +202,7 @@ router.get('/', blogController.listAllCategories);
  * /api/blogs/post/{slug}:
  *   get:
  *     summary: Retrieve blog details using the blog slug
- *     description: Get detailed information about a specific blog post including its content, author, and metadata
+ *     description: Get a published blog post. The author object merges per-post author_override over the linked user profile. author_override is not returned separately.
  *     tags:
  *       - Blog
  *     parameters:
@@ -221,74 +221,14 @@ router.get('/', blogController.listAllCategories);
  *             schema:
  *               type: object
  *               properties:
- *                 status:
+ *                 success:
  *                   type: boolean
  *                   example: true
  *                 message:
  *                   type: string
  *                   example: Success
  *                 data:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: integer
- *                       example: 1
- *                     title:
- *                       type: string
- *                       example: "Best Vaping Practices 2024"
- *                     slug:
- *                       type: string
- *                       example: "best-vaping-practices-2024"
- *                     content:
- *                       type: string
- *                       example: "Detailed blog content here..."
- *                     featured_image:
- *                       type: string
- *                       format: uri
- *                       example: "https://example.com/images/blog-1.jpg"
- *                     alt_text:
- *                       type: string
- *                       example: "Blog post featured image"
- *                     author:
- *                       type: object
- *                       properties:
- *                         id:
- *                           type: integer
- *                           example: 1
- *                         first_name:
- *                           type: string
- *                           example: "John"
- *                         last_name:
- *                           type: string
- *                           example: "Doe"
- *                         avatar:
- *                           type: string
- *                           format: uri
- *                           example: "https://example.com/avatars/john.jpg"
- *                     category:
- *                       type: object
- *                       properties:
- *                         id:
- *                           type: integer
- *                           example: 1
- *                         name:
- *                           type: string
- *                           example: "Vaping Guides"
- *                         slug:
- *                           type: string
- *                           example: "vaping-guides"
- *                     created_at:
- *                       type: string
- *                       format: date-time
- *                       example: "2024-03-17T14:30:00Z"
- *                     updated_at:
- *                       type: string
- *                       format: date-time
- *                       example: "2024-03-17T14:30:00Z"
- *                     read_time:
- *                       type: integer
- *                       description: Estimated reading time in minutes
- *                       example: 5
+ *                   $ref: '#/components/schemas/StorefrontBlogDetail'
  *       404:
  *         description: Blog post not found
  *         content:
@@ -296,12 +236,12 @@ router.get('/', blogController.listAllCategories);
  *             schema:
  *               type: object
  *               properties:
- *                 status:
+ *                 success:
  *                   type: boolean
  *                   example: false
  *                 message:
  *                   type: string
- *                   example: "Blog post not found"
+ *                   example: "Blog not found"
  *       500:
  *         description: Internal server error
  *         content:
@@ -309,7 +249,7 @@ router.get('/', blogController.listAllCategories);
  *             schema:
  *               type: object
  *               properties:
- *                 status:
+ *                 success:
  *                   type: boolean
  *                   example: false
  *                 message:
@@ -508,5 +448,245 @@ router.get('/category/:slug', blogController.getCategoryBySlug);
  *         description: Blog not found
  */
 router.get('/id/:id', blogController.getBlogById);
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     StorefrontBlogDetailAuthor:
+ *       type: object
+ *       description: Merged author for display (per-post author_override overrides linked user profile)
+ *       properties:
+ *         id:
+ *           type: integer
+ *           nullable: true
+ *           example: 7
+ *         first_name:
+ *           type: string
+ *           nullable: true
+ *           example: "Ajaz"
+ *         last_name:
+ *           type: string
+ *           nullable: true
+ *           example: null
+ *         email:
+ *           type: string
+ *           nullable: true
+ *           example: "ajaz@vapehub.co.uk"
+ *         avatar_url:
+ *           type: string
+ *           format: uri
+ *           nullable: true
+ *           example: "https://cdn.example.com/blog/authors/ajaz.jpg"
+ *         role:
+ *           type: string
+ *           nullable: true
+ *           example: "VapeHub product team"
+ *         bio:
+ *           type: string
+ *           nullable: true
+ *           example: "Part of the VapeHub product team. Writes hands-on Geek Zone guides."
+ *         archive_url:
+ *           type: string
+ *           example: "/blogs?author=ajaz"
+ *         team_url:
+ *           type: string
+ *           example: "/blogs"
+ *     StorefrontBlogSourceItem:
+ *       type: object
+ *       required:
+ *         - label
+ *         - href
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "Medicines and Healthcare products Regulatory Agency (MHRA)"
+ *         href:
+ *           type: string
+ *           format: uri
+ *         description:
+ *           type: string
+ *     StorefrontBlogPullQuote:
+ *       type: object
+ *       nullable: true
+ *       description: Single optional pull quote with external authoritative attribution
+ *       properties:
+ *         body:
+ *           type: string
+ *         attribution:
+ *           type: string
+ *           example: "UK Vaping Industry Association, E-Liquid Storage Guidance"
+ *         source_url:
+ *           type: string
+ *           format: uri
+ *         source_type:
+ *           type: string
+ *           enum: [UKVIA, MHRA, OHID, peer_reviewed]
+ *         location:
+ *           type: string
+ *           enum: [mid_body_after_h2]
+ *     StorefrontBlogInlineProductCard:
+ *       type: object
+ *       nullable: true
+ *       description: Hydrated inline product or category spotlight card for mid-article placement
+ *       properties:
+ *         location:
+ *           type: string
+ *           enum: [mid_article]
+ *         cta_label:
+ *           type: string
+ *           nullable: true
+ *           example: "SHOP NIC SALTS"
+ *         product:
+ *           type: object
+ *           properties:
+ *             image:
+ *               type: string
+ *               format: uri
+ *               nullable: true
+ *             title:
+ *               type: string
+ *             blurb:
+ *               type: string
+ *             url:
+ *               type: string
+ *               example: "/nic-salts"
+ *     StorefrontBlogFirstPersonCallout:
+ *       type: object
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "FROM OUR WAREHOUSE"
+ *         heading:
+ *           type: string
+ *         body:
+ *           type: string
+ *           description: Rich-text HTML
+ *         insert_after_paragraph:
+ *           type: integer
+ *           minimum: 1
+ *         location:
+ *           type: string
+ *           enum: [inline_body]
+ *     StorefrontRelatedBlogCard:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         title:
+ *           type: string
+ *         slug:
+ *           type: string
+ *           description: Slug prefixed with /
+ *           example: "/top-10-vital-tips-for-new-vapers-on-e-liquid"
+ *         content:
+ *           type: string
+ *         image_url:
+ *           type: string
+ *         alt_text:
+ *           type: string
+ *           nullable: true
+ *         published_at:
+ *           type: string
+ *           format: date-time
+ *         categories:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: integer
+ *               name:
+ *                 type: string
+ *               slug:
+ *                 type: string
+ *     StorefrontBlogDetail:
+ *       type: object
+ *       description: Published blog post detail. author_override is merged into author and not returned separately.
+ *       properties:
+ *         id:
+ *           type: integer
+ *           example: 42
+ *         title:
+ *           type: string
+ *           example: "Does Vape Juice Go Out of Date?"
+ *         slug:
+ *           type: string
+ *           description: Slug prefixed with /
+ *           example: "/does-vape-juice-go-out-of-date"
+ *         content:
+ *           type: string
+ *         image_url:
+ *           type: string
+ *           format: uri
+ *         alt_text:
+ *           type: string
+ *           nullable: true
+ *         author_id:
+ *           type: integer
+ *           example: 7
+ *         published_at:
+ *           type: string
+ *           format: date-time
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *         author:
+ *           $ref: '#/components/schemas/StorefrontBlogDetailAuthor'
+ *         categories:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: integer
+ *               name:
+ *                 type: string
+ *               slug:
+ *                 type: string
+ *               parent_id:
+ *                 type: integer
+ *                 nullable: true
+ *               parent:
+ *                 type: object
+ *                 nullable: true
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   name:
+ *                     type: string
+ *                   slug:
+ *                     type: string
+ *         tags:
+ *           type: array
+ *           items:
+ *             type: object
+ *         sources:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/StorefrontBlogSourceItem'
+ *         pull_quote:
+ *           $ref: '#/components/schemas/StorefrontBlogPullQuote'
+ *           nullable: true
+ *           description: Optional single pull quote displayed mid-body after a major H2
+ *         inline_product_card:
+ *           $ref: '#/components/schemas/StorefrontBlogInlineProductCard'
+ *           nullable: true
+ *           description: Optional single inline product or category spotlight card for mid-article placement
+ *         first_person_callouts:
+ *           type: array
+ *           maxItems: 2
+ *           items:
+ *             $ref: '#/components/schemas/StorefrontBlogFirstPersonCallout'
+ *           description: Optional first-person warehouse/team callouts for inline body placement
+ *         related_blogs:
+ *           type: array
+ *           maxItems: 3
+ *           items:
+ *             $ref: '#/components/schemas/StorefrontRelatedBlogCard'
+ */
 
 module.exports = router;

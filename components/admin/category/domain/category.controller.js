@@ -7,8 +7,35 @@ const SlugManager = require("../../../../utils/slugManager");
 const seoService = require('../../seo/domain/seo.service');
 const { invalidateCachePattern } = require("../../../../library/cache");
 const { recacheEntityFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require("../../../../library/prerender");
+const { replaceInlineBase64ImagesWithS3Urls } = require("../../blog/helper/blogContent.helper");
 
 const slugManager = new SlugManager(SlugRelation);
+
+const resolveTypeCardsHtml = async (value) => {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || String(value).trim() === '') {
+        return null;
+    }
+    return replaceInlineBase64ImagesWithS3Urls(String(value), {
+        keyPrefix: 'categories/type-cards',
+        filePrefix: 'category-type-cards'
+    });
+};
+
+const resolveAdditionalTextBox = async (value) => {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || String(value).trim() === '') {
+        return null;
+    }
+    return replaceInlineBase64ImagesWithS3Urls(String(value), {
+        keyPrefix: 'categories/additional-text-box',
+        filePrefix: 'category-additional-text-box'
+    });
+};
 
 const removeCategoryMenus = async (categoryId, transaction) => {
     const categoryMenus = await Menu.findAll({
@@ -159,7 +186,7 @@ module.exports.getCategoryById = async (req, res, next) => {
 module.exports.createCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-        let { name, slug, description, parent_id, alt_text } = req.body;
+        let { name, slug, description, parent_id, alt_text, type_cards_html, additional_text_box } = req.body;
         const { id: updated_by } = req.user;
         let logo_url = req.body.logo_url || null;
         const { file } = req;
@@ -169,6 +196,12 @@ module.exports.createCategory = async (req, res, next) => {
         slug = slug?.trim();
         description = description?.trim();
         parent_id = parent_id?.trim() || null;
+        type_cards_html = await resolveTypeCardsHtml(
+            type_cards_html === undefined ? null : type_cards_html
+        );
+        additional_text_box = await resolveAdditionalTextBox(
+            additional_text_box === undefined ? null : additional_text_box
+        );
 
         // Check if the category name already exists
         const categoryExists = await Category.findOne({ where: { name } });
@@ -232,7 +265,9 @@ module.exports.createCategory = async (req, res, next) => {
             parent_id, 
             updated_by, 
             logo_url,
-            alt_text: alt_text?.trim() || null
+            alt_text: alt_text?.trim() || null,
+            type_cards_html: type_cards_html || null,
+            additional_text_box: additional_text_box || null
         }, { transaction: t });
 
         // Create slug relation
@@ -255,7 +290,7 @@ module.exports.updateCategory = async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
         const { id } = req.params;
-        const { name, slug, description, parent_id: rawParentId, alt_text, redirect_url } = req.body;
+        const { name, slug, description, parent_id: rawParentId, alt_text, redirect_url, type_cards_html, additional_text_box } = req.body;
         const { id: updated_by } = req.user;
         const { file } = req;
 
@@ -322,6 +357,8 @@ module.exports.updateCategory = async (req, res, next) => {
             await slugManager.createOrUpdateSlug(slug, 'category', id, t);
         }
          // Update category
+         const resolvedTypeCardsHtml = await resolveTypeCardsHtml(type_cards_html);
+         const resolvedAdditionalTextBox = await resolveAdditionalTextBox(additional_text_box);
          await category.update({
             name: name?.trim() || category.name,
             slug: slug?.trim() || category.slug,
@@ -329,7 +366,13 @@ module.exports.updateCategory = async (req, res, next) => {
             description: description?.trim() || category.description,
             alt_text: alt_text !== undefined ? (alt_text?.trim() || null) : category.alt_text,
             updated_by,
-            parent_id
+            parent_id,
+            ...(resolvedTypeCardsHtml !== undefined
+                ? { type_cards_html: resolvedTypeCardsHtml }
+                : {}),
+            ...(resolvedAdditionalTextBox !== undefined
+                ? { additional_text_box: resolvedAdditionalTextBox }
+                : {})
         }, { transaction: t });
         const menu = await Menu.findOne({ where: { entity_id: id} });
         if (menu) {

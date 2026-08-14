@@ -176,13 +176,13 @@ const fetchCategoryProducts = async (categoryId, query) => {
                  JOIN deal_products dp ON d.id = dp.deal_id 
                  WHERE dp.product_id = p.id AND d.is_active = 1 AND d.is_deleted = 0 
                  AND d.valid_from <= NOW() AND d.valid_to >= NOW() LIMIT 1) as deal_data,
-                -- Check if product has in-stock variants (for out_of_stock flag)
+                -- Check if product has in-stock variants (for out_of_stock flag; low_stock is sellable)
                 (SELECT COUNT(*) FROM product_variants pv_stock 
                  WHERE pv_stock.product_id = p.id 
                  AND pv_stock.status = 'active' 
                  AND pv_stock.is_discontinued = 0
                  AND pv_stock.stock > 0 
-                 AND pv_stock.stock_status = 'in_stock' 
+                 AND pv_stock.stock_status IN ('in_stock', 'low_stock') 
                  AND pv_stock.price IS NOT NULL 
                  AND pv_stock.price > 0) as in_stock_variants_count
             FROM products p

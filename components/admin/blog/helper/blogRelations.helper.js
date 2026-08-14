@@ -1,4 +1,4 @@
-const { BlogCategoryRelation, BlogTagRelation, BlogCategory } = require("../../../../models");
+const { BlogCategoryRelation, BlogTagRelation, BlogCategory, BlogRelatedPost, Blog } = require("../../../../models");
 
 /**
  * Update blog category relations
@@ -90,4 +90,78 @@ exports.updateBlogTags = async (blogId, transaction, tagIds = []) => {
         console.error('Error in updateBlogTags:', error);
         throw error;
     }
-}; 
+};
+
+/**
+ * Update curated related blog posts for a blog (max 3, ordered).
+ * @param {number} blogId - Blog ID
+ * @param {Transaction} transaction - Sequelize transaction
+ * @param {number[]} relatedBlogIds - Ordered array of related blog IDs
+ */
+exports.updateBlogRelatedPosts = async (blogId, transaction, relatedBlogIds = []) => {
+    try {
+        const validIds = [...new Set(
+            (relatedBlogIds || [])
+                .map((id) => parseInt(id, 10))
+                .filter((id) => !Number.isNaN(id))
+        )];
+
+        if (validIds.length > 3) {
+            throw new Error('related_blog_ids cannot contain more than 3 items');
+        }
+
+        if (validIds.includes(Number(blogId))) {
+            throw new Error('related_blog_ids cannot include the current blog post');
+        }
+
+        await BlogRelatedPost.destroy({
+            where: { blog_id: blogId },
+            transaction
+        });
+
+        if (validIds.length === 0) {
+            return;
+        }
+
+        const existingBlogs = await Blog.findAll({
+            where: { id: validIds },
+            attributes: ['id'],
+            transaction
+        });
+
+        if (existingBlogs.length !== validIds.length) {
+            const foundIds = existingBlogs.map((blog) => blog.id);
+            const missingIds = validIds.filter((id) => !foundIds.includes(id));
+            throw new Error(`Related blog IDs ${missingIds.join(', ')} do not exist`);
+        }
+
+        const relations = validIds.map((relatedBlogId, index) => ({
+            blog_id: blogId,
+            related_blog_id: relatedBlogId,
+            sort_order: index
+        }));
+
+        await BlogRelatedPost.bulkCreate(relations, { transaction });
+    } catch (error) {
+        console.error('Error in updateBlogRelatedPosts:', error);
+        throw error;
+    }
+};
+
+/**
+ * Fetch curated related blog relations for admin responses.
+ * @param {number} blogId
+ * @returns {Promise<Array>}
+ */
+exports.getBlogRelatedPosts = async (blogId) => {
+    return BlogRelatedPost.findAll({
+        where: { blog_id: blogId },
+        include: [{
+            model: Blog,
+            as: 'relatedBlog',
+            attributes: ['id', 'title', 'slug', 'image_url', 'alt_text', 'status', 'published_at'],
+            required: true
+        }],
+        order: [['sort_order', 'ASC']]
+    });
+};

@@ -1,5 +1,7 @@
 const { check, query, param, body } = require("express-validator");
 const moment = require("moment");
+const multer = require("multer");
+const path = require("path");
 
 const roleValidation =  [
         query('deleted')
@@ -77,6 +79,58 @@ const userValidationRules = [
 ];
 
 
+const USER_AVATAR_MAX_MB = parseInt(process.env.USER_AVATAR_MAX_MB || '5', 10);
+const USER_AVATAR_FILE_SIZE_LIMIT = USER_AVATAR_MAX_MB * 1024 * 1024;
+
+const blogAuthorValidationRules = [
+    body('blog_author_role')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('blog_author_role must be a string')
+        .isLength({ max: 255 })
+        .withMessage('blog_author_role must be less than 255 characters'),
+
+    body('blog_author_bio')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('blog_author_bio must be a string')
+        .isLength({ max: 5000 })
+        .withMessage('blog_author_bio must be less than 5000 characters'),
+
+    body('blog_author_slug')
+        .optional({ nullable: true })
+        .custom((value) => {
+            if (value == null || value === '') {
+                return true;
+            }
+            if (!/^[a-z0-9-]+$/.test(String(value).trim())) {
+                throw new Error('blog_author_slug must contain only lowercase letters, numbers, and hyphens');
+            }
+            return true;
+        }),
+
+    body('blog_author_archive_url')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('blog_author_archive_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('blog_author_archive_url must be less than 500 characters'),
+
+    body('blog_author_team_url')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('blog_author_team_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('blog_author_team_url must be less than 500 characters'),
+
+    body('profile_pic_url')
+        .optional({ nullable: true })
+        .isString()
+        .withMessage('profile_pic_url must be a string')
+        .isLength({ max: 500 })
+        .withMessage('profile_pic_url must be less than 500 characters')
+];
+
 const userUpdateValidationRules = [
     body("first_name")
         .optional()
@@ -138,6 +192,8 @@ const userUpdateValidationRules = [
           }
           return true;
         }),
+
+    ...blogAuthorValidationRules
 ];
 
 const restoreUserValidation = [
@@ -200,11 +256,59 @@ const userIDValidation = [
     param("id").isInt().withMessage("User ID must be an integer")
 ];
 
+const uploadValidation = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: USER_AVATAR_FILE_SIZE_LIMIT
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+            return cb(new Error('Only .jpeg, .png, and .webp avatar images are allowed'), false);
+        }
+
+        const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!allowedExtensions.includes(ext)) {
+            return cb(new Error('Invalid avatar file extension'), false);
+        }
+
+        cb(null, true);
+    }
+}).single('avatar');
+
+const uploadFileValidation = (req, res, next) => {
+    uploadValidation(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            const message = err.code === 'LIMIT_FILE_SIZE'
+                ? `Avatar image exceeds the maximum allowed size of ${USER_AVATAR_MAX_MB}MB`
+                : err.message;
+            return res.status(413).json({
+                success: false,
+                message,
+                errors: [{ path: err.field || 'avatar', msg: message }]
+            });
+        }
+
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message || 'Invalid avatar file',
+                errors: [{ path: 'avatar', msg: err.message }]
+            });
+        }
+
+        next();
+    });
+};
+
 module.exports = {
     roleValidation,
     userValidationRules,
     restoreUserValidation,
     userListValidationRules,
     userUpdateValidationRules,
-    userIDValidation
+    userIDValidation,
+    uploadFileValidation,
+    blogAuthorValidationRules
 };
