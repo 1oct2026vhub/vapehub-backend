@@ -224,7 +224,7 @@ module.exports.listAllProducts = async (req, res, next) => {
     try {
         const {
             sort_by = 'id', order = 'ASC', limit = 10, offset = 0, keyword, price_range,
-            categories, brands, deleted, is_new, variant_attributes, status
+            categories, brands, deleted, is_new, is_coming_soon, variant_attributes, status
         } = req.query;
         const parsedLimit = parseInt(limit, 10);
         const parsedOffset = parseInt(offset, 10);
