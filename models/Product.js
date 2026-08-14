@@ -42,7 +42,6 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'linked_product_id',
         as: 'LinkedProducts'
       });
-      this.hasMany(models.ProductStockAlert, { foreignKey: 'product_id', as: 'stockAlerts' });
     }
   }
 

@@ -12,7 +12,6 @@ const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
 const { recacheProductFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require('../../../../library/prerender');
 const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
-const { notifyStockAlertSubscribersFireAndForget } = require('../../../product/helper/productStockAlert.helper');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -1973,8 +1972,6 @@ module.exports.updateProduct = async (req, res, next) => {
             shouldUpdateSeoSlug ? oldProductSlug : null,
             { source: 'updateProduct', productId: id }
         );
-
-        notifyStockAlertSubscribersFireAndForget(id);
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
         if (shouldUpdateSeoSlug && cleanSlug) {

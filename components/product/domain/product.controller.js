@@ -8,7 +8,6 @@ const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
-const { subscribeToStockAlert } = require('../helper/productStockAlert.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -1170,23 +1169,6 @@ module.exports.getProductDescription = async (req, res, next) => {
         return successResponse(res, responseData, 'Product description fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
-    }
-};
-
-module.exports.notifyMeWhenInStock = async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const { email, marketing_opt_in } = req.body;
-        const data = await subscribeToStockAlert({
-            productId: parseInt(id, 10),
-            email,
-            marketingOptIn: marketing_opt_in,
-            userId: req.user?.id || null
-        });
-        return successResponse(res, data, "We'll email you when this product is in stock");
-    } catch (error) {
-        logger.error('Error subscribing to stock alert:', error);
-        return errorResponse(res, error, error.message, error.statusCode || 500);
     }
 };
 
