@@ -2,6 +2,28 @@ const { check, param, body } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
 
+const MB = 1024 * 1024;
+const TYPE_CARDS_CONTENT_MAX_MB = parseInt(process.env.TYPE_CARDS_CONTENT_MAX_MB || '10', 10);
+const CATEGORY_IMAGE_MAX_MB = parseInt(process.env.CATEGORY_IMAGE_MAX_MB || '5', 10);
+const CATEGORY_IMAGE_FILE_SIZE_LIMIT = CATEGORY_IMAGE_MAX_MB * MB;
+const TYPE_CARDS_FIELD_SIZE_LIMIT = TYPE_CARDS_CONTENT_MAX_MB * MB;
+
+const typeCardsTooLargeMessage = () =>
+    `Type cards HTML exceeds the maximum size of ${TYPE_CARDS_CONTENT_MAX_MB}MB. Remove large pasted images and save again after images are uploaded.`;
+
+const assertTypeCardsWithinSizeLimit = (value) => {
+    if (value == null || value === '') {
+        return;
+    }
+    const sizeBytes = Buffer.byteLength(String(value), 'utf8');
+    if (sizeBytes > TYPE_CARDS_FIELD_SIZE_LIMIT) {
+        const sizeMb = (sizeBytes / MB).toFixed(1);
+        throw new Error(
+            `Type cards HTML is ${sizeMb}MB, which exceeds the maximum allowed size of ${TYPE_CARDS_CONTENT_MAX_MB}MB.`
+        );
+    }
+};
+
 const categoryIdValidation = [
     param("id").isInt().withMessage("Category ID must be an integer"),
 ];
@@ -27,6 +49,24 @@ const categoryValidation = [
       .customSanitizer(value => (value === "" ? null : value)) 
       .isString()
       .withMessage("Description must be a string"),
+    check("type_cards_html")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("type_cards_html must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
+    check("additional_text_box")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("additional_text_box must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
     check("alt_text")
       .optional({ nullable: true })
       .isString()
@@ -58,6 +98,24 @@ const categoryUpdatesValidation = [
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
       .trim().isString().withMessage("Description must be a string"),
+    check("type_cards_html")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("type_cards_html must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
+    check("additional_text_box")
+      .optional({ nullable: true })
+      .customSanitizer(value => (value === "" ? null : value))
+      .isString()
+      .withMessage("additional_text_box must be a string")
+      .custom((value) => {
+          assertTypeCardsWithinSizeLimit(value);
+          return true;
+      }),
     check("logo_url")
       .optional({ nullable: true })
       .customSanitizer(value => (value === "" ? null : value)) 
@@ -101,7 +159,8 @@ const storage = multer.memoryStorage();
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB limit
+        fileSize: CATEGORY_IMAGE_FILE_SIZE_LIMIT,
+        fieldSize: TYPE_CARDS_FIELD_SIZE_LIMIT,
     },
     fileFilter: (req, file, cb) => {
         const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp"];
@@ -118,7 +177,7 @@ const uploadFileMiddleware = upload.single('file');
 const uploadXlx = multer({
   storage: storage,
   limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB limit
+      fileSize: CATEGORY_IMAGE_FILE_SIZE_LIMIT,
   },
   fileFilter: (req, file, cb) => {
       const allowedExtensions = ['.xlsx', '.xls'];
@@ -132,19 +191,34 @@ const uploadXlx = multer({
 
 const uploadXlxFileMiddleware = uploadXlx.single('file');
 
+const multerLimitMessage = (err) => {
+    switch (err.code) {
+        case 'LIMIT_FIELD_VALUE':
+            return typeCardsTooLargeMessage();
+        case 'LIMIT_FILE_SIZE':
+            return `Logo exceeds the maximum allowed size of ${CATEGORY_IMAGE_MAX_MB}MB.`;
+        default:
+            return err.message;
+    }
+};
+
 const uploadFileValidation = (req, res, next) => {
   upload.single("logo")(req, res, (err) => {
       if (err instanceof multer.MulterError) {
-          return res.status(400).json({
+          const msg = multerLimitMessage(err);
+          const status = err.code === 'LIMIT_FIELD_VALUE' || err.code === 'LIMIT_FILE_SIZE'
+              ? 413
+              : 400;
+          return res.status(status).json({
               success: false,
-              message: "File upload error",
-              errors: [{ path: "logo", msg: err.message }],
+              message: msg,
+              errors: [{ path: err.field || 'type_cards_html', msg }],
           });
       } else if (err) {
           return res.status(400).json({
               success: false,
-              message: "Invalid file type",
-              errors: [{ path: "logo", msg: err.message }],
+              message: err.message || 'Invalid file',
+              errors: [{ path: err.field || 'logo', msg: err.message }],
           });
       }
       next();
@@ -168,5 +242,7 @@ module.exports = {
     uploadFileValidation,
     bulkUpdateCategoriesValidation,
     uploadFileMiddleware,
-    uploadXlxFileMiddleware
+    uploadXlxFileMiddleware,
+    TYPE_CARDS_CONTENT_MAX_MB,
+    CATEGORY_IMAGE_MAX_MB,
 };

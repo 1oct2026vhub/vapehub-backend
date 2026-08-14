@@ -2,6 +2,11 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Blog, BlogCategory, BlogTag, User } = require("../../../models");
 const { Op } = require("sequelize");
 const { cacheOrFetch } = require("../../../library/cache");
+const {
+    AUTHOR_ATTRIBUTES,
+    resolveRelatedBlogs,
+    formatBlogDetailResponse
+} = require("../helper/blogDetail.serializer");
 
 module.exports.listAllBlogs = async (req, res, next) => {
     try {
@@ -481,7 +486,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
                 {
                     model: User,
                     as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
+                    attributes: AUTHOR_ATTRIBUTES
                 },
                 {
                     model: BlogCategory,
@@ -512,32 +517,8 @@ module.exports.getBlogBySlug = async (req, res, next) => {
             throw error;
         }
 
-        // Get related blogs from the same categories
-        const relatedBlogs = await Blog.findAll({
-            where: {
-                id: { [Op.ne]: blog.id },
-                published_at: { [Op.lte]: currentDate }, // Only include blogs with published_at date in the past
-                status: 'published'
-            },
-            include: [{
-                model: BlogCategory,
-                as: 'categories',
-                where: {
-                    id: {
-                        [Op.in]: blog.categories.map(cat => cat.id)
-                    }
-                },
-                through: { attributes: [] }
-            }],
-            limit: 3,
-            order: [['published_at', 'DESC']],
-            attributes: ['id', 'title', 'slug', 'image_url', 'published_at', 'status']
-        });
-
-        const response = {
-            ...blog.toJSON(),
-            related_blogs: relatedBlogs
-        };
+        const relatedBlogs = await resolveRelatedBlogs(blog, currentDate);
+        const response = await formatBlogDetailResponse(blog, relatedBlogs);
 
         return successResponse(res, response, "Success");
     } catch (error) {

@@ -1,6 +1,8 @@
 const router = require("express").Router();
 const { authMiddleware } = require('../../../../library/middleware');
 const brandController = require("../domain/brand.controller");
+const buyingGuideController = require('../domain/buyingGuide.controller');
+const relatedLinksController = require('../domain/relatedLinks.controller');
 const { validateRequest } = require("../../../../utils/validationMiddleware");
 const { check } = require("express-validator");
 const { 
@@ -11,6 +13,15 @@ const {
     bulkUpdateBrandsValidation,
     uploadXlxFileMiddleware
 } = require("../helper/brand.validator");
+const {
+    buyingGuideIdValidation,
+    buyingGuideBodyValidation,
+    buyingGuideUploadValidation
+} = require('../helper/buyingGuide.validator');
+const {
+    relatedLinksIdValidation,
+    relatedLinksBodyValidation
+} = require('../helper/relatedLinks.validator');
 
 /**
  * @swagger
@@ -93,6 +104,33 @@ const {
  *         description: Invalid request parameters
  */
 router.get('/', authMiddleware(true), brandController.listAllBrands);
+
+router.get('/:id/buying-guide',
+    [authMiddleware(true), validateRequest(buyingGuideIdValidation)],
+    buyingGuideController.getBuyingGuide
+);
+
+router.post('/:id/buying-guide',
+    [
+        authMiddleware(true),
+        buyingGuideUploadValidation,
+        buyingGuideBodyValidation
+    ],
+    buyingGuideController.saveBuyingGuide
+);
+
+router.get('/:id/related-brand',
+    [authMiddleware(true), validateRequest(relatedLinksIdValidation)],
+    relatedLinksController.getRelatedLinks
+);
+
+router.post('/:id/related-brand',
+    [
+        authMiddleware(true),
+        relatedLinksBodyValidation
+    ],
+    relatedLinksController.saveRelatedLinks
+);
 
 /**
  * @swagger

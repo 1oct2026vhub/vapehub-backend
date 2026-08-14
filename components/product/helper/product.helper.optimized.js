@@ -238,7 +238,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
             ? `(SELECT COUNT(DISTINCT o.id) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed') AND o.deletedAt IS NULL) ${orderValue}`
             : sort_by === 'price'
             ? `min_variant_price ${orderValue}`
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }
         LIMIT ${parsedLimit} OFFSET ${parsedOffset}
       )
@@ -630,11 +630,11 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         testimonials: testimonialCount
       };
 
-      // Check stock status efficiently
+      // Check stock status efficiently (low_stock still means sellable inventory)
       const hasInStockVariant = productVariantsData.some(variant =>
         variant.status === 'active' &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock' &&
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );
@@ -644,7 +644,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         variant.status === 'active' && 
         parseFloat(variant.price) > 0 &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock'
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock')
       );
       
       let minPriceVariantData = null;

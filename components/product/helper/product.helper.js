@@ -713,7 +713,7 @@ const fetchProducts = async (query, status = 'published') => {
             ? `order_count ${orderValue}` 
             : sort_by === 'price' 
             ? `min_price ${orderValue}` 
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
@@ -1159,12 +1159,12 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
-      // Add out_of_stock flag
+      // Add out_of_stock flag (low_stock still means sellable inventory)
       const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
         !variant.is_discontinued &&
         variant.stock > 0 &&
-        variant.stock_status === stockStatus.IN_STOCK &&
+        (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );
@@ -1282,11 +1282,8 @@ const fetchProducts = async (query, status = 'published') => {
       productFilterParams.keyword = `%${keyword}%`;
     }
     
-    // Note: is_new doesn't filter products in SQL - it only affects sorting and tagging
-    
-     // Note: is_new affects sorting and tagging but doesn't filter products
-     // When is_new=true: Shows all products sorted by createdAt DESC, tags recent ones as "new"
-     // When is_new=false or not provided: Shows all products with normal sorting
+    // Note: is_new doesn't filter products in SQL - it only affects "New" tagging in the response
+    // Sorting follows sort_by/order (defaults apply when omitted)
     
     // Add deal filter condition
     if (deal_id) {

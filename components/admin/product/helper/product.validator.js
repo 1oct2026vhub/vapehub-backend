@@ -76,6 +76,16 @@ const createProductValidation = [
             }
             return true;
         }),
+    check('related_blog_ids')
+        .optional()
+        .custom((value) => {
+            if (value === undefined || value === null || value === '') {
+                return true;
+            }
+            const { parseRelatedBlogIdsField } = require('./productBlogRelations.helper');
+            parseRelatedBlogIdsField(value);
+            return true;
+        }),
 ];
 
 const updateProductValidations = [
@@ -143,6 +153,16 @@ const updateProductValidations = [
                     throw new Error('All linked product IDs must be positive integers');
                 }
             }
+            return true;
+        }),
+    check('related_blog_ids')
+        .optional()
+        .custom((value) => {
+            if (value === undefined || value === null || value === '') {
+                return true;
+            }
+            const { parseRelatedBlogIdsField } = require('./productBlogRelations.helper');
+            parseRelatedBlogIdsField(value);
             return true;
         }),
     check('redirect_url')
