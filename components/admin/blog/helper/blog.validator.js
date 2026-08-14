@@ -2,7 +2,7 @@ const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const { Blog, User } = require('../../../../models');
-const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField } = require('./blogPayload.helper');
+const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField, parseJsonOrCsvIds } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -14,6 +14,14 @@ const BLOG_MAX_NON_FILE_FIELDS = 50;
 
 const contentTooLargeMessage = () =>
     `Blog content exceeds the maximum size of ${BLOG_CONTENT_MAX_MB}MB. Remove large sized pasted images and save again after images are uploaded.`;
+
+const assertIdList = (value, fieldName) => {
+    if (value == null || value === '') {
+        return true;
+    }
+    parseJsonOrCsvIds(value, fieldName);
+    return true;
+};
 
 const assertContentWithinSizeLimit = (value) => {
     if (value == null || value === '') {
@@ -275,27 +283,11 @@ const blogValidation = [
     
     body('categories')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const categoryIds = value.split(',').map(id => parseInt(id.trim()));
-            if (categoryIds.some(id => isNaN(id))) {
-                throw new Error('Categories must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'categories')),
     
     body('tags')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const tagIds = value.split(',').map(id => parseInt(id.trim()));
-            if (tagIds.some(id => isNaN(id))) {
-                throw new Error('Tags must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'tags')),
     
     body('alt_text')
         .optional()
@@ -364,25 +356,11 @@ const blogUpdateValidation = [
     
     body('categories')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            const categories = value.split(',').map(id => parseInt(id.trim()));
-            if (!categories.every(id => !isNaN(id))) {
-                throw new Error('Invalid category ID format');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'categories')),
     
     body('tags')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            const tags = value.split(',').map(id => parseInt(id.trim()));
-            if (!tags.every(id => !isNaN(id))) {
-                throw new Error('Invalid tag ID format');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'tags')),
     
     body('published_at')
         .optional()
@@ -472,27 +450,11 @@ const filterValidations = [
     
     query('category_id')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const categoryIds = value.split(',').map(id => parseInt(id.trim()));
-            if (categoryIds.some(id => isNaN(id))) {
-                throw new Error('Category IDs must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'category_id')),
     
     query('tag_id')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const tagIds = value.split(',').map(id => parseInt(id.trim()));
-            if (tagIds.some(id => isNaN(id))) {
-                throw new Error('Tag IDs must be valid integers');
-            }
-            return true;
-        })
+        .custom((value) => assertIdList(value, 'tag_id'))
 ];
 
 // Configure multer storage
