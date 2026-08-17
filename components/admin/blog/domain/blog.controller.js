@@ -1,6 +1,6 @@
 const { Op, Sequelize } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
+const { Blog, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const { invalidateCachePattern } = require("../../../../library/cache");
 const { recacheEntityFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require("../../../../library/prerender");
@@ -11,7 +11,7 @@ const seoService = require('../../seo/domain/seo.service');
 const { updateBlogCategories, updateBlogTags, updateBlogRelatedPosts, getBlogRelatedPosts } = require("../helper/blogRelations.helper");
 const { replaceInlineBase64ImagesWithS3Urls } = require("../helper/blogContent.helper");
 const {
-    AUTHOR_ATTRIBUTES,
+    getAuthorInclude,
     parseSourcesField,
     parsePullQuoteField,
     parseInlineProductCardField,
@@ -20,7 +20,6 @@ const {
     resolveAuthorId,
     attachRelatedBlogFields
 } = require("../helper/blogPayload.helper");
-const { resolveAuthorOverrideForSave } = require("../helper/blogAuthorOverride.helper");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -73,12 +72,9 @@ module.exports.listAllBlogs = async (req, res) => {
 
         // Base include conditions - always include all relations
         let includeConditions = [
-            {
-                model: User,
-                as: 'author',
-                attributes: AUTHOR_ATTRIBUTES,
-                required: false
-            },
+            getAuthorInclude({
+                userAttributes: ['id', 'first_name', 'last_name', 'email']
+            }),
             {
                 model: BlogCategory,
                 as: 'categories',
@@ -156,11 +152,9 @@ module.exports.getBlogById = async (req, res) => {
         const blog = await Blog.findByPk(req.params.id, {
             paranoid: false,
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: AUTHOR_ATTRIBUTES
-                },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -249,7 +243,7 @@ module.exports.createBlog = async (req, res) => {
             req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
         const tags = req.body.tags ? 
             req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
-        const author_id = await resolveAuthorId(req.body.author_id, req.user.id);
+        const author_id = await resolveAuthorId(req.body.author_id);
         const sources = req.body.sources !== undefined
             ? parseSourcesField(req.body.sources)
             : [];
@@ -268,17 +262,11 @@ module.exports.createBlog = async (req, res) => {
         const status = req.body.status || 'draft';
 
         const heroFile = req.files?.image?.[0];
-        const authorAvatarFile = req.files?.author_avatar?.[0];
 
         let image_url = null;
         if (heroFile) {
             image_url = await handleImageUpload(heroFile);
         }
-
-        const author_override = await resolveAuthorOverrideForSave({
-            body: req.body,
-            avatarFile: authorAvatarFile
-        });
 
         // Create blog post
         const blog = await Blog.create({
@@ -292,7 +280,6 @@ module.exports.createBlog = async (req, res) => {
             pull_quote: pullQuote,
             inline_product_card: inlineProductCard,
             first_person_callouts: firstPersonCallouts,
-            author_override: author_override ?? null,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
             status,
@@ -317,11 +304,9 @@ module.exports.createBlog = async (req, res) => {
         // Fetch complete blog data
         const createdBlog = await Blog.findByPk(blog.id, {
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: AUTHOR_ATTRIBUTES
-                },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -418,8 +403,8 @@ module.exports.updateBlog = async (req, res) => {
         const parsedFirstPersonCallouts = req.body.first_person_callouts !== undefined
             ? parseFirstPersonCalloutsField(req.body.first_person_callouts)
             : undefined;
-        const parsedAuthorId = req.body.author_id !== undefined
-            ? await resolveAuthorId(req.body.author_id, updated_by)
+        const parsedAuthorId = req.body.author_id !== undefined && req.body.author_id !== ''
+            ? await resolveAuthorId(req.body.author_id)
             : undefined;
         const blog = await Blog.findByPk(id, { transaction, paranoid: false });
         if (!blog) {
@@ -431,13 +416,7 @@ module.exports.updateBlog = async (req, res) => {
         const oldBlogSlug = blog.slug;
 
         const heroFile = req.files?.image?.[0];
-        const authorAvatarFile = req.files?.author_avatar?.[0];
         const image_url = await handleImageUpload(heroFile) || blog.image_url;
-        const author_override = await resolveAuthorOverrideForSave({
-            body: req.body,
-            existing: blog.author_override,
-            avatarFile: authorAvatarFile
-        });
 
         // Update slug using static method
         if (slug && slug !== blog.slug) {
@@ -461,7 +440,6 @@ module.exports.updateBlog = async (req, res) => {
             ...(parsedInlineProductCard !== undefined && { inline_product_card: parsedInlineProductCard }),
             ...(parsedFirstPersonCallouts !== undefined && { first_person_callouts: parsedFirstPersonCallouts }),
             ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
-            ...(author_override !== undefined && { author_override }),
             updated_by
         };
 
@@ -542,7 +520,9 @@ module.exports.updateBlog = async (req, res) => {
         const updatedBlog = await Blog.findByPk(id, {
             paranoid: false,
             include: [
-                { model: User, as: 'author', attributes: AUTHOR_ATTRIBUTES },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
                 { model: BlogTag, as: 'tags', through: { attributes: [] } }
             ],

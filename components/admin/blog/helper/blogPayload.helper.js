@@ -1,17 +1,34 @@
-const { User, Product, Category } = require('../../../../models');
+const { Author, User, Product, Category } = require('../../../../models');
 
 const AUTHOR_ATTRIBUTES = [
     'id',
     'first_name',
     'last_name',
-    'email',
-    'profile_pic_url',
-    'blog_author_role',
-    'blog_author_bio',
-    'blog_author_slug',
-    'blog_author_archive_url',
-    'blog_author_team_url'
+    'role',
+    'bio',
+    'slug',
+    'avatar_url',
+    'archive_url',
+    'team_url',
+    'user_id'
 ];
+
+const getAuthorInclude = (options = {}) => ({
+    model: Author,
+    as: 'author',
+    attributes: AUTHOR_ATTRIBUTES,
+    paranoid: false,
+    required: options.required ?? false,
+    include: [
+        {
+            model: User,
+            as: 'user',
+            attributes: options.userAttributes || ['id', 'email'],
+            required: false
+        }
+    ],
+    ...(options.where ? { where: options.where } : {})
+});
 
 const parseJsonOrCsvIds = (field, fieldName = 'field') => {
     if (field == null || field === '') {
@@ -367,18 +384,19 @@ const parseRelatedBlogIdsField = (field, blogId = null) => {
     return uniqueIds;
 };
 
-const resolveAuthorId = async (requestedAuthorId, fallbackAuthorId) => {
-    const authorId = requestedAuthorId != null && requestedAuthorId !== ''
-        ? parseInt(requestedAuthorId, 10)
-        : fallbackAuthorId;
+const resolveAuthorId = async (requestedAuthorId) => {
+    if (requestedAuthorId == null || requestedAuthorId === '') {
+        throw new Error('author_id is required');
+    }
 
+    const authorId = parseInt(requestedAuthorId, 10);
     if (Number.isNaN(authorId)) {
         throw new Error('author_id must be a valid integer');
     }
 
-    const author = await User.findByPk(authorId, { attributes: ['id'] });
+    const author = await Author.findByPk(authorId, { attributes: ['id'] });
     if (!author) {
-        throw new Error('author_id does not match an existing user');
+        throw new Error('author_id does not match an existing author');
     }
 
     return authorId;
@@ -418,7 +436,6 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
         pull_quote: blogData.pull_quote ?? null,
         inline_product_card: blogData.inline_product_card ?? null,
         first_person_callouts: blogData.first_person_callouts ?? [],
-        author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
     };
@@ -426,6 +443,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
 
 module.exports = {
     AUTHOR_ATTRIBUTES,
+    getAuthorInclude,
     PULL_QUOTE_SOURCE_TYPES,
     PULL_QUOTE_LOCATION,
     INLINE_PRODUCT_CARD_ENTITY_TYPES,

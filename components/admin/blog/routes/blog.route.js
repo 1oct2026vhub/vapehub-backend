@@ -12,6 +12,7 @@ const {
 } = require("../helper/blog.validator");
 const blogCategoryRoute = require('./blogCategory.route');
 const blogTagRoute = require('./blogTag.route');
+const blogAuthorRoute = require('./blogAuthor.route');
 
 
 
@@ -200,7 +201,7 @@ router.get('/posts/:id',
  *                   type: integer
  *               author_id:
  *                 type: integer
- *                 description: Blog author user ID. Defaults to the authenticated admin when omitted.
+ *                 description: ID of a record in the authors table. Required on create.
  *               sources:
  *                 type: string
  *                 description: JSON array of source objects with label, href, and optional description
@@ -221,29 +222,6 @@ router.get('/posts/:id',
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
  *                 example: "18,42,7"
- *               author_avatar:
- *                 type: string
- *                 format: binary
- *                 description: Per-post author avatar (stored on blog, not user profile)
- *               author_override:
- *                 type: string
- *                 description: JSON object override. Send empty string to clear.
- *                 example: '{"first_name":"VapeHub","last_name":"Editorial Team","role":"Product team","bio":"Hands-on Geek Zone guides.","archive_url":"/blogs","team_url":"/blogs"}'
- *               author_first_name:
- *                 type: string
- *               author_last_name:
- *                 type: string
- *               author_role:
- *                 type: string
- *               author_bio:
- *                 type: string
- *               author_archive_url:
- *                 type: string
- *               author_team_url:
- *                 type: string
- *               author_avatar_url:
- *                 type: string
- *                 description: Avatar URL when not uploading author_avatar file
  *     responses:
  *       201:
  *         description: Blog post created successfully
@@ -451,7 +429,7 @@ router.put('/posts/bulk-restore',
  *                   type: integer
  *               author_id:
  *                 type: integer
- *                 description: Blog author user ID. Defaults to the authenticated admin when omitted.
+ *                 description: ID of a record in the authors table. Required on create.
  *               sources:
  *                 type: string
  *                 description: JSON array of source objects with label, href, and optional description
@@ -472,29 +450,6 @@ router.put('/posts/bulk-restore',
  *                 type: string
  *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
  *                 example: "18,42,7"
- *               author_avatar:
- *                 type: string
- *                 format: binary
- *                 description: Per-post author avatar (stored on blog, not user profile)
- *               author_override:
- *                 type: string
- *                 description: JSON object override. Send empty string to clear.
- *                 example: '{"first_name":"VapeHub","last_name":"Editorial Team","role":"Product team","bio":"Hands-on Geek Zone guides.","archive_url":"/blogs","team_url":"/blogs"}'
- *               author_first_name:
- *                 type: string
- *               author_last_name:
- *                 type: string
- *               author_role:
- *                 type: string
- *               author_bio:
- *                 type: string
- *               author_archive_url:
- *                 type: string
- *               author_team_url:
- *                 type: string
- *               author_avatar_url:
- *                 type: string
- *                 description: Avatar URL when not uploading author_avatar file
  *     responses:
  *       200:
  *         description: Blog post updated successfully
@@ -561,6 +516,7 @@ router.put('/posts/:id/restore',
 
 router.use('/categories', blogCategoryRoute);
 router.use('/tags', blogTagRoute);
+router.use('/authors', blogAuthorRoute);
 
 /**
  * @swagger
@@ -609,14 +565,11 @@ router.use('/tags', blogTagRoute);
  *           nullable: true
  *           description: Date when the post was soft deleted, null if not deleted
  *         author:
- *           $ref: '#/components/schemas/User'
+ *           type: object
+ *           description: Author record from the authors table
  *         author_id:
  *           type: integer
- *           description: Linked user ID for audit and fallback author profile
- *         author_override:
- *           $ref: '#/components/schemas/BlogAuthorOverride'
- *           nullable: true
- *           description: Per-post author display override. Does not mutate the linked user profile.
+ *           description: Linked authors table ID for the post byline
  *         categories:
  *           type: array
  *           items:
@@ -652,33 +605,6 @@ router.use('/tags', blogTagRoute);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/RelatedBlogPreview'
- *     BlogAuthorOverride:
- *       type: object
- *       nullable: true
- *       description: Per-post author display fields stored on the blog row (not on users)
- *       properties:
- *         first_name:
- *           type: string
- *           example: "VapeHub"
- *         last_name:
- *           type: string
- *           example: "Editorial Team"
- *         role:
- *           type: string
- *           example: "VapeHub product team"
- *         bio:
- *           type: string
- *           example: "Part of the VapeHub product team. Writes hands-on Geek Zone guides."
- *         avatar_url:
- *           type: string
- *           format: uri
- *           example: "https://cdn.example.com/blog/authors/avatar.jpg"
- *         archive_url:
- *           type: string
- *           example: "/blogs"
- *         team_url:
- *           type: string
- *           example: "/blogs"
  *     BlogSourceItem:
  *       type: object
  *       required:
