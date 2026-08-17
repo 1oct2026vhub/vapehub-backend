@@ -65,7 +65,17 @@ const blogController = require("../domain/blog.controller");
  *         name: userId
  *         schema:
  *           type: integer
- *         description: Filter blogs by author ID
+ *         description: Filter blogs by the linked user ID on the author record
+ *       - in: query
+ *         name: authorId
+ *         schema:
+ *           type: integer
+ *         description: Filter blogs by authors table ID
+ *       - in: query
+ *         name: author
+ *         schema:
+ *           type: string
+ *         description: Filter blogs by author slug
  *       - in: query
  *         name: categoryId
  *         schema:
@@ -202,7 +212,7 @@ router.get('/', blogController.listAllCategories);
  * /api/blogs/post/{slug}:
  *   get:
  *     summary: Retrieve blog details using the blog slug
- *     description: Get a published blog post. The author object merges per-post author_override over the linked user profile. author_override is not returned separately.
+ *     description: Get a published blog post. The author object is loaded from the authors table.
  *     tags:
  *       - Blog
  *     parameters:
@@ -455,7 +465,7 @@ router.get('/id/:id', blogController.getBlogById);
  *   schemas:
  *     StorefrontBlogDetailAuthor:
  *       type: object
- *       description: Merged author for display (per-post author_override overrides linked user profile)
+ *       description: Author byline and bio from the authors table
  *       properties:
  *         id:
  *           type: integer
@@ -602,7 +612,7 @@ router.get('/id/:id', blogController.getBlogById);
  *                 type: string
  *     StorefrontBlogDetail:
  *       type: object
- *       description: Published blog post detail. author_override is merged into author and not returned separately.
+ *       description: Published blog post detail. Author is loaded from the authors table.
  *       properties:
  *         id:
  *           type: integer

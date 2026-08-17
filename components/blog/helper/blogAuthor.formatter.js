@@ -1,49 +1,28 @@
 const { buildBlogAuthorArchiveUrl } = require('../../admin/user/helper/blogAuthor.helper');
 
-const AUTHOR_OVERRIDE_KEYS = [
-    'first_name', 'last_name', 'role', 'bio',
-    'avatar_url', 'archive_url', 'team_url'
-];
-
-const hasAuthorOverrideContent = (override) => (
-    override
-    && typeof override === 'object'
-    && AUTHOR_OVERRIDE_KEYS.some((key) => {
-        const val = override[key];
-        return val != null && String(val).trim() !== '';
-    })
-);
-
-const formatMergedAuthor = (author, authorOverride = null) => {
-    if (!author && !hasAuthorOverrideContent(authorOverride)) {
+const formatAuthor = (author) => {
+    if (!author) {
         return null;
     }
 
-    const authorData = author?.toJSON ? author.toJSON() : (author || {});
-    const override = authorOverride && typeof authorOverride === 'object'
-        ? authorOverride
-        : null;
-
-    const archiveUrl = override?.archive_url
-        || authorData.blog_author_archive_url
-        || buildBlogAuthorArchiveUrl(authorData.blog_author_slug)
-        || '/blogs';
+    const authorData = author.toJSON ? author.toJSON() : author;
+    const linkedUser = authorData.user || null;
 
     return {
         id: authorData.id ?? null,
-        first_name: override?.first_name ?? authorData.first_name ?? null,
-        last_name: override?.last_name ?? authorData.last_name ?? null,
-        email: authorData.email ?? null,
-        avatar_url: override?.avatar_url ?? authorData.profile_pic_url ?? null,
-        role: override?.role ?? authorData.blog_author_role ?? null,
-        bio: override?.bio ?? authorData.blog_author_bio ?? null,
-        archive_url: archiveUrl,
-        team_url: override?.team_url ?? authorData.blog_author_team_url ?? '/blogs'
+        first_name: authorData.first_name ?? null,
+        last_name: authorData.last_name ?? null,
+        email: linkedUser?.email ?? null,
+        avatar_url: authorData.avatar_url ?? null,
+        role: authorData.role ?? null,
+        bio: authorData.bio ?? null,
+        archive_url: authorData.archive_url
+            || buildBlogAuthorArchiveUrl(authorData.slug)
+            || '/blogs',
+        team_url: authorData.team_url ?? '/blogs'
     };
 };
 
 module.exports = {
-    AUTHOR_OVERRIDE_KEYS,
-    hasAuthorOverrideContent,
-    formatMergedAuthor
+    formatAuthor
 };
