@@ -35,6 +35,13 @@ const parseJsonOrCsvIds = (field, fieldName = 'field') => {
         return [];
     }
 
+    if (typeof field === 'number') {
+        if (Number.isNaN(field)) {
+            throw new Error(`${fieldName} must be valid integers`);
+        }
+        return [field];
+    }
+
     if (Array.isArray(field)) {
         return field.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id));
     }

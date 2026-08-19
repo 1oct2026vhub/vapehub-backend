@@ -17,6 +17,7 @@ const {
     parseInlineProductCardField,
     parseFirstPersonCalloutsField,
     parseRelatedBlogIdsField,
+    parseJsonOrCsvIds,
     resolveAuthorId,
     attachRelatedBlogFields
 } = require("../helper/blogPayload.helper");
@@ -65,10 +66,8 @@ module.exports.listAllBlogs = async (req, res) => {
         }
 
         // Parse category_id and tag_id for filtering blogs
-        const categoryIds = category_id ? 
-            category_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
-        const tagIds = tag_id ? 
-            tag_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
+        const categoryIds = parseJsonOrCsvIds(category_id, 'category_id');
+        const tagIds = parseJsonOrCsvIds(tag_id, 'tag_id');
 
         // Base include conditions - always include all relations
         let includeConditions = [
@@ -239,10 +238,8 @@ module.exports.createBlog = async (req, res) => {
 
         const { title, slug, published_at, alt_text } = req.body;
         const content = await replaceInlineBase64ImagesWithS3Urls(req.body.content);
-        const categories = req.body.categories ? 
-            req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
-        const tags = req.body.tags ? 
-            req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
+        const categories = parseJsonOrCsvIds(req.body.categories, 'categories');
+        const tags = parseJsonOrCsvIds(req.body.tags, 'tags');
         const author_id = await resolveAuthorId(req.body.author_id);
         const sources = req.body.sources !== undefined
             ? parseSourcesField(req.body.sources)
@@ -463,10 +460,8 @@ module.exports.updateBlog = async (req, res) => {
             }, { where: { entity_id: id } }, { transaction });
         }
         // Parse categories and tags
-        const parsedCategories = categories ? 
-            categories.split(',').map(id => parseInt(id.trim())) : [];
-        const parsedTags = tags ? 
-            tags.split(',').map(id => parseInt(id.trim())) : [];
+        const parsedCategories = parseJsonOrCsvIds(categories, 'categories');
+        const parsedTags = parseJsonOrCsvIds(tags, 'tags');
 
         // Update relations
         await updateBlogRelations(id, {
