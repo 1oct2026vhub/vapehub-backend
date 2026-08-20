@@ -1312,6 +1312,51 @@ router.get('/:id/description',
 
 /**
  * @swagger
+ * /api/product/{id}/notify-me:
+ *   post:
+ *     tags:
+ *       - Product
+ *     summary: Sign up for a one-time email when a Coming Soon product is in stock
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               marketing_opt_in:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Signed up successfully
+ *       400:
+ *         description: Invalid email
+ *       404:
+ *         description: Product not available for stock alerts
+ */
+router.post('/:id/notify-me',
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer'),
+        check('email').isEmail().withMessage('A valid email address is required').normalizeEmail(),
+        check('marketing_opt_in').optional().isBoolean().withMessage('marketing_opt_in must be a boolean')
+    ]),
+    productController.notifyMeWhenAvailable
+);
+
+/**
+ * @swagger
  * /api/product/{id}/related-blogs:
  *   get:
  *     tags:

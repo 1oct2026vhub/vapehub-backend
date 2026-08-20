@@ -52,6 +52,10 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'product_id',
         as: 'relatedBlogRelations'
       });
+      this.hasMany(models.ProductStockAlert, {
+        foreignKey: 'product_id',
+        as: 'stockAlerts'
+      });
     }
   }
 
