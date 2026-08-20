@@ -18,6 +18,7 @@ const {
 } = require('../helper/productBlogRelations.helper');
 const { recacheProductFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require('../../../../library/prerender');
 const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
+const { maybeNotifyOnComingSoonRelease } = require('../../../product/helper/productStockAlert.helper');
 
 const slugManager = new SlugManager(SlugRelation);
 
@@ -1355,6 +1356,7 @@ module.exports.updateProduct = async (req, res, next) => {
             return errorResponse(res, { message: "Product not found" }, "Product not found", 404);
         }
 
+        const previousComingSoon = product.is_coming_soon;
         const oldProductSlug = product.slug;
 
         // Clean the input values if provided
@@ -2018,6 +2020,11 @@ module.exports.updateProduct = async (req, res, next) => {
             shouldUpdateSeoSlug ? oldProductSlug : null,
             { source: 'updateProduct', productId: id }
         );
+
+        // Coming Soon released → one-time email to waitlist (if in stock)
+        if (is_coming_soon !== undefined) {
+            maybeNotifyOnComingSoonRelease(previousComingSoon, updatedProduct.is_coming_soon, id);
+        }
 
         // Update SEO AFTER transaction commit (non-blocking to avoid affecting response)
         if (shouldUpdateSeoSlug && cleanSlug) {

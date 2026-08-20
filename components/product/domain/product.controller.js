@@ -9,6 +9,7 @@ const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
+const { subscribeToStockAlert } = require('../helper/productStockAlert.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -1183,6 +1184,31 @@ module.exports.getProductDescription = async (req, res, next) => {
         return successResponse(res, responseData, 'Product description fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Coming Soon — email me when available
+ * POST /api/product/:id/notify-me
+ * Body: { email, marketing_opt_in? }
+ */
+module.exports.notifyMeWhenAvailable = async (req, res) => {
+    try {
+        const productId = parseInt(req.params.id, 10);
+        const { email, marketing_opt_in } = req.body;
+        const userId = req.user?.id || null;
+
+        const result = await subscribeToStockAlert({
+            productId,
+            email,
+            marketingOptIn: marketing_opt_in === true || marketing_opt_in === 'true' || marketing_opt_in === '1',
+            userId
+        });
+
+        return successResponse(res, result, result.message);
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        return errorResponse(res, error, error.message, statusCode);
     }
 };
 
