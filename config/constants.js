@@ -103,7 +103,7 @@ module.exports = {
         },
         PRODUCT_BACK_IN_STOCK: {
             folderName: 'product_back_in_stock',
-            subject: 'Back in stock! | VapeHub',
+            subject: 'Your product is now available | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         PROMOTIONAL: {
