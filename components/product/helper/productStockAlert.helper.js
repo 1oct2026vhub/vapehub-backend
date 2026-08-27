@@ -232,7 +232,7 @@ const notifyStockAlertSubscribers = async (productId) => {
 
     const primaryImage = product.ProductImages?.[0]?.image_url || null;
     const frontendUrl = (process.env.FRONTEND_URL || 'https://vapehub.co.uk').replace(/\/$/, '');
-    const productUrl = `${frontendUrl}/product/${product.slug}`;
+    const productUrl = `${frontendUrl}/${product.slug}/`;
     const pricing = await buildProductEmailPricing(productId, product);
     const currentYear = new Date().getFullYear();
     let sent = 0;
