@@ -13,6 +13,7 @@ const { createNotification } = require('../../notification/helper/notification.h
 const dealService = require('../../Cart/helper/deal.service');
 const { findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { placeOrderLogic } = require('../helper/orderPlacement.helper');
+const { retryOrderPaymentLogic } = require('../helper/orderRetryPayment.helper');
 const { completeWorldpayCheckout } = require('../helper/worldpay.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../../checkout/helper/guestCheckout.helper');
 const { createDomainLogger } = require('../../../library/logging/domainLogger');
@@ -371,6 +372,31 @@ module.exports.placeOrder = async (req, res, next) => {
         });
 
         return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.retryOrderPayment = async (req, res) => {
+    const userId = req.user.id;
+    const orderId = req.params.orderId;
+    let transactionCommitted = false;
+    const transaction = await sequelize.transaction();
+
+    try {
+        const orderResult = await retryOrderPaymentLogic(userId, orderId, transaction);
+        await transaction.commit();
+        transactionCommitted = true;
+
+        const finalResult = await completeWorldpayCheckout(orderResult);
+
+        return successResponse(res, {
+            message: 'Payment retry started',
+            data: finalResult
+        }, 'Success');
+    } catch (error) {
+        if (!transactionCommitted) {
+            await transaction.rollback();
+        }
+        return errorResponse(res, error, error.message, error.statusCode);
     }
 };
 
