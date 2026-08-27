@@ -1,13 +1,17 @@
-Back in stock | VapeHub
+{{product.name}} is now available | VapeHub
 
-Good news!
+Get this product first — {{product.name}} is now available.
 
-The product you asked to be notified about is now available.
+You asked us to let you know when this product was available. It's in stock now, so order before it sells out again.
 
 {{product.name}}
-View product: {{FRONTEND_URL}}/product/{{product.slug}}
+{{#if product.display_price}}Price: £{{product.display_price}}{{#if product.has_discount}} (was £{{product.original_price}}){{/if}}{{/if}}
 
-This is a one-time notification. You will not receive further alerts for this product unless you sign up again.
+Shop now: {{product.url}}
+
+Free next-day delivery on orders over £20.
+
+This is a one-time notification for this product. You will not receive further alerts unless you sign up again on the product page.
 
 Customer Services
 Email: customerservices@vapehub.co.uk

@@ -15,6 +15,52 @@ const logger = require('../../../library/logger');
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
+const formatPrice = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    return null;
+  }
+  return num.toFixed(2);
+};
+
+const buildProductEmailPricing = async (productId, productRecord) => {
+  const minVariant = await ProductVariant.findOne({
+    where: {
+      product_id: productId,
+      status: 'active',
+      is_discontinued: false,
+      stock: { [Op.gt]: 0 },
+      stock_status: 'in_stock',
+      price: { [Op.gt]: 0 }
+    },
+    attributes: ['price', 'discount_price'],
+    order: [['price', 'ASC']]
+  });
+
+  const variantPrice = minVariant ? Number(minVariant.price) : null;
+  const variantDiscount = minVariant && Number(minVariant.discount_price) > 0
+    ? Number(minVariant.discount_price)
+    : null;
+
+  const productPrice = productRecord?.price != null ? Number(productRecord.price) : null;
+  const productDiscount = productRecord?.discount_price != null && Number(productRecord.discount_price) > 0
+    ? Number(productRecord.discount_price)
+    : null;
+
+  const basePrice = variantPrice ?? productPrice;
+  const salePrice = variantDiscount ?? productDiscount;
+
+  const hasDiscount = salePrice != null && basePrice != null && salePrice < basePrice;
+  const displayPrice = formatPrice(hasDiscount ? salePrice : (basePrice ?? salePrice));
+  const originalPrice = hasDiscount ? formatPrice(basePrice) : null;
+
+  return {
+    display_price: displayPrice,
+    original_price: originalPrice,
+    has_discount: hasDiscount
+  };
+};
+
 const isTruthyComingSoon = (value) =>
   value === true || value === 'true' || value === '1' || value === 1;
 
@@ -152,7 +198,7 @@ const productHasInStockVariant = async (productId) => {
 const notifyStockAlertSubscribers = async (productId) => {
   try {
     const product = await Product.findByPk(productId, {
-      attributes: ['id', 'name', 'slug', 'is_coming_soon', 'status', 'is_discontinued'],
+      attributes: ['id', 'name', 'slug', 'price', 'discount_price', 'is_coming_soon', 'status', 'is_discontinued'],
       include: [{
         model: ProductImage,
         as: 'ProductImages',
@@ -185,20 +231,27 @@ const notifyStockAlertSubscribers = async (productId) => {
     }
 
     const primaryImage = product.ProductImages?.[0]?.image_url || null;
-    const frontendUrl = process.env.FRONTEND_URL || 'https://vapehub.co.uk';
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://vapehub.co.uk').replace(/\/$/, '');
+    const productUrl = `${frontendUrl}/product/${product.slug}`;
+    const pricing = await buildProductEmailPricing(productId, product);
     const currentYear = new Date().getFullYear();
     let sent = 0;
 
     for (const alert of alerts) {
       try {
         await sendEmail(alert.email, constants.emailTypes.PRODUCT_BACK_IN_STOCK, {
+          email: alert.email,
           FRONTEND_URL: frontendUrl,
           currentYear,
-          subject: `${product.name} is back in stock | VapeHub`,
+          subject: `${product.name} is now available | VapeHub`,
           product: {
             name: product.name,
             slug: product.slug,
-            image_url: primaryImage
+            image_url: primaryImage,
+            url: productUrl,
+            display_price: pricing.display_price,
+            original_price: pricing.original_price,
+            has_discount: pricing.has_discount
           }
         });
         await alert.update({ notified_at: new Date() });
