@@ -1,93 +1,245 @@
-# Backend
+# VapeHub Backend
 
+Node.js / Express API for the VapeHub storefront and admin panel. It handles catalog, cart and checkout, orders, payments (Worldpay and Viva Wallet), shipping (ShipStation), CMS, SEO, loyalty, newsletters, and related background jobs.
 
+API base path: `/api`  
+Default local port: `5000` (`PORT` in `.env`; falls back to `3000` if unset)
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Stack
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+| Layer | Technology |
+| --- | --- |
+| Runtime | Node.js 20 |
+| Framework | Express 4 |
+| Database | MySQL 8 via Sequelize |
+| Cache | Redis (optional — if Redis is down, requests fall through to the DB) |
+| Auth | JWT (Passport), Bearer token |
+| Files | AWS S3 (+ CloudFront) |
+| Queues | AWS SQS (email campaigns, bulk order-status) |
+| Docs | Swagger UI at `/api-docs` (disabled in production) |
 
-## Add your files
+---
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## Prerequisites
+
+- Node.js **20.x**
+- MySQL **8.0**
+- Redis (recommended; caching degrades gracefully without it)
+- npm (`package-lock.json` is the lockfile)
+
+---
+
+## Local setup
+
+```bash
+cp .env.example .env
+# fill in DB_*, JWT_*, REDIS_URL, and any integrations you need
+
+npm install
+npm run migrate
+npm run seed          # optional — seeders include live-data / CMS data
+npm run dev           # nodemon, entry: bin/www
+```
+
+`npm start` runs the same process without nodemon.
+
+Copy `.env.example` rather than inventing variables. It is the source of truth for app, JWT, MySQL, Redis, email, S3, Worldpay, Viva Wallet, ShipStation, Trustpilot, SEO/Prerender, Stripo, and optional SQS workers.
+
+CORS is driven by `CORS_ORIGINS` (comma-separated). Typical local values:
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/ateamindia/vapehub/backend.git
-git branch -M main
-git push -uf origin main
+FRONTEND_URL=http://localhost:3000
+ADMIN_FRONTEND_URL=http://localhost:4000
+CORS_ORIGINS=http://localhost:3000,http://localhost:4000,http://localhost:5000
 ```
 
-## Integrate with your tools
+With `EMAIL_TEST_MODE=true`, emails are previewed locally instead of going through SMTP.
 
-- [ ] [Set up project integrations](https://gitlab.com/ateamindia/vapehub/backend/-/settings/integrations)
+---
 
-## Collaborate with your team
+## Docker
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+`docker-compose.yml` runs the API and MySQL 8.
 
-## Test and Deploy
+```bash
+docker compose up --build
+```
 
-Use the built-in continuous integration in GitLab.
+| Service | Host access |
+| --- | --- |
+| API | `http://localhost:5000` |
+| MySQL | `localhost:3305` → container `3306` |
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+The compose file sets `DB_HOST=vapehub_db`. Redis is not included; run Redis locally or point `REDIS_URL` at an existing instance.
 
-***
+The `Dockerfile` targets Node 20.17.0 and exposes port 5000.
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Scripts
 
-## Suggestions for a good README
+| Script | Purpose |
+| --- | --- |
+| `npm start` | Production-style process (`node bin/www`) |
+| `npm run dev` | Dev server with nodemon |
+| `npm run migrate` | Run Sequelize migrations (`db/migrations`) |
+| `npm run migrate:deploy` | Undo all migrations, then re-run them (**destructive**) |
+| `npm run seed` | Run all seeders (`db/seeders`) |
+| `npm run worker:email-campaign` | SQS worker for promotional email chunks |
+| `npm run worker:bulk-order-status-sqs` | SQS worker for async bulk order-status updates |
+| `npm run reconcile:worldpay` | One-shot Worldpay unpaid-order reconcile |
+| `npm run query:worldpay` | Query Worldpay payment state for an order |
+| `npm run recache:sitemap` | Recache sitemap URLs via Prerender |
+| `npm run append:flavour-attribute-terms` | One-off flavour/collection category helper |
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+---
 
-## Name
-Choose a self-explaining name for your project.
+## API overview
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Interactive docs: [http://localhost:5000/api-docs](http://localhost:5000/api-docs) (non-production only).
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+Authenticated routes expect:
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```
+Authorization: Bearer <jwt>
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Storefront (`/api`)
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+Mounted from `components/router.js`:
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+| Prefix | Area |
+| --- | --- |
+| `/api/auth` | Login, register, email verify, forgot/reset password, refresh token, convert guest |
+| `/api/users` | Profile, addresses, password, delete account, referrals, contact info |
+| `/api/brands`, `/api/category`, `/api/product`, `/api/deals` | Catalog, buying guides, related content, deals, filter-variants |
+| `/api/cart`, `/api/checkout`, `/api/order` | Cart, coupons, guest/logged-in checkout and orders |
+| `/api/payment` | Worldpay (`/worldpay`) and Viva Wallet (`/viva`) |
+| `/api/shipping-method` | Shipping methods |
+| `/api/loyalty-points` | Loyalty balance / redemption |
+| `/api/review`, `/api/notifications` | Reviews and notifications |
+| `/api/home`, `/api/menu`, `/api/footer` | Homepage, navigation, footer |
+| `/api/blogs`, `/api/faqs`, `/api/testimonials` | Content |
+| `/api/mailSubscription` | Newsletter subscribe / unsubscribe |
+| `/api/seo`, `/api/settings` | SEO meta, sitemap, public settings |
+| `/api/popularCategory`, `/api/shopByCategory`, `/api/entity-banners` | Merchandising |
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Guest checkout and guest coupon apply live on `/api/checkout/guest*`. Orders can be placed as a logged-in user or as a guest (`POST /api/order/guest`).
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Admin (`/api/admin`)
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+JWT admin middleware. Mounted from `components/admin/admin.route.js`:
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+| Prefix | Area |
+| --- | --- |
+| `/api/admin/auth` | Admin login / password flows |
+| `/api/admin/user`, `/api/admin/customer` | Staff and customers |
+| `/api/admin/category`, `/api/admin/brand`, `/api/admin/products` | Catalog CRUD, buying guides, related links |
+| `/api/admin/attributes`, `/api/admin/attribute-terms` | Product attributes |
+| `/api/admin/product-variants`, `/api/admin/stock-management`, `/api/admin/inventory` | Variants, stock, inventory |
+| `/api/admin/orders`, `/api/admin/transactions` | Orders, bulk status jobs, reports, transactions |
+| `/api/admin/coupons`, `/api/admin/deals`, `/api/admin/loyalty-points` | Promotions |
+| `/api/admin/banners`, `/api/admin/carousels`, `/api/admin/blog`, `/api/admin/faqs` | CMS |
+| `/api/admin/menus`, `/api/admin/footer`, `/api/admin/seo` | Navigation, footer, SEO/redirects |
+| `/api/admin/shipStation`, `/api/admin/shipStationWebhook` | Fulfilment |
+| `/api/admin/newsletter-templates`, `/api/admin/mail-subscription-settings` | Email campaigns (Stripo) and subscribers |
+| `/api/admin/dashboard`, `/api/admin/settings`, `/api/admin/contactus` | Ops |
+| `/api/admin/welcome-content`, `/api/admin/feature-content` | Homepage CMS |
+| `/api/admin/flash-news`, `/api/admin/referral-method` | Flash news, referral methods |
+| `/api/admin/popularCategory`, `/api/admin/shopByCategory` | Merchandising |
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### Internal (worker callbacks)
 
-## License
-For open source projects, say how it is licensed.
+Protected by shared secrets, not user JWTs:
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Method | Path | Secret |
+| --- | --- | --- |
+| `POST` | `/api/internal/email-campaigns/process-chunk` | `EMAIL_CHUNK_INTERNAL_KEY` |
+| `POST` | `/api/internal/bulk-order-status/process-item` | `BULK_ORDER_STATUS_INTERNAL_KEY` |
+
+---
+
+## Payments and fulfilment
+
+**Worldpay** — hosted payment + webhook at `POST /api/payment/worldpay/webhook`. Webhooks use a raw body parser (`application/vnd.worldpay.events-v1.hal+json`). Set `WORLDPAY_WEBHOOK_SECRET` when Event-Signature is enabled. Reconcile unpaid orders with `npm run reconcile:worldpay` or the (currently disabled) cron.
+
+**Viva Wallet** — order-code generation and payment details under `/api/payment/viva` and `/api/order/viva*`.
+
+**ShipStation** — admin API under `/api/admin/shipStation`. Incoming webhooks: `POST /api/admin/shipStationWebhook/webhook`. Event → order-status mapping is documented in [`components/admin/shipStationWebhook/README.md`](components/admin/shipStationWebhook/README.md).
+
+---
+
+## Workers
+
+Run as **separate processes** (not started by `npm run dev`).
+
+### Email campaign worker
+
+```bash
+npm run worker:email-campaign
+```
+
+Requires `EMAIL_CAMPAIGN_SQS_QUEUE_URL`, `EMAIL_CHUNK_INTERNAL_KEY`, and `API_BASE_URL`. Long-polls SQS and POSTs each chunk to `/api/internal/email-campaigns/process-chunk`.
+
+### Bulk order-status SQS worker
+
+```bash
+npm run worker:bulk-order-status-sqs
+```
+
+Requires `BULK_ORDER_STATUS_DELIVERY_MODE=async_sqs`, `BULK_ORDER_STATUS_SQS_QUEUE_URL`, `BULK_ORDER_STATUS_INTERNAL_KEY`, and `API_BASE_URL`. Admin enqueue: `POST /api/admin/orders/bulk-status/async`. Details: [`cron/README.md`](cron/README.md).
+
+---
+
+## Cron jobs
+
+Initialized from `cron/init.js` when the API process starts.
+
+**Enabled today**
+
+| Job | Schedule | Notes |
+| --- | --- | --- |
+| Low-stock alert | hourly (`0 * * * *`) | Emails variants at/below threshold |
+| Product-update newsletters | 09:00 daily / 10:00 Mon / 11:00 1st of month (UK) | Honours mail-subscription settings |
+| Export-file cleanup | 03:00 UK daily | Deletes old S3 user-export files |
+| Email-campaign chunk recovery | `EMAIL_CHUNK_RECOVERY_CRON` (default `*/5 * * * *`) | No-op unless `EMAIL_CAMPAIGN_SQS_QUEUE_URL` is set |
+| Bulk order-status recovery | `BULK_ORDER_STATUS_RECOVERY_CRON` (default `*/5 * * * *`) | No-op unless async SQS mode is configured |
+
+**Present but commented out in `cron/init.js`**
+
+Worldpay webhook retry, Worldpay unpaid-order reconcile, Trustpilot invitations, coupon expiration, temporary-user cleanup.
+
+---
+
+## Project layout
+
+```
+backend/
+  app.js                 Express app, CORS, Swagger, /api mount
+  bin/www                HTTP server, graceful shutdown
+  components/            Storefront + admin + internal routes
+  config/                env, DB, Passport, Swagger, AWS
+  cron/                  Scheduled jobs
+  db/migrations          Sequelize migrations
+  db/seeders             Seed / migration-from-legacy data
+  library/               Email, cache, logging, middleware
+  models/                Sequelize models
+  workers/               SQS consumers
+  scripts/               One-off operational scripts
+  utils/                 Shared helpers
+```
+
+---
+
+## Further documentation
+
+| Doc | Topic |
+| --- | --- |
+| [`.env.example`](.env.example) | All environment variables |
+| [`cron/README.md`](cron/README.md) | Bulk order-status recovery and related admin endpoints |
+| [`components/admin/shipStationWebhook/README.md`](components/admin/shipStationWebhook/README.md) | ShipStation webhook events and setup |
+| [`FILTER_VARIANTS_BY_ATTRIBUTES_API_DOCUMENTATION.md`](FILTER_VARIANTS_BY_ATTRIBUTES_API_DOCUMENTATION.md) | `POST /api/product/filter-variants` |
+| [`DEAL_FILTERING_DOCUMENTATION.md`](DEAL_FILTERING_DOCUMENTATION.md) | Deal-aware product listing filters |
+| `/api-docs` | Full OpenAPI surface (non-production) |
