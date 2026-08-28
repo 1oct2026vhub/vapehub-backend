@@ -170,7 +170,7 @@ const subscribeToStockAlert = async ({ productId, email, marketingOptIn = false,
     already_subscribed: alreadySubscribed,
     message: alreadySubscribed
       ? "You're already signed up for this product."
-      : "You're signed up. We'll email you once when this product is in stock."
+      : "You’re all set! We’ll email you when this product becomes available."
   };
 };
 
