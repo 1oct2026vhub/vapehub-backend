@@ -1195,8 +1195,11 @@ module.exports.getProductDescription = async (req, res, next) => {
 module.exports.notifyMeWhenAvailable = async (req, res) => {
     try {
         const productId = parseInt(req.params.id, 10);
-        const { email, marketing_opt_in } = req.body;
+        const { email: submittedEmail, marketing_opt_in } = req.body;
         const userId = req.user?.id || null;
+        // Use the authenticated account email when available. Guest requests
+        // must provide their own email address.
+        const email = req.user?.email || submittedEmail;
 
         const result = await subscribeToStockAlert({
             productId,

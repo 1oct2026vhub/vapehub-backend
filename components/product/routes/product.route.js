@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
+const { optionalAuthenticateJWT } = require("../../auth/middleware/authMiddleware");
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
@@ -1329,12 +1330,11 @@ router.get('/:id/description',
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
  *             properties:
  *               email:
  *                 type: string
  *                 format: email
+ *                 description: Required for guest users; omitted for authenticated users
  *               marketing_opt_in:
  *                 type: boolean
  *                 default: false
@@ -1347,9 +1347,13 @@ router.get('/:id/description',
  *         description: Product not available for stock alerts
  */
 router.post('/:id/notify-me',
+    optionalAuthenticateJWT,
     validateRequest([
         param('id').isInt().withMessage('ID must be an integer'),
-        check('email').isEmail().withMessage('A valid email address is required').normalizeEmail(),
+        check('email')
+            .optional({ nullable: true, checkFalsy: true })
+            .isEmail().withMessage('A valid email address is required')
+            .normalizeEmail(),
         check('marketing_opt_in').optional().isBoolean().withMessage('marketing_opt_in must be a boolean')
     ]),
     productController.notifyMeWhenAvailable
