@@ -245,7 +245,7 @@ Static: `/public`, `/logs`. Body size: `BODY_LIMIT` (default in example: `50mb`)
 
 ## Payments and fulfilment
 
-**Worldpay** — webhook + success/cancel as above. Reconcile: `npm run reconcile:worldpay`. Webhook retry / unpaid reconcile crons exist but are **commented out** in `cron/init.js`. Failed webhooks can sit in `payment_webhook_inbox`.
+**Worldpay** — webhook + success/cancel as above. Reconcile: `npm run reconcile:worldpay` (same logic as the Worldpay reconcile cron). Failed webhooks sit in `payment_webhook_inbox` until the webhook-retry cron (or a manual retry) processes them. See [Cron jobs](#cron-jobs).
 
 **Viva Wallet** — demo/live hosts via `VIVA_API_BASE_*`.
 
@@ -278,21 +278,91 @@ npm run worker:bulk-order-status-sqs
 
 ## Cron jobs
 
-Loaded from `cron/init.js` in the API process. Timezone: `UK_TIMEZONE` (default `Europe/London`) where the job sets it.
+Scheduled jobs live in `cron/` and are started when the API process loads `cron/init.js` (`app.js`). Uncomment the matching `require(...)` in `init.js` to load a job that is currently disabled.
 
-**Enabled**
+Jobs that pass `{ timezone }` use `UK_TIMEZONE` (default `Europe/London`). Jobs without a timezone option use the host clock.
 
-| Job | Schedule | Notes |
+### Currently loaded (`cron/init.js`)
+
+#### Low-stock alert — `cron/lowStockAlert.js`
+
+- **Schedule:** `0 * * * *` (hourly, UK)
+- **What it does:** Finds non-discontinued variants whose `stock` is ≤ `low_stock_threshold` (and ≥ 0), on non-deleted, non-discontinued products. Attaches last-28-day sales quantity/amount from `order_items` on orders in `completed` / `delivered` / `shipped`. Emails `ADMIN_EMAIL` (fallback `admin@vapehub.co.uk`) with template `INVENTORY_LOW_STOCK`.
+
+#### Product-update newsletters — `cron/productNotifications.js`
+
+Three schedules; each run only sends if `MailSubscriptionSettings` has `status: true`, `product_updates: true`, and `email_frequency` matching that slot:
+
+| Frequency | Schedule (UK) | Product window used in code |
 | --- | --- | --- |
-| Low-stock alert | hourly (`0 * * * *`) | Variants at/below threshold |
-| Product-update newsletters | 09:00 daily / 10:00 Mon / 11:00 1st (UK) | Mail-subscription settings |
-| Export-file cleanup | 03:00 UK daily | Old S3 user exports |
-| Email-campaign chunk recovery | `EMAIL_CHUNK_RECOVERY_CRON` (default `*/5 * * * *`) | No-op without `EMAIL_CAMPAIGN_SQS_QUEUE_URL` |
-| Bulk order-status recovery | `BULK_ORDER_STATUS_RECOVERY_CRON` (default `*/5 * * * *`) | No-op unless async SQS mode |
+| Daily | `0 9 * * *` (09:00) | products created in last 30 days |
+| Weekly | `0 10 * * 1` (Monday 10:00) | last 7 days |
+| Monthly | `0 11 1 * *` (1st of month 11:00) | last 30 days |
 
-**Present, commented out in `cron/init.js`**
+Sends `PRODUCT_UPDATES` to subscribed `mail_subscriptions` (not soft-deleted). Up to 12 latest `published` products. Fetches subscribers in pages of 1000; sends 50 emails concurrently with a 2s gap between batches.
 
-Worldpay webhook retry, Worldpay unpaid reconcile, Trustpilot invitations, coupon expiration, temporary-user cleanup.
+#### Export-file cleanup — `cron/cleanupExportFiles.js`
+
+- **Schedule:** `0 3 * * *` (03:00 UK)
+- **What it does:** Calls admin user-export cleanup and deletes S3 export files older than 24 hours.
+
+#### Email-campaign chunk recovery — `cron/recoverStuckEmailCampaignChunks.js`
+
+- **Schedule:** `EMAIL_CHUNK_RECOVERY_CRON` (default `*/5 * * * *`)
+- **No-op unless** `EMAIL_CAMPAIGN_SQS_QUEUE_URL` is set.
+- **What it does:** Finds `email_campaign_chunks` stuck in `processing` longer than `EMAIL_CHUNK_STALE_RESET_MINUTES` (default 15), batch 500. If `attempts` < `EMAIL_CHUNK_MAX_ATTEMPTS` (default 5): reset to `pending`, bump attempts, re-enqueue SQS. If exhausted: mark `failed` and finalize the parent campaign so it does not hang in `sending`.
+
+#### Bulk order-status recovery — `cron/recoverStuckBulkOrderStatusItems.js`
+
+- **Schedule:** `BULK_ORDER_STATUS_RECOVERY_CRON` (default `*/5 * * * *`)
+- **No-op unless** `BULK_ORDER_STATUS_DELIVERY_MODE=async_sqs` and `BULK_ORDER_STATUS_SQS_QUEUE_URL` are set.
+- **Processing recovery:** stale `processing` items (`BULK_ORDER_STATUS_STALE_RESET_MINUTES`, default 15). Skip if the order is already at the job target (or already has a ShipStation ID for packed jobs). Else reset to `pending`, increment attempts, re-enqueue. After `BULK_ORDER_STATUS_MAX_ATTEMPTS` (default 5): mark `failed` and `finalizeJobIfComplete`.
+- **Pending recovery:** re-enqueues items still `pending` older than `BULK_ORDER_STATUS_PENDING_STALE_MINUTES` (default 10), up to max attempts.
+- **Batch:** `BULK_ORDER_STATUS_RECOVERY_BATCH_LIMIT` (default 500). Related admin APIs and extra env: [`cron/README.md`](cron/README.md).
+
+### Present in `cron/` but not loaded (commented `require` in `init.js`)
+
+Enable by uncommenting the `require` in `cron/init.js`.
+
+#### Coupon expiration — `cron/couponExpiration.js`
+
+- **Schedule:** `15 0 * * *` (00:15 UK)
+- **What it does:** `Coupon.updateExpiredCoupons()` — marks coupons past their end date as expired.
+
+#### Trustpilot invitations — `cron/trustpilotInvitations.js`
+
+- **Schedule:** `30 0 * * *` (00:30 UK)
+- **What it does:** `Order.sendTrustpilotInvitationsForDeliveredOrders()`. Needs Trustpilot env (`TRUSTPILOT_API_KEY`, `TRUSTPILOT_API_SECRET`, `DOMAIN_NAME`, `TRUSTPILOT_SENDER_EMAIL`, `TRUSTPILOT_REPLYTO_EMAIL`).
+
+#### Worldpay webhook retry — `cron/retryFailedWorldpayWebhooks.js`
+
+- **Schedule:** `WORLDPAY_WEBHOOK_RETRY_CRON` (default `*/5 * * * *`)
+- **What it does:** Retries failed settlement webhooks from `payment_webhook_inbox` (`retryFailedSettlementWebhooks`). Batch `WORLDPAY_WEBHOOK_RETRY_BATCH` (default 50), max attempts `WORLDPAY_WEBHOOK_MAX_ATTEMPTS` (default 10).
+
+#### Worldpay unpaid-order reconcile — `cron/reconcileUnpaidWorldpayOrders.js`
+
+Same logic as `npm run reconcile:worldpay`.
+
+- **Schedule:** `WORLDPAY_RECONCILE_CRON` (default `*/5 * * * *`)
+- **Orphan orders:** Worldpay orders with an `order_code`, `ordered: false`, status `pending` or `cancel`, created between `WORLDPAY_RECONCILE_MIN_AGE_MINUTES` (code default/floor `2`; `.env.example` uses `5`) and `WORLDPAY_RECONCILE_MAX_AGE_DAYS` (default 7), excluding orders that already have a `COMPLETED` transaction or a `reconcile_abandoned` log. Queries Worldpay; if settled, finalizes payment (`cron:reconcile`). If still unpaid, increments attempts; after `WORLDPAY_RECONCILE_MAX_ATTEMPTS` (default 3) and `WORLDPAY_RECONCILE_CANCEL_ON_EXHAUST=true` (default), marks the order reconcile-abandoned.
+- **Post-payment recovery:** Worldpay orders already `processing` + `ordered` with a `COMPLETED` transaction but missing post-payment side effects — runs `recoverWorldpayPostPaymentEffects`.
+- **Tuning:** `WORLDPAY_RECONCILE_BATCH_LIMIT` (default 100), `WORLDPAY_RECONCILE_DRY_RUN` (default `false`).
+
+#### Temporary-user cleanup — `cron/cleanupTemporaryUsers.js`
+
+- **Schedule:** `0 2 * * *` (02:00 UK)
+- **What it does:** Soft-deletes users with `is_temporary: true` created more than 30 days ago who have **no** orders. Users with orders are kept.
+
+### One-off scripts in `cron/` (not scheduled)
+
+Not required from `init.js`. Run manually:
+
+```bash
+node cron/migrate-product-images-to-s3.js
+node cron/migrate-variant-images-to-s3.js
+```
+
+Batch-migrates product / variant images to S3 (batch 15, delays between images/batches, progress files under `logs/`). Commented suggestion in the product script is “every 30 minutes” if you ever wire it to a scheduler.
 
 ---
 
