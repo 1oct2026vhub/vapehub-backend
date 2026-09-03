@@ -11,6 +11,13 @@ const SeoService = require('../../seo/domain/seo.service');
 const { syncProductToMenus } = require('../../menu/domain/menu.controller');
 const { invalidateCachePattern, invalidateCache } = require('../../../../library/cache');
 const {
+    clearProductStickerFields,
+    parseStickerInput,
+    formatProductStickerResponse,
+    applyAutoNewSticker,
+    applyAutoNewFlavoursSticker,
+    isFlavourAttributeName,
+} = require('../../../product/helper/productSticker.helper');
     updateProductRelatedBlogs,
     getProductRelatedBlogs,
     attachRelatedBlogFields,
@@ -528,7 +535,8 @@ module.exports.getProductById = async (req, res, next) => {
                     'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'battery_capacity',  'is_discontinued',
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
-                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
+                    'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt',
+                    'sticker_name', 'sticker_background_color', 'sticker_active_from', 'sticker_active_until', 'sticker_source'
                 ]
             }),
             
@@ -763,10 +771,12 @@ module.exports.getProductById = async (req, res, next) => {
             }
         }
 
+
         // Add puff count and related blogs to the product response
         let productResponse = attachRelatedBlogFields({
             ...productData,
-            puff_count: puffCount
+            puff_count: puffCount,
+            sticker: formatProductStickerResponse(productData
         }, relatedBlogRelations);
 
         // When product is deleted, attach redirect details from Redirect table if any
@@ -1022,10 +1032,24 @@ module.exports.createProduct = async (req, res, next) => {
             category_ids,
             brand_ids,
             linked_product_ids,
+            sticker,
+            clear_sticker,
             related_blog_ids
         } = req.body;
 
         const { id: updated_by } = req.user;
+
+        let stickerFields = {};
+        try {
+            if (clear_sticker === true || sticker === null) {
+                stickerFields = clearProductStickerFields();
+            } else if (sticker && typeof sticker === 'object') {
+                stickerFields = parseStickerInput(sticker);
+            }
+        } catch (stickerError) {
+            await transaction.rollback();
+            return errorResponse(res, { message: stickerError.message }, stickerError.message, 400);
+        }
 
         // Clean the name and slug
         const cleanName = name.trim();
@@ -1186,12 +1210,18 @@ module.exports.createProduct = async (req, res, next) => {
                 vg_ratio,
                 vaping_style,
                 bottle_size,
+                updated_by,
+                ...stickerFields,
                 is_discontinued,
                 is_coming_soon: is_coming_soon ?? false,
                 updated_by
             },
             { transaction }
         );
+
+        if (!stickerFields.sticker_source && clear_sticker !== true && !sticker) {
+            await applyAutoNewSticker(product, transaction);
+        }
 
         // Create category associations
         if (category_ids && category_ids.length > 0) {
@@ -1272,12 +1302,15 @@ module.exports.createProduct = async (req, res, next) => {
             ]
         });
 
+
+        let productJson = newProduct.toJSON ? newProduct.toJSON() : newProduct;
+        productJson.sticker = formatProductStickerResponse(productJson);
+
         const relatedBlogRelations = await getProductRelatedBlogs(product.id);
         const productResponse = attachRelatedBlogFields(
-            newProduct.toJSON ? newProduct.toJSON() : newProduct,
+            productJson,
             relatedBlogRelations
         );
-
         return successResponse(res, productResponse, "Product created successfully", 201);
     } catch (error) {
         await transaction.rollback();
@@ -1344,6 +1377,8 @@ module.exports.updateProduct = async (req, res, next) => {
             category_ids,
             brand_ids,
             linked_product_ids,
+            sticker,
+            clear_sticker,
             related_blog_ids
         } = req.body;
 
@@ -1578,6 +1613,19 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();
+        }
+
+        if (clear_sticker === true || sticker === null) {
+            Object.assign(updatedFields, clearProductStickerFields());
+        } else if (sticker !== undefined) {
+            try {
+                if (sticker && typeof sticker === 'object') {
+                    Object.assign(updatedFields, parseStickerInput(sticker));
+                }
+            } catch (stickerError) {
+                await transaction.rollback();
+                return errorResponse(res, { message: stickerError.message }, stickerError.message, 400);
+            }
         }
 
         updatedFields.updated_by = updated_by;
@@ -2048,11 +2096,15 @@ module.exports.updateProduct = async (req, res, next) => {
         }
 
         // Include redirect information in response if product is deleted
+
+        let productJson =  updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct;
+        productJson.sticker = formatProductStickerResponse(responseData);
         const relatedBlogRelations = await getProductRelatedBlogs(id);
         let responseData = attachRelatedBlogFields(
-            updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct,
+            productJson,
             relatedBlogRelations
         );
+
         if (updatedProduct.deletedAt) {
             const redirect = await Redirect.findOne({
                 where: { entity_type: 'product', slug: updatedProduct.slug, status: 'active' },
@@ -3204,6 +3256,8 @@ const processAttributeRow = async ({ product_slug, attribute_slug, term_slugs, i
                     used_in_variation: used_in_variation === 'true' || used_in_variation === true,
                     updated_by
                 });
+            } else if (isFlavourAttributeName(attribute.name)) {
+                await applyAutoNewFlavoursSticker(product.id);
             }
         }
 
