@@ -10,6 +10,7 @@ const SlugManager = require("../../../../utils/slugManager");
 const { sequelize } = require("../../../../models");
 
 const slugManager = new SlugManager(SlugRelation);
+const { applyAutoNewFlavoursStickerForAttributeIds } = require('../../../product/helper/productSticker.helper');
 
 const { recacheProductFireAndForget } = require('../../../../library/prerender');
 
@@ -116,6 +117,12 @@ module.exports.addProductAttributes = async (req, res) => {
                     validate: true,
                     updateOnDuplicate: ['is_visible_page', 'used_in_variation', 'updated_by']
                 });
+
+                await applyAutoNewFlavoursStickerForAttributeIds(
+                    product_id,
+                    newAttributes.map((attr) => attr.attribute_id),
+                    transaction
+                );
             }
         }
 
@@ -370,6 +377,12 @@ module.exports.updateProductAttributes = async (req, res) => {
                     transaction,
                     validate: true
                 });
+
+                await applyAutoNewFlavoursStickerForAttributeIds(
+                    product_id,
+                    termsToAdd.map((term) => term.attribute_id),
+                    transaction
+                );
             }
         }
 
