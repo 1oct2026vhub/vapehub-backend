@@ -18,6 +18,7 @@ const {
     applyAutoNewFlavoursSticker,
     isFlavourAttributeName,
 } = require('../../../product/helper/productSticker.helper');
+const {
     updateProductRelatedBlogs,
     getProductRelatedBlogs,
     attachRelatedBlogFields,
@@ -776,7 +777,7 @@ module.exports.getProductById = async (req, res, next) => {
         let productResponse = attachRelatedBlogFields({
             ...productData,
             puff_count: puffCount,
-            sticker: formatProductStickerResponse(productData
+            sticker: formatProductStickerResponse(productData)
         }, relatedBlogRelations);
 
         // When product is deleted, attach redirect details from Redirect table if any
@@ -2098,7 +2099,7 @@ module.exports.updateProduct = async (req, res, next) => {
         // Include redirect information in response if product is deleted
 
         let productJson =  updatedProduct.toJSON ? updatedProduct.toJSON() : updatedProduct;
-        productJson.sticker = formatProductStickerResponse(responseData);
+        productJson.sticker = formatProductStickerResponse(productJson);
         const relatedBlogRelations = await getProductRelatedBlogs(id);
         let responseData = attachRelatedBlogFields(
             productJson,
