@@ -33,6 +33,7 @@ async function getTrendingProducts(limit = 10) {
       WHERE 
         o.createdAt BETWEEN :startOfMonth AND :endOfMonth
         AND p.status = 'published'
+        AND p.is_coming_soon = false
         AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
       GROUP BY 
@@ -267,6 +268,7 @@ const fetchProducts = async (query, status = 'published') => {
       brand,
       variant,
       is_new,
+      is_coming_soon,
       source,
       deal_id
     } = query;
@@ -580,6 +582,12 @@ const fetchProducts = async (query, status = 'published') => {
         GROUP BY pv_min.product_id
       ) price_stats ON p.id = price_stats.product_id`;
 
+    // Coming Soon page: is_coming_soon=true. All other lists (incl. New Products): exclude.
+    const comingSoonSql =
+      is_coming_soon === true || is_coming_soon === 'true' || is_coming_soon === '1'
+        ? 'AND p.is_coming_soon = true'
+        : 'AND p.is_coming_soon = false';
+
     // OPTIMIZATION: Convert to raw SQL and execute in parallel to reduce round trips
     const [totalCount, products] = await Promise.all([
       // 1. Get total count with raw SQL (includes variant filtering like original)
@@ -588,6 +596,7 @@ const fetchProducts = async (query, status = 'published') => {
         FROM products p
         WHERE p.deletedAt IS NULL
         AND p.status = :status
+        ${comingSoonSql}
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
         ${categories ? (() => {
           const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
@@ -650,7 +659,7 @@ const fetchProducts = async (query, status = 'published') => {
       sequelize.query(`
         SELECT DISTINCT
           p.id, p.updated_by, p.name, p.slug, p.sku, p.price, p.discount_price,
-          p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity,
+          p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.battery_capacity,
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
@@ -664,6 +673,7 @@ const fetchProducts = async (query, status = 'published') => {
         ${minPriceJoin}
         WHERE p.deletedAt IS NULL
         AND p.status = :status
+        ${comingSoonSql}
         ${keyword ? 'AND p.name LIKE :keyword' : ''}
         ${categories ? (() => {
           const categoryIds = categories.split(',').map(Number).filter(id => !isNaN(id));
@@ -716,7 +726,7 @@ const fetchProducts = async (query, status = 'published') => {
             ? `order_count ${orderValue}` 
             : sort_by === 'price' 
             ? `min_price ${orderValue}` 
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
@@ -1162,12 +1172,11 @@ const fetchProducts = async (query, status = 'published') => {
         }
       }
 
-      // Add out_of_stock flag
+      // Add out_of_stock flag (low_stock still means sellable inventory)
       const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
-        !variant.is_discontinued &&
         variant.stock > 0 &&
-        variant.stock_status === stockStatus.IN_STOCK &&
+        (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );
@@ -1257,7 +1266,7 @@ const fetchProducts = async (query, status = 'published') => {
         puff_count: puffCount,
         flavors: flavorTerms,
         flavor_count,
-        out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
+        out_of_stock: !hasInStockVariant,
         min_price_variant: product.min_price_variant || null,
         order_count: product.order_count ? parseInt(product.order_count) : 0,
         reviews: processedReviews,
@@ -1274,17 +1283,20 @@ const fetchProducts = async (query, status = 'published') => {
     // Build base product filter conditions for SQL queries
     let productFilterConditions = [];
     let productFilterParams = {};
+
+    if (is_coming_soon === true || is_coming_soon === 'true' || is_coming_soon === '1') {
+      productFilterConditions.push("p.is_coming_soon = true");
+    } else {
+      productFilterConditions.push("p.is_coming_soon = false");
+    }
     
     if (keyword) {
       productFilterConditions.push("p.name LIKE :keyword");
       productFilterParams.keyword = `%${keyword}%`;
     }
     
-    // Note: is_new doesn't filter products in SQL - it only affects sorting and tagging
-    
-     // Note: is_new affects sorting and tagging but doesn't filter products
-     // When is_new=true: Shows all products sorted by createdAt DESC, tags recent ones as "new"
-     // When is_new=false or not provided: Shows all products with normal sorting
+    // Note: is_new doesn't filter products in SQL - it only affects "New" tagging in the response
+    // Sorting follows sort_by/order (defaults apply when omitted)
     
     // Add deal filter condition
     if (deal_id) {
@@ -1905,6 +1917,7 @@ const fetchProductsCached = async (query, status = 'published') => {
     brand: query.brand,
     variant: query.variant,
     is_new: query.is_new,
+    is_coming_soon: query.is_coming_soon,
     source: query.source,
     deal_id: query.deal_id,
     status
@@ -1912,5 +1925,46 @@ const fetchProductsCached = async (query, status = 'published') => {
   return cacheOrFetch(cacheKey, () => fetchProducts(query, status), 30);
 };
 
-module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern };
+/**
+ * Hide selector when there is exactly 1 active variant and none of that
+ * variant's attributes are both used for variations and page-visible
+ * (same filters as PDP available_terms / picker).
+ * Display-only attrs (used_in_variation = false) do not keep the selector open.
+ *
+ * @param {Array} activeVariants - variants with variantAttributes / attributes
+ * @param {Array} productAttributeTerms - ALL product_attribute_terms for the product
+ */
+function shouldHideVariantSelector(activeVariants = [], productAttributeTerms = []) {
+  if (!Array.isArray(activeVariants) || activeVariants.length !== 1) {
+    return false;
+  }
+
+  const variant = activeVariants[0];
+  const variantAttrs =
+    variant.variantAttributes ||
+    variant.attributes ||
+    [];
+
+  if (variantAttrs.length === 0) return true;
+
+  const pickerVisibleByAttrTerm = new Map();
+  for (const pat of productAttributeTerms) {
+    const attrId = pat.attribute_id ?? pat.attr_id;
+    const termId = pat.term_id;
+    if (attrId == null || termId == null) continue;
+    const usedInVariation = pat.used_in_variation === true || pat.used_in_variation === 1;
+    const isVisiblePage = pat.is_visible_page === true || pat.is_visible_page === 1;
+    pickerVisibleByAttrTerm.set(`${attrId}-${termId}`, usedInVariation && isVisiblePage);
+  }
+
+  const hasPickerVisibleVariantAttr = variantAttrs.some((va) => {
+    const attrId = va.attribute?.id ?? va.attribute_id;
+    const termId = va.term?.id ?? va.term_id;
+    return pickerVisibleByAttrTerm.get(`${attrId}-${termId}`) === true;
+  });
+
+  return !hasPickerVisibleVariantAttr;
+}
+
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern, shouldHideVariantSelector };
 

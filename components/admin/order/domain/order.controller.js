@@ -7,7 +7,104 @@ const { orderStatusEnums, orderStatus} = require('../../../../config/constants')
 const { formatNumber } = require('../../../../utils/dateUtils');
 const { createNotification } = require('../../../notification/helper/notification.helper');
 const { createShipStationOrder } = require('../../shipStation/domain/shipStation.controller');
-const shipstationLogger = require('../../../../utils/shipstationLogger');
+const { enrichOrderItemsWithHideVariantSelector } = require('../../../order/helper/orderItemDisplayName.helper');
+const {
+    ASYNC_BULK_MAX_ORDERS,
+    createBulkOrderStatusJob,
+    getBulkOrderStatusJobDetails,
+    listBulkOrderStatusJobs,
+    getBulkOrderStatusJobOrders,
+    getActiveBulkOrderItems,
+} = require('../helper/bulkOrderStatusJob.helper');
+async function safeRollback(transaction) {
+    if (transaction && !transaction.finished) {
+        await transaction.rollback();
+    }
+}
+
+function getOrderCustomerEmail(order) {
+    return order.user?.email || order.email || null;
+}
+
+const ORDER_REPORT_CHUNK_SIZE = 500;
+const ORDER_REPORT_MAX_DAYS = 90;
+
+const ORDER_REPORT_INCLUDES = [
+    {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
+        required: false,
+        paranoid: false
+    },
+    {
+        model: OrderAddress,
+        as: 'orderShippingAddress',
+        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
+        required: false
+    },
+    {
+        model: OrderAddress,
+        as: 'orderBillingAddress',
+        attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
+        required: false
+    },
+    {
+        model: OrderItem,
+        as: 'orderItems',
+        include: [
+            {
+                model: Product,
+                as: 'product',
+                attributes: ['name'],
+                required: false
+            },
+            {
+                model: ProductVariant,
+                as: 'variant',
+                attributes: ['price'],
+                required: false
+            }
+        ]
+    }
+];
+
+function formatOrderReportRow(order) {
+    const customerName = order.user
+        ? `${order.user.first_name || ''} ${order.user.last_name || ''}`.trim()
+        : 'N/A';
+    const customerEmail = order.user?.email || 'N/A';
+    const customerPhone = order.user?.phone || 'N/A';
+
+    const shippingAddress = order.orderShippingAddress
+        ? `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || order.orderShippingAddress.region || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim()
+        : 'N/A';
+
+    const billingAddress = order.orderBillingAddress
+        ? `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || order.orderBillingAddress.region || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim()
+        : 'N/A';
+
+    const productDetails = order.orderItems?.map((item) => {
+        const productName = item.product?.name || 'Unknown Product';
+        const quantity = item.quantity || 0;
+        const price = item.variant?.price || 0;
+        return `${productName} (${quantity}x) - ${price}`;
+    }).join('\n') || 'N/A';
+
+    return {
+        orderId: order.id,
+        orderUniqueId: order.order_unique_id,
+        orderDate: moment(order.createdAt).format('YYYY-MM-DD HH:mm:ss'),
+        orderStatus: order.status,
+        customerName,
+        customerEmail,
+        customerPhone,
+        shippingAddress,
+        billingAddress,
+        productDetails,
+        totalAmount: order.total
+    };
+}
 
 /**
  * List all orders with filtering and pagination
@@ -34,7 +131,9 @@ module.exports.listAllOrders = async (req, res, next) => {
             limit = 10
         } = req.query;
 
-        const offset = (page - 1) * limit;
+        const parsedLimit = parseInt(limit);
+        const parsedPage = parseInt(page);
+        const offset = (parsedPage - 1) * parsedLimit;
         let whereCondition = {};
 
         // Status filter
@@ -131,8 +230,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         orders: [],
                         pagination: {
                             total: 0,
-                            page: parseInt(page),
-                            limit: parseInt(limit),
+                            page: parsedPage,
+                            limit: parsedLimit,
                             total_pages: 0
                         }
                     }, 'Success');
@@ -165,8 +264,8 @@ module.exports.listAllOrders = async (req, res, next) => {
                         orders: [],
                         pagination: {
                             total: 0,
-                            page: parseInt(page),
-                            limit: parseInt(limit),
+                            page: parsedPage,
+                            limit: parsedLimit,
                             total_pages: 0
                         }
                     }, 'Success');
@@ -174,98 +273,98 @@ module.exports.listAllOrders = async (req, res, next) => {
             }
         }
         
-        // Get total count separately to ensure accuracy
-        const totalCount = await Order.count({
-            where: whereCondition
-        });
-        
-        // Get orders with pagination
-        const orders = await Order.findAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
-                    required: false,
-                    paranoid: false
-                },
-                {
-                    model: UserAddress,
-                    as: 'shippingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
-                    required: false
-                },
-                {
-                    model: UserAddress,
-                    as: 'billingAddress',
-                    attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
-                    required: false
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['id', 'name', 'slug', 'sku'],
-                            required: false,
-                            paranoid: false,
-                            include: [
-                                {
-                                    model: ProductImage,
-                                    as: 'ProductImages',
-                                    attributes: ['id', 'image_url', 'is_primary'],
-                                    where: { is_primary: true },
-                                    required: false
-                                }
-                            ]
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
-                            required: false,
-                            paranoid: false,
-                            where: {
-                                id: sequelize.col('orderItems.variant_id')
+        const orderListIncludes = [
+            {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'profile_pic_url'],
+                required: false,
+                paranoid: false
+            },
+            {
+                model: UserAddress,
+                as: 'shippingAddress',
+                attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                required: false
+            },
+            {
+                model: UserAddress,
+                as: 'billingAddress',
+                attributes: ['id', 'name', 'last_name', 'company_name', 'country', 'street', 'apartment', 'town', 'county', 'post_code', 'phone'],
+                required: false
+            },
+            {
+                model: OrderItem,
+                as: 'orderItems',
+                separate: true,
+                include: [
+                    {
+                        model: Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'slug', 'sku'],
+                        required: false,
+                        paranoid: false,
+                        include: [
+                            {
+                                model: ProductImage,
+                                as: 'ProductImages',
+                                attributes: ['id', 'image_url', 'is_primary'],
+                                where: { is_primary: true },
+                                required: false
+                            }
+                        ]
+                    },
+                    {
+                        model: ProductVariant,
+                        as: 'variant',
+                        attributes: ['id', 'barcode', 'price', 'slug', 'sku'],
+                        required: false,
+                        paranoid: false,
+                        include: [
+                            {
+                                model: ProductVariantImage,
+                                as: 'variantImages',
+                                attributes: ['id', 'image_url', 'is_primary'],
+                                where: { is_primary: true },
+                                required: false
                             },
-                            include: [
-                                {
-                                    model: ProductVariantImage,
-                                    as: 'variantImages',
-                                    attributes: ['id', 'image_url', 'is_primary'],
-                                    where: { is_primary: true },
-                                    required: false
-                                },
-                                {
-                                    model: ProductVariantAttribute,
-                                    as: 'variantAttributes',
-                                    paranoid: false,
-                                    attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
-                                    include: [
-                                        { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
-                                        { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
-                                    ]
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            order: [['createdAt', 'DESC']],
-            limit: parseInt(limit),
-            offset: parseInt(offset)
-        });
+                            {
+                                model: ProductVariantAttribute,
+                                as: 'variantAttributes',
+                                paranoid: false,
+                                attributes: ['id', 'variant_id', 'attribute_id', 'term_id', 'created_at', 'updated_at'],
+                                include: [
+                                    { model: Attribute, as: 'attribute', paranoid: false, attributes: ['id', 'name'] },
+                                    { model: AttributeTerm, as: 'term', paranoid: false, attributes: ['id', 'attribute_id', 'name'] }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const [totalCount, orders] = await Promise.all([
+            Order.count({ where: whereCondition }),
+            Order.findAll({
+                where: whereCondition,
+                include: orderListIncludes,
+                order: [['createdAt', 'DESC']],
+                limit: parsedLimit,
+                offset
+            })
+        ]);
+
+        const allOrderItems = orders.flatMap((ord) => ord.orderItems || []);
+        await enrichOrderItemsWithHideVariantSelector(allOrderItems);
 
         const response = {
             orders: orders,
             pagination: {
                 total: totalCount,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total_pages: Math.ceil(totalCount / limit)
+                page: parsedPage,
+                limit: parsedLimit,
+                total_pages: Math.ceil(totalCount / parsedLimit)
             }
         };
 
@@ -320,9 +419,6 @@ module.exports.getOrderById = async (req, res, next) => {
                             as: 'variant',
                             attributes: ['id', 'barcode', 'price', 'stock', 'slug', 'sku'],
                             paranoid: false,
-                            where: {
-                                id: { [Op.col]: 'orderItems.variant_id' }
-                            },
                             include: [
                                 {
                                     model: ProductVariantImage,
@@ -400,6 +496,8 @@ module.exports.getOrderById = async (req, res, next) => {
 
         // Get the status timeline
         const statusTimeline = await order.getStatusTimeline();
+
+        await enrichOrderItemsWithHideVariantSelector(order.orderItems || []);
 
         // Add status timeline to the response
         const orderResponse = order.toJSON();
@@ -614,247 +712,380 @@ module.exports.bulkUpdateOrderStatus = async (req, res, next) => {
             throw error;
         }
 
-        // Use transaction for bulk update
-        const transaction = await sequelize.transaction();
-
-        try {
-            // Find all orders
-            const orders = await Order.findAll({
-                where: {
-                    id: { [Op.in]: order_ids }
-                },
+        const bulkOrderIncludes = [
+            {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'first_name', 'last_name', 'email'],
+                paranoid: false
+            },
+            {
+                model: OrderItem,
+                as: 'orderItems',
+                attributes: ['id', 'quantity', 'unit_price'],
                 include: [
                     {
-                        model: User,
-                        as: 'user',
-                        attributes: ['id', 'first_name', 'last_name', 'email'],
-                        paranoid: false
+                        model: Product,
+                        as: 'product',
+                        attributes: ['id', 'name', 'sku', 'slug']
                     },
                     {
-                        model: OrderItem,
-                        as: 'orderItems',
-                        attributes: ['id', 'quantity', 'unit_price'],
+                        model: ProductVariant,
+                        as: 'variant',
+                        attributes: ['id', 'stock', 'sku', 'slug', 'weight'],
                         include: [
                             {
-                                model: Product,
-                                as: 'product',
-                                attributes: ['id', 'name', 'sku', 'slug']
-                            },
-                            {
-                                model: ProductVariant,
-                                as: 'variant',
-                                attributes: ['id', 'stock', 'sku', 'slug', 'weight'],
+                                model: ProductVariantAttribute,
+                                as: 'variantAttributes',
+                                paranoid: false,
+                                attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
                                 include: [
                                     {
-                                        model: ProductVariantAttribute,
-                                        as: 'variantAttributes',
+                                        model: Attribute,
+                                        as: 'attribute',
                                         paranoid: false,
-                                        attributes: ['id', 'variant_id', 'attribute_id', 'term_id'],
-                                        include: [
-                                            {
-                                                model: Attribute,
-                                                as: 'attribute',
-                                                paranoid: false,
-                                                attributes: ['id', 'name']
-                                            },
-                                            {
-                                                model: AttributeTerm,
-                                                as: 'term',
-                                                paranoid: false,
-                                                attributes: ['id', 'attribute_id', 'name']
-                                            }
-                                        ]
+                                        attributes: ['id', 'name']
+                                    },
+                                    {
+                                        model: AttributeTerm,
+                                        as: 'term',
+                                        paranoid: false,
+                                        attributes: ['id', 'attribute_id', 'name']
                                     }
                                 ]
                             }
                         ]
-                    },
-                    {
-                        model: ShippingMethod,
-                        as: 'shippingMethod',
-                        attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderShippingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
-                    },
-                    {
-                        model: OrderAddress,
-                        as: 'orderBillingAddress',
-                        attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
                     }
-                ],
-                transaction
-            });
-
-            const foundOrderIds = orders.map(order => order.id);
-            const missingOrderIds = order_ids.filter(id => !foundOrderIds.includes(id));
-
-            if (missingOrderIds.length > 0) {
-                await transaction.rollback();
-                const error = new Error('Some orders not found');
-                error.statusCode = 404;
-                error.missingOrderIds = missingOrderIds;
-                throw error;
+                ]
+            },
+            {
+                model: ShippingMethod,
+                as: 'shippingMethod',
+                attributes: ['id', 'shipping_method', 'shipping_cost', 'service_code', 'carrier_code', 'requestedShippingService']
+            },
+            {
+                model: OrderAddress,
+                as: 'orderShippingAddress',
+                attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
+            },
+            {
+                model: OrderAddress,
+                as: 'orderBillingAddress',
+                attributes: ['id', 'name', 'last_name', 'street', 'town', 'region', 'post_code', 'phone']
             }
+        ];
 
-            const results = [];
-            const errors = [];
+        const orders = await Order.findAll({
+            where: {
+                id: { [Op.in]: order_ids }
+            },
+            include: bulkOrderIncludes
+        });
 
-            // Step 1: For "packed" status, create ShipStation orders first (in parallel for efficiency)
-            // This happens outside transaction to avoid holding it during API calls
-            const shipStationPromises = [];
-            const shipStationMap = new Map(); // Map order.id -> shipStationPromise index
-            
-            if (status === orderStatus.PACKED) {
-                for (let i = 0; i < orders.length; i++) {
-                    const order = orders[i];
-                    
-                    // Only create ShipStation order if it doesn't already exist
-                    if (!order.shipstation_order_id) {
-                        const promise = createShipStationOrder(order)
-                            .then(response => ({ success: true, response, order }))
-                            .catch(error => ({ success: false, error, order }));
-                        
-                        shipStationPromises.push(promise);
-                        shipStationMap.set(order.id, shipStationPromises.length - 1);
-                    }
-                }
-            }
+        const foundOrderIds = orders.map(order => order.id);
+        const missingOrderIds = order_ids.filter(id => !foundOrderIds.includes(id));
 
-            // Wait for all ShipStation creations to complete (non-blocking for transaction)
-            const shipStationResults = await Promise.allSettled(shipStationPromises);
-
-            // Step 2: Process each order - only update status if ShipStation creation succeeded (if required)
-            for (const order of orders) {
-                try {
-                    // Check ShipStation creation result if status is "packed"
-                    let shipStationResponse = null;
-                    let shipStationError = null;
-                    
-                    if (status === orderStatus.PACKED) {
-                        if (order.shipstation_order_id) {
-                            // Order already has ShipStation ID, proceed with status update
-                            shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
-                        } else {
-                            // Check if ShipStation creation was attempted and succeeded
-                            const promiseIndex = shipStationMap.get(order.id);
-                            if (promiseIndex !== undefined) {
-                                const result = shipStationResults[promiseIndex];
-                                
-                                if (result.status === 'fulfilled' && result.value.success) {
-                                    shipStationResponse = result.value.response;
-                                    // Reload order to get updated shipstation_order_id
-                                    await order.reload();
-                                } else {
-                                    // ShipStation creation failed - don't update order status
-                                    const errorMsg = result.status === 'fulfilled' 
-                                        ? (result.value.error?.message || result.value.error?.toString() || 'Unknown error')
-                                        : result.reason?.message || result.reason?.toString() || 'Unknown error';
-                                    
-                                    shipStationError = errorMsg;
-                                    console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
-                                    
-                                    errors.push({
-                                        order_id: order.id,
-                                        order_unique_id: order.order_unique_id,
-                                        error: `Failed to create ShipStation order: ${errorMsg}`,
-                                        status: order.status // Keep original status
-                                    });
-                                    continue; // Skip to next order without updating status
-                                }
-                            }
-                        }
-                    }
-
-                    // Update order status (only reached if ShipStation creation succeeded or not needed)
-                    await order.update({
-                        status: status,
-                        updated_by: user_id
-                    }, {
-                        isAdmin: true,
-                        userId: user_id,
-                        transaction
-                    });
-
-                    // Create notification for order status change
-                    await createNotification({
-                        userId: order.user_id,
-                        type: 'system',
-                        action: 'alert',
-                        data: {
-                            message: `Your order #${order.order_unique_id} status has been updated to ${status}`
-                        },
-                        title: 'Order Status Updated',
-                        url: `/order-details/${order.id}`
-                    });
-
-                    // Handle stock updates for cancelled orders
-                    if (status === orderStatus.CANCEL) {
-                        for (const item of order.orderItems) {
-                            if (item.variant) {
-                                await item.variant.increment('stock', { 
-                                    by: item.quantity 
-                                }, { transaction });
-                            }
-                        }
-                    }
-
-                    results.push({
-                        order_id: order.id,
-                        order_unique_id: order.order_unique_id,
-                        status: status,
-                        success: true,
-                        shipstation_data: shipStationResponse ? {
-                            order_id: shipStationResponse.orderResponse?.orderId,
-                            label_data: shipStationResponse.labelResponse ? {
-                                shipment_id: shipStationResponse.labelResponse.shipmentId,
-                                tracking_number: shipStationResponse.labelResponse.trackingNumber,
-                                shipment_cost: shipStationResponse.labelResponse.shipmentCost
-                            } : null
-                        } : null
-                    });
-                } catch (orderError) {
-                    console.error(`Error updating order ${order.id}:`, orderError);
-                    errors.push({
-                        order_id: order.id,
-                        order_unique_id: order.order_unique_id,
-                        error: orderError.message,
-                        status: order.status // Keep original status
-                    });
-                }
-            }
-
-            // If all updates failed, rollback
-            if (results.length === 0 && errors.length > 0) {
-                await transaction.rollback();
-                const error = new Error('All order updates failed');
-                error.statusCode = 500;
-                error.errors = errors;
-                throw error;
-            }
-
-            // Commit transaction if at least one update succeeded
-            await transaction.commit();
-
-            const response = {
-                total: order_ids.length,
-                successful: results.length,
-                failed: errors.length,
-                status: status,
-                results: results,
-                errors: errors
-            };
-
-            const message = `Successfully updated ${results.length} out of ${order_ids.length} orders`;
-            successResponse(res, response, message);
-        } catch (error) {
-            await transaction.rollback();
+        if (missingOrderIds.length > 0) {
+            const error = new Error('Some orders not found');
+            error.statusCode = 404;
+            error.missingOrderIds = missingOrderIds;
             throw error;
         }
+
+        const results = [];
+        const errors = [];
+
+        // Step 1: ShipStation API calls — outside any DB transaction
+        const shipStationResultsByOrderId = new Map();
+
+        if (status === orderStatus.PACKED) {
+            const ordersNeedingShipStation = [];
+
+            for (const order of orders) {
+                if (order.shipstation_order_id) {
+                    continue;
+                }
+
+                if (!getOrderCustomerEmail(order)) {
+                    shipStationResultsByOrderId.set(order.id, {
+                        success: false,
+                        error: new Error('Invalid order data: missing customer email')
+                    });
+                    continue;
+                }
+
+                ordersNeedingShipStation.push(order);
+            }
+
+            for (const order of ordersNeedingShipStation) {
+                try {
+                    const response = await createShipStationOrder(order);
+                    shipStationResultsByOrderId.set(order.id, { success: true, response });
+                } catch (error) {
+                    shipStationResultsByOrderId.set(order.id, { success: false, error });
+                }
+            }
+        }
+
+        // Step 2: Per-order DB updates in short transactions
+        for (const order of orders) {
+            let shipStationResponse = null;
+
+            if (status === orderStatus.PACKED) {
+                if (order.shipstation_order_id) {
+                    shipStationResponse = { orderResponse: { orderId: order.shipstation_order_id } };
+                } else {
+                    const result = shipStationResultsByOrderId.get(order.id);
+                    if (result) {
+                        if (!result.success) {
+                            const errorMsg = result.error?.message || result.error?.toString() || 'Unknown error';
+                            console.error(`ShipStation order creation failed for order ${order.id}:`, errorMsg);
+                            errors.push({
+                                order_id: order.id,
+                                order_unique_id: order.order_unique_id,
+                                error: `Failed to create ShipStation order: ${errorMsg}`,
+                                status: order.status
+                            });
+                            continue;
+                        }
+                        shipStationResponse = result.response;
+                    }
+                }
+            }
+
+            const transaction = await sequelize.transaction();
+            try {
+                if (status === orderStatus.PACKED && !order.shipstation_order_id) {
+                    await order.reload({ transaction });
+                }
+
+                await order.update({
+                    status: status,
+                    updated_by: user_id
+                }, {
+                    isAdmin: true,
+                    userId: user_id,
+                    transaction
+                });
+
+                if (status === orderStatus.CANCEL) {
+                    for (const item of order.orderItems) {
+                        if (item.variant) {
+                            await item.variant.increment('stock', {
+                                by: item.quantity
+                            }, { transaction });
+                        }
+                    }
+                }
+
+                await transaction.commit();
+
+                await createNotification({
+                    userId: order.user_id,
+                    type: 'system',
+                    action: 'alert',
+                    data: {
+                        message: `Your order #${order.order_unique_id} status has been updated to ${status}`
+                    },
+                    title: 'Order Status Updated',
+                    url: `/order-details/${order.id}`
+                });
+
+                results.push({
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    status: status,
+                    success: true,
+                    shipstation_data: shipStationResponse ? {
+                        order_id: shipStationResponse.orderResponse?.orderId,
+                        label_data: shipStationResponse.labelResponse ? {
+                            shipment_id: shipStationResponse.labelResponse.shipmentId,
+                            tracking_number: shipStationResponse.labelResponse.trackingNumber,
+                            shipment_cost: shipStationResponse.labelResponse.shipmentCost
+                        } : null
+                    } : null
+                });
+            } catch (orderError) {
+                await safeRollback(transaction);
+                console.error(`Error updating order ${order.id}:`, orderError);
+                errors.push({
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    error: orderError.message,
+                    status: order.status
+                });
+            }
+        }
+
+        if (results.length === 0 && errors.length > 0) {
+            return successResponse(res, {
+                total: order_ids.length,
+                successful: 0,
+                failed: errors.length,
+                status: status,
+                results: [],
+                errors: errors
+            }, 'All order updates failed');
+        }
+
+        const response = {
+            total: order_ids.length,
+            successful: results.length,
+            failed: errors.length,
+            status: status,
+            results: results,
+            errors: errors
+        };
+
+        const message = `Successfully updated ${results.length} out of ${order_ids.length} orders`;
+        successResponse(res, response, message);
     } catch (error) {
         console.error("bulkUpdateOrderStatus error:", error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.bulkUpdateOrderStatusAsync = async (req, res, next) => {
+    try {
+        const { order_ids, status } = req.body;
+        const user_id = req?.user?.id;
+
+        if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
+            const error = new Error('order_ids array is required and must not be empty');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (order_ids.length > ASYNC_BULK_MAX_ORDERS) {
+            const error = new Error(`Maximum ${ASYNC_BULK_MAX_ORDERS} orders can be queued at once`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!status || !Object.values(orderStatusEnums).includes(status)) {
+            const error = new Error('Invalid order status');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const invalidIds = order_ids.filter(id => !(Number.isInteger(id) && id > 0));
+        if (invalidIds.length > 0) {
+            const error = new Error('All order IDs must be positive integers');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const job = await createBulkOrderStatusJob({
+            orderIds: [...new Set(order_ids)],
+            status,
+            userId: user_id,
+        });
+
+        return successResponse(res, {
+            job_id: job.id,
+            job_key: job.job_key,
+            order_count: job.total,
+            total: job.total,
+            status: job.status,
+            target_status: job.target_status,
+        }, 'Bulk status update queued', 202);
+    } catch (error) {
+        console.error('bulkUpdateOrderStatusAsync error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.listBulkOrderStatusJobs = async (req, res) => {
+    try {
+        const result = await listBulkOrderStatusJobs({
+            status: req.query.status,
+            startDate: req.query.start_date,
+            endDate: req.query.end_date,
+            date: req.query.date,
+            page: req.query.page,
+            limit: req.query.limit,
+            sort: req.query.sort,
+            order: req.query.order,
+        });
+
+        return successResponse(res, result, 'Bulk order status jobs retrieved');
+    } catch (error) {
+        console.error('listBulkOrderStatusJobs error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getBulkOrderStatusJob = async (req, res, next) => {
+    try {
+        const jobId = Number(req.params.id);
+        if (!Number.isInteger(jobId) || jobId <= 0) {
+            const error = new Error('Invalid job ID');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const job = await getBulkOrderStatusJobDetails(jobId);
+        if (!job) {
+            const error = new Error('Bulk order status job not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        return successResponse(res, job, 'Bulk order status job retrieved');
+    } catch (error) {
+        console.error('getBulkOrderStatusJob error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getBulkOrderStatusJobOrders = async (req, res) => {
+    try {
+        const jobId = Number(req.params.id);
+        if (!Number.isInteger(jobId) || jobId <= 0) {
+            const error = new Error('Invalid job ID');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const result = await getBulkOrderStatusJobOrders(jobId, {
+            itemStatus: req.query.item_status,
+            page: req.query.page,
+            limit: req.query.limit,
+            search: req.query.search,
+        });
+
+        if (result?.invalidItemStatus) {
+            const error = new Error('Invalid item_status filter');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!result) {
+            const error = new Error('Bulk order status job not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        return successResponse(res, result, 'Bulk order status job orders retrieved');
+    } catch (error) {
+        console.error('getBulkOrderStatusJobOrders error:', error);
+        return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.getActiveBulkOrderStatusItems = async (req, res) => {
+    try {
+        const { target_status: targetStatus } = req.query;
+        if (targetStatus && !Object.values(orderStatusEnums).includes(targetStatus)) {
+            const error = new Error('Invalid target_status');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const result = await getActiveBulkOrderItems({ targetStatus });
+        return successResponse(res, result, 'Active bulk order status items retrieved');
+    } catch (error) {
+        console.error('getActiveBulkOrderStatusItems error:', error);
         return errorResponse(res, error, error.message);
     }
 };
@@ -929,73 +1160,51 @@ module.exports.generateOrderReport = async (req, res, next) => {
             start_date, 
             end_date 
         } = req.query;
-        console.log(req.query);
+
+        if (!start_date || !end_date) {
+            return errorResponse(res, {
+                message: 'start_date and end_date are required'
+            }, 'Bad Request', 400);
+        }
+
+        const rangeDays = moment(end_date).diff(moment(start_date), 'days');
+        if (rangeDays < 0) {
+            return errorResponse(res, {
+                message: 'end_date must be on or after start_date'
+            }, 'Bad Request', 400);
+        }
+        if (rangeDays > ORDER_REPORT_MAX_DAYS) {
+            return errorResponse(res, {
+                message: `Date range cannot exceed ${ORDER_REPORT_MAX_DAYS} days`
+            }, 'Bad Request', 400);
+        }
+
         let whereCondition = {};
 
-        // Status filter
         if (status) {
             whereCondition.status = status;
         }
 
-        // Date range filter
-        if (start_date && end_date) {
-            const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
-            const endMoment = moment(end_date);
-            const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
-            
-            whereCondition.createdAt = {
-                [Op.between]: [startDateTime, endDateTime]
-            };
-        }
-        const orders = await Order.findAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'phone'],
-                    required: false,
-                    paranoid: false
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderShippingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
-                    required: false
-                },
-                {
-                    model: OrderAddress,
-                    as: 'orderBillingAddress',
-                    attributes: ['name', 'last_name', 'street', 'town', 'post_code', 'phone', 'region', 'country'],
-                    required: false
-                },
-                {
-                    model: OrderItem,
-                    as: 'orderItems',
-                    include: [
-                        {
-                            model: Product,
-                            as: 'product',
-                            attributes: ['name'],
-                            required: false
-                        },
-                        {
-                            model: ProductVariant,
-                            as: 'variant',
-                            attributes: ['price'],
-                            required: false
-                        }
-                    ]
-                }
-            ],
-            order: [['createdAt', 'DESC']]
-        });
+        const startDateTime = start_date.includes(' ') ? start_date : `${start_date} 00:00:00`;
+        const endMoment = moment(end_date);
+        const endDateTime = end_date.includes(' ') ? end_date : `${endMoment.format('YYYY-MM-DD')} 23:59:59`;
 
-        // Create a new workbook
-        const workbook = new ExcelJS.Workbook();
+        whereCondition.createdAt = {
+            [Op.between]: [startDateTime, endDateTime]
+        };
+
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename=orders-report-${moment().format('YYYY-MM-DD')}.xlsx`
+        );
+
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
         const worksheet = workbook.addWorksheet('Orders');
 
-        // Define columns
         worksheet.columns = [
             { header: 'Order ID', key: 'orderId', width: 15 },
             { header: 'Unique Order ID', key: 'orderUniqueId', width: 20 },
@@ -1010,70 +1219,31 @@ module.exports.generateOrderReport = async (req, res, next) => {
             { header: 'Total Amount', key: 'totalAmount', width: 15 }
         ];
 
-        // Add data rows
-        orders.forEach(order => {
-            // Safely handle null values
-            const customerName = order.user ? `${order.user.first_name || ''} ${order.user.last_name || ''}`.trim() : 'N/A';
-            const customerEmail = order.user?.email || 'N/A';
-            const customerPhone = order.user?.phone || 'N/A';
-            
-            // Safely handle shipping address
-            const shippingAddress = order.orderShippingAddress ? 
-                `${order.orderShippingAddress.name || ''} ${order.orderShippingAddress.last_name || ''}, ${order.orderShippingAddress.street || ''}, ${order.orderShippingAddress.town || ''}, ${order.orderShippingAddress.county || ''} ${order.orderShippingAddress.post_code || ''}, ${order.orderShippingAddress.country || ''}`.trim() : 
-                'N/A';
+        let lastId = null;
 
-            // Safely handle billing address
-            const billingAddress = order.orderBillingAddress ? 
-                `${order.orderBillingAddress.name || ''} ${order.orderBillingAddress.last_name || ''}, ${order.orderBillingAddress.street || ''}, ${order.orderBillingAddress.town || ''}, ${order.orderBillingAddress.county || ''} ${order.orderBillingAddress.post_code || ''}, ${order.orderBillingAddress.country || ''}`.trim() : 
-                'N/A';
-
-            // Safely handle product details
-            const productDetails = order.orderItems?.map(item => {
-                const productName = item.product?.name || 'Unknown Product';
-                const quantity = item.quantity || 0;
-                const price = item.variant?.price || 0;
-                return `${productName} (${quantity}x) - ${price}`;
-            }).join('\n') || 'N/A';
-
-            worksheet.addRow({
-                orderId: order.id,
-                orderUniqueId: order.order_unique_id,
-                orderDate: moment(order.createdAt).format('YYYY-MM-DD HH:mm:ss'),
-                orderStatus: order.status,
-                customerName,
-                customerEmail,
-                customerPhone,
-                shippingAddress,
-                billingAddress,
-                productDetails,
-                totalAmount: order.total
+        while (true) {
+            const idFilter = lastId ? { id: { [Op.lt]: lastId } } : {};
+            const orders = await Order.findAll({
+                where: { ...whereCondition, ...idFilter },
+                include: ORDER_REPORT_INCLUDES,
+                limit: ORDER_REPORT_CHUNK_SIZE,
+                order: [['id', 'DESC']]
             });
-        });
 
-        // Style the header row
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFE0E0E0' }
-        };
+            if (!orders.length) break;
 
-        // Set response headers
-        res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        );
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename=orders-report-${moment().format('YYYY-MM-DD')}.xlsx`
-        );
+            for (const order of orders) {
+                worksheet.addRow(formatOrderReportRow(order)).commit();
+            }
 
-        // Send the workbook
-        await workbook.xlsx.write(res);
-        res.end();
+            lastId = orders[orders.length - 1].id;
+        }
+
+        await workbook.commit();
     } catch (error) {
-        console.log(error);
         console.error("generateOrderReport error:", error);
-        return errorResponse(res, error, error.message);
+        if (!res.headersSent) {
+            return errorResponse(res, error, error.message);
+        }
     }
 }; 

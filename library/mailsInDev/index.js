@@ -1,23 +1,20 @@
 const path = require('path')
 const uuid = require('uuid')
 const fs = require('fs/promises')
+const { createReadStream } = require('fs')
 const previewEmail = require('preview-email')
 
 const hbs = require('handlebars')
 
 const emailsDir = path.join(__dirname, '../../emails')
 const indexFilePath = path.join(emailsDir, 'index')
-const utilsLogger = require('../../utils/logger');
+const logger = require('../logger');
+const { SerialQueue } = require('../serialQueue');
 
 // Serialize index updates to avoid race conditions when multiple emails
 // are rendered/saved concurrently (e.g. promotional sends in parallel).
-let indexUpdateQueue = Promise.resolve();
-const enqueueIndexUpdate = (work) => {
-    const run = indexUpdateQueue.then(work, work);
-    // Keep the queue alive even if a task fails.
-    indexUpdateQueue = run.catch(() => {});
-    return run;
-};
+const indexUpdateQueue = new SerialQueue();
+const enqueueIndexUpdate = (work) => indexUpdateQueue.enqueue(work);
 
 /**
  * Function to render a new email, save it as file and add it to index file
@@ -66,7 +63,7 @@ exports.newEmail = async(email) => {
                     await fs.rm(path.join(emailsDir, i.substring(0, i.indexOf(' ')) + '.html'));
                 }
             } catch (error) {
-                utilsLogger.logError(`Error in newEmail: ${error}`);
+                logger.error({ err: error }, 'Error in newEmail');
             }
         }
 
@@ -118,12 +115,10 @@ const readEmail = async(id) => {
     if(lineIndex<0)
         throw new Error("Not Found");
     const lineEndIndex = indexText.indexOf('\n', lineIndex+2)
-    if(indexText[lineEndIndex-1]!=='o') {
-        await fs.writeFile(indexFilePath, indexText.substring(0, lineEndIndex-1)+'o'+indexText.substring(lineEndIndex))
+    if (indexText[lineEndIndex - 1] !== 'o') {
+        await fs.writeFile(indexFilePath, indexText.substring(0, lineEndIndex - 1) + 'o' + indexText.substring(lineEndIndex))
     }
-    const fh = await fs.open(path.join(emailsDir, id+'.html'));;
-    const rs = fh.createReadStream();
-    return rs;
+    return createReadStream(path.join(emailsDir, `${id}.html`));
 }
 
 const router = require('express').Router();
@@ -144,16 +139,39 @@ router.get('/list', async(req, res) => {
 /**
  * Route to get email html from id
  */
-router.get('/open/:id', async(req, res) => {
-    const ret = await readEmail(req.params.id);
-    if(ret) {
+router.get('/open/:id', async (req, res) => {
+    const emailCsp = "default-src 'self' data: https://jvolve.s3.ap-south-1.amazonaws.com;base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src *;object-src 'none';script-src 'self' 'unsafe-inline';script-src-attr 'unsafe-inline';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests";
+
+    try {
+        const stream = await readEmail(req.params.id);
         res.set({
             'Content-Type': 'text/html',
-            'Content-Security-Policy': "default-src 'self' data: https://jvolve.s3.ap-south-1.amazonaws.com;base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src *;object-src 'none';script-src 'self' 'unsafe-inline';script-src-attr 'unsafe-inline';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
+            'Content-Security-Policy': emailCsp
         });
-        ret.pipe(res);
-    } else
-        res.helper.status(200).send();
+
+        const cleanup = () => {
+            if (stream && !stream.destroyed) {
+                stream.destroy();
+            }
+        };
+
+        stream.on('error', () => {
+            cleanup();
+            if (!res.headersSent) {
+                res.status(500).end();
+            }
+        });
+        res.on('close', cleanup);
+
+        stream.pipe(res);
+    } catch (error) {
+        if (error.message === 'Not Found') {
+            return res.status(404).end();
+        }
+        if (!res.headersSent) {
+            res.status(500).end();
+        }
+    }
 })
 
 exports.emailRouter = router;

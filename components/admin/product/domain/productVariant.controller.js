@@ -3,7 +3,7 @@ const { Product, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant,
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../../library/logger");
 const AWS = require("aws-sdk");
-const { uploadFiletToS3, generateUniqueFileName, deleteFile } = require("../../../../library/s3/s3Helper");
+const { uploadFiletToS3, generateUniqueFileName, deleteFile, extractS3KeyFromUrl } = require("../../../../library/s3/s3Helper");
 const { processProductVariantImageInMultipleSizes } = require("../../../../library/imageResize/productVariantImageResizer");
 const ExcelJS = require("exceljs");
 const SlugManager = require("../../../../utils/slugManager");
@@ -11,6 +11,22 @@ const { sequelize } = require("../../../../models");
 
 const slugManager = new SlugManager(SlugRelation);
 const { applyAutoNewFlavoursStickerForAttributeIds } = require('../../../product/helper/productSticker.helper');
+
+const { recacheProductFireAndForget } = require('../../../../library/prerender');
+
+function recacheProductPageById(productId, context = {}) {
+    if (!productId) {
+        return;
+    }
+
+    Product.findByPk(productId, { attributes: ['slug'] })
+        .then((product) => {
+            if (product?.slug) {
+                recacheProductFireAndForget(product.slug, null, { productId, ...context });
+            }
+        })
+        .catch(() => {});
+}
 
 const ERROR_MESSAGES = {
     VARIANT_NOT_FOUND: "Variant not found",
@@ -111,6 +127,7 @@ module.exports.addProductAttributes = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'addProductAttributes' });
 
         // Fetch updated product with attributes
         const updatedProduct = await Product.findByPk(product_id, {
@@ -370,6 +387,7 @@ module.exports.updateProductAttributes = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'updateProductAttributes' });
 
         // Fetch updated product with attributes
         const updatedProduct = await Product.findByPk(product_id, {
@@ -468,7 +486,7 @@ const createVariantRecord = async (variant, product_id, updated_by, transaction)
         description: variant.description,
         alt_text: variant.alt_text,
         status: variant.status || 'active',
-        is_discontinued: variant.is_discontinued ?? false,
+        is_discontinued: variant.is_discontinued === true,
         updated_by
     }, { transaction });
 
@@ -547,6 +565,7 @@ module.exports.createProductVariants = async (req, res) => {
         }));
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'createProductVariants' });
         
         try {
             const newVariants = await fetchCreatedVariants(createdVariants);
@@ -875,6 +894,7 @@ module.exports.updateProductVariant = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductPageById(existingVariant.product_id, { source: 'updateProductVariant', variantId: variant_id });
 
         // Fetch updated variant with relations
         const updatedVariantWithRelations = await ProductVariant.findByPk(variant_id, {
@@ -917,6 +937,7 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
 
         const updatedVariants = [];
         const errors = [];
+        const recacheProductIds = new Set();
 
         // Process each variant update
         for (const variantUpdate of variants) {
@@ -1033,6 +1054,7 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
                 });
 
                 updatedVariants.push(updatedVariantWithRelations);
+                recacheProductIds.add(Number(product_id));
             } catch (error) {
                 errors.push({ product_id, variant_id, error: error.message });
                 logger.error(`Bulk Update Variant Error for product ${product_id}, variant ${variant_id}:`, {
@@ -1051,6 +1073,9 @@ module.exports.bulkUpdateVariantsMultiple = async (req, res) => {
         }
 
         await transaction.commit();
+        recacheProductIds.forEach((pid) => {
+            recacheProductPageById(pid, { source: 'bulkUpdateVariantsMultiple' });
+        });
 
         return successResponse(res, {
             updated: updatedVariants,
@@ -1117,6 +1142,7 @@ module.exports.removeProductVariant = async (req, res) => {
         await variant.destroy({ transaction });
 
         await transaction.commit();
+        recacheProductPageById(variant.product_id, { source: 'removeProductVariant', variantId: variant_id });
 
         return successResponse(res, null, "Product variant removed successfully");
     } catch (error) {
@@ -1444,9 +1470,24 @@ module.exports.deleteVariantImage = async (req, res) => {
             return errorResponse(res, { message: "Image not found" }, "Image not found", 404);
         }
 
-        // Delete image from S3
-        const key = image.image_url.split('.com/')[1]; // Extract key from URL
-        await deleteFile(key);
+        const sharedCount = await ProductVariantImage.count({
+            where: { image_url: image.image_url },
+            transaction
+        });
+
+        const s3Key = extractS3KeyFromUrl(image.image_url);
+        if (s3Key && sharedCount === 1) {
+            try {
+                await deleteFile(s3Key);
+                logger.info(`Deleted variant image from S3: ${s3Key}`);
+            } catch (s3Error) {
+                logger.error(`Error deleting variant image from S3: ${s3Key}`, s3Error);
+            }
+        } else if (s3Key && sharedCount > 1) {
+            logger.info(`Skipped S3 delete for shared variant image URL (${sharedCount} references): ${image.image_url}`);
+        } else if (!s3Key) {
+            logger.warn(`Could not extract S3 key from variant image URL: ${image.image_url}`);
+        }
 
         // Delete image record
         await image.destroy({ transaction });
@@ -2005,6 +2046,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
 
         const results = [];
         const promises = [];
+        const recacheProductIds = new Set();
 
         // Convert worksheet rows to array and skip header
         const rows = worksheet.getRows(2, worksheet.rowCount - 1) || [];
@@ -2226,6 +2268,7 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
                         status: action,
                         message: `Variant successfully ${action.toLowerCase()}`
                     });
+                    recacheProductIds.add(product.id);
 
                 } catch (error) {
                     results.push({
@@ -2260,6 +2303,9 @@ module.exports.bulkUpdateVariants = async (req, res, next) => {
         };
 
         await transaction.commit();
+        recacheProductIds.forEach((pid) => {
+            recacheProductPageById(pid, { source: 'bulkUpdateVariants' });
+        });
         return successResponse(res, { summary, results }, "Product variants processed successfully");
 
     } catch (error) {
@@ -2719,6 +2765,7 @@ module.exports.bulkUpdateVariantsDirect = async (req, res) => {
         });
 
         await transaction.commit();
+        recacheProductPageById(product_id, { source: 'bulkUpdateVariantsDirect' });
         return successResponse(res, productUpdatedVariants, 'Variants updated successfully');
     } catch (error) {
         await transaction.rollback();

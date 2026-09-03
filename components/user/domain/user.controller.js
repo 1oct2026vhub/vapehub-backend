@@ -387,17 +387,17 @@ const updateUserAddress = async (req, res, next) => {
         }
 
         await userAddress.update({
-            name: name || userAddress.name,
-            last_name: last_name || userAddress.last_name,
-            company_name: company_name || userAddress.company_name,
-            country: country || userAddress.country,
-            street: street || userAddress.street,
-            apartment: apartment || userAddress.apartment,
-            town: town || userAddress.town,
-            county: county || userAddress.county,
-            post_code: post_code || userAddress.post_code,
-            phone: phone || userAddress.phone,
-            region: region || userAddress.region,
+            name: name ?? userAddress.name,
+            last_name: last_name ?? userAddress.last_name,
+            company_name: company_name ?? userAddress.company_name,
+            country: country ?? userAddress.country,
+            street: street ?? userAddress.street,
+            apartment: apartment ?? userAddress.apartment,
+            town: town ?? userAddress.town,
+            county: county ?? userAddress.county,
+            post_code: post_code ?? userAddress.post_code,
+            phone: phone ?? userAddress.phone,
+            region: region ?? userAddress.region,
             updated_by: userId
         });
 

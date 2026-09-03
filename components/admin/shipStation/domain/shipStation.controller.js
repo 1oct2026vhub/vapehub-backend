@@ -1,9 +1,11 @@
 const axios = require('axios');
-const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel } = require('../helper/shipStation.helper');
+const { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, listOrdersByOrderNumber, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel, shipStationRequest } = require('../helper/shipStation.helper');
 const { errorResponse, successResponse } = require('../../../../utils/responseUtils');
 const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
-const shipstationLogger = require('../../../../utils/shipstationLogger');
+const { createDomainLogger } = require('../../../../library/logging/domainLogger');
+const shipstationLog = createDomainLogger('shipstation');
+const { mapOrderItemsForShipStation } = require('../../../order/helper/orderItemDisplayName.helper');
 
 /**
  * Capitalize first letter of each word in a string
@@ -19,8 +21,9 @@ function capitalizeName(str) {
         .join(' ');
 }
 
-async function createShipStationOrder(order) {
+async function createShipStationOrder(order, options = {}) {
     try {
+        const { createLabel = true } = options;
         // Validate required order data
         if (!order || !order.order_unique_id) {
             throw new Error('Invalid order data: missing order or order_unique_id');
@@ -31,15 +34,51 @@ async function createShipStationOrder(order) {
             throw new Error('Invalid order data: missing customer email');
         }
 
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_order_start',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             user_email: customerEmail
         });
 
+        let resolvedShipStationOrderId = order.shipstation_order_id || null;
+
+        if (!resolvedShipStationOrderId) {
+            const existingOrders = await listOrdersByOrderNumber(order.order_unique_id);
+            if (existingOrders.length > 0) {
+                const pick =
+                    existingOrders.find((o) => o.orderStatus === 'awaiting_shipment') ||
+                    [...existingOrders].sort(
+                        (a, b) => new Date(b.createDate) - new Date(a.createDate)
+                    )[0];
+
+                resolvedShipStationOrderId = pick.orderId;
+
+                await Order.update(
+                    { shipstation_order_id: resolvedShipStationOrderId },
+                    {
+                        where: { id: order.id },
+                        isAdmin: true,
+                        userId: null,
+                    }
+                );
+
+                shipstationLog.logInfo({
+                    type: 'create_order_linked_existing',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: resolvedShipStationOrderId,
+                    existing_count: existingOrders.length,
+                });
+
+                order.shipstation_order_id = resolvedShipStationOrderId;
+            }
+        }
+
         const shipStationOrder = {
+            orderKey: order.order_unique_id,
             orderNumber: order.order_unique_id,
+            ...(resolvedShipStationOrderId && { orderId: resolvedShipStationOrderId }),
             orderDate: order.createdAt ? order.createdAt.toISOString() : new Date().toISOString(),
             orderStatus: 'awaiting_shipment',
             customerUsername: customerEmail,
@@ -66,39 +105,14 @@ async function createShipStationOrder(order) {
                 country: "GB",
                 phone: order.orderShippingAddress.phone,
             } : undefined,
-            items: order.orderItems ? order.orderItems.map(item => {
-                const variantSku = item.variant?.sku || item.variant?.slug || (item.variant?.id ? String(item.variant.id) : null);
-                const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
-                
-                // Build product name with attributes
-                let productName = item.product.name;
-                
-                // If variant has attributes, append them in readable format
-                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
-                    const attributeParts = item.variant.variantAttributes
-                        .filter(va => va.attribute && va.term) // Ensure both exist
-                        .map(va => `${va.attribute.name}: ${va.term.name}`)
-                        .filter(Boolean); // Remove any empty strings
-                    
-                    if (attributeParts.length > 0) {
-                        productName = `${productName}, ${attributeParts.join(', ')}`;
-                    }
-                }
-                
-                return {
-                    sku: variantSku || productSku,
-                    name: productName,
-                    quantity: item.quantity,
-                    unitPrice: item.unit_price,
-                };
-            }) : [],
+            items: order.orderItems ? await mapOrderItemsForShipStation(order.orderItems) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,
             requestedShippingService: order.shippingMethod?.requestedShippingService || order.shippingMethod?.shipping_method || 'Standard Delivery',
         };
         
-        shipstationLogger.logApiCall({
+        shipstationLog.logApiCall({
             type: 'create_order_request',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -108,7 +122,7 @@ async function createShipStationOrder(order) {
         // Create order in ShipStation
         const orderResponse = await sendOrderToShipStation(shipStationOrder);
         
-        shipstationLogger.logApiCall({
+        shipstationLog.logApiCall({
             type: 'create_order_response',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -133,7 +147,7 @@ async function createShipStationOrder(order) {
             }
         );
 
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_order_db_updated',
             order_id: order.id,
             order_unique_id: order.order_unique_id,
@@ -147,8 +161,8 @@ async function createShipStationOrder(order) {
         });
 
         // Map order data to label creation params (customize as needed)
-        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail'; // Example default
-        const serviceCode = order.shippingMethod?.service_code || 'standard_delivery'; // Example default
+        const carrierCode = order.shippingMethod?.carrier_code || 'royal_mail';
+        const serviceCode = order.shippingMethod?.service_code || 'royal_mail_tracked_48';
         const packageCode = 'package'; // Example default
         const confirmation = null;
         const shipDate = order.createdAt ? order.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
@@ -168,45 +182,47 @@ async function createShipStationOrder(order) {
 
         // Create label for the order
         let labelResponse = null;
-        try {
-            labelResponse = await createLabelForOrder({
-                orderId,
-                carrierCode,
-                serviceCode,
-                packageCode,
-                confirmation,
-                shipDate,
-                weight,
-                dimensions,
-                insuranceOptions,
-                internationalOptions,
-                advancedOptions,
-                testLabel
-            });
-            shipstationLogger.logInfo({
-                type: 'create_label_success',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                shipstation_order_id: orderId,
-                shipment_id: labelResponse?.shipmentId
-            });
-        } catch (labelError) {
-            shipstationLogger.logError({
-                type: 'create_label_error',
-                order_id: order.id,
-                order_unique_id: order.order_unique_id,
-                shipstation_order_id: orderId,
-                error: labelError.message,
-                stack: labelError.stack
-            });
-            // Don't fail the entire operation, just log the error
-            // The order was created successfully, so we can still return the order response
+        if (createLabel) {
+            try {
+                labelResponse = await createLabelForOrder({
+                    orderId,
+                    carrierCode,
+                    serviceCode,
+                    packageCode,
+                    confirmation,
+                    shipDate,
+                    weight,
+                    dimensions,
+                    insuranceOptions,
+                    internationalOptions,
+                    advancedOptions,
+                    testLabel
+                });
+                shipstationLog.logInfo({
+                    type: 'create_label_success',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: orderId,
+                    shipment_id: labelResponse?.shipmentId
+                });
+            } catch (labelError) {
+                shipstationLog.logError({
+                    type: 'create_label_error',
+                    order_id: order.id,
+                    order_unique_id: order.order_unique_id,
+                    shipstation_order_id: orderId,
+                    error: labelError.message,
+                    stack: labelError.stack
+                });
+                // Don't fail the entire operation, just log the error
+                // The order was created successfully, so we can still return the order response
+            }
         }
 
         return { orderResponse, labelResponse };
 
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'create_order_error',
             order_id: order?.id,
             order_unique_id: order?.order_unique_id,
@@ -237,7 +253,7 @@ async function getShipStationProductById(req, res) {
             data: product
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_product_error',
             productId: req.params.productId,
             error: error.message,
@@ -292,7 +308,7 @@ async function listShipStationProducts(req, res) {
             data: products
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'list_products_error',
             query_params: req.query,
             error: error.message,
@@ -340,7 +356,7 @@ async function updateShipStationProduct(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'update_product_error',
             productId: req.params.productId,
             error: error.message,
@@ -389,7 +405,7 @@ async function getShipStationOrderById(req, res) {
             data: order
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -430,7 +446,7 @@ async function deleteShipStationOrderById(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'delete_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -508,7 +524,7 @@ async function holdShipStationOrderUntil(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'hold_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -557,7 +573,7 @@ async function restoreShipStationOrderFromHold(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'restore_order_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -649,7 +665,7 @@ async function markShipStationOrderAsShipped(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'mark_shipped_error',
             orderId: req.params.orderId,
             error: error.message,
@@ -710,7 +726,7 @@ async function voidShipStationLabel(req, res) {
             data: result
         });
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'void_label_error',
             shipmentId: req.body.shipmentId,
             error: error.message,
@@ -758,15 +774,15 @@ async function getShipStationWebhooks(req, res){
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get('https://ssapi.shipstation.com/webhooks', {
+        const response = await shipStationRequest(() => axios.get('https://ssapi.shipstation.com/webhooks', {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data.webhooks || [], 'Webhooks retrieved successfully');
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_webhooks_error',
             error: error.message,
             stack: error.stack
@@ -800,12 +816,12 @@ async function getShipStationCarriers(req, res, next) {
         }
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-        const response = await axios.get(shipStationCarrierUrl, {
+        const response = await shipStationRequest(() => axios.get(shipStationCarrierUrl, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carriers retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carriers:', error);
@@ -837,12 +853,12 @@ async function getShipStationCarrierServices(req, res) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
+        const response = await shipStationRequest(() => axios.get(`${shipStationCarrierServiceUrl}?carrierCode=${encodeURIComponent(carrierCode)}`, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
             }
-        });
+        }));
         return successResponse(res, response.data, 'Carrier services retrieved successfully');
     } catch (error) {
         logger.error('Error getting ShipStation carrier services:', error);

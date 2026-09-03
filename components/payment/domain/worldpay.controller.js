@@ -4,11 +4,12 @@ const { Op } = require('sequelize');
 const logger = require('../../../library/logger');
 const { createNotification } = require('../../notification/helper/notification.helper');
 const sendEmail = require('../../../library/sendEmail');
-const paymentWebhookLogger = require('../../../utils/paymentWebhookLogger');
-const {
-    findWorldpayOrderByCode,
-    runPostPaymentSideEffects
-} = require('./worldpay.paidOrder.helper');
+const { createDomainLogger } = require('../../../library/logging/domainLogger');
+const paymentWebhookLog = createDomainLogger('payment-webhook');
+const paymentWebhookLogger = paymentWebhookLog;
+const { findWorldpayOrderByCode } = require('./worldpay.paidOrder.helper');
+const { confirmWorldpayPayment } = require('./worldpayPaymentFinalize.service');
+const { processSettlementWebhook } = require('../helper/worldpayWebhookInbox.helper');
 const axios = require("axios");
 const crypto = require("crypto");
 
@@ -151,7 +152,7 @@ const serializeErrorForLog = (error) => ({
 });
 
 const logPaymentWebhookError = (type, error, context = {}) => {
-    paymentWebhookLogger.logError({
+    paymentWebhookLog.logError({
         type,
         ...context,
         error: serializeErrorForLog(error)
@@ -159,7 +160,7 @@ const logPaymentWebhookError = (type, error, context = {}) => {
 };
 
 module.exports.handleWorldpayWebhook = async (req, res) => {
-    paymentWebhookLogger.logWebhookStart();
+    paymentWebhookLog.logWebhookStart();
     try {
         // Get raw body data
         let rawData;
@@ -195,7 +196,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 ip_address: req?.ip || null,
                 user_agent: req?.get?.('User-Agent') || null
             });
-            paymentWebhookLogger.logWebhookEnd();
+            paymentWebhookLog.logWebhookEnd();
             
             return errorResponse(res, {}, 'Invalid webhook data format', 400);
         }
@@ -219,7 +220,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 } = {}
             } = webhookData || {};
 
-            paymentWebhookLogger.logWebhook({
+            paymentWebhookLog.logWebhook({
                 type: 'worldpay_webhook_received',
                 event_id: eventId || null,
                 event_type: eventType || null,
@@ -242,13 +243,13 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             const order = await findWorldpayOrderByCode(transactionReference);
 
             if (!order) {
-                paymentWebhookLogger.logError({
+                paymentWebhookLog.logError({
                     type: 'worldpay_order_not_found',
                     event_id: eventId || null,
                     event_type: eventType || null,
                     transaction_reference: transactionReference || null
                 });
-                paymentWebhookLogger.logWebhookEnd();
+                paymentWebhookLog.logWebhookEnd();
                 
                 return errorResponse(res, {}, 'Order not found in database', 404);
             }
@@ -287,7 +288,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 //     await handleRefundFailed(order, webhookData);
                 //     break;
                 default:
-                    paymentWebhookLogger.logInfo({
+                    paymentWebhookLog.logInfo({
                         type: 'worldpay_unhandled_event_type',
                         event_id: eventId || null,
                         event_type: eventType || null,
@@ -297,7 +298,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
             }
 
             // Log the webhook processing completion
-            paymentWebhookLogger.logInfo({
+            paymentWebhookLog.logInfo({
                 type: 'worldpay_webhook_processed',
                 event_id: eventId || null,
                 event_type: eventType || null,
@@ -305,7 +306,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
                 order_id: order?.id || null,
                 order_code: order?.order_code || null
             });
-            paymentWebhookLogger.logWebhookEnd();
+            paymentWebhookLog.logWebhookEnd();
             
 
             // Return success response
@@ -320,7 +321,7 @@ module.exports.handleWorldpayWebhook = async (req, res) => {
         logPaymentWebhookError('worldpay_webhook_processing_error', error, {
             ip_address: req?.ip || null
         });
-        paymentWebhookLogger.logWebhookEnd();
+        paymentWebhookLog.logWebhookEnd();
         
         return errorResponse(res, error, 'Failed to process webhook');
     }
@@ -335,7 +336,7 @@ const handleCancelledPayment = async (order, webhookData) => {
         );
         const customerOrderContext = await buildCustomerOrderContext(order);
         const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, 'Payment cancelled via Worldpay', 'cancelled');
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_cancelled_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -838,256 +839,25 @@ const handleSentForAuthorization = async (order, webhookData) => {
     }
 };
 
-const finalizePaidOrder = async ({
-    order,
-    referenceNumber,
-    amount,
-    currency,
-    source,
-    metadata = {}
-}) => {
-    const transaction = await sequelize.transaction();
-    try {
-        const lockedOrder = await Order.findOne({
-            where: { id: order.id },
-            transaction,
-            lock: transaction.LOCK.UPDATE
-        });
-
-        if (!lockedOrder) {
-            throw new Error('Order not found during payment finalization');
-        }
-
-        if (
-            ['processing', 'shipped', 'delivered', 'completed'].includes(lockedOrder.status) &&
-            lockedOrder.ordered
-        ) {
-            await transaction.commit();
-            return { noOp: true, order: lockedOrder };
-        }
-
-        await lockedOrder.update(
-            {
-                status: 'processing',
-                ordered: true
-            },
-            { transaction }
-        );
-
-        const existingTransaction = await sequelize.models.Transaction.findOne({
-            where: {
-                orderId: lockedOrder.id,
-                userId: lockedOrder.user_id
-            },
-            transaction,
-            lock: transaction.LOCK.UPDATE
-        });
-
-        if (existingTransaction) {
-            await existingTransaction.update(
-                {
-                    paymentMethod: 'worldpay',
-                    transactionType: 'PURCHASE',
-                    amount,
-                    currency,
-                    status: 'COMPLETED',
-                    referenceNumber,
-                    notes: 'Payment completed successfully',
-                    metadata: {
-                        ...(existingTransaction.metadata || {}),
-                        ...metadata,
-                        source
-                    }
-                },
-                { transaction }
-            );
-        } else {
-            await sequelize.models.Transaction.create(
-                {
-                    userId: lockedOrder.user_id,
-                    orderId: lockedOrder.id,
-                    paymentMethod: 'worldpay',
-                    transactionType: 'PURCHASE',
-                    amount,
-                    currency,
-                    status: 'COMPLETED',
-                    referenceNumber,
-                    notes: 'Payment completed successfully',
-                    metadata: {
-                        ...metadata,
-                        source
-                    }
-                },
-                { transaction }
-            );
-        }
-
-        const additionalInfo = JSON.stringify({
-            source,
-            referenceNumber,
-            amount,
-            currency,
-            ...metadata
-        });
-
-        const existingOrderLog = await sequelize.models.OrderLog.findOne({
-            where: {
-                order_id: lockedOrder.id,
-                user_id: lockedOrder.user_id,
-                status: 'processing'
-            },
-            transaction,
-            lock: transaction.LOCK.UPDATE
-        });
-
-        if (existingOrderLog) {
-            await existingOrderLog.update(
-                {
-                    status: 'processing',
-                    label: 'Payment Successful via Worldpay',
-                    additional_info: additionalInfo
-                },
-                { transaction }
-            );
-        } else {
-            await sequelize.models.OrderLog.create(
-                {
-                    order_id: lockedOrder.id,
-                    user_id: lockedOrder.user_id,
-                    status: 'processing',
-                    label: 'Payment Successful via Worldpay',
-                    additional_info: additionalInfo
-                },
-                { transaction }
-            );
-        }
-
-        await transaction.commit();
-        return { noOp: false, order: lockedOrder };
-    } catch (error) {
-        await transaction.rollback();
-        throw error;
-    }
-};
-
-const POST_PAYMENT_MARKER_STATUS = 'post_payment_processed';
-
-const hasPostPaymentProcessed = async (orderId, userId) => {
-    const marker = await sequelize.models.OrderLog.findOne({
-        where: {
-            order_id: orderId,
-            user_id: userId,
-            status: POST_PAYMENT_MARKER_STATUS
-        }
-    });
-
-    return Boolean(marker);
-};
-
-const markPostPaymentProcessed = async (order, source) => {
-    await sequelize.models.OrderLog.create({
-        order_id: order.id,
-        user_id: order.user_id,
-        status: POST_PAYMENT_MARKER_STATUS,
-        label: 'Post payment side effects processed',
-        additional_info: JSON.stringify({
-            source,
-            processedAt: new Date().toISOString()
-        })
-    });
-};
-
-const processWorldpayPaidOrder = async ({
-    order,
-    referenceNumber,
-    amount,
-    currency,
-    source,
-    metadata = {},
-    orderCodeForEffects
-}) => {
-    const finalizationResult = await finalizePaidOrder({
-        order,
-        referenceNumber,
-        amount,
-        currency,
-        source,
-        metadata
-    });
-
-    order.status = finalizationResult.order.status;
-    order.ordered = finalizationResult.order.ordered;
-
-    if (await hasPostPaymentProcessed(order.id, order.user_id)) {
-        return {
-            finalized: true,
-            postProcessed: false,
-            alreadyDone: true,
-            order
-        };
-    }
-
-    const effectOrderCode = orderCodeForEffects || referenceNumber || order.order_code;
-
-    try {
-        await runPostPaymentSideEffects(order, {
-            amount,
-            currency,
-            orderCode: effectOrderCode
-        });
-        await markPostPaymentProcessed(order, source);
-        return {
-            finalized: true,
-            postProcessed: true,
-            alreadyDone: false,
-            order
-        };
-    } catch (sideEffectError) {
-        if (source === 'webhook:settlement') {
-            logPaymentWebhookError('worldpay_settlement_post_process_error', sideEffectError, {
-                order_id: order.id,
-                order_code: order.order_code
-            });
-            return {
-                finalized: true,
-                postProcessed: false,
-                sideEffectFailed: true,
-                alreadyDone: false,
-                order
-            };
-        }
-        throw sideEffectError;
-    }
-};
-
 const handleSentForSettlement = async (order, webhookData) => {
     try {
-        const convertedAmount = convertAmountToDecimal(
-            order.total,
-            webhookData.eventDetails.amount.currencyCode
+        const result = await processSettlementWebhook(
+            webhookData,
+            'webhook:settlement',
+            parseFloat(order.total)
         );
 
-        await processWorldpayPaidOrder({
-            order,
-            referenceNumber: webhookData.eventDetails.transactionReference,
-            amount: convertedAmount.value,
-            currency: convertedAmount.currencyCode,
-            source: 'webhook:settlement',
-            metadata: {
-                eventId: webhookData.eventId,
-                eventTimestamp: webhookData.eventTimestamp,
-                eventDate: webhookData.eventDetails.date,
-                transactionId: webhookData.eventDetails.transactionReference,
-                downstreamReference: webhookData.eventDetails.downstreamReference,
-                type: webhookData.eventDetails.type,
-                classification: webhookData.eventDetails.classification,
-                paymentLink: webhookData.eventDetails._links?.payment?.href
-            },
-            orderCodeForEffects: order.order_code
-        });
+        if (result?.skipped || result?.result?.skipped) {
+            paymentWebhookLogger.logInfo({
+                type: 'worldpay_settlement_skipped',
+                order_id: order.id,
+                order_status: order.status,
+                transaction_reference: webhookData?.eventDetails?.transactionReference || null,
+                reason: result?.reason || result?.result?.reason || 'ORDER_NOT_ELIGIBLE'
+            });
+        }
 
-        
-
+        return webhookData.eventDetails.transactionReference;
         // for (const item of order.orderItems) {
         //     if (item.variant) {
         //         // Update variant stock
@@ -1528,7 +1298,7 @@ const handlePaymentError = async (order, webhookData) => {
             (typeof failureReasonRaw === 'string' ? failureReasonRaw : 'Payment failed via Worldpay');
         const customerOrderContext = await buildCustomerOrderContext(order);
         const gatewayReasonDetails = buildGatewayReasonDetails(webhookData, failureReason, 'failed');
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_payment_error_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -1711,7 +1481,7 @@ const handlePaymentRefused = async (order, webhookData) => {
             'Payment refused by Worldpay',
             'refused'
         );
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_payment_refused_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,
@@ -2151,17 +1921,20 @@ module.exports.handleWorldpayPaymentSuccess = async (req, res) => {
             }
         });
 
-        const result = await processWorldpayPaidOrder({
-            order,
-            referenceNumber: orderCode,
+        const result = await confirmWorldpayPayment({
+            orderCode,
             amount,
             currency,
             source: 'api:payment-success',
             metadata: {
                 endpoint: '/api/payment/worldpay/payment-success'
             },
-            orderCodeForEffects: orderCode
+            order
         });
+
+        if (!result.ok) {
+            return errorResponse(res, {}, result.reason || 'Payment confirmation failed', 404);
+        }
 
         if (result.alreadyDone) {
             return successResponse(res, buildSuccessPayload('payment already processed'), 'Success');
@@ -2258,7 +2031,7 @@ module.exports.handleWorldpayPaymentCancel = async (req, res) => {
             'Payment cancelled via Worldpay (manual cancel endpoint)',
             'cancelled'
         );
-        paymentWebhookLogger.logInfo({
+        paymentWebhookLog.logInfo({
             type: 'worldpay_manual_cancel_handler',
             order_id: order?.id || null,
             order_code: order?.order_code || null,

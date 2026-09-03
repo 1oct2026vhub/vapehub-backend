@@ -39,7 +39,11 @@ exports.validatePlaceOrder = [
   body("shipping_address.address_line_1").notEmpty().withMessage("Shipping address is required"),
   // body("shipping_address.street").notEmpty().withMessage("Shipping street is required"),
   body("shipping_address.city").notEmpty().withMessage("Shipping city is required"),
-  body("shipping_address.region").notEmpty().withMessage("Shipping state is required"),
+  body("shipping_address.region")
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage("Shipping region must be a string")
+    .trim(),
   body("shipping_address.post_code").notEmpty().withMessage("Shipping zip code is required"),
 
   // Optional Billing Address
@@ -52,7 +56,7 @@ exports.validatePlaceOrder = [
         }
         
         // Check required billing address fields when useShippingAsBilling is false
-        const requiredFields = ['first_name', 'last_name', 'address_line_1', 'city', 'region', 'post_code'];
+        const requiredFields = ['first_name', 'last_name', 'address_line_1', 'city', 'post_code'];
         for (const field of requiredFields) {
           if (!value[field]) {
             throw new Error(`Billing address ${field} is required`);
@@ -90,8 +94,10 @@ exports.validatePlaceOrder = [
 
   body("billing_address.region")
     .if(body("useShippingAsBilling").equals(false))
-    .notEmpty()
-    .withMessage("Billing state is required"),
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage("Billing region must be a string")
+    .trim(),
 
   body("billing_address.post_code")
     .if(body("useShippingAsBilling").equals(false))
@@ -106,10 +112,22 @@ exports.validatePlaceOrder = [
     .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
+    .exists({ checkNull: true })
+    .withMessage("Total amount is required")
     .isFloat({ min: 0 })
-    .withMessage("Total amount must be a positive number")
-    .notEmpty()
-    .withMessage("Total amount is required"),
+    .withMessage("Total amount must be zero or greater"),
+
+  body("loyalty").optional().isBoolean().withMessage("loyalty must be true or false"),
+
+  body("points_to_redeem")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];
 
 exports.validateOrderId = [
@@ -189,7 +207,11 @@ exports.validateGuestPlaceOrder = [
     .trim(),
   body("shipping_address.address_line_1").notEmpty().withMessage("Shipping address is required"),
   body("shipping_address.city").notEmpty().withMessage("Shipping city is required"),
-  body("shipping_address.region").notEmpty().withMessage("Shipping state is required"),
+  body("shipping_address.region")
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage("Shipping region must be a string")
+    .trim(),
   body("shipping_address.post_code").notEmpty().withMessage("Shipping zip code is required"),
 
   body("billing_address")
@@ -199,7 +221,7 @@ exports.validateGuestPlaceOrder = [
           throw new Error('Billing address is required when useShippingAsBilling is false');
         }
         
-        const requiredFields = ['first_name', 'last_name', 'address_line_1', 'city', 'region', 'post_code'];
+        const requiredFields = ['first_name', 'last_name', 'address_line_1', 'city', 'post_code'];
         for (const field of requiredFields) {
           if (!value[field]) {
             throw new Error(`Billing address ${field} is required`);
@@ -237,8 +259,10 @@ exports.validateGuestPlaceOrder = [
 
   body("billing_address.region")
     .if(body("useShippingAsBilling").equals(false))
-    .notEmpty()
-    .withMessage("Billing state is required"),
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage("Billing region must be a string")
+    .trim(),
 
   body("billing_address.post_code")
     .if(body("useShippingAsBilling").equals(false))
@@ -253,8 +277,20 @@ exports.validateGuestPlaceOrder = [
     .withMessage("Payment method must be 'Worldpay' or 'VivaWallet'"),
 
   body("total")
+    .exists({ checkNull: true })
+    .withMessage("Total amount is required")
     .isFloat({ min: 0 })
-    .withMessage("Total amount must be a positive number")
-    .notEmpty()
-    .withMessage("Total amount is required"),
+    .withMessage("Total amount must be zero or greater"),
+
+  body("loyalty").optional().isBoolean().withMessage("loyalty must be true or false"),
+
+  body("points_to_redeem")
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage("points_to_redeem must be a non-negative integer"),
+
+  body("is_payment_required")
+    .optional()
+    .isBoolean()
+    .withMessage("is_payment_required must be true or false"),
 ];

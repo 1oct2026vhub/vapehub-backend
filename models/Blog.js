@@ -4,7 +4,7 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class Blog extends Model {
         static associate(models) {
-            this.belongsTo(models.User, {
+            this.belongsTo(models.Author, {
                 foreignKey: 'author_id',
                 as: 'author'
             });
@@ -31,6 +31,16 @@ module.exports = (sequelize, DataTypes) => {
             this.hasMany(models.BlogTagRelation, {
                 foreignKey: 'blog_id',
                 as: 'tagRelations'
+            });
+            this.hasMany(models.BlogRelatedPost, {
+                foreignKey: 'blog_id',
+                as: 'relatedPosts'
+            });
+            this.belongsToMany(models.Product, {
+                through: models.ProductRelatedBlog,
+                foreignKey: 'blog_id',
+                otherKey: 'product_id',
+                as: 'relatedProducts'
             });
         }
     }
@@ -76,12 +86,28 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false,
             references: {
-                model: 'users',
+                model: 'authors',
                 key: 'id'
             }
         },
         published_at: {
             type: DataTypes.DATE,
+            allowNull: true
+        },
+        sources: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        pull_quote: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        inline_product_card: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        first_person_callouts: {
+            type: DataTypes.JSON,
             allowNull: true
         },
         updated_by: {

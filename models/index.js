@@ -39,6 +39,16 @@ Object.keys(db).forEach(modelName => {
 db.sequelize = sequelize;
 // db.Sequelize = Sequelize;
 
+async function closeDatabase() {
+  try {
+    await sequelize.close();
+  } catch (err) {
+    console.error('Error closing database:', err);
+  }
+}
+
+db.closeDatabase = closeDatabase;
+
 (async () => {
   try {
     // await sequelize.sync();

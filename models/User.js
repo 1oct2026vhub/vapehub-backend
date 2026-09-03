@@ -29,6 +29,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'user_id', 
                 as: 'loyaltyPointsHistory' 
             });
+            this.hasOne(models.Author, {
+                foreignKey: 'user_id',
+                as: 'blogAuthor'
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });
@@ -91,6 +95,26 @@ module.exports = (sequelize, DataTypes) => {
         },
         profile_pic_url: {
             type: DataTypes.STRING,
+            allowNull: true
+        },
+        blog_author_role: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        blog_author_bio: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
+        blog_author_slug: {
+            type: DataTypes.STRING(100),
+            allowNull: true
+        },
+        blog_author_archive_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
+        blog_author_team_url: {
+            type: DataTypes.STRING(500),
             allowNull: true
         },
         gender: {

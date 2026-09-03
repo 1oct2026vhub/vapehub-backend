@@ -1,14 +1,26 @@
 const { Op, Sequelize } = require("sequelize");
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
-const { Blog, User, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
+const { Blog, BlogCategory, BlogTag, Menu, SlugRelation, sequelize, Redirect } = require("../../../../models");
 const { uploadFiletToS3, generateUniqueFileName } = require("../../../../library/s3/s3Helper");
 const { invalidateCachePattern } = require("../../../../library/cache");
+const { recacheEntityFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require("../../../../library/prerender");
 const SlugManager = require("../../../../utils/slugManager");
 const slugManager = new SlugManager(SlugRelation);
 const seoService = require('../../seo/domain/seo.service');
 
-const { updateBlogCategories, updateBlogTags } = require("../helper/blogRelations.helper");
+const { updateBlogCategories, updateBlogTags, updateBlogRelatedPosts, getBlogRelatedPosts } = require("../helper/blogRelations.helper");
 const { replaceInlineBase64ImagesWithS3Urls } = require("../helper/blogContent.helper");
+const {
+    getAuthorInclude,
+    parseSourcesField,
+    parsePullQuoteField,
+    parseInlineProductCardField,
+    parseFirstPersonCalloutsField,
+    parseRelatedBlogIdsField,
+    parseJsonOrCsvIds,
+    resolveAuthorId,
+    attachRelatedBlogFields
+} = require("../helper/blogPayload.helper");
 
 module.exports.listAllBlogs = async (req, res) => {
     try {
@@ -54,19 +66,14 @@ module.exports.listAllBlogs = async (req, res) => {
         }
 
         // Parse category_id and tag_id for filtering blogs
-        const categoryIds = category_id ? 
-            category_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
-        const tagIds = tag_id ? 
-            tag_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
+        const categoryIds = parseJsonOrCsvIds(category_id, 'category_id');
+        const tagIds = parseJsonOrCsvIds(tag_id, 'tag_id');
 
         // Base include conditions - always include all relations
         let includeConditions = [
-            {
-                model: User,
-                as: 'author',
-                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'],
-                required: false
-            },
+            getAuthorInclude({
+                userAttributes: ['id', 'first_name', 'last_name', 'email']
+            }),
             {
                 model: BlogCategory,
                 as: 'categories',
@@ -144,11 +151,9 @@ module.exports.getBlogById = async (req, res) => {
         const blog = await Blog.findByPk(req.params.id, {
             paranoid: false,
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -194,6 +199,9 @@ module.exports.getBlogById = async (req, res) => {
             };
         }
 
+        const relatedPosts = await getBlogRelatedPosts(blog.id);
+        blogData = attachRelatedBlogFields(blogData, relatedPosts);
+
         successResponse(res, blogData);
     } catch (error) {
         errorResponse(res, error);
@@ -210,6 +218,16 @@ const parseArrayField = (field) => {
     }
 };
 
+const formatAdminBlogResponse = async (blogInstance) => {
+    const blogData = blogInstance.toJSON ? blogInstance.toJSON() : blogInstance;
+    if (blogData.status === 'draft' || blogData.status === 'archived') {
+        blogData.published_at = null;
+    }
+
+    const relatedPosts = await getBlogRelatedPosts(blogData.id);
+    return attachRelatedBlogFields(blogData, relatedPosts);
+};
+
 module.exports.createBlog = async (req, res) => {
     let transaction;
     
@@ -220,16 +238,31 @@ module.exports.createBlog = async (req, res) => {
 
         const { title, slug, published_at, alt_text } = req.body;
         const content = await replaceInlineBase64ImagesWithS3Urls(req.body.content);
-        const categories = req.body.categories ? 
-            req.body.categories.split(',').map(id => parseInt(id.trim())) : [];
-        const tags = req.body.tags ? 
-            req.body.tags.split(',').map(id => parseInt(id.trim())) : [];
-        const { id: author_id } = req.user;
+        const categories = parseJsonOrCsvIds(req.body.categories, 'categories');
+        const tags = parseJsonOrCsvIds(req.body.tags, 'tags');
+        const author_id = await resolveAuthorId(req.body.author_id);
+        const sources = req.body.sources !== undefined
+            ? parseSourcesField(req.body.sources)
+            : [];
+        const relatedBlogIds = req.body.related_blog_ids !== undefined
+            ? parseRelatedBlogIdsField(req.body.related_blog_ids)
+            : [];
+        const pullQuote = req.body.pull_quote !== undefined
+            ? parsePullQuoteField(req.body.pull_quote)
+            : null;
+        const inlineProductCard = req.body.inline_product_card !== undefined
+            ? await parseInlineProductCardField(req.body.inline_product_card)
+            : null;
+        const firstPersonCallouts = req.body.first_person_callouts !== undefined
+            ? parseFirstPersonCalloutsField(req.body.first_person_callouts)
+            : [];
         const status = req.body.status || 'draft';
 
+        const heroFile = req.files?.image?.[0];
+
         let image_url = null;
-        if (req.file) {
-            image_url = await handleImageUpload(req.file);
+        if (heroFile) {
+            image_url = await handleImageUpload(heroFile);
         }
 
         // Create blog post
@@ -240,10 +273,14 @@ module.exports.createBlog = async (req, res) => {
             image_url,
             alt_text,
             author_id,
+            sources,
+            pull_quote: pullQuote,
+            inline_product_card: inlineProductCard,
+            first_person_callouts: firstPersonCallouts,
             // Only set published_at if status is not 'archived' or 'draft'
             ...(status !== 'archived' && status !== 'draft' && { published_at }),
             status,
-            updated_by: author_id
+            updated_by: req.user.id
         }, { transaction });
 
         // Create slug relation using static method
@@ -253,7 +290,8 @@ module.exports.createBlog = async (req, res) => {
         try {
             await Promise.all([
                 categories.length > 0 ? updateBlogCategories(blog.id, transaction, categories) : Promise.resolve(),
-                tags.length > 0 ? updateBlogTags(blog.id, transaction, tags) : Promise.resolve()
+                tags.length > 0 ? updateBlogTags(blog.id, transaction, tags) : Promise.resolve(),
+                relatedBlogIds.length > 0 ? updateBlogRelatedPosts(blog.id, transaction, relatedBlogIds) : Promise.resolve()
             ]);
         } catch (error) {
             console.error('Error updating relations:', error);
@@ -263,11 +301,9 @@ module.exports.createBlog = async (req, res) => {
         // Fetch complete blog data
         const createdBlog = await Blog.findByPk(blog.id, {
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -284,6 +320,10 @@ module.exports.createBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        const responseData = await formatAdminBlogResponse(createdBlog);
+        if (status === 'published') {
+            recacheEntityFireAndForget('blog_post', slug, null, { source: 'createBlog', blogId: blog.id });
+        }
         successResponse(res, createdBlog, 'Blog post created successfully', 201);
     } catch (error) {
         if (transaction) {
@@ -321,13 +361,16 @@ const handleImageUpload = async (file) => {
     }
 };
 
-const updateBlogRelations = async (blogId, { categories, tags }, transaction) => {
+const updateBlogRelations = async (blogId, { categories, tags, relatedBlogIds }, transaction) => {
     const updates = [];
     if (categories) {
         updates.push(updateBlogCategories(blogId, transaction, categories));
     }
     if (tags) {
         updates.push(updateBlogTags(blogId, transaction, tags));
+    }
+    if (relatedBlogIds !== undefined) {
+        updates.push(updateBlogRelatedPosts(blogId, transaction, relatedBlogIds));
     }
     await Promise.all(updates);
 };
@@ -342,6 +385,24 @@ module.exports.updateBlog = async (req, res) => {
             : undefined;
         const { id: updated_by } = req.user;
         const status = req.body.status;
+        const parsedSources = req.body.sources !== undefined
+            ? parseSourcesField(req.body.sources)
+            : undefined;
+        const parsedRelatedBlogIds = req.body.related_blog_ids !== undefined
+            ? parseRelatedBlogIdsField(req.body.related_blog_ids, id)
+            : undefined;
+        const parsedPullQuote = req.body.pull_quote !== undefined
+            ? parsePullQuoteField(req.body.pull_quote)
+            : undefined;
+        const parsedInlineProductCard = req.body.inline_product_card !== undefined
+            ? await parseInlineProductCardField(req.body.inline_product_card)
+            : undefined;
+        const parsedFirstPersonCallouts = req.body.first_person_callouts !== undefined
+            ? parseFirstPersonCalloutsField(req.body.first_person_callouts)
+            : undefined;
+        const parsedAuthorId = req.body.author_id !== undefined && req.body.author_id !== ''
+            ? await resolveAuthorId(req.body.author_id)
+            : undefined;
         const blog = await Blog.findByPk(id, { transaction, paranoid: false });
         if (!blog) {
             await transaction.rollback();
@@ -349,8 +410,10 @@ module.exports.updateBlog = async (req, res) => {
         }
         // Use slug before update for redirect lookup (redirect was created at delete time with this slug)
         const slugForRedirect = blog.slug;
+        const oldBlogSlug = blog.slug;
 
-        const image_url = await handleImageUpload(req.file) || blog.image_url;
+        const heroFile = req.files?.image?.[0];
+        const image_url = await handleImageUpload(heroFile) || blog.image_url;
 
         // Update slug using static method
         if (slug && slug !== blog.slug) {
@@ -369,6 +432,11 @@ module.exports.updateBlog = async (req, res) => {
             ...(image_url && { image_url }),
             ...(alt_text !== undefined && { alt_text }),
             ...(status && { status }),
+            ...(parsedSources !== undefined && { sources: parsedSources }),
+            ...(parsedPullQuote !== undefined && { pull_quote: parsedPullQuote }),
+            ...(parsedInlineProductCard !== undefined && { inline_product_card: parsedInlineProductCard }),
+            ...(parsedFirstPersonCallouts !== undefined && { first_person_callouts: parsedFirstPersonCallouts }),
+            ...(parsedAuthorId !== undefined && { author_id: parsedAuthorId }),
             updated_by
         };
 
@@ -392,13 +460,15 @@ module.exports.updateBlog = async (req, res) => {
             }, { where: { entity_id: id } }, { transaction });
         }
         // Parse categories and tags
-        const parsedCategories = categories ? 
-            categories.split(',').map(id => parseInt(id.trim())) : [];
-        const parsedTags = tags ? 
-            tags.split(',').map(id => parseInt(id.trim())) : [];
+        const parsedCategories = parseJsonOrCsvIds(categories, 'categories');
+        const parsedTags = parseJsonOrCsvIds(tags, 'tags');
 
         // Update relations
-        await updateBlogRelations(id, { categories: parsedCategories, tags: parsedTags }, transaction);
+        await updateBlogRelations(id, {
+            categories: parsedCategories,
+            tags: parsedTags,
+            relatedBlogIds: parsedRelatedBlogIds
+        }, transaction);
 
         // Update SEO noIndex based on blog post status and publication date
         await seoService.updateBlogPostNoIndex(id, status, published_at);
@@ -445,7 +515,9 @@ module.exports.updateBlog = async (req, res) => {
         const updatedBlog = await Blog.findByPk(id, {
             paranoid: false,
             include: [
-                { model: User, as: 'author', attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url'] },
+                getAuthorInclude({
+                    userAttributes: ['id', 'first_name', 'last_name', 'email']
+                }),
                 { model: BlogCategory, as: 'categories', through: { attributes: [] } },
                 { model: BlogTag, as: 'tags', through: { attributes: [] } }
             ],
@@ -454,8 +526,14 @@ module.exports.updateBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget(
+            'blog_post',
+            updatedBlog.slug,
+            oldBlogSlug !== updatedBlog.slug ? oldBlogSlug : null,
+            { source: 'updateBlog', blogId: id }
+        );
 
-        let responseData = updatedBlog;
+        let responseData = await formatAdminBlogResponse(updatedBlog);
         const updatedBlogIsDeleted = updatedBlog && (updatedBlog.deletedAt != null || updatedBlog.deleted_at != null);
         if (updatedBlogIsDeleted) {
             const redirect = await Redirect.findOne({
@@ -464,7 +542,7 @@ module.exports.updateBlog = async (req, res) => {
             });
             if (redirect) {
                 responseData = {
-                    ...updatedBlog.toJSON(),
+                    ...responseData,
                     redirect: {
                         redirect_url: redirect.url_to,
                         old_path: redirect.sources,
@@ -535,6 +613,7 @@ module.exports.deleteBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_post', blog.slug, null, { source: 'deleteBlog', blogId: req.params.id });
         successResponse(res, null, 'Blog post deleted successfully');
     } catch (error) {
         await transaction.rollback();
@@ -581,6 +660,7 @@ module.exports.restoreBlog = async (req, res) => {
 
         await transaction.commit();
         invalidateCachePattern('blogs:*').catch(() => {});
+        recacheEntityFireAndForget('blog_post', blog.slug, null, { source: 'restoreBlog', blogId: blog.id });
         successResponse(res, blog, 'Blog post restored successfully');
     } catch (error) {
         await transaction.rollback();
@@ -669,6 +749,11 @@ module.exports.bulkDeleteBlogs = async (req, res) => {
                 summary
             }, 'No blog posts were deleted', 400);
         }
+
+        recacheUrlsFireAndForget(
+            deletedBlogs.map((b) => buildPublicUrl(`/${b.slug}/`)),
+            { source: 'bulkDeleteBlogs', count: deletedBlogs.length }
+        );
 
         successResponse(res, {
             deleted: deletedBlogs,
@@ -768,6 +853,11 @@ module.exports.bulkRestoreBlogs = async (req, res) => {
                 summary
             }, 'No blog posts were restored', 400);
         }
+
+        recacheUrlsFireAndForget(
+            restoredBlogs.map((b) => buildPublicUrl(`/${b.slug}/`)),
+            { source: 'bulkRestoreBlogs', count: restoredBlogs.length }
+        );
 
         successResponse(res, {
             restored: restoredBlogs,

@@ -20,11 +20,16 @@ const EXT_BY_SUBTYPE = {
 /**
  * Replaces data:image/...;base64,... URIs with S3 URLs so stored HTML stays smaller
  * and later saves avoid huge multipart payloads. No admin UI changes required.
+ * @param {string} content
+ * @param {{ keyPrefix?: string, filePrefix?: string }} [options]
  */
-async function replaceInlineBase64ImagesWithS3Urls(content) {
+async function replaceInlineBase64ImagesWithS3Urls(content, options = {}) {
     if (!content || typeof content !== 'string' || !content.includes('data:image')) {
         return content;
     }
+
+    const keyPrefix = options.keyPrefix || 'blog';
+    const filePrefix = options.filePrefix || 'blog';
 
     const matches = [...content.matchAll(DATA_IMAGE_BASE64_REGEX)];
     if (matches.length === 0) {
@@ -43,16 +48,16 @@ async function replaceInlineBase64ImagesWithS3Urls(content) {
 
         const ext = EXT_BY_SUBTYPE[subtype] || 'jpeg';
         const mimetype = MIME_BY_SUBTYPE[subtype] || 'image/jpeg';
-        const fileName = await getUniqueFileNameWithPrefix(`inline.${ext}`, 'blog');
+        const fileName = await getUniqueFileNameWithPrefix(`inline.${ext}`, filePrefix);
         const uploaded = await uploadFiletToS3({
             Bucket: process.env.AWS_S3_BUCKET,
-            Key: `blog/${fileName}`,
+            Key: `${keyPrefix}/${fileName}`,
             Body: buffer,
             ContentType: mimetype,
         });
 
         if (!uploaded?.Location) {
-            throw new Error('Failed to upload inline image from blog content');
+            throw new Error('Failed to upload inline image from content');
         }
 
         result = result.replace(dataUri, uploaded.Location);

@@ -4,6 +4,7 @@ const { errorResponse, successResponse } = require('../../../../utils/responseUt
 const logger = require('../../../../library/logger');
 const seoService = require('./seo.service');
 const { invalidateCachePattern } = require('../../../../library/cache');
+const { recacheEntityFireAndForget, recacheHomeFireAndForget, recacheUrlsFireAndForget } = require('../../../../library/prerender');
 
 const seoController = {
   // Get SEO metadata by entity type and optional entity ID
@@ -141,6 +142,23 @@ const seoController = {
 
       const updatedBy = req.user?.id ?? null;
 
+      const existingSeoMeta = await SeoMeta.findOne({
+        where: {
+          entityType,
+          entityId: entityType === 'page' ? null : entityId
+        }
+      });
+      const oldSlug = existingSeoMeta?.slug;
+
+      // Brands/deals: keep canonical aligned with public route even if admin UI omits the field
+      if (entityType === 'brand' || entityType === 'deals') {
+        const slugForCanonical = seoData.slug || existingSeoMeta?.slug;
+        const built = seoService.buildCanonicalUrl(entityType, slugForCanonical);
+        if (built) {
+          seoData.canonicalUrl = built;
+        }
+      }
+
       // Create or update SEO metadata
       const [seoMeta, created] = await SeoMeta.upsert({
         entityType,
@@ -153,6 +171,10 @@ const seoController = {
 
       invalidateCachePattern('seo:*').catch(() => {});
       invalidateCachePattern('sitemap:*').catch(() => {});
+      recacheEntityFireAndForget(entityType, seoData.slug, oldSlug && oldSlug !== seoData.slug ? oldSlug : null, {
+        source: 'upsertSeoMeta',
+        entityId: entityType === 'page' ? null : entityId
+      });
       return successResponse(res, { seoMeta }, `SEO metadata ${created ? 'created' : 'updated'} successfully`);
     } catch (error) {
       console.log(error);
@@ -309,6 +331,34 @@ const seoController = {
       }, 'SEO metadata listed successfully');
     } catch (error) {
       logger.error('Error listing SEO metadata:', error);
+      return errorResponse(res, error);
+    }
+  },
+
+  async manualRecache(req, res) {
+    try {
+      const { url, urls, entityType, slug, oldSlug, recacheHome } = req.body;
+
+      if (recacheHome) {
+        recacheHomeFireAndForget({ source: 'manualRecache' });
+      } else if (url) {
+        recacheUrlsFireAndForget([url], { source: 'manualRecache' });
+      } else if (urls?.length) {
+        recacheUrlsFireAndForget(urls, { source: 'manualRecache' });
+      } else if (entityType && slug) {
+        recacheEntityFireAndForget(entityType, slug, oldSlug, { source: 'manualRecache' });
+      } else {
+        return errorResponse(
+          res,
+          { message: 'Provide url, urls, entityType+slug, or recacheHome: true' },
+          'Bad Request',
+          400
+        );
+      }
+
+      return successResponse(res, { queued: true }, 'Recache queued');
+    } catch (error) {
+      logger.error('Error queueing manual recache:', error);
       return errorResponse(res, error);
     }
   }

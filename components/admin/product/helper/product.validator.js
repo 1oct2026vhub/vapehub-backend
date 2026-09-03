@@ -57,6 +57,9 @@ const createProductValidation = [
     check('is_discontinued')
         .optional()
         .isBoolean().withMessage('is_discontinued must be a boolean'),
+    check('is_coming_soon')
+        .optional()
+        .isBoolean().withMessage('is_coming_soon must be a boolean'),
     check('category_ids')
         .optional()
         .isArray({ min: 1 }).withMessage('Category IDs must be an array with at least one item')
@@ -100,6 +103,16 @@ const createProductValidation = [
             return true;
         }),
     ...productStickerValidation,
+    check('related_blog_ids')
+        .optional()
+        .custom((value) => {
+            if (value === undefined || value === null || value === '') {
+                return true;
+            }
+            const { parseRelatedBlogIdsField } = require('./productBlogRelations.helper');
+            parseRelatedBlogIdsField(value);
+            return true;
+        }),
 ];
 
 const updateProductValidations = [
@@ -120,6 +133,9 @@ const updateProductValidations = [
     check('is_discontinued')
         .optional()
         .isBoolean().withMessage('is_discontinued must be a boolean'),
+    check('is_coming_soon')
+        .optional()
+        .isBoolean().withMessage('is_coming_soon must be a boolean'),
     check('category_ids')
         .optional()
         .custom((value) => {
@@ -166,6 +182,16 @@ const updateProductValidations = [
             }
             return true;
         }),
+    check('related_blog_ids')
+        .optional()
+        .custom((value) => {
+            if (value === undefined || value === null || value === '') {
+                return true;
+            }
+            const { parseRelatedBlogIdsField } = require('./productBlogRelations.helper');
+            parseRelatedBlogIdsField(value);
+            return true;
+        }),
     check('redirect_url')
         .optional({ values: 'null' })
         .custom((value) => {
@@ -187,8 +213,10 @@ const productImageValidation = [
       .isInt({ min: 1 }).withMessage("Image ID must be a valid integer")
 ];
 
+const { createTempDiskStorage } = require("../../../../library/multer/tempDiskStorage");
+
 // Configure multer for handling file uploads
-const storage = multer.memoryStorage();
+const storage = createTempDiskStorage('products');
 const upload = multer({
     storage: storage,
     limits: {

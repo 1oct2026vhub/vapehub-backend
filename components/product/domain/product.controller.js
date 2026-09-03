@@ -2,12 +2,15 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order, Settings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
-const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
+const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant, shouldHideVariantSelector } = require("../helper/product.helper");
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
+const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 const { formatProductStickerResponse } = require('../helper/productSticker.helper');
+const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
+const { subscribeToStockAlert } = require('../helper/productStockAlert.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -144,6 +147,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         let productFilterConditions = [
             "p.deletedAt IS NULL",
             "p.status = 'published'",
+            "p.is_coming_soon = false",
             "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL AND pv_active.price > 0)"
         ];
         let productFilterParams = {};
@@ -188,7 +192,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         }
 
         if (variantFilters.id) {
-            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId)");
+            productFilterConditions.push("EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.id = :variantId AND pv.deleted_at IS NULL)");
             productFilterParams.variantId = variantFilters.id;
         }
 
@@ -211,16 +215,27 @@ module.exports.listNewProducts = async (req, res, next) => {
             ? "WHERE " + productFilterConditions.join(" AND ") 
             : "";
 
+        // Whitelist sort fields/order to avoid SQL injection and map aliases to columns
+        const sortColumnMap = {
+            id: 'id',
+            name: 'name',
+            price: 'price',
+            createdAt: 'createdAt',
+            stock: 'stock_quantity'
+        };
+        const safeSortBy = sortColumnMap[sort_by] || 'createdAt';
+        const safeOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
         // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt,
+                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status, p.createdAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.createdAt DESC, p.${sort_by} ${order}
+            ORDER BY p.${safeSortBy} ${safeOrder}
             LIMIT :limit OFFSET :offset
         `;
 
@@ -341,12 +356,12 @@ module.exports.listNewProducts = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
             
-            // Variants query - only essential fields
+            // Variants query - only essential fields (exclude soft-deleted)
             Product.sequelize.query(`
                 SELECT 
                     id, product_id, price, discount_price, stock, stock_status, status, is_discontinued
                 FROM product_variants
-                WHERE product_id IN (:productIds) AND status = 'active'
+                WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -357,7 +372,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 SELECT 
                     variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id IN (:productIds) AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
                 LIMIT 50
             `, {
@@ -562,12 +577,11 @@ module.exports.listNewProducts = async (req, res, next) => {
                 variantImages: variantImagesMap.get(variant.id) || []
             }));
 
-            // Check stock status
+            // Check stock status (low_stock still means sellable inventory)
             const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
-                !variant.is_discontinued &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );
@@ -651,6 +665,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 puff_count: puffCount,
                 is_new: isNewProduct,
                 sticker: formatProductStickerResponse(product),
+                is_coming_soon: Boolean(product.is_coming_soon),
                 is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
@@ -661,7 +676,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 deals: dealsMap.get(product.id) || [],
                 flavors: flavorTerms,
                 flavor_count: flavorTerms.length,
-                out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
+                out_of_stock: !hasInStockVariant,
                 min_price_variant: minPriceVariant,
                 // Add review data and statistics
                 reviews: processedReviews,
@@ -684,6 +699,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pc.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY c.id, c.name, c.slug
                 LIMIT 20
             `, {
@@ -700,6 +716,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pb.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY b.id, b.name, b.slug
                 LIMIT 20
             `, {
@@ -1003,6 +1020,12 @@ module.exports.getProductByid = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Fetch loyalty points settings
         const loyaltySettings = await LoyaltyPointsSettings.findOne({
@@ -1090,8 +1113,12 @@ module.exports.getProductByid = async (req, res, next) => {
         }
 
         // Prepare the response
+        const relatedBlogs = await getPublishedProductRelatedBlogs(productId);
         const response = {
             ...product.toJSON(),
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: productPrice,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -1121,7 +1148,8 @@ module.exports.getProductByid = async (req, res, next) => {
                 min_amount_for_loyalty_points: loyaltySettings.min_amount_for_loyalty_points,
                 status: loyaltySettings.status
             } : null,
-            min_price_variant: minPriceVariant
+            min_price_variant: minPriceVariant,
+            related_blogs: relatedBlogs
         };
 
         return response;
@@ -1167,6 +1195,69 @@ module.exports.getProductDescription = async (req, res, next) => {
             return errorResponse(res, {}, 'Product not found', 404);
         }
         return successResponse(res, responseData, 'Product description fetched successfully');
+    } catch (error) {
+        return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Coming Soon — email me when available
+ * POST /api/product/:id/notify-me
+ * Body: { email, marketing_opt_in? }
+ */
+module.exports.notifyMeWhenAvailable = async (req, res) => {
+    try {
+        const productId = parseInt(req.params.id, 10);
+        const { email: submittedEmail, marketing_opt_in } = req.body;
+        const userId = req.user?.id || null;
+        // Use the authenticated account email when available. Guest requests
+        // must provide their own email address.
+        const email = req.user?.email || submittedEmail;
+
+        const result = await subscribeToStockAlert({
+            productId,
+            email,
+            marketingOptIn: marketing_opt_in === true || marketing_opt_in === 'true' || marketing_opt_in === '1',
+            userId
+        });
+
+        return successResponse(res, result, result.message);
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        return errorResponse(res, error, error.message, statusCode);
+    }
+};
+
+module.exports.getProductRelatedBlogs = async (req, res, next) => {
+    try {
+        const productId = req.params.id;
+        const responseData = await cacheOrFetch(`product:related-blogs:${productId}`, async () => {
+            const productResult = await Product.sequelize.query(`
+                SELECT p.id
+                FROM products p
+                WHERE p.id = :product_id
+                AND p.status = 'published'
+                AND p.deletedAt IS NULL
+            `, {
+                replacements: { product_id: productId },
+                type: Product.sequelize.QueryTypes.SELECT
+            });
+
+            if (!productResult.length) {
+                return null;
+            }
+
+            const related_blogs = await getPublishedProductRelatedBlogCards(productId);
+            return {
+                product_id: productResult[0].id,
+                related_blogs
+            };
+        }, 300);
+
+        if (!responseData) {
+            return errorResponse(res, {}, 'Product not found', 404);
+        }
+        return successResponse(res, responseData, 'Product related blogs fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -1372,7 +1463,7 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         await transaction.commit();
 
-        await invalidateCache([`product:detail:${id}`, `product:description:${id}`]);
+        await invalidateCache([`product:detail:${id}`, `product:description:${id}`, `product:related-blogs:${id}`]);
 
         // Fetch the updated product with related models
         const updatedProduct = await Product.findByPk(id, {
@@ -1430,7 +1521,8 @@ module.exports.uploadImage = async (req, res) => {
         }
 
         const uploadPromise = files.map(async (image) => {
-            const { originalname, mimetype, buffer } = image;
+            const { originalname, mimetype } = image;
+            const buffer = await readUploadFile(image);
             
             // Resize to max 1920x1080 if larger
             let processedBuffer = buffer;
@@ -1477,6 +1569,8 @@ module.exports.uploadImage = async (req, res) => {
         console.log("🚀 ~ module.exports.uploadImage= ~ error:", error)
         logger.error(error)
         return errorResponse(res, error, error.message);
+    } finally {
+        await cleanupMulterFiles(req.files);
     }
 }
 
@@ -1524,7 +1618,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             variantsResult,
             variantImagesResult,
             dealsResult,
-            attributeTermsResult
+            attributeTermsResult,
+            variantAttributesResult
         ] = await Promise.all([
             // Categories query
             Product.sequelize.query(`
@@ -1570,7 +1665,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                     weight, length, width, height, description, barcode, stock, low_stock_threshold,
                     stock_status, status, updated_by, created_at, updated_at, deleted_at
                 FROM product_variants
-                WHERE product_id = :productId AND status = 'active'
+                WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1581,7 +1676,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 SELECT 
                     id, variant_id, image_url, is_primary
                 FROM product_variant_images
-                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active')
+                WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL)
                 AND deleted_at IS NULL
             `, {
                 replacements: { productId: productResult.id },
@@ -1617,6 +1712,20 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 JOIN attributes a ON pat.attribute_id = a.id
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :productId
+            `, {
+                replacements: { productId: productResult.id },
+                type: Product.sequelize.QueryTypes.SELECT
+            }),
+
+            // Variant attributes (needed for hide_variant_selector)
+            Product.sequelize.query(`
+                SELECT 
+                    pva.variant_id, pva.attribute_id, pva.term_id
+                FROM product_variant_attributes pva
+                WHERE pva.variant_id IN (
+                    SELECT id FROM product_variants
+                    WHERE product_id = :productId AND status = 'active' AND deleted_at IS NULL
+                )
             `, {
                 replacements: { productId: productResult.id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -1716,6 +1825,18 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 is_primary: img.is_primary
             });
         });
+
+        // Create variant attributes map
+        const variantAttributesMap = new Map();
+        variantAttributesResult.forEach(va => {
+            if (!variantAttributesMap.has(va.variant_id)) {
+                variantAttributesMap.set(va.variant_id, []);
+            }
+            variantAttributesMap.get(va.variant_id).push({
+                attribute_id: va.attribute_id,
+                term_id: va.term_id
+            });
+        });
         
         // Parse Variants with Images
         product.variants = variantsResult.map(variant => ({
@@ -1740,7 +1861,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             created_at: variant.created_at,
             updated_at: variant.updated_at,
             deleted_at: variant.deleted_at,
-            variantImages: variantImagesMap.get(variant.id) || []
+            variantImages: variantImagesMap.get(variant.id) || [],
+            variantAttributes: variantAttributesMap.get(variant.id) || []
         }));
         
         // Parse Deals
@@ -1851,6 +1973,12 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Get primary product image
         const primaryProductImage = product.ProductImages && product.ProductImages.length > 0 
@@ -1878,6 +2006,9 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // **Modify the response** (same logic as original)
         const response = {
             ...product,  // Use parsed product object instead of toJSON()
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: minPriceVariant ? minPriceVariant.price : product.price,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -1926,7 +2057,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.is_discontinued, p.createdAt, p.updatedAt,
+                p.is_discontinued, p.is_coming_soon, p.createdAt, p.updatedAt,
                 p.sticker_name, p.sticker_background_color,
                 p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
@@ -2040,7 +2171,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
-            // Get product attribute terms with raw SQL
+            // Get product attribute terms with raw SQL (include hidden; filter visibility when building attribute_terms)
             Product.sequelize.query(`
                 SELECT 
                     pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page,
@@ -2051,7 +2182,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :product_id
                 AND pat.deleted_at IS NULL
-                AND pat.is_visible_page = true
             `, {
                 replacements: { product_id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2112,7 +2242,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pva.term_id = t.id
                 WHERE pva.variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND pva.is_visible = true
             `, {
@@ -2127,7 +2257,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 FROM product_variant_images
                 WHERE variant_id IN (
                     SELECT id FROM product_variants 
-                    WHERE product_id = :product_id AND status = 'active'
+                    WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
                 )
                 AND deleted_at IS NULL
             `, {
@@ -2229,7 +2359,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             variantImages: variantImagesMap.get(variant.id) || []
         }));
 
-        // Group attributes and their terms (OPTIMIZED)
+        // Group attributes and their terms (all product_attribute_terms; FE uses is_visible_page)
         const attributeTermsMap = new Map();
         productAttributeTermsResult.forEach((pat) => {
             const attributeId = pat.attr_id;
@@ -2336,11 +2466,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get available terms for other attributes
         const availableTermsMap = new Map();
         
-        // Create a lookup map for used_in_variation from productAttributeTermsResult
+        // Create a lookup map for used_in_variation / is_visible_page from productAttributeTermsResult
         const usedInVariationMap = new Map();
+        const isVisiblePageMap = new Map();
         productAttributeTermsResult.forEach(pat => {
             const key = `${pat.attr_id}-${pat.term_id}`;
             usedInVariationMap.set(key, Boolean(pat.used_in_variation));
+            isVisiblePageMap.set(key, pat.is_visible_page === true || pat.is_visible_page === 1);
         });
         
         filteredVariants.forEach(variant => {
@@ -2353,9 +2485,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     // Check if this attribute-term combination has used_in_variation = true
                     const key = `${attributeId}-${termId}`;
                     const usedInVariation = usedInVariationMap.get(key);
+                    const isVisiblePage = isVisiblePageMap.get(key);
                     
-                    // Only include terms with used_in_variation = true
-                    if (usedInVariation === true) {
+                    // Only include terms with used_in_variation = true and visible on page
+                    if (usedInVariation === true && isVisiblePage === true) {
                         if (!availableTermsMap.has(attributeId)) {
                             availableTermsMap.set(attributeId, {
                                 attribute: {
@@ -2770,6 +2903,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get key highlights content from settings
         const keyHighlights = keyHighlightsSetting ? keyHighlightsSetting.content : null;
 
+        const hide_variant_selector = shouldHideVariantSelector(
+            structuredVariants,
+            productAttributeTermsResult
+        );
+        const soleVariant = hide_variant_selector ? structuredVariants[0] : null;
+
         const response = {
             product: {
                 id: product.id,
@@ -2777,6 +2916,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 slug: product.slug,
                 description: product.description, // Use direct description from SQL result
                 is_discontinued: Boolean(product.is_discontinued),
+                is_coming_soon: Boolean(product.is_coming_soon),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 key_highlights: keyHighlights,
@@ -2792,6 +2932,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
+                hide_variant_selector,
+                default_variant_id: soleVariant ? soleVariant.id : null,
+                default_variant_slug: soleVariant ? soleVariant.slug : null,
                 deals: dealsResult, // Use raw SQL result
                 loyaltySettings: loyaltySettings ? {
                     program_name: loyaltySettings.program_name,
@@ -2944,7 +3087,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             JOIN attribute_terms t ON pva.term_id = t.id
             WHERE pva.variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND pva.is_visible = true
         `, {
@@ -2959,7 +3102,7 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
             FROM product_variant_images
             WHERE variant_id IN (
                 SELECT id FROM product_variants 
-                WHERE product_id = :product_id AND status = 'active'
+                WHERE product_id = :product_id AND status = 'active' AND deleted_at IS NULL
             )
             AND deleted_at IS NULL
         `, {
@@ -4850,6 +4993,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -4863,6 +5007,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (:productIds)
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 replacements: { productIds },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5134,7 +5279,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
             const hasInStockVariant = variants && variants.some(variant =>
                 variant.status === 'active' &&
                 variant.stock > 0 &&
-                variant.stock_status === 'in_stock' &&
+                (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
                 parseFloat(variant.price) > 0
             );
@@ -5377,6 +5522,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 FROM product_variants pv
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
@@ -5389,6 +5535,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 JOIN product_variants pv ON pvi.variant_id = pv.id
                 WHERE pv.product_id IN (${productIds.join(',')})
                 AND pv.status = 'active'
+                AND pv.deleted_at IS NULL
                 AND pvi.deleted_at IS NULL
             `, {
                 type: Product.sequelize.QueryTypes.SELECT
@@ -5407,6 +5554,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                     SELECT pv.id FROM product_variants pv 
                     WHERE pv.product_id IN (${productIds.join(',')}) 
                     AND pv.status = 'active'
+                    AND pv.deleted_at IS NULL
                 )
             `, {
                 type: Product.sequelize.QueryTypes.SELECT

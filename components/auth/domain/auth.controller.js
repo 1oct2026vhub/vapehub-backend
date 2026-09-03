@@ -9,7 +9,6 @@ const moment = require('moment');
 const { generateAuthJwtToken, verifyAuthJwtToken } = require('../helper/jwt.helper');
 const referral_method = require('../../../models/referral_method');
 const { createNotification } = require('../../notification/helper/notification.helper');
-const logger = require('../../../utils/logger');
 const { convertTemporaryToPermanent } = require('../helper/temporaryUser.helper');
 
 

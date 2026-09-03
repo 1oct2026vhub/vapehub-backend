@@ -12,6 +12,7 @@ const {
 } = require("../helper/blog.validator");
 const blogCategoryRoute = require('./blogCategory.route');
 const blogTagRoute = require('./blogTag.route');
+const blogAuthorRoute = require('./blogAuthor.route');
 
 
 
@@ -198,6 +199,29 @@ router.get('/posts/:id',
  *                 type: array
  *                 items:
  *                   type: integer
+ *               author_id:
+ *                 type: integer
+ *                 description: ID of a record in the authors table. Required on create.
+ *               sources:
+ *                 type: string
+ *                 description: JSON array of source objects with label, href, and optional description
+ *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               pull_quote:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
+ *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
+ *               inline_product_card:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
+ *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
+ *               first_person_callouts:
+ *                 type: string
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
+ *               related_blog_ids:
+ *                 type: string
+ *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
+ *                 example: "18,42,7"
  *     responses:
  *       201:
  *         description: Blog post created successfully
@@ -403,6 +427,29 @@ router.put('/posts/bulk-restore',
  *                 type: array
  *                 items:
  *                   type: integer
+ *               author_id:
+ *                 type: integer
+ *                 description: ID of a record in the authors table. Required on create.
+ *               sources:
+ *                 type: string
+ *                 description: JSON array of source objects with label, href, and optional description
+ *                 example: '[{"label":"MHRA","href":"https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency","description":"e-cigarette guidance"}]'
+ *               pull_quote:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-body pull quote with external authoritative attribution. Send empty string to clear.
+ *                 example: '{"body":"Nicotine oxidation is the limiting factor in e-liquid shelf life.","attribution":"UK Vaping Industry Association, E-Liquid Storage Guidance","source_url":"https://www.ukvia.co.uk/","source_type":"UKVIA"}'
+ *               inline_product_card:
+ *                 type: string
+ *                 description: Optional JSON object for a single mid-article product or category spotlight card. Send empty string to clear.
+ *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
+ *               first_person_callouts:
+ *                 type: string
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
+ *               related_blog_ids:
+ *                 type: string
+ *                 description: Up to 3 related blog IDs in display order. Comma-separated or JSON array.
+ *                 example: "18,42,7"
  *     responses:
  *       200:
  *         description: Blog post updated successfully
@@ -469,6 +516,7 @@ router.put('/posts/:id/restore',
 
 router.use('/categories', blogCategoryRoute);
 router.use('/tags', blogTagRoute);
+router.use('/authors', blogAuthorRoute);
 
 /**
  * @swagger
@@ -517,7 +565,11 @@ router.use('/tags', blogTagRoute);
  *           nullable: true
  *           description: Date when the post was soft deleted, null if not deleted
  *         author:
- *           $ref: '#/components/schemas/User'
+ *           type: object
+ *           description: Author record from the authors table
+ *         author_id:
+ *           type: integer
+ *           description: Linked authors table ID for the post byline
  *         categories:
  *           type: array
  *           items:
@@ -526,6 +578,155 @@ router.use('/tags', blogTagRoute);
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/BlogTag'
+ *         sources:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/BlogSourceItem'
+ *         pull_quote:
+ *           $ref: '#/components/schemas/BlogPullQuote'
+ *           nullable: true
+ *           description: Optional single pull quote displayed mid-body after a major H2
+ *         inline_product_card:
+ *           $ref: '#/components/schemas/BlogInlineProductCard'
+ *           nullable: true
+ *           description: Optional single inline product or category spotlight card for mid-article placement
+ *         first_person_callouts:
+ *           type: array
+ *           maxItems: 2
+ *           items:
+ *             $ref: '#/components/schemas/BlogFirstPersonCallout'
+ *           description: Optional first-person warehouse/team callouts for inline body placement
+ *         related_blog_ids:
+ *           type: array
+ *           items:
+ *             type: integer
+ *           description: Curated related blog IDs in display order (max 3)
+ *         related_blogs:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/RelatedBlogPreview'
+ *     BlogSourceItem:
+ *       type: object
+ *       required:
+ *         - label
+ *         - href
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "Medicines and Healthcare products Regulatory Agency (MHRA)"
+ *         href:
+ *           type: string
+ *           format: uri
+ *           example: "https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency"
+ *         description:
+ *           type: string
+ *           example: "e-cigarette product notification scheme & manufacturer guidance"
+ *     BlogPullQuote:
+ *       type: object
+ *       nullable: true
+ *       description: Single optional pull quote with external authoritative attribution
+ *       required:
+ *         - body
+ *         - attribution
+ *         - source_url
+ *         - source_type
+ *         - location
+ *       properties:
+ *         body:
+ *           type: string
+ *           example: "Nicotine oxidation is the limiting factor in e-liquid shelf life — the PG/VG base will outlast the active ingredient by years."
+ *         attribution:
+ *           type: string
+ *           example: "UK Vaping Industry Association, E-Liquid Storage Guidance"
+ *         source_url:
+ *           type: string
+ *           format: uri
+ *           example: "https://www.ukvia.co.uk/"
+ *         source_type:
+ *           type: string
+ *           enum: [UKVIA, MHRA, OHID, peer_reviewed]
+ *           example: "UKVIA"
+ *         location:
+ *           type: string
+ *           enum: [mid_body_after_h2]
+ *           example: "mid_body_after_h2"
+ *     BlogInlineProductCard:
+ *       type: object
+ *       nullable: true
+ *       description: Stored inline product/category card config (admin). Customer API hydrates image, title, and url.
+ *       required:
+ *         - entity_type
+ *         - entity_id
+ *         - blurb
+ *         - location
+ *       properties:
+ *         entity_type:
+ *           type: string
+ *           enum: [product, category]
+ *           example: "category"
+ *         entity_id:
+ *           type: integer
+ *           example: 12
+ *         blurb:
+ *           type: string
+ *           example: "Every bottle on our shelf is checked for batch code and best-before before it ships."
+ *         title:
+ *           type: string
+ *           nullable: true
+ *           description: Optional display title override
+ *         cta_label:
+ *           type: string
+ *           nullable: true
+ *           example: "SHOP NIC SALTS"
+ *         location:
+ *           type: string
+ *           enum: [mid_article]
+ *           example: "mid_article"
+ *     BlogFirstPersonCallout:
+ *       type: object
+ *       required:
+ *         - heading
+ *         - body
+ *         - insert_after_paragraph
+ *         - location
+ *       properties:
+ *         label:
+ *           type: string
+ *           example: "FROM OUR WAREHOUSE"
+ *         heading:
+ *           type: string
+ *           example: "We rotate stock by batch code — here's what ages fastest."
+ *         body:
+ *           type: string
+ *           description: Rich-text HTML from CMS
+ *         insert_after_paragraph:
+ *           type: integer
+ *           minimum: 1
+ *           example: 3
+ *         location:
+ *           type: string
+ *           enum: [inline_body]
+ *           example: "inline_body"
+ *     RelatedBlogPreview:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         title:
+ *           type: string
+ *         slug:
+ *           type: string
+ *         image_url:
+ *           type: string
+ *         alt_text:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [draft, published, archived]
+ *         published_at:
+ *           type: string
+ *           format: date-time
+ *           nullable: true
  */
 
 module.exports = router;

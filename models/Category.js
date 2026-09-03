@@ -17,6 +17,14 @@ module.exports = (sequelize, DataTypes) => {
               otherKey: 'product_id',
               as: 'Products'
             });
+            this.hasOne(models.CategoryBuyingGuide, {
+                foreignKey: 'category_id',
+                as: 'buyingGuide'
+            });
+            this.hasMany(models.CategoryRelatedCategory, {
+                foreignKey: 'category_id',
+                as: 'relatedCategoryLinks'
+            });
         }
     }
 
@@ -40,6 +48,14 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false
         },
         description: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
+        type_cards_html: {
+            type: DataTypes.TEXT('long'),
+            allowNull: true
+        },
+        additional_text_box: {
             type: DataTypes.TEXT('long'),
             allowNull: true
         },

@@ -620,7 +620,6 @@ router.post("/guest",
  *                   - last_name
  *                   - address_line_1
  *                   - city
- *                   - region
  *                   - post_code
  *                 properties:
  *                   shipping_address_id:
@@ -1160,8 +1159,9 @@ router.post("/guest/checkout-and-order",
         check('useShippingAsBilling').optional().isBoolean(),
         check('payment_method').isObject().withMessage('Payment method is required'),
         check('payment_method.method').isIn(['Worldpay', 'VivaWallet']).withMessage('Payment method must be Worldpay or VivaWallet'),
-        check('total').isFloat({ min: 0 }).withMessage('Total amount is required'),
-        check('loyalty').optional(),
+        check('total').exists({ checkNull: true }).withMessage('Total amount is required').isFloat({ min: 0 }).withMessage('Total must be zero or greater'),
+        check('loyalty').optional().isBoolean(),
+        check('points_to_redeem').optional().isInt({ min: 0 }),
         check('receive_promotions').optional().isBoolean()
     ]),
     checkoutController.guestCheckoutAndOrder

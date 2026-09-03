@@ -9,7 +9,12 @@ const {
     createFooterLinkValidation,
     updateFooterLinkValidation,
     reorderFooterSectionValidation,
-    reorderFooterLinkValidation
+    reorderFooterLinkValidation,
+    getFooterBadgesValidation,
+    createFooterBadgeValidation,
+    updateFooterBadgeValidation,
+    reorderFooterBadgeValidation,
+    uploadBadgeIconValidation
 } = require("../helper/footer.validator");
 const footerController = require('../domain/footer.controller');
 
@@ -381,5 +386,150 @@ router.delete('/links/:id', [authMiddleware(true)], footerController.deleteFoote
  *         description: Invalid input
  */
 router.put('/links/:id/reorder', [authMiddleware(true), validateRequest(reorderFooterLinkValidation)], footerController.reorderFooterLink);
+
+/**
+ * @swagger
+ * /api/admin/footer/badges:
+ *   get:
+ *     summary: Get all footer badges
+ *     tags:
+ *       - Admin
+ *         - Footer
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: is_active
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: List of footer badges
+ */
+router.get('/badges', [authMiddleware(true), validateRequest(getFooterBadgesValidation)], footerController.getFooterBadges);
+
+/**
+ * @swagger
+ * /api/admin/footer/badges:
+ *   post:
+ *     summary: Create a footer badge
+ *     tags:
+ *       - Admin
+ *         - Footer
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - heading
+ *               - subtitle
+ *               - icon
+ *             properties:
+ *               heading:
+ *                 type: string
+ *               subtitle:
+ *                 type: string
+ *               url:
+ *                 type: string
+ *               order:
+ *                 type: integer
+ *               is_active:
+ *                 type: boolean
+ *               icon:
+ *                 type: string
+ *                 format: binary
+ */
+router.post('/badges', [authMiddleware(true), uploadBadgeIconValidation, validateRequest(createFooterBadgeValidation)], footerController.createFooterBadge);
+
+/**
+ * @swagger
+ * /api/admin/footer/badges/{id}:
+ *   put:
+ *     summary: Update a footer badge
+ *     tags:
+ *       - Admin
+ *         - Footer
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               heading:
+ *                 type: string
+ *               subtitle:
+ *                 type: string
+ *               url:
+ *                 type: string
+ *               order:
+ *                 type: integer
+ *               is_active:
+ *                 type: boolean
+ *               icon:
+ *                 type: string
+ *                 format: binary
+ */
+router.put('/badges/:id', [authMiddleware(true), uploadBadgeIconValidation, validateRequest(updateFooterBadgeValidation)], footerController.updateFooterBadge);
+
+/**
+ * @swagger
+ * /api/admin/footer/badges/{id}:
+ *   delete:
+ *     summary: Delete a footer badge
+ *     tags:
+ *       - Admin
+ *         - Footer
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ */
+router.delete('/badges/:id', [authMiddleware(true)], footerController.deleteFooterBadge);
+
+/**
+ * @swagger
+ * /api/admin/footer/badges/{id}/reorder:
+ *   put:
+ *     summary: Reorder a footer badge
+ *     tags:
+ *       - Admin
+ *         - Footer
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - new_order
+ *             properties:
+ *               new_order:
+ *                 type: integer
+ */
+router.put('/badges/:id/reorder', [authMiddleware(true), validateRequest(reorderFooterBadgeValidation)], footerController.reorderFooterBadge);
 
 module.exports = router; 

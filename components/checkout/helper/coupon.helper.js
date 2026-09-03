@@ -1,6 +1,33 @@
-const { Op } = require("sequelize");
 const moment = require("moment-timezone");
 const { Coupon, CouponUsage } = require("../../../models");
+
+/**
+ * Absolute timeline check (not UK-string vs UTC-ISO string compare).
+ * Returns an error payload if outside the coupon window, otherwise null.
+ */
+const getCouponDateWindowError = (coupon) => {
+    if (!coupon) return null;
+
+    const now = moment();
+
+    if (coupon.start_date && now.isBefore(moment(coupon.start_date))) {
+        return {
+            statusCode: 404,
+            message: "Coupon has not started yet"
+        };
+    }
+
+    if (coupon.end_date && now.isAfter(moment(coupon.end_date))) {
+        return {
+            statusCode: 404,
+            message: "Coupon has expired"
+        };
+    }
+
+    return null;
+};
+
+const isCouponWithinDateWindow = (coupon) => !getCouponDateWindowError(coupon);
 
 /**
  * Validate a regular coupon for a specific user and calculate discount.
@@ -43,19 +70,9 @@ const validateAndCalculateCouponForUser = async ({
         };
     }
 
-    // Date validity using UK timezone (aligned with rest of system)
-    const currentUkTime = moment().tz(process.env.UK_TIMEZONE || "Europe/London");
-    if (coupon.start_date && currentUkTime.isBefore(coupon.start_date)) {
-        throw {
-            statusCode: 404,
-            message: "Coupon has not started yet"
-        };
-    }
-    if (coupon.end_date && currentUkTime.isAfter(coupon.end_date)) {
-        throw {
-            statusCode: 404,
-            message: "Coupon has expired"
-        };
+    const dateError = getCouponDateWindowError(coupon);
+    if (dateError) {
+        throw dateError;
     }
 
     // Coupon restricted to a specific user
@@ -141,6 +158,8 @@ const validateAndCalculateCouponForUser = async ({
 };
 
 module.exports = {
+    getCouponDateWindowError,
+    isCouponWithinDateWindow,
     validateAndCalculateCouponForUser
 };
 

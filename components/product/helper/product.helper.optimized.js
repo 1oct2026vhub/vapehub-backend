@@ -34,6 +34,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       brand,
       variant,
       is_new,
+      is_coming_soon,
       source,
       deal_id
     } = query;
@@ -109,6 +110,13 @@ const fetchProductsOptimized = async (query, status = 'published') => {
     // Build comprehensive filter conditions for single query approach
     const baseFilterConditions = [];
     const baseFilterParams = {};
+
+    // Coming Soon page: is_coming_soon=true. All other lists (incl. New Products): exclude.
+    if (is_coming_soon === true || is_coming_soon === 'true' || is_coming_soon === '1') {
+      baseFilterConditions.push("p.is_coming_soon = true");
+    } else {
+      baseFilterConditions.push("p.is_coming_soon = false");
+    }
 
     // Add keyword filter
     if (keyword) {
@@ -211,7 +219,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
       product_data AS (
         SELECT 
           p.id, p.updated_by, p.name, p.slug, p.sku, p.price, p.discount_price, 
-          p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, 
+          p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.battery_capacity, 
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style, 
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt, 
@@ -233,7 +241,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
             ? `(SELECT COUNT(DISTINCT o.id) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE oi.product_id = p.id AND o.createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed') AND o.deletedAt IS NULL) ${orderValue}`
             : sort_by === 'price'
             ? `min_variant_price ${orderValue}`
-            : `${is_new ? 'p.createdAt DESC, ' : ''}p.${sort_by} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }
         LIMIT ${parsedLimit} OFFSET ${parsedOffset}
       )
@@ -625,11 +633,11 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         testimonials: testimonialCount
       };
 
-      // Check stock status efficiently
+      // Check stock status efficiently (low_stock still means sellable inventory)
       const hasInStockVariant = productVariantsData.some(variant =>
         variant.status === 'active' &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock' &&
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
         variant.price !== null &&
         parseFloat(variant.price) > 0
       );
@@ -639,7 +647,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         variant.status === 'active' && 
         parseFloat(variant.price) > 0 &&
         variant.stock > 0 &&
-        variant.stock_status === 'in_stock'
+        (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock')
       );
       
       let minPriceVariantData = null;

@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
+const { optionalAuthenticateJWT } = require("../../auth/middleware/authMiddleware");
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
@@ -596,7 +597,7 @@ router.get('/new', productController.listNewProducts);
  *           type: integer
  *     responses:
  *       200:
- *         description: A single product
+ *         description: A single product (includes related_blogs — up to 3 published blog cards in CMS order)
  */
 router.get('/fetch/:id',
     validateRequest([
@@ -1056,8 +1057,10 @@ router.delete('/:id', authenticateJWT,
 router.get("/trending", productController.trendingProduct)
 
 // api for file upload
+const { createTempDiskStorage } = require("../../../library/multer/tempDiskStorage");
+
 // Configure multer for handling file uploads
-const storage = multer.memoryStorage();
+const storage = createTempDiskStorage('products');
 const upload = multer({
     storage: storage,
     limits: {
@@ -1306,6 +1309,128 @@ router.get('/:id/description',
         param('id').isInt().withMessage('ID must be an integer')
     ]),
     productController.getProductDescription
+);
+
+/**
+ * @swagger
+ * /api/product/{id}/notify-me:
+ *   post:
+ *     tags:
+ *       - Product
+ *     summary: Sign up for a one-time email when a Coming Soon product is in stock
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Required for guest users; omitted for authenticated users
+ *               marketing_opt_in:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Signed up successfully
+ *       400:
+ *         description: Invalid email
+ *       404:
+ *         description: Product not available for stock alerts
+ */
+router.post('/:id/notify-me',
+    optionalAuthenticateJWT,
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer'),
+        check('email')
+            .optional({ nullable: true, checkFalsy: true })
+            .isEmail().withMessage('A valid email address is required')
+            .normalizeEmail(),
+        check('marketing_opt_in').optional().isBoolean().withMessage('marketing_opt_in must be a boolean')
+    ]),
+    productController.notifyMeWhenAvailable
+);
+
+/**
+ * @swagger
+ * /api/product/{id}/related-blogs:
+ *   get:
+ *     tags:
+ *       - Product
+ *     summary: Get product related blogs by ID
+ *     description: Returns up to 3 published related blog cards for a product. Fetch once on initial product page load instead of filter-variants to keep variant filtering responses small.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the product
+ *     responses:
+ *       200:
+ *         description: Product related blogs fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     product_id:
+ *                       type: integer
+ *                     related_blogs:
+ *                       type: array
+ *                       maxItems: 3
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           title:
+ *                             type: string
+ *                           slug:
+ *                             type: string
+ *                           image_url:
+ *                             type: string
+ *                           alt_text:
+ *                             type: string
+ *                           published_at:
+ *                             type: string
+ *                             format: date-time
+ *                           categories:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                 name:
+ *                                   type: string
+ *                                 slug:
+ *                                   type: string
+ *       404:
+ *         description: Product not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id/related-blogs',
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer')
+    ]),
+    productController.getProductRelatedBlogs
 );
 
 /**

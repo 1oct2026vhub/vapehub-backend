@@ -1,6 +1,6 @@
 require('dotenv').config();
 const Redis = require('ioredis');
-const logger = require('../utils/logger');
+const logger = require('./logger');
 
 // Create Redis client — use environment variable for connection
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
@@ -17,15 +17,15 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
 });
 
 redis.on('error', (err) => {
-    logger.logError({ message: 'Redis connection error', error: err.message });
+    logger.error({ message: 'Redis connection error', error: err.message }, 'Redis connection error');
 });
 
 redis.on('connect', () => {
-    logger.logInfo({ message: 'Redis connected successfully' });
+    logger.info({ message: 'Redis connected successfully' }, 'Redis connected');
 });
 
 redis.connect().catch(() => {
-    logger.logInfo({ message: 'Redis not available — caching disabled, falling through to DB' });
+    logger.info({ message: 'Redis not available — caching disabled, falling through to DB' }, 'Redis unavailable');
 });
 
 /**
@@ -44,7 +44,7 @@ const cacheOrFetch = async (key, fetcherFn, ttlSeconds = 60) => {
             }
         }
     } catch (err) {
-        logger.logError({ message: 'Cache read error', key, error: err.message });
+        logger.error({ message: 'Cache read error', key, error: err.message }, 'Cache read error');
     }
 
     const data = await fetcherFn();
@@ -72,7 +72,7 @@ const invalidateCache = async (keys) => {
             }
         }
     } catch (err) {
-        logger.logError({ message: 'Cache invalidation error', error: err.message });
+        logger.error({ message: 'Cache invalidation error', error: err.message }, 'Cache invalidation error');
     }
 };
 
@@ -89,13 +89,25 @@ const invalidateCachePattern = async (pattern) => {
             }
         }
     } catch (err) {
-        logger.logError({ message: 'Cache pattern invalidation error', error: err.message });
+        logger.error({ message: 'Cache pattern invalidation error', error: err.message }, 'Cache pattern invalidation error');
     }
 };
+
+async function closeRedis() {
+    if (redis.status === 'end' || redis.status === 'close') {
+        return;
+    }
+    try {
+        await redis.quit();
+    } catch (err) {
+        logger.logError({ message: 'Redis quit error', error: err.message });
+    }
+}
 
 module.exports = {
     redis,
     cacheOrFetch,
     invalidateCache,
-    invalidateCachePattern
+    invalidateCachePattern,
+    closeRedis
 };

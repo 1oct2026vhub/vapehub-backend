@@ -1,11 +1,40 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Blog, BlogCategory, BlogTag, User } = require("../../../models");
+const { Blog, BlogCategory, BlogTag } = require("../../../models");
 const { Op } = require("sequelize");
 const { cacheOrFetch } = require("../../../library/cache");
+const {
+    resolveRelatedBlogs,
+    formatBlogDetailResponse
+} = require("../helper/blogDetail.serializer");
+const { formatAuthor } = require("../helper/blogAuthor.formatter");
+const { getAuthorInclude } = require("../../admin/blog/helper/blogPayload.helper");
+
+const withFormattedAuthor = (blog) => {
+    const data = blog.toJSON ? blog.toJSON() : blog;
+    return {
+        ...data,
+        author: formatAuthor(data.author)
+    };
+};
+
+const buildPublicAuthorInclude = (query = {}) => {
+    const where = {};
+    if (query.userId) {
+        where.user_id = query.userId;
+    }
+    if (query.author) {
+        where.slug = query.author;
+    }
+
+    return getAuthorInclude({
+        required: Boolean(query.userId || query.author),
+        ...(Object.keys(where).length ? { where } : {})
+    });
+};
 
 module.exports.listAllBlogs = async (req, res, next) => {
     try {
-        const { search, userId, categoryId, page = 1, limit = 10, sortBy = 'published_at', order = 'DESC' } = req.query;
+        const { search, userId, authorId, author, categoryId, page = 1, limit = 10, sortBy = 'published_at', order = 'DESC' } = req.query;
         const validSortFields = ['published_at', 'created_at', 'title', 'id'];
         const validOrders = ['ASC', 'DESC'];
 
@@ -29,9 +58,11 @@ module.exports.listAllBlogs = async (req, res, next) => {
             };
         }
         
-        if (userId) {
-            whereCondition.author_id = userId;
+        if (authorId) {
+            whereCondition.author_id = authorId;
         }
+
+        const authorInclude = buildPublicAuthorInclude({ userId, author });
 
         // Parse and validate pagination parameters
         const parsedPage = Math.max(1, parseInt(page));
@@ -59,11 +90,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
         const totalCount = await Blog.count({
             where: whereCondition,
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                authorInclude,
                 ...(categoryIds.length > 0 ? [{
                     model: BlogCategory,
                     as: 'categories',
@@ -112,11 +139,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
         const blogs = await Blog.findAll({
             where: whereCondition,
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                authorInclude,
                 ...(categoryIds.length > 0 ? [{
                     model: BlogCategory,
                     as: 'categories',
@@ -160,7 +183,7 @@ module.exports.listAllBlogs = async (req, res, next) => {
             offset: (currentPage - 1) * parsedLimit
         });
         successResponse(res, {
-            blogs,
+            blogs: blogs.map(withFormattedAuthor),
             pagination: {   
                 total: totalCount,
                 totalPages,
@@ -183,11 +206,7 @@ module.exports.getBlogById = async (req, res, next) => {
         
         const blog = await Blog.findByPk(req.params.id, {
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                getAuthorInclude(),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -218,7 +237,7 @@ module.exports.getBlogById = async (req, res, next) => {
             throw error;
         }
         
-        successResponse(res, blog, 'Success');
+        successResponse(res, withFormattedAuthor(blog), 'Success');
     } catch (error) {
         return errorResponse(res, error, error.message);
     }
@@ -350,11 +369,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                     as: 'blogs',
                     attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at', 'created_at', 'status'],
                     include: [
-                        {
-                            model: User,
-                            as: 'author',
-                            attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                        },
+                        getAuthorInclude(),
                         {
                             model: BlogTag,
                             as: 'tags',
@@ -382,11 +397,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
                         as: 'blogs',
                         attributes: ['id', 'title', 'slug', 'content', 'image_url', 'alt_text', 'published_at', 'created_at', 'status'],
                         include: [
-                            {
-                                model: User,
-                                as: 'author',
-                                attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                            },
+                            getAuthorInclude(),
                             {
                                 model: BlogTag,
                                 as: 'tags',
@@ -451,7 +462,7 @@ module.exports.getCategoryBySlug = async (req, res, next) => {
             });
         }
 
-        // Sort all blogs by published_at date
+        categoryData.blogs = categoryData.blogs.map(withFormattedAuthor);
         categoryData.blogs.sort((a, b) => new Date(a.published_at) - new Date(b.published_at));
         
         // Update total blog count
@@ -478,11 +489,7 @@ module.exports.getBlogBySlug = async (req, res, next) => {
                 published_at: { [Op.lte]: currentDate } // Only include blogs with published_at date in the past
             },
             include: [
-                {
-                    model: User,
-                    as: 'author',
-                    attributes: ['id', 'first_name', 'last_name', 'email', 'profile_pic_url']
-                },
+                getAuthorInclude(),
                 {
                     model: BlogCategory,
                     as: 'categories',
@@ -512,32 +519,8 @@ module.exports.getBlogBySlug = async (req, res, next) => {
             throw error;
         }
 
-        // Get related blogs from the same categories
-        const relatedBlogs = await Blog.findAll({
-            where: {
-                id: { [Op.ne]: blog.id },
-                published_at: { [Op.lte]: currentDate }, // Only include blogs with published_at date in the past
-                status: 'published'
-            },
-            include: [{
-                model: BlogCategory,
-                as: 'categories',
-                where: {
-                    id: {
-                        [Op.in]: blog.categories.map(cat => cat.id)
-                    }
-                },
-                through: { attributes: [] }
-            }],
-            limit: 3,
-            order: [['published_at', 'DESC']],
-            attributes: ['id', 'title', 'slug', 'image_url', 'published_at', 'status']
-        });
-
-        const response = {
-            ...blog.toJSON(),
-            related_blogs: relatedBlogs
-        };
+        const relatedBlogs = await resolveRelatedBlogs(blog, currentDate);
+        const response = await formatBlogDetailResponse(blog, relatedBlogs);
 
         return successResponse(res, response, "Success");
     } catch (error) {

@@ -16,13 +16,50 @@ const {
     MailSubscriptionSettings,
     Brand,
     Category,
+    AbandonedCartFlow,
     sequelize
 } = require("../../../models");
 const { saveShippingAddress, getVivaAccessToken, createVivaOrder } = require('./order.helper');
 const dealService = require('../../Cart/helper/deal.service');
-const { calculateShippingCost } = require('../../shippingMethod/helper/shippingMethod.helper');
-const axios = require('axios');
+const loyaltyShippingPricing = require('./loyaltyShippingPricing.helper');
+const { finalizePointsOnlyOrder } = require('./orderPaymentFinalize.helper');
+const {
+    buildPaymentSuccessRedirectUrl,
+    generatePaymentReference,
+} = require('./paymentSuccessUrl.helper');
+const { generateTransactionReference } = require('./worldpay.helper');
+const { ensurePendingWorldpayTransaction } = require('../../payment/helper/worldpayPendingTransaction.helper');
+const constants = require('../../../config/constants');
+const { isCouponWithinDateWindow } = require('../../checkout/helper/coupon.helper');
 const { v4: uuidv4 } = require('uuid');
+
+const PENDING_WORLDPAY_ORDER_TTL_HOURS = Number(process.env.WORLDPAY_PENDING_ORDER_TTL_HOURS) || 24;
+
+const normalizeCartLines = (lines) =>
+    [...lines]
+        .map((line) => ({
+            product_id: line.product_id,
+            variant_id: line.variant_id ?? null,
+            quantity: line.quantity
+        }))
+        .sort((a, b) => {
+            const keyA = `${a.product_id}:${a.variant_id}:${a.quantity}`;
+            const keyB = `${b.product_id}:${b.variant_id}:${b.quantity}`;
+            return keyA.localeCompare(keyB);
+        });
+
+const cartMatchesOrder = (orderItems, newOrderItems) => {
+    const existing = normalizeCartLines(orderItems);
+    const incoming = normalizeCartLines(newOrderItems);
+    if (existing.length !== incoming.length) {
+        return false;
+    }
+    return existing.every((line, index) =>
+        line.product_id === incoming[index].product_id &&
+        line.variant_id === incoming[index].variant_id &&
+        line.quantity === incoming[index].quantity
+    );
+};
 
 /**
  * Core order placement logic - returns order data without sending HTTP response
@@ -42,14 +79,17 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         billing_address, 
         useShippingAsBilling, 
         payment_method, 
-        loyalty, 
-        total, 
+        loyalty,
+        points_to_redeem: rawPointsToRedeem,
+        is_payment_required: clientPaymentRequiredFlag,
+        total,
         shipping_method_id: initialShippingMethodId,
         cartItems: providedCartItems // New: accept cart items directly for guest checkout
     } = orderData;
 
     // Use a mutable copy of shipping method id so we don't reassign a destructured const
     let shippingMethodId = initialShippingMethodId;
+    const pointsToRedeemRequest = Math.max(0, Math.floor(Number(rawPointsToRedeem) || 0));
 
     // Update user's receive_promotions preference if provided
     if (typeof receive_promotions === 'boolean') {
@@ -326,27 +366,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             });
 
             if (coupon) {
-                // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
-                const currentTime = new Date();
-                const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
-                const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
-                    String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
-                    String(currentUKTime.getHours()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getSeconds()).padStart(2, '0');
-
-                // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
-                const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-                const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-
-                // Check if coupon has started
-                if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
-                    coupon = null; // Mark as invalid
-                }
-
-                // Check if coupon has expired
-                if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                if (!isCouponWithinDateWindow(coupon)) {
                     coupon = null; // Mark as invalid
                 }
             }
@@ -514,44 +534,6 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
-    // Loyalty points logic
-    if (loyalty) {
-        const settings = await LoyaltyPointsSettings.findOne({
-            where: { status: true },
-            transaction
-        });
-
-        if (settings) {
-            const user = await User.findOne({
-                where: { id: user_id },
-                transaction
-            });
-            if (user.loyalty_points >= parseFloat(settings.minimum_points_redemption) && calculatedTotal >= parseFloat(settings.minimum_purchase_amount)) {
-                const points = user.loyalty_points;
-                const loyaltyAmount = parseFloat(settings.loyalty_amount);
-                const loyaltyAmountType = settings.loyalty_amount_type;
-                if (loyaltyAmountType === 'percentage') {
-                    loyaltyDiscount = (parseFloat(loyaltyAmount) / 100) * calculatedTotal;
-                    totalDiscount += parseFloat(loyaltyDiscount);
-                    loyalty_flag = true;
-                } else {
-                    if (calculatedTotal > parseFloat(loyaltyAmount)) {
-                        loyaltyDiscount = parseFloat(loyaltyAmount);
-                        totalDiscount += parseFloat(loyaltyDiscount);
-                        loyalty_flag = true;
-                    } else {
-                        // If total is less than or equal to loyalty amount, apply only the total
-                        loyaltyDiscount = calculatedTotal;
-                        throw {
-                            statusCode: 400,
-                            message: `Loyalty discount amount (£${loyaltyAmount}) exceeds order total (£${calculatedTotal}).`
-                        };
-                    }
-                }
-            }
-        }
-    }
-
     // Mail subscription discount
     let mailSubscriptionDiscount = 0;
     let mailSubscriptionDiscountType = null;
@@ -594,45 +576,103 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         }
     }
 
-    if (calculatedTotal > 0) {
-        calculatedTotal = calculatedTotal - totalDiscount;
-    }
+    const merchandiseBeforeLoyalty =
+        calculatedTotal > 0
+            ? parseFloat(Math.max(0, calculatedTotal - totalDiscount).toFixed(2))
+            : 0;
 
-    // Track the actual shipping cost used for this order
-    let shippingCostUsed = 0;
-
-    // Apply Shipping Cost
-    const shippingMethod = await ShippingMethod.findOne({ 
-        where: { 
+    const shippingMethod = await ShippingMethod.findOne({
+        where: {
             id: shippingMethodId,
-            is_enabled: true  // Only allow enabled shipping methods
-        }, 
-        attributes: ["id", "shipping_cost", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
-        transaction 
+            is_enabled: true,
+        },
+        attributes: ["id", "shipping_cost", "service_code", "is_enabled", "is_free_shipping", "free_shipping_threshold", "min_order_total", "max_order_total", "shipping_rules"],
+        transaction,
     });
-    if (shippingMethod) {
-        // Use helper function to calculate shipping cost based on order total before shipping
-        const orderTotalBeforeShipping = calculatedTotal;
-        const calculatedShippingCost = calculateShippingCost(shippingMethod, orderTotalBeforeShipping);
-        if (calculatedShippingCost !== null) {
-            shippingCostUsed = parseFloat(calculatedShippingCost);
-            calculatedTotal += shippingCostUsed;
-        } else {
-            // Shipping method not applicable, set to null
-            shippingMethodId = null;
-        }
-    } else {
-        shippingMethodId = null;
+
+    const loyaltySettings = await LoyaltyPointsSettings.findOne({
+        where: { status: true },
+        transaction,
+    });
+
+    const userForLoyalty = await User.findOne({
+        where: { id: user_id },
+        attributes: ['id', 'email', 'loyalty_points'],
+        transaction,
+    });
+    const pointsBalance = userForLoyalty ? parseInt(userForLoyalty.loyalty_points, 10) || 0 : 0;
+
+    loyaltyShippingPricing.assertLoyaltyPointsToRedeem({
+        loyalty: Boolean(loyalty),
+        rawPointsToRedeem,
+        userPointsBalance: pointsBalance,
+        minimumPointsRedemption: loyaltySettings?.minimum_points_redemption,
+        loyaltyProgramActive: Boolean(loyaltySettings),
+    });
+
+    let pointsRequested = pointsToRedeemRequest;
+    const useFullBalanceRedemption = Boolean(loyalty && pointsToRedeemRequest === 0);
+    if (useFullBalanceRedemption && loyaltySettings) {
+        pointsRequested = pointsBalance;
     }
 
-    // Ensure Price Integrity
+    const freeShipThreshold =
+        (constants.checkout && constants.checkout.FREE_SHIPPING_MERCHANDISE_GBP) || 30;
+
+    const pricing = loyaltyShippingPricing.computeShippingAndLoyalty({
+        merchandiseTotalAfterDealsCouponsMail: merchandiseBeforeLoyalty,
+        shippingMethod,
+        userLoyaltyPoints: pointsBalance,
+        pointsToRedeem: pointsRequested,
+        pointsValue: loyaltySettings ? parseFloat(loyaltySettings.points_value) || 0 : 0,
+        loyaltyAmountType: loyaltySettings ? loyaltySettings.loyalty_amount_type : null,
+        loyaltyAmount: loyaltySettings ? parseFloat(loyaltySettings.loyalty_amount) : 0,
+        minimumPointsRedemption: loyaltySettings ? loyaltySettings.minimum_points_redemption : 0,
+        minimumPurchaseAmountForRedemption: loyaltySettings
+            ? parseFloat(loyaltySettings.minimum_purchase_amount) || 0
+            : 0,
+        freeShippingThresholdGbp: freeShipThreshold,
+        fullRedemption: useFullBalanceRedemption,
+    });
+
+    if (pricing.shippingCost === null && shippingMethod) {
+        throw {
+            statusCode: 400,
+            message: 'Selected shipping method is not available for this order',
+        };
+    }
+
+    loyaltyDiscount = pricing.loyaltyDiscount;
+    const loyaltyPointsUsed = pricing.pointsUsed;
+    loyalty_flag = pricing.pointsUsed > 0;
+
+    let shippingCostUsed = pricing.shippingCost === null ? 0 : pricing.shippingCost;
+    if (pricing.shippingCost === null && shippingMethod) {
+        shippingMethodId = null;
+        shippingCostUsed = 0;
+    } else if (!shippingMethod) {
+        shippingMethodId = null;
+        shippingCostUsed = 0;
+    }
+
+    calculatedTotal = pricing.grandTotal !== null ? pricing.grandTotal : 0;
     calculatedTotal = parseFloat(Math.max(0, calculatedTotal).toFixed(2));
+    const serverPaymentRequired = calculatedTotal > 0;
+    const pointsOnlyCheckout = !serverPaymentRequired;
 
-    // Payment processing
+    if (clientPaymentRequiredFlag === false && serverPaymentRequired) {
+        throw {
+            statusCode: 400,
+            message: 'Payment is required for this order',
+        };
+    }
+
     let orderCode = 0;
-    let worldpayResponse = {};
+    let worldpayCheckoutRequest = null;
+    let reusedPendingOrder = false;
+    let order = null;
 
-    if (payMethod === "VivaWallet") {
+    if (serverPaymentRequired && payMethod === "VivaWallet") {
         try {
             const accessToken = await getVivaAccessToken();
             orderCode = await createVivaOrder(accessToken, calculatedTotal);
@@ -642,172 +682,264 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
         } catch (error) {
             throw new Error("Failed to process payment with Viva Wallet: " + error.message);
         }
-    } else if (payMethod === "Worldpay") {
-        const generateTransactionReference = () => {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < 16; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        };
-        orderCode = generateTransactionReference();
-
-        const WORLDPAY_USERNAME = process.env.WORLDPAY_USERNAME;
-        const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
-
-        // Use billing address from billingAddrs (which may be same as shipping if useShippingAsBilling is true)
+    } else if (serverPaymentRequired && payMethod === "Worldpay") {
         const billingAddrForPayment = useShippingAsBilling ? shipping_address : (billing_address || shipping_address);
-        
+
         let countryCode = (billingAddrForPayment.country || shipping_address.country || 'GB').toUpperCase();
         if (countryCode.length !== 2) {
             countryCode = 'GB';
         }
 
-        try {
-            worldpayResponse = await axios({
-                method: 'POST',
-                url: `${process.env.WORLDPAY_URL}/payment_pages`,
-                headers: {
-                    'Content-Type': 'application/vnd.worldpay.payment_pages-v1.hal+json',
-                    'User-Agent': 'string',
-                    'Authorization': `Basic ${Buffer.from(`${WORLDPAY_USERNAME}:${WORLDPAY_PASSWORD}`).toString('base64')}`
-                },
-                data: {
-                    transactionReference: orderCode,
-                    merchant: { entity: process.env.WORLDPAY_MERCHANT_ID },
-                    narrative: { line1: 'VapeHub Order' },
-                    value: {
-                        currency: 'GBP',
-                        amount: Math.round(calculatedTotal * 100)
-                    },
-                    description: 'VapeHub Order',
-                    billingAddressName: billingAddrForPayment.first_name,
-                    billingAddress: {
-                        address1: billingAddrForPayment.address_line_1,
-                        address2: billingAddrForPayment.address_line_2 || '',
-                        address3: billingAddrForPayment.region,
-                        postalCode: billingAddrForPayment.post_code,
-                        city: billingAddrForPayment.city,
-                        state: billingAddrForPayment.region,
-                        countryCode: countryCode
-                    },
-                    resultURLs: {
-                        successURL: `${process.env.FRONTEND_URL}/payment-success?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        failureURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        errorURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        cancelURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`,
-                        expiryURL: `${process.env.FRONTEND_URL}/payment-failed?orderCode=${orderCode}&transactionId=${orderCode}&amount=${calculatedTotal}&currency=GBP`
-                    },
-                }
-            });
+        const pendingSince = new Date(Date.now() - PENDING_WORLDPAY_ORDER_TTL_HOURS * 60 * 60 * 1000);
+        const existingPending = await Order.findOne({
+            where: {
+                user_id,
+                status: 'pending',
+                payment_method_id: paymentMethodRecord.id,
+                createdAt: { [Op.gte]: pendingSince }
+            },
+            include: [{ model: OrderItem, as: 'orderItems' }],
+            order: [['createdAt', 'DESC']],
+            lock: transaction.LOCK.UPDATE,
+            transaction
+        });
 
-            if (!worldpayResponse.data) {
-                throw new Error('No response data from Worldpay');
-            }
-        } catch (error) {
-            // Log as much detail as possible so we can debug cryptic payloads like {"a":"$@1","f":"","b":"..."}
-            console.error('Worldpay payment_pages error status:', error.response?.status);
-            console.error('Worldpay payment_pages error data:', error.response?.data);
+        const canReusePendingOrder = existingPending &&
+            cartMatchesOrder(existingPending.orderItems, orderItems) &&
+            Math.abs(parseFloat(existingPending.total) - calculatedTotal) < 0.01;
 
-            // Try to surface a useful message if Worldpay sends one in a different shape
-            let worldpayMessage;
-            const data = error.response?.data;
-
-            if (typeof data === 'string') {
-                worldpayMessage = data;
-            } else if (data && typeof data === 'object') {
-                // Common patterns: { message }, { error: { message } }, or { a: 'CODE', b: 'traceId' }
-                worldpayMessage =
-                    data.message ||
-                    data.error?.message ||
-                    data.error_description ||
-                    JSON.stringify(data);
-            }
-
-            throw new Error(worldpayMessage || 'Failed to process payment with Worldpay');
+        if (canReusePendingOrder) {
+            reusedPendingOrder = true;
+            order = existingPending;
+            orderCode = existingPending.order_code;
+        } else {
+            orderCode = generateTransactionReference();
         }
+
+        worldpayCheckoutRequest = {
+            transactionReference: orderCode,
+            calculatedTotal,
+            billingAddrForPayment,
+            countryCode,
+            logContext: {
+                userId: user_id,
+                reusedPendingOrder,
+                orderId: order?.id ?? null
+            }
+        };
+    } else if (pointsOnlyCheckout) {
+        orderCode = generatePaymentReference();
     }
 
-    // Generate order unique ID
-    const randomDigit = Math.floor(Math.random() * 10);
-    const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-    const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
+    if (!reusedPendingOrder) {
+        const randomDigit = Math.floor(Math.random() * 10);
+        const randomAlphabet = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+        const orderUniqueId = `ORD-${uuidv4().split('-')[0].toUpperCase()}${randomDigit}${randomAlphabet}`;
 
-    // Create Order
-    const order = await Order.create({
-        user_id,
-        coupon_id: coupon && coupon_count_flag ? coupon.id : null,
-        total: calculatedTotal,
-        status: "pending",
-        order_shipping_address_id: shippingAddrs.id,
-        order_billing_address_id: billingAddrs.id,
-        shipping_method_id: shippingMethodId ? shippingMethodId : null,
-        order_unique_id: orderUniqueId,
-        order_code: payMethod === "Worldpay" ? orderCode : parseInt(orderCode).toString(),
-        // Store the actual shipping cost that was applied to this order
-        shipping_cost: shippingCostUsed,
-        email: email,
-        phone: phone,
-        sub_total: subTotal,
-        deals_discount: dealsDiscount,
-        applicable_deals: applicableDeals,
-        discount_price: referralDiscount,
-        discount_type: discountType,
-        referral_id: referralId,
-        payment_method_id: paymentMethodRecord.id,
-        loyalty_flag: loyalty_flag,
-        loyalty_discount: loyaltyDiscount,
-        mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
-    }, { transaction });
+        order = await Order.create({
+            user_id,
+            coupon_id: coupon && coupon_count_flag ? coupon.id : null,
+            total: calculatedTotal,
+            status: "pending",
+            order_shipping_address_id: shippingAddrs.id,
+            order_billing_address_id: billingAddrs.id,
+            shipping_method_id: shippingMethodId ? shippingMethodId : null,
+            order_unique_id: orderUniqueId,
+            order_code: pointsOnlyCheckout
+                ? String(orderCode)
+                : (payMethod === "Worldpay" ? orderCode : parseInt(String(orderCode), 10).toString()),
+            shipping_cost: shippingCostUsed,
+            email: email,
+            phone: phone,
+            sub_total: subTotal,
+            deals_discount: dealsDiscount,
+            applicable_deals: applicableDeals,
+            discount_price: referralDiscount,
+            discount_type: discountType,
+            referral_id: referralId,
+            payment_method_id: paymentMethodRecord.id,
+            loyalty_flag: loyalty_flag,
+            loyalty_discount: loyaltyDiscount,
+            loyalty_points_used: loyaltyPointsUsed,
+            mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
+        }, { transaction });
 
-    await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
+        // Registered users only: one active pending checkout — supersede older pendings + flows.
+        if (user_id) {
+            const olderPendingOrders = await Order.findAll({
+                where: {
+                    user_id,
+                    status: constants.orderStatus.PENDING,
+                    id: { [Op.ne]: order.id }
+                },
+                attributes: ['id'],
+                transaction,
+                lock: true
+            });
 
-    if (couponCode && referral_flag) {
-        try {
-            const referral = await Referral.findOne({
-                where: { referral_coupon_code: couponCode },
-                lock: true,
+            const supersededMessage = `Superseded by new checkout order_id=${order.id}`;
+            for (const row of olderPendingOrders) {
+                await AbandonedCartFlow.update(
+                    {
+                        status: 'superseded',
+                        last_error: supersededMessage
+                    },
+                    {
+                        where: {
+                            order_id: row.id,
+                            status: { [Op.notIn]: ['recovered', 'cancelled', 'superseded'] }
+                        },
+                        transaction
+                    }
+                );
+
+                const previousPending = await Order.findByPk(row.id, { transaction, lock: true });
+                if (previousPending && previousPending.status === constants.orderStatus.PENDING) {
+                    await previousPending.update(
+                        { status: constants.orderStatus.CANCEL },
+                        { transaction }
+                    );
+                }
+            }
+        }
+
+        // Track abandoned-cart lifecycle only for non-temporary registered users.
+        const registeredUser = user_id
+            ? await User.findOne({
+                where: {
+                    id: user_id,
+                    is_temporary: false
+                },
+                attributes: ['id'],
+                transaction
+            })
+            : null;
+
+        if (registeredUser) {
+            await AbandonedCartFlow.findOrCreate({
+                where: { order_id: order.id },
+                defaults: {
+                    user_id: user_id || null,
+                    order_unique_id: order.order_unique_id || null,
+                    customer_email: order.email || null,
+                    status: 'entered'
+                },
                 transaction
             });
-
-            if (referral) {
-                await referral.update({
-                    order_id: order.id
-                }, { transaction });
-            }
-        } catch (error) {
-            console.log("error in place order function while updating referral with order");
         }
+
+        await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
+
+        if (pointsOnlyCheckout) {
+            await finalizePointsOnlyOrder(order.id, transaction);
+        }
+
+        if (couponCode && referral_flag) {
+            try {
+                const referral = await Referral.findOne({
+                    where: { referral_coupon_code: couponCode },
+                    lock: true,
+                    transaction
+                });
+
+                if (referral) {
+                    await referral.update({
+                        order_id: order.id
+                    }, { transaction });
+                }
+            } catch (error) {
+                console.log("error in place order function while updating referral with order");
+            }
+        }
+    } else if (worldpayCheckoutRequest) {
+        worldpayCheckoutRequest.calculatedTotal = parseFloat(order.total);
     }
 
-    return {
+    await order.reload({ transaction });
+
+    if (worldpayCheckoutRequest && order) {
+        worldpayCheckoutRequest.logContext.orderId = order.id;
+        await ensurePendingWorldpayTransaction({
+            userId: user_id,
+            orderId: order.id,
+            orderCode: order.order_code,
+            amount: parseFloat(order.total),
+            currency: 'GBP',
+            dbTransaction: transaction
+        });
+    }
+
+    let responseSubTotal = subTotal;
+    let responseShippingCost = shippingCostUsed;
+    let responseDealsDiscount = dealsDiscount;
+    let responseCouponDiscount = coupon ? discount : 0;
+    let responseReferralDiscount = referralDiscount;
+    let responseLoyaltyDiscount = loyaltyDiscount;
+    let responseLoyaltyPointsUsed = loyaltyPointsUsed;
+    let responseMailSubscriptionDiscount = mailSubscriptionDiscount;
+    let responseTotal = calculatedTotal;
+
+    if (reusedPendingOrder) {
+        responseSubTotal = parseFloat(order.sub_total);
+        responseShippingCost = parseFloat(order.shipping_cost || 0);
+        responseDealsDiscount = parseFloat(order.deals_discount || 0);
+        responseCouponDiscount = 0;
+        responseReferralDiscount = parseFloat(order.discount_price || 0);
+        responseLoyaltyDiscount = parseFloat(order.loyalty_discount || 0);
+        responseLoyaltyPointsUsed = parseInt(order.loyalty_points_used, 10) || 0;
+        responseMailSubscriptionDiscount = parseFloat(order.mailSubscription_discount || 0);
+        responseTotal = parseFloat(order.total);
+    }
+
+    const redirect_url = pointsOnlyCheckout
+        ? buildPaymentSuccessRedirectUrl(order.order_code, order.total)
+        : null;
+
+    const placeOrderResponse = {
         order_code: order.order_code,
-        worldpay_url: payMethod === "Worldpay" ? worldpayResponse.data?.url : null,
+        worldpay_url: null,
+        reused_pending_order: reusedPendingOrder,
+        is_payment_required: serverPaymentRequired,
+        payment_required: serverPaymentRequired,
+        redirect_url,
+        payment_success_url: redirect_url,
+        loyalty_points_used: responseLoyaltyPointsUsed,
+        ...loyaltyShippingPricing.loyaltyPricingResponseFields(pricing),
         order_details: {
             order_id: order.id,
             order_unique_id: order.order_unique_id,
             order_code: order.order_code,
             status: order.status,
-            total: calculatedTotal,
-            created_at: order.created_at,
+            is_payment_required: serverPaymentRequired,
+            payment_required: serverPaymentRequired,
+            redirect_url,
+            payment_success_url: redirect_url,
+            total: responseTotal,
+            created_at: order.createdAt || order.created_at,
             order_items: orderDetails,
             pricing: {
-                subtotal: subTotal,
-                // Reflect the same shipping cost as stored on the order
-                shipping_cost: shippingCostUsed,
-                deals_discount: dealsDiscount,
-                coupon_discount: coupon ? discount : 0,
-                referral_discount: referralDiscount,
-                loyalty_discount: loyaltyDiscount,
-                mail_subscription_discount: mailSubscriptionDiscount,
+                subtotal: responseSubTotal,
+                shipping_cost: responseShippingCost,
+                deals_discount: responseDealsDiscount,
+                coupon_discount: responseCouponDiscount,
+                referral_discount: responseReferralDiscount,
+                loyalty_discount: responseLoyaltyDiscount,
+                loyalty_points_used: responseLoyaltyPointsUsed,
+                ...loyaltyShippingPricing.loyaltyPricingResponseFields(pricing),
+                mail_subscription_discount: responseMailSubscriptionDiscount,
                 mail_subscription_discount_type: mailSubscriptionDiscountType,
-                total: calculatedTotal
+                total: responseTotal,
             },
             shipping: { address: shippingAddrs },
-            billing: { address: billingAddrs }
-        }
+            billing: { address: billingAddrs },
+        },
     };
+
+    if (worldpayCheckoutRequest) {
+        placeOrderResponse.worldpayCheckoutRequest = worldpayCheckoutRequest;
+    }
+
+    return placeOrderResponse;
 };
 
 module.exports = {

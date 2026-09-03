@@ -412,6 +412,12 @@ router.get('/fetch/:id',
  *                   type: integer
  *                 description: Array of linked product IDs
  *                 example: [5, 10, 15]
+ *               related_blog_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Up to 3 related blog IDs in display order
+ *                 example: [12, 45, 78]
  *               redirect_url:
  *                 type: string
  *                 maxLength: 500
@@ -563,6 +569,12 @@ router.put('/bulk-restore', [
  *                   type: integer
  *                 description: Array of linked product IDs (empty array to remove all links)
  *                 example: [5, 10, 15]
+ *               related_blog_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Up to 3 related blog IDs in display order (empty array to remove all links)
+ *                 example: [12, 45, 78]
  *               redirect_url:
  *                 type: string
  *                 maxLength: 500

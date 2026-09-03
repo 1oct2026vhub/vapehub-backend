@@ -16,8 +16,11 @@ module.exports = {
         WELCOME: 'WELCOME',
         INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
         PRODUCT_UPDATES: 'PRODUCT_UPDATES',
+        PRODUCT_BACK_IN_STOCK: 'PRODUCT_BACK_IN_STOCK',
         PROMOTIONAL: 'PROMOTIONAL',
         PROMOTIONAL_NEWSLETTER: 'PROMOTIONAL_NEWSLETTER',
+        ABANDONED_CART_REMINDER_1: 'ABANDONED_CART_REMINDER_1',
+        ABANDONED_CART_REMINDER_2: 'ABANDONED_CART_REMINDER_2',
     },
     emailTypeData: {
         REGISTER: {
@@ -100,6 +103,11 @@ module.exports = {
             subject: 'New Products Alert! 🆕 Latest Additions to VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
+        PRODUCT_BACK_IN_STOCK: {
+            folderName: 'product_back_in_stock',
+            subject: 'Your product is now available | VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
         PROMOTIONAL: {
             folderName: 'promotional_newsletter',
             subject: 'Special Offer from VapeHub! 🎉',
@@ -108,6 +116,16 @@ module.exports = {
         PROMOTIONAL_NEWSLETTER: {
             folderName: 'promotional_newsletter',
             subject: '',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ABANDONED_CART_REMINDER_1: {
+            folderName: 'abandoned_cart/reminder_1',
+            subject: 'Did you forget something? Complete your purchase | VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        ABANDONED_CART_REMINDER_2: {
+            folderName: 'abandoned_cart/reminder_2',
+            subject: 'Complete your order with 10% off | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
     },
@@ -144,6 +162,9 @@ module.exports = {
         'return_received',
         'refunded'
     ],
+    checkout: {
+        FREE_SHIPPING_MERCHANDISE_GBP: 30,
+    },
     attributes: {
         types: {
             SELECT: 'select',
@@ -164,6 +185,7 @@ module.exports = {
     productVariants: {
         stockStatus: {
             IN_STOCK: 'in_stock',
+            LOW_STOCK: 'low_stock',
             OUT_OF_STOCK: 'out_of_stock',
             BACKORDER: 'backorder'
         }
@@ -177,7 +199,7 @@ module.exports = {
         }
     },
     productVariantEnums: {
-        stockStatus: ['in_stock', 'out_of_stock', 'backorder']
+        stockStatus: ['in_stock', 'low_stock', 'out_of_stock', 'backorder']
     },
     stockMovementEnums: {
         changeTypes: ['addition', 'deduction', 'adjustment', 'reservation']

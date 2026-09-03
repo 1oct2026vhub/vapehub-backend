@@ -1,6 +1,7 @@
 const { errorResponse, successResponse } = require("../../../../utils/responseUtils");
 const { PopularCategory, Category, sequelize } = require("../../../../models");
 const { Op, Sequelize } = require("sequelize");
+const { recacheHomeFireAndForget } = require("../../../../library/prerender");
 
 /**
  * Get the next available order number
@@ -161,6 +162,7 @@ module.exports.createPopularCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'createPopularCategory' });
         return successResponse(res, createdCategory, "Popular category created successfully", 201);
     } catch (error) {
         await t.rollback();
@@ -218,6 +220,7 @@ module.exports.updatePopularCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'updatePopularCategory' });
         return successResponse(res, updatedCategory, "Popular category updated successfully");
     } catch (error) {
         await t.rollback();
@@ -254,6 +257,7 @@ module.exports.deletePopularCategory = async (req, res, next) => {
         await popularCategory.destroy({ transaction: t });
         await t.commit();
 
+        recacheHomeFireAndForget({ source: 'deletePopularCategory' });
         return successResponse(res, null, "Popular category deleted successfully");
     } catch (error) {
         await t.rollback();
@@ -286,6 +290,7 @@ module.exports.restorePopularCategory = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'restorePopularCategory' });
         return successResponse(res, restoredCategory, "Popular category restored successfully");
     } catch (error) {
         return errorResponse(res, error, error.message);
@@ -361,6 +366,7 @@ module.exports.shuffleOrder = async (req, res, next) => {
             }]
         });
 
+        recacheHomeFireAndForget({ source: 'updatePopularCategoryOrder' });
         return successResponse(res, updatedCategory, "Order updated successfully");
     } catch (error) {
         await t.rollback();

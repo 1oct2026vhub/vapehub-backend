@@ -1,13 +1,14 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FooterBadge, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
 const seoService = require("../../../components/admin/seo/domain/seo.service");
 const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
-const logger = require("../../../utils/logger");
+const logger = require("../../../library/logger");
 const { cacheOrFetch } = require('../../../library/cache');
+const { formatBuyingGuideCta } = require('../../category/helper/buyingGuide.serializer');
 // Priority order for entity types when multiple matches are found
 const ENTITY_TYPE_PRIORITY = {
   category: 1,
@@ -1484,7 +1485,7 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (categoryIds.length > 0) {
             const categories = await Category.findAll({
                 where: { id: { [Op.in]: categoryIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'additional_text_box', 'slug']
             });
             categoryMap = new Map(categories.map(cat => [cat.id, cat]));
         }
@@ -1497,9 +1498,27 @@ module.exports.getSlugRelations = async (req, res, next) => {
         if (brandIds.length > 0) {
             const brands = await Brand.findAll({
                 where: { id: { [Op.in]: brandIds } },
-                attributes: ['id', 'name', 'description', 'slug']
+                attributes: ['id', 'name', 'description', 'type_cards_html', 'additional_text_box', 'slug']
             });
             brandMap = new Map(brands.map(brand => [brand.id, brand]));
+        }
+
+        let categoryGuideMap = new Map();
+        if (categoryIds.length > 0) {
+            const guides = await CategoryBuyingGuide.findAll({
+                where: { category_id: { [Op.in]: categoryIds } },
+                attributes: ['category_id', 'is_enabled', 'cta_prompt', 'cta_label']
+            });
+            categoryGuideMap = new Map(guides.map(g => [g.category_id, formatBuyingGuideCta(g)]));
+        }
+
+        let brandGuideMap = new Map();
+        if (brandIds.length > 0) {
+            const guides = await BrandBuyingGuide.findAll({
+                where: { brand_id: { [Op.in]: brandIds } },
+                attributes: ['brand_id', 'is_enabled', 'cta_prompt', 'cta_label']
+            });
+            brandGuideMap = new Map(guides.map(g => [g.brand_id, formatBuyingGuideCta(g)]));
         }
 
         const blogCategoryIds = slugRelations
@@ -1560,8 +1579,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 const category = categoryMap.get(slugRelations[0].entity_id);
                 if (category) {
                     response.description = category.description;
+                    response.type_cards_html = category.type_cards_html || null;
+                    response.additional_text_box = category.additional_text_box || null;
                     response.name = category.name;
                 }
+                response.buyingGuide = categoryGuideMap.get(slugRelations[0].entity_id)
+                    || formatBuyingGuideCta(null);
             }
 
             // Add brand description and name if entity is brand (using pre-fetched brand)
@@ -1569,8 +1592,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                 const brand = brandMap.get(slugRelations[0].entity_id);
                 if (brand) {
                     response.description = brand.description;
+                    response.type_cards_html = brand.type_cards_html || null;
+                    response.additional_text_box = brand.additional_text_box || null;
                     response.name = brand.name;
                 }
+                response.buyingGuide = brandGuideMap.get(slugRelations[0].entity_id)
+                    || formatBuyingGuideCta(null);
             }
 
             // Add blog category description and name if entity is blog_category (using pre-fetched blog category)
@@ -1657,8 +1684,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         const category = categoryMap.get(relation.entity_id);
                         if (category) {
                             item.description = category.description;
+                            item.type_cards_html = category.type_cards_html || null;
+                            item.additional_text_box = category.additional_text_box || null;
                             item.name = category.name;
                         }
+                        item.buyingGuide = categoryGuideMap.get(relation.entity_id)
+                            || formatBuyingGuideCta(null);
                     }
                     
                     // Add brand description and name if entity is brand
@@ -1666,8 +1697,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                         const brand = brandMap.get(relation.entity_id);
                         if (brand) {
                             item.description = brand.description;
+                            item.type_cards_html = brand.type_cards_html || null;
+                            item.additional_text_box = brand.additional_text_box || null;
                             item.name = brand.name;
                         }
+                        item.buyingGuide = brandGuideMap.get(relation.entity_id)
+                            || formatBuyingGuideCta(null);
                     }
                     
                     // Add blog category description and name if entity is blog_category
@@ -1815,8 +1850,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     const category = categoryMap.get(relation.entity_id);
                     if (category) {
                         item.description = category.description;
+                        item.type_cards_html = category.type_cards_html || null;
+                        item.additional_text_box = category.additional_text_box || null;
                         item.name = category.name;
                     }
+                    item.buyingGuide = categoryGuideMap.get(relation.entity_id)
+                        || formatBuyingGuideCta(null);
                 }
                 
                 // Add brand description and name if entity is brand
@@ -1824,8 +1863,12 @@ module.exports.getSlugRelations = async (req, res, next) => {
                     const brand = brandMap.get(relation.entity_id);
                     if (brand) {
                         item.description = brand.description;
+                        item.type_cards_html = brand.type_cards_html || null;
+                        item.additional_text_box = brand.additional_text_box || null;
                         item.name = brand.name;
                     }
+                    item.buyingGuide = brandGuideMap.get(relation.entity_id)
+                        || formatBuyingGuideCta(null);
                 }
                 
                 // Add blog category description and name if entity is blog_category
@@ -2143,9 +2186,17 @@ module.exports.getFooterSections = async (req, res) => {
           order: [['order', 'ASC']]
         }]
       });
+      const badges = await FooterBadge.findAll({
+        where: {
+          is_active: true
+        },
+        order: [['order', 'ASC']],
+        attributes: ['id', 'icon_url', 'heading', 'subtitle', 'url', 'order']
+      });
       res.json({
         success: true,
-        data: sections
+        data: sections,
+        badges
       });
     } catch (error) {
       res.status(500).json({
@@ -2368,7 +2419,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Log the API request
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_request',
             endpoint: 'getReviewSummaries',
             businessUnitId,
@@ -2394,7 +2445,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
             }
         );
         // Log the API response
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_response',
             endpoint: 'getReviewSummaries',
             responseData: {
@@ -2448,7 +2499,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
 
     } catch (error) {
         // Log error
-        logger.logError({
+        logger.error({
             type: 'trustpilot_api_error',
             endpoint: 'getReviewSummaries',
             error: error.message,
@@ -2506,7 +2557,7 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Log the API request
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_request',
             endpoint: 'getProductReviews',
             businessUnitId,
@@ -2599,7 +2650,7 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
 
     } catch (error) {
         // Log error
-        logger.logError({
+        logger.error({
             type: 'trustpilot_api_error',
             endpoint: 'getProductReviews',
             error: error.message,

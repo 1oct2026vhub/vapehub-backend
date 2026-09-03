@@ -59,6 +59,8 @@ router.use('/product-sticker-settings', require('./productStickerSettings/routes
 router.use('/popularCategory', require('./popularCategory/routes/popularCategory.route'));
 router.use('/shopByCategory', require('./shopByCategory/routes/shopByCategory.route'));
 router.use('/newsletter-templates', require('./newsletterTemplates/routes/newsletterTemplates.route'));
+router.use('/abandoned-carts', require('./abandonedCart/routes/abandonedCart.route'));
+router.use('/logs', require('./logs/routes/logs.route'));
 
 module.exports = router;
 //we need to include the sticker details on filter variants API, new products listing API, most popular APIs

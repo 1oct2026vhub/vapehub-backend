@@ -1,5 +1,54 @@
 const axios = require('axios');
-const shipstationLogger = require('../../../../utils/shipstationLogger');
+const { createDomainLogger } = require('../../../../library/logging/domainLogger');
+const shipstationLog = createDomainLogger('shipstation');
+const { scheduleShipStationRequest } = require('../../../../library/shipStationRateLimiter');
+
+const SHIPSTATION_MAX_RETRIES = Number(process.env.SHIPSTATION_MAX_RETRIES || 6);
+const SHIPSTATION_HTTP_TIMEOUT_MS = Math.max(1000, Number(process.env.SHIPSTATION_HTTP_TIMEOUT_MS || 30000));
+
+function getShipStationRetryDelayMs(error, attempt) {
+    const headers = error.response?.headers || {};
+
+    const retryAfter = headers['retry-after'];
+    if (retryAfter != null && !Number.isNaN(Number(retryAfter))) {
+        return Number(retryAfter) * 1000;
+    }
+
+    const rateLimitReset = headers['x-rate-limit-reset'];
+    if (rateLimitReset != null && !Number.isNaN(Number(rateLimitReset))) {
+        return Number(rateLimitReset) * 1000;
+    }
+
+    return 1000 * (2 ** attempt);
+}
+
+async function withShipStationRetry(requestFn, maxRetries = SHIPSTATION_MAX_RETRIES) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await requestFn();
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status !== 429 || attempt === maxRetries) {
+                break;
+            }
+            const retryAfterMs = getShipStationRetryDelayMs(error, attempt);
+            shipstationLog.logInfo({
+                type: 'rate_limit_retry',
+                attempt: attempt + 1,
+                maxRetries,
+                retryAfterMs,
+                rateLimitReset: error.response?.headers?.['x-rate-limit-reset'] ?? null
+            });
+            await new Promise(resolve => setTimeout(resolve, retryAfterMs));
+        }
+    }
+    throw lastError;
+}
+
+async function shipStationRequest(requestFn) {
+    return scheduleShipStationRequest(() => withShipStationRetry(requestFn));
+}
 
 async function sendOrderToShipStation(shipStationOrder) {
     try {
@@ -7,7 +56,7 @@ async function sendOrderToShipStation(shipStationOrder) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
         
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/orders/createorder',
             shipStationOrder,
             {
@@ -15,9 +64,9 @@ async function sendOrderToShipStation(shipStationOrder) {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
         // Handle network errors properly
@@ -27,7 +76,7 @@ async function sendOrderToShipStation(shipStationOrder) {
                 ? JSON.stringify(error.response.data.ModelState, null, 2)
                 : JSON.stringify(error.response.data, null, 2);
             
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'send_order_api_error',
                 status: error.response.status,
                 statusText: error.response.statusText,
@@ -38,7 +87,7 @@ async function sendOrderToShipStation(shipStationOrder) {
             throw new Error(`Failed to send order to ShipStation: ${error.response.status} - ${errorDetails}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'send_order_network_error',
                 message: error.message,
                 code: error.code,
@@ -47,7 +96,7 @@ async function sendOrderToShipStation(shipStationOrder) {
             throw new Error(`Network error connecting to ShipStation: ${error.message}`);
         } else {
             // Something else happened
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'send_order_unexpected_error',
                 message: error.message,
                 stack: error.stack
@@ -74,7 +123,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
         };
 
         // Log request payload before sending
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_label_request',
             orderId,
             carrierCode,
@@ -85,7 +134,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             testLabel
         });
 
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/orders/createlabelfororder',
             requestPayload,
             {
@@ -93,12 +142,12 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         
         // Log successful response - include tracking URL if available
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'create_label_success',
             orderId,
             shipmentId: response.data?.shipmentId,
@@ -131,7 +180,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
                 statusText: error.response?.statusText
             };
             
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'create_label_api_error',
                 ...apiErrorDetails
             });
@@ -139,7 +188,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             throw new Error(`Failed to create label for order ${orderId}: ${error.response.status} - ${error.response.statusText} - ${JSON.stringify(error.response?.data || {})}`);
         } else if (error.request) {
             // Request was made but no response received (timeout, network error)
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'create_label_network_error',
                 ...errorDetails,
                 message: error.message,
@@ -149,7 +198,7 @@ async function createLabelForOrder({ orderId, carrierCode, serviceCode, packageC
             throw new Error(`Network error creating label for order ${orderId}: ${error.message}`);
         } else {
             // Something else happened
-            shipstationLogger.logError({
+            shipstationLog.logError({
                 type: 'create_label_unexpected_error',
                 ...errorDetails,
                 error: error.message,
@@ -167,18 +216,19 @@ async function getProductById(productId) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(
+        const response = await shipStationRequest(() => axios.get(
             `https://ssapi.shipstation.com/products/${productId}`,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_product_error',
             error: error.message,
             response: error.response?.data,
@@ -209,15 +259,16 @@ async function listProducts(queryParams = {}) {
 
         const url = `https://ssapi.shipstation.com/products${queryString.toString() ? `?${queryString.toString()}` : ''}`;
 
-        const response = await axios.get(url, {
+        const response = await shipStationRequest(() => axios.get(url, {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
-            }
-        });
+            },
+            timeout: SHIPSTATION_HTTP_TIMEOUT_MS
+        }));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'list_products_error',
             error: error.message,
             response: error.response?.data,
@@ -234,19 +285,20 @@ async function updateProduct(productId, productData) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.put(
+        const response = await shipStationRequest(() => axios.put(
             `https://ssapi.shipstation.com/products/${productId}`,
             productData,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'update_product_error',
             error: error.message,
             response: error.response?.data,
@@ -258,24 +310,56 @@ async function updateProduct(productId, productData) {
     }
 }
 
+async function listOrdersByOrderNumber(orderNumber) {
+    try {
+        const apiKey = process.env.SHIPSTATION_API_KEY;
+        const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+        const response = await shipStationRequest(() => axios.get(
+            'https://ssapi.shipstation.com/orders',
+            {
+                params: { orderNumber, pageSize: 50, page: 1 },
+                headers: {
+                    Authorization: `Basic ${auth}`,
+                    'Content-Type': 'application/json',
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS,
+            }
+        ));
+
+        return response.data?.orders || [];
+    } catch (error) {
+        shipstationLog.logError({
+            type: 'list_orders_by_order_number_error',
+            error: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            orderNumber,
+        });
+        throw new Error(`Failed to list orders for orderNumber ${orderNumber} in ShipStation: ${error.message}`);
+    }
+}
+
 async function getOrderById(orderId) {
     try {
         const apiKey = process.env.SHIPSTATION_API_KEY;
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.get(
+        const response = await shipStationRequest(() => axios.get(
             `https://ssapi.shipstation.com/orders/${orderId}`,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'get_order_error',
             error: error.message,
             response: error.response?.data,
@@ -292,15 +376,16 @@ async function deleteOrderById(orderId) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.delete(
+        const response = await shipStationRequest(() => axios.delete(
             `https://ssapi.shipstation.com/orders/${orderId}`,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
         throw new Error(`Failed to delete order ${orderId} from ShipStation: ${error.message}`);
@@ -313,7 +398,7 @@ async function holdOrderUntil(orderId, holdUntilDate) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/orders/holduntil',
             {
                 orderId: orderId,
@@ -323,12 +408,13 @@ async function holdOrderUntil(orderId, holdUntilDate) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'hold_order_error',
             error: error.message,
             response: error.response?.data,
@@ -346,7 +432,7 @@ async function restoreOrderFromHold(orderId) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/orders/restorefromhold',
             {
                 orderId: orderId
@@ -355,12 +441,13 @@ async function restoreOrderFromHold(orderId) {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'restore_order_error',
             error: error.message,
             response: error.response?.data,
@@ -377,19 +464,20 @@ async function markOrderAsShipped(orderData) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/orders/markasshipped',
             orderData,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'mark_shipped_error',
             error: error.message,
             response: error.response?.data,
@@ -406,24 +494,25 @@ async function voidShipmentLabel(shipmentData) {
         const apiSecret = process.env.SHIPSTATION_SECRET_KEY;
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
         
-        shipstationLogger.logInfo({
+        shipstationLog.logInfo({
             type: 'void_label_request',
             has_api_key: !!apiKey
         });
         
-        const response = await axios.post(
+        const response = await shipStationRequest(() => axios.post(
             'https://ssapi.shipstation.com/shipments/voidlabel',
             shipmentData,
             {
                 headers: {
                     'Authorization': `Basic ${auth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: SHIPSTATION_HTTP_TIMEOUT_MS
             }
-        );
+        ));
         return response.data;
     } catch (error) {
-        shipstationLogger.logError({
+        shipstationLog.logError({
             type: 'void_label_error',
             error: error.message,
             response: error.response?.data,
@@ -434,4 +523,18 @@ async function voidShipmentLabel(shipmentData) {
     }
 }
 
-module.exports = { sendOrderToShipStation, createLabelForOrder, getProductById, listProducts, updateProduct, getOrderById, deleteOrderById, holdOrderUntil, restoreOrderFromHold, markOrderAsShipped, voidShipmentLabel }; 
+module.exports = {
+    sendOrderToShipStation,
+    createLabelForOrder,
+    getProductById,
+    listProducts,
+    updateProduct,
+    listOrdersByOrderNumber,
+    getOrderById,
+    deleteOrderById,
+    holdOrderUntil,
+    restoreOrderFromHold,
+    markOrderAsShipped,
+    voidShipmentLabel,
+    shipStationRequest
+}; 

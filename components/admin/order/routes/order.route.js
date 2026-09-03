@@ -7,7 +7,12 @@ const {
     updateOrderStatusValidation, 
     getOrderStatsValidation,
     getOrderReportValidation,
-    bulkUpdateOrderStatusValidation
+    bulkUpdateOrderStatusValidation,
+    bulkUpdateOrderStatusAsyncValidation,
+    getBulkOrderStatusJobValidation,
+    listBulkOrderStatusJobsValidation,
+    getBulkOrderStatusJobOrdersValidation,
+    getActiveBulkOrderStatusItemsValidation,
 } = require("../helper/order.validator");
 
 /**
@@ -152,6 +157,11 @@ router.get('/report', [authMiddleware(true), validateRequest(getOrderReportValid
  *         description: Unauthorized
  */
 router.put('/bulk-status', [authMiddleware(true), validateRequest(bulkUpdateOrderStatusValidation)], orderController.bulkUpdateOrderStatus);
+router.post('/bulk-status/async', [authMiddleware(true), validateRequest(bulkUpdateOrderStatusAsyncValidation)], orderController.bulkUpdateOrderStatusAsync);
+router.get('/bulk-status/jobs', [authMiddleware(true), validateRequest(listBulkOrderStatusJobsValidation)], orderController.listBulkOrderStatusJobs);
+router.get('/bulk-status/active-orders', [authMiddleware(true), validateRequest(getActiveBulkOrderStatusItemsValidation)], orderController.getActiveBulkOrderStatusItems);
+router.get('/bulk-status/jobs/:id/orders', [authMiddleware(true), validateRequest(getBulkOrderStatusJobOrdersValidation)], orderController.getBulkOrderStatusJobOrders);
+router.get('/bulk-status/jobs/:id', [authMiddleware(true), validateRequest(getBulkOrderStatusJobValidation)], orderController.getBulkOrderStatusJob);
 
 /**
  * @swagger

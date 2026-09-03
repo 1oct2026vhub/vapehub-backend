@@ -42,6 +42,20 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'linked_product_id',
         as: 'LinkedProducts'
       });
+      this.belongsToMany(models.Blog, {
+        through: models.ProductRelatedBlog,
+        foreignKey: 'product_id',
+        otherKey: 'blog_id',
+        as: 'RelatedBlogs'
+      });
+      this.hasMany(models.ProductRelatedBlog, {
+        foreignKey: 'product_id',
+        as: 'relatedBlogRelations'
+      });
+      this.hasMany(models.ProductStockAlert, {
+        foreignKey: 'product_id',
+        as: 'stockAlerts'
+      });
     }
   }
 
@@ -95,6 +109,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     is_new: { type: DataTypes.BOOLEAN, defaultValue: false },
+    is_coming_soon: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     battery_capacity: DataTypes.STRING,
     coil_style: DataTypes.STRING,
     device_style: DataTypes.STRING,
