@@ -126,10 +126,19 @@ const fetchProducts2 = async (query) => {
 
 
     if (query.is_new) {
-      // fetch last one month created product
+      // New In window: last 30 days from new_in_at (fallback createdAt)
       const lastMonthDate = new Date();
       lastMonthDate.setDate(lastMonthDate.getDate() - 30);
-      whereClause.createdAt = { [Op.gte]: lastMonthDate };
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push({
+        [Op.or]: [
+          { new_in_at: { [Op.gte]: lastMonthDate } },
+          {
+            new_in_at: null,
+            createdAt: { [Op.gte]: lastMonthDate }
+          }
+        ]
+      });
     }
 
 
@@ -652,7 +661,7 @@ const fetchProducts = async (query, status = 'published') => {
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style,
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
-          p.updatedAt, p.deletedAt,
+          p.new_in_at, p.updatedAt, p.deletedAt,
           COALESCE(order_stats.order_count, 0) as order_count,
           COALESCE(price_stats.min_price, 0) as min_price
         FROM products p
@@ -713,7 +722,7 @@ const fetchProducts = async (query, status = 'published') => {
             ? `order_count ${orderValue}` 
             : sort_by === 'price' 
             ? `min_price ${orderValue}` 
-            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
+            : `p.${({ id: 'id', name: 'name', price: 'price', createdAt: 'createdAt', created_at: 'createdAt', new_in_at: 'new_in_at', stock: 'stock_quantity' }[sort_by] || 'id')} ${orderValue}`
         }, p.id ASC
         LIMIT :limit OFFSET :offset
       `, {
@@ -1263,7 +1272,8 @@ const fetchProducts = async (query, status = 'published') => {
            // Only calculate when is_new parameter is requested
            const thirtyDaysAgo = new Date();
            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-           return new Date(product.createdAt) >= thirtyDaysAgo;
+           const newInReference = product.new_in_at || product.createdAt;
+           return new Date(newInReference) >= thirtyDaysAgo;
          })() : false
       };
     });

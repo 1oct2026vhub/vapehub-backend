@@ -61,7 +61,7 @@ module.exports.listAllproducts = async (req, res, next) => {
 module.exports.listNewProducts = async (req, res, next) => {
     try {
         const {
-            sort_by = 'createdAt',
+            sort_by = 'new_in_at',
             order = 'DESC',
             limit = 10,
             offset = 0,
@@ -128,7 +128,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             return acc;
         }, {});
 
-        const cacheKey = `product:new:${JSON.stringify({
+        const cacheKey = `product:new:v3:${JSON.stringify({
             sort_by,
             order,
             limit: parsedLimit,
@@ -220,19 +220,25 @@ module.exports.listNewProducts = async (req, res, next) => {
             name: 'name',
             price: 'price',
             createdAt: 'createdAt',
+            new_in_at: 'new_in_at',
             stock: 'stock_quantity'
         };
-        const safeSortBy = sortColumnMap[sort_by] || 'createdAt';
+        const safeSortBy = sortColumnMap[sort_by] || 'new_in_at';
         const safeOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+        // Prefer new_in_at for New In; fall back to createdAt for any legacy nulls.
+        const orderByClause = safeSortBy === 'new_in_at'
+            ? `COALESCE(p.new_in_at, p.createdAt) ${safeOrder}`
+            : `p.${safeSortBy} ${safeOrder}`;
 
         // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status, p.createdAt
+                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status,
+                p.createdAt, p.new_in_at
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.${safeSortBy} ${safeOrder}
+            ORDER BY ${orderByClause}
             LIMIT :limit OFFSET :offset
         `;
 
@@ -590,10 +596,11 @@ module.exports.listNewProducts = async (req, res, next) => {
                 ProductImages: productImagesMap.get(product.id) || []
             });
 
-            // Calculate is_new: either database field is true OR product is within last 30 days
+            // Calculate is_new: database flag OR within last 30 days of New In date (fallback createdAt)
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            const isWithinLast30Days = new Date(product.createdAt) >= thirtyDaysAgo;
+            const newInReference = product.new_in_at || product.createdAt;
+            const isWithinLast30Days = new Date(newInReference) >= thirtyDaysAgo;
             const isNewProduct = product.is_new || isWithinLast30Days;
 
             // Process reviews for this product (similar to fetchProducts implementation)
@@ -666,6 +673,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
+                new_in_at: product.new_in_at,
                 Categories: categoriesMap.get(product.id) || [],
                 Brands: brandsMap.get(product.id) || [],
                 ProductImages: productImagesMap.get(product.id) || [],

@@ -202,6 +202,8 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 ? `min_price ${orderValue}` 
                 : sort_by === 'createdAt' 
                 ? `p.createdAt ${orderValue}` 
+                : sort_by === 'new_in_at'
+                ? `COALESCE(p.new_in_at, p.createdAt) ${orderValue}`
                 : `p.${sort_by} ${orderValue}`
             }, p.id ASC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}

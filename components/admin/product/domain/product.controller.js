@@ -18,14 +18,14 @@ const {
 } = require('../helper/productBlogRelations.helper');
 const { recacheProductFireAndForget, recacheUrlsFireAndForget, buildPublicUrl } = require('../../../../library/prerender');
 const { readUploadFile, cleanupMulterFiles } = require('../../../../library/multer/tempDiskStorage');
-const { maybeNotifyOnComingSoonRelease } = require('../../../product/helper/productStockAlert.helper');
+const { maybeNotifyOnComingSoonRelease, resolveNewInAtOnComingSoonChange, resolveNewInAtOnCreate, isTruthyComingSoon } = require('../../../product/helper/productStockAlert.helper');
 
 const slugManager = new SlugManager(SlugRelation);
 
 /** Admin list columns — excludes LONGTEXT description (available via GET /fetch/:id). */
 const ADMIN_LIST_PRODUCT_ATTRIBUTES = [
     'id', 'updated_by', 'name', 'slug', 'sku', 'price', 'discount_price',
-    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'battery_capacity', 'is_discontinued',
+    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'new_in_at', 'battery_capacity', 'is_discontinued',
     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style',
     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type',
     'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status',
@@ -525,7 +525,7 @@ module.exports.getProductById = async (req, res, next) => {
                 logging: false,
                 attributes: [
                     'id', 'updated_by', 'name', 'slug', 'description', 'price', 'discount_price', 
-                    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'battery_capacity',  'is_discontinued',
+                    'stock_quantity', 'puff_count', 'is_new', 'is_coming_soon', 'new_in_at', 'battery_capacity',  'is_discontinued',
                     'coil_style', 'device_style', 'eliquid_capacity', 'pod_coil_style', 
                     'pod_fill_style', 'power_supply', 'nicotine_strength', 'nicotine_type', 'sku',
                     'vg_ratio', 'vaping_style', 'bottle_size', 'redirect_url', 'status', 'createdAt', 'updatedAt', 'deletedAt'
@@ -1188,6 +1188,7 @@ module.exports.createProduct = async (req, res, next) => {
                 bottle_size,
                 is_discontinued,
                 is_coming_soon: is_coming_soon ?? false,
+                new_in_at: resolveNewInAtOnCreate(is_coming_soon ?? false),
                 updated_by
             },
             { transaction }
@@ -1575,6 +1576,14 @@ module.exports.updateProduct = async (req, res, next) => {
         }
         if (is_coming_soon !== undefined) {
             updatedFields.is_coming_soon = is_coming_soon;
+            const nextNewInAt = resolveNewInAtOnComingSoonChange(previousComingSoon, is_coming_soon);
+            if (nextNewInAt !== undefined) {
+                updatedFields.new_in_at = nextNewInAt;
+            }
+            // When released from Coming Soon, mark as new for merchandising windows.
+            if (isTruthyComingSoon(previousComingSoon) && !isTruthyComingSoon(is_coming_soon)) {
+                updatedFields.is_new = true;
+            }
         }
         if (redirect_url !== undefined) {
             updatedFields.redirect_url = redirect_url === null || redirect_url === '' ? null : String(redirect_url).trim();

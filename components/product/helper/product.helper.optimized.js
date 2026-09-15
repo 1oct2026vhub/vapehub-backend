@@ -221,8 +221,8 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.battery_capacity, 
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style, 
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 
-          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt, 
-          p.updatedAt, p.deletedAt,
+          p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
+          p.new_in_at, p.updatedAt, p.deletedAt,
           MIN(pv.price) as min_variant_price,
           COUNT(DISTINCT pv.id) as variant_count
         FROM products p
@@ -687,7 +687,8 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         is_new: is_new ? (() => {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          return new Date(product.createdAt) >= thirtyDaysAgo;
+          const newInReference = product.new_in_at || product.createdAt;
+          return new Date(newInReference) >= thirtyDaysAgo;
         })() : false,
         Categories: productCategoriesData.map(pc => ({
           id: pc.id,
