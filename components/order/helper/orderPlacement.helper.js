@@ -30,6 +30,7 @@ const {
 const { generateTransactionReference } = require('./worldpay.helper');
 const { ensurePendingWorldpayTransaction } = require('../../payment/helper/worldpayPendingTransaction.helper');
 const constants = require('../../../config/constants');
+const { isCouponWithinDateWindow } = require('../../checkout/helper/coupon.helper');
 const { v4: uuidv4 } = require('uuid');
 
 const PENDING_WORLDPAY_ORDER_TTL_HOURS = Number(process.env.WORLDPAY_PENDING_ORDER_TTL_HOURS) || 24;
@@ -365,27 +366,7 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             });
 
             if (coupon) {
-                // Get current UK time in 2025-09-16 08:45:00 format (no timezone)
-                const currentTime = new Date();
-                const currentUKTime = new Date(currentTime.toLocaleString("en-US", {timeZone: "Europe/London"}));
-                const currentUKTimeFormatted = currentUKTime.getFullYear() + '-' +
-                    String(currentUKTime.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(currentUKTime.getDate()).padStart(2, '0') + ' ' +
-                    String(currentUKTime.getHours()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getMinutes()).padStart(2, '0') + ':' +
-                    String(currentUKTime.getSeconds()).padStart(2, '0');
-
-                // Get coupon dates in 2025-09-16 08:45:00 format (no timezone)
-                const startDateFormatted = coupon.start_date ? coupon.start_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-                const endDateFormatted = coupon.end_date ? coupon.end_date.toISOString().slice(0, 19).replace('T', ' ') : null;
-
-                // Check if coupon has started
-                if (startDateFormatted && currentUKTimeFormatted < startDateFormatted) {
-                    coupon = null; // Mark as invalid
-                }
-
-                // Check if coupon has expired
-                if (endDateFormatted && currentUKTimeFormatted > endDateFormatted) {
+                if (!isCouponWithinDateWindow(coupon)) {
                     coupon = null; // Mark as invalid
                 }
             }
@@ -782,6 +763,70 @@ const placeOrderLogic = async (user_id, orderData, transaction) => {
             loyalty_points_used: loyaltyPointsUsed,
             mailSubscription_discount: mailSubscriptionDiscount ? mailSubscriptionDiscount : 0
         }, { transaction });
+
+        // Registered users only: one active pending checkout — supersede older pendings + flows.
+        if (user_id) {
+            const olderPendingOrders = await Order.findAll({
+                where: {
+                    user_id,
+                    status: constants.orderStatus.PENDING,
+                    id: { [Op.ne]: order.id }
+                },
+                attributes: ['id'],
+                transaction,
+                lock: true
+            });
+
+            const supersededMessage = `Superseded by new checkout order_id=${order.id}`;
+            for (const row of olderPendingOrders) {
+                await AbandonedCartFlow.update(
+                    {
+                        status: 'superseded',
+                        last_error: supersededMessage
+                    },
+                    {
+                        where: {
+                            order_id: row.id,
+                            status: { [Op.notIn]: ['recovered', 'cancelled', 'superseded'] }
+                        },
+                        transaction
+                    }
+                );
+
+                const previousPending = await Order.findByPk(row.id, { transaction, lock: true });
+                if (previousPending && previousPending.status === constants.orderStatus.PENDING) {
+                    await previousPending.update(
+                        { status: constants.orderStatus.CANCEL },
+                        { transaction }
+                    );
+                }
+            }
+        }
+
+        // Track abandoned-cart lifecycle only for non-temporary registered users.
+        const registeredUser = user_id
+            ? await User.findOne({
+                where: {
+                    id: user_id,
+                    is_temporary: false
+                },
+                attributes: ['id'],
+                transaction
+            })
+            : null;
+
+        if (registeredUser) {
+            await AbandonedCartFlow.findOrCreate({
+                where: { order_id: order.id },
+                defaults: {
+                    user_id: user_id || null,
+                    order_unique_id: order.order_unique_id || null,
+                    customer_email: order.email || null,
+                    status: 'entered'
+                },
+                transaction
+            });
+        }
 
         await OrderItem.bulkCreate(orderItems.map(item => ({ ...item, order_id: order.id })), { transaction });
 

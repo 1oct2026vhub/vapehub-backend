@@ -2,12 +2,13 @@ const { errorResponse, successResponse } = require("../../../utils/responseUtils
 const { Product, Category, Brand, ProductImage, ProductAttributeTerm, Attribute, AttributeTerm, ProductVariant, ProductVariantImage, ProductVariantAttribute, Deal, DealProduct, ProductCategory, ProductBrand, ProductLinkedProduct, LoyaltyPointsSettings, Review, User, Order, Settings } = require("../../../models");
 const { Sequelize, Op } = require("sequelize");
 const logger = require("../../../library/logger");
-const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant } = require("../helper/product.helper");
+const { getTrendingProducts, generateUniqueFileName, fetchProducts, getMinPriceVariant, shouldHideVariantSelector } = require("../helper/product.helper");
 const { fetchProductsOptimized } = require("../helper/product.helper.optimized");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/tempDiskStorage");
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
+const { formatProductStickerResponse } = require('../helper/productSticker.helper');
 const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
 const { subscribeToStockAlert } = require('../helper/productStockAlert.helper');
 
@@ -234,8 +235,9 @@ module.exports.listNewProducts = async (req, res, next) => {
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status,
-                p.createdAt, p.new_in_at
+                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status, p.createdAt,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source, p.new_in_at
             FROM products p
             ${sqlProductWhereClause}
             ORDER BY ${orderByClause}
@@ -583,7 +585,6 @@ module.exports.listNewProducts = async (req, res, next) => {
             // Check stock status (low_stock still means sellable inventory)
             const hasInStockVariant = !product.is_discontinued && variants.some(variant =>
                 variant.status === 'active' &&
-                !variant.is_discontinued &&
                 variant.stock > 0 &&
                 (variant.stock_status === 'in_stock' || variant.stock_status === 'low_stock') &&
                 variant.price !== null &&
@@ -669,6 +670,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 is_new: isNewProduct,
+                sticker: formatProductStickerResponse(product),
                 is_coming_soon: Boolean(product.is_coming_soon),
                 is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
@@ -681,7 +683,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 deals: dealsMap.get(product.id) || [],
                 flavors: flavorTerms,
                 flavor_count: flavorTerms.length,
-                out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
+                out_of_stock: !hasInStockVariant,
                 min_price_variant: minPriceVariant,
                 // Add review data and statistics
                 reviews: processedReviews,
@@ -757,7 +759,7 @@ module.exports.listNewProducts = async (req, res, next) => {
 module.exports.getProductByid = async (req, res, next) => {
     try {
         const productId = req.params.id;
-        const responseData = await cacheOrFetch(`product:detail:${productId}`, async () => {
+        const responseData = await cacheOrFetch(`product:detail:v2:${productId}`, async () => {
         const includeClause = [
             {
                 model: Category,
@@ -1025,6 +1027,12 @@ module.exports.getProductByid = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Fetch loyalty points settings
         const loyaltySettings = await LoyaltyPointsSettings.findOne({
@@ -1115,6 +1123,9 @@ module.exports.getProductByid = async (req, res, next) => {
         const relatedBlogs = await getPublishedProductRelatedBlogs(productId);
         const response = {
             ...product.toJSON(),
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: productPrice,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -1132,6 +1143,7 @@ module.exports.getProductByid = async (req, res, next) => {
                 outOfStockVariants: product.variants.filter(v => v.stock <= 0).length
             },
             loyaltyPoints: loyaltyPointsInfo,
+            sticker: formatProductStickerResponse(product),
             // Keep loyaltySettings for backward compatibility
             loyaltySettings: loyaltySettings ? {
                 program_name: loyaltySettings.program_name,
@@ -1580,7 +1592,9 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 p.stock_quantity, p.puff_count, p.is_new, p.battery_capacity, p.coil_style,
                 p.device_style, p.eliquid_capacity, p.pod_coil_style, p.pod_fill_style,
                 p.power_supply, p.nicotine_strength, p.nicotine_type, p.vg_ratio,
-                p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt
+                p.vaping_style, p.bottle_size, p.status, p.createdAt, p.updatedAt, p.deletedAt,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
             WHERE p.slug = :slug AND p.status = :status AND p.deleted_at IS NULL
         `;
@@ -1611,7 +1625,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             variantsResult,
             variantImagesResult,
             dealsResult,
-            attributeTermsResult
+            attributeTermsResult,
+            variantAttributesResult
         ] = await Promise.all([
             // Categories query
             Product.sequelize.query(`
@@ -1750,7 +1765,12 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             status: productResult.status,
             createdAt: productResult.createdAt,
             updatedAt: productResult.updatedAt,
-            deletedAt: productResult.deletedAt
+            deletedAt: productResult.deletedAt,
+            sticker_name: productResult.sticker_name,
+            sticker_background_color: productResult.sticker_background_color,
+            sticker_active_from: productResult.sticker_active_from,
+            sticker_active_until: productResult.sticker_active_until,
+            sticker_source: productResult.sticker_source,
         };
         
         // Parse Categories
@@ -1812,6 +1832,18 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
                 is_primary: img.is_primary
             });
         });
+
+        // Create variant attributes map
+        const variantAttributesMap = new Map();
+        variantAttributesResult.forEach(va => {
+            if (!variantAttributesMap.has(va.variant_id)) {
+                variantAttributesMap.set(va.variant_id, []);
+            }
+            variantAttributesMap.get(va.variant_id).push({
+                attribute_id: va.attribute_id,
+                term_id: va.term_id
+            });
+        });
         
         // Parse Variants with Images
         product.variants = variantsResult.map(variant => ({
@@ -1836,7 +1868,8 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             created_at: variant.created_at,
             updated_at: variant.updated_at,
             deleted_at: variant.deleted_at,
-            variantImages: variantImagesMap.get(variant.id) || []
+            variantImages: variantImagesMap.get(variant.id) || [],
+            variantAttributes: variantAttributesMap.get(variant.id) || []
         }));
         
         // Parse Deals
@@ -1947,6 +1980,12 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
 
         // Convert Map to array
         const attributeTerms = Array.from(attributeTermsMap.values());
+
+        const hide_variant_selector = shouldHideVariantSelector(
+            product.variants,
+            product.productAttributeTerms
+        );
+        const soleVariant = hide_variant_selector ? product.variants[0] : null;
         
         // Get primary product image
         const primaryProductImage = product.ProductImages && product.ProductImages.length > 0 
@@ -1974,6 +2013,9 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
         // **Modify the response** (same logic as original)
         const response = {
             ...product,  // Use parsed product object instead of toJSON()
+            hide_variant_selector,
+            default_variant_id: soleVariant ? soleVariant.id : null,
+            default_variant_slug: soleVariant ? soleVariant.slug : null,
             puff_count: puffCount,
             price: minPriceVariant ? minPriceVariant.price : product.price,
             regular_price: minPriceVariant ? minPriceVariant.regular_price : product.regular_price,
@@ -1981,6 +2023,7 @@ module.exports.listAllproductsBySlug = async (req, res, next) => {
             min_price_variant: minPriceVariant,
             primary_image: primary_image,
             all_images: all_images,
+            sticker: formatProductStickerResponse(product),
             attributeTerms,
             deals: product.deals && product.deals.length > 0 ? product.deals.map(deal => ({
                 id: deal.id,
@@ -2021,7 +2064,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.is_discontinued, p.is_coming_soon, p.createdAt, p.updatedAt
+                p.is_discontinued, p.is_coming_soon, p.createdAt, p.updatedAt,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2133,7 +2178,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 type: Product.sequelize.QueryTypes.SELECT
             }),
 
-            // Get product attribute terms with raw SQL
+            // Get product attribute terms with raw SQL (include hidden; filter visibility when building attribute_terms)
             Product.sequelize.query(`
                 SELECT 
                     pat.attribute_id, pat.term_id, pat.used_in_variation, pat.is_visible_page,
@@ -2144,7 +2189,6 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 JOIN attribute_terms t ON pat.term_id = t.id
                 WHERE pat.product_id = :product_id
                 AND pat.deleted_at IS NULL
-                AND pat.is_visible_page = true
             `, {
                 replacements: { product_id },
                 type: Product.sequelize.QueryTypes.SELECT
@@ -2322,7 +2366,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
             variantImages: variantImagesMap.get(variant.id) || []
         }));
 
-        // Group attributes and their terms (OPTIMIZED)
+        // Group attributes and their terms (all product_attribute_terms; FE uses is_visible_page)
         const attributeTermsMap = new Map();
         productAttributeTermsResult.forEach((pat) => {
             const attributeId = pat.attr_id;
@@ -2429,11 +2473,13 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get available terms for other attributes
         const availableTermsMap = new Map();
         
-        // Create a lookup map for used_in_variation from productAttributeTermsResult
+        // Create a lookup map for used_in_variation / is_visible_page from productAttributeTermsResult
         const usedInVariationMap = new Map();
+        const isVisiblePageMap = new Map();
         productAttributeTermsResult.forEach(pat => {
             const key = `${pat.attr_id}-${pat.term_id}`;
             usedInVariationMap.set(key, Boolean(pat.used_in_variation));
+            isVisiblePageMap.set(key, pat.is_visible_page === true || pat.is_visible_page === 1);
         });
         
         filteredVariants.forEach(variant => {
@@ -2446,9 +2492,10 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                     // Check if this attribute-term combination has used_in_variation = true
                     const key = `${attributeId}-${termId}`;
                     const usedInVariation = usedInVariationMap.get(key);
+                    const isVisiblePage = isVisiblePageMap.get(key);
                     
-                    // Only include terms with used_in_variation = true
-                    if (usedInVariation === true) {
+                    // Only include terms with used_in_variation = true and visible on page
+                    if (usedInVariation === true && isVisiblePage === true) {
                         if (!availableTermsMap.has(attributeId)) {
                             availableTermsMap.set(attributeId, {
                                 attribute: {
@@ -2863,6 +2910,12 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         // Get key highlights content from settings
         const keyHighlights = keyHighlightsSetting ? keyHighlightsSetting.content : null;
 
+        const hide_variant_selector = shouldHideVariantSelector(
+            structuredVariants,
+            productAttributeTermsResult
+        );
+        const soleVariant = hide_variant_selector ? structuredVariants[0] : null;
+
         const response = {
             product: {
                 id: product.id,
@@ -2886,6 +2939,9 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 } : null,
                 all_images: productImages,
                 attribute_terms: Array.from(attributeTermsMap.values()),
+                hide_variant_selector,
+                default_variant_id: soleVariant ? soleVariant.id : null,
+                default_variant_slug: soleVariant ? soleVariant.slug : null,
                 deals: dealsResult, // Use raw SQL result
                 loyaltySettings: loyaltySettings ? {
                     program_name: loyaltySettings.program_name,
@@ -2906,7 +2962,8 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 min_price_variant: minPriceVariant,
                 reviews: processedReviews,
                 review_stats: reviewStats,
-                loyaltyPoints: loyaltyPointsInfo
+                loyaltyPoints: loyaltyPointsInfo,
+                sticker: formatProductStickerResponse(product),
             },
             variants: finalVariants.map(variant => ({
                 ...variant,
@@ -2941,7 +2998,9 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.createdAt, p.updatedAt
+                p.createdAt, p.updatedAt,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -3607,7 +3666,8 @@ module.exports.filterVariantsByAttributesOptimized = async (req, res, next) => {
                 discount_price: minPriceVariant ? minPriceVariant.discount_price : product.discount_price,
                 min_price_variant: minPriceVariant,
                 reviews: processedReviews,
-                review_stats: reviewStats
+                review_stats: reviewStats,
+                sticker: formatProductStickerResponse(product),
             },
             variants: finalVariants.map(variant => ({
                 ...variant,
@@ -4824,7 +4884,9 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
         const similarProductsQuery = `
             SELECT DISTINCT
                 p.id, p.name, p.slug, p.price, p.discount_price, p.stock_quantity, p.puff_count,
-                p.createdAt, p.updatedAt
+                p.createdAt, p.updatedAt,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM products p
             INNER JOIN product_categories pc ON p.id = pc.product_id
             WHERE p.id != :product_id 
@@ -5262,6 +5324,7 @@ module.exports.getMoreLikeThisProducts = async (req, res, next) => {
                 puff_count: puffCount,
                 flavor_count: flavor_count,
                 out_of_stock: !hasInStockVariant,
+                sticker: formatProductStickerResponse(product),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 category: categories.length > 0 ? categories[0] : null,
@@ -5375,7 +5438,9 @@ module.exports.getDealProducts = async (req, res, next) => {
                 p.puff_count, p.is_new, p.battery_capacity, p.coil_style, p.device_style,
                 p.eliquid_capacity, p.pod_coil_style, p.pod_fill_style, p.power_supply,
                 p.nicotine_strength, p.nicotine_type, p.vg_ratio, p.vaping_style,
-                p.bottle_size, p.status, p.createdAt, p.updatedAt, dp.createdAt as deal_created_at
+                p.bottle_size, p.status, p.createdAt, p.updatedAt, dp.createdAt as deal_created_at,
+                p.sticker_name, p.sticker_background_color,
+                p.sticker_active_from, p.sticker_active_until, p.sticker_source
             FROM deal_products dp
             INNER JOIN products p ON dp.product_id = p.id
             WHERE dp.deal_id = :deal_id
@@ -5653,6 +5718,7 @@ module.exports.getDealProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: product.puff_count,
                 is_new: product.is_new,
+                sticker: formatProductStickerResponse(product),
                 battery_capacity: product.battery_capacity,
                 coil_style: product.coil_style,
                 device_style: product.device_style,

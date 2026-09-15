@@ -1,5 +1,6 @@
 const axios = require('axios');
-const orderPlacementLogger = require('../../../utils/orderPlacementLogger');
+const { createDomainLogger } = require('../../../library/logging/domainLogger');
+const orderLog = createDomainLogger('order-placement');
 
 const WORLDPAY_PAYMENT_PAGES_ACCEPT = 'application/vnd.worldpay.payment_pages-v1.hal+json';
 
@@ -87,7 +88,7 @@ const createWorldpayPaymentPage = async ({
     const WORLDPAY_PASSWORD = process.env.WORLDPAY_PASSWORD;
     const timeout = getWorldpayTimeoutMs();
 
-    orderPlacementLogger.logWorldpay({
+    orderLog.logWorldpay({
         event: 'worldpay_payment_pages_request',
         transactionReference,
         amount: Math.round(calculatedTotal * 100),
@@ -132,7 +133,7 @@ const createWorldpayPaymentPage = async ({
 
         const paymentUrl = extractWorldpayPaymentUrl(response.data);
 
-        orderPlacementLogger.logWorldpay({
+        orderLog.logWorldpay({
             event: 'worldpay_payment_pages_response',
             transactionReference,
             httpStatus: response.status,
@@ -153,7 +154,7 @@ const createWorldpayPaymentPage = async ({
             response
         };
     } catch (error) {
-        orderPlacementLogger.logWorldpay({
+        orderLog.logWorldpay({
             event: 'worldpay_payment_pages_error',
             transactionReference,
             ...serializeWorldpayErrorForLog(error),

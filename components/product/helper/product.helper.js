@@ -3,6 +3,7 @@ const { sequelize, Product, Category, Brand, ProductImage, ProductAttributeTerm,
 const { Sequelize, Op } = require("sequelize");
 const { productVariants: { stockStatus } } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCachePattern } = require('../../../library/cache');
+const { formatProductStickerResponse } = require('./productSticker.helper');
 
 async function getTrendingProducts(limit = 10) {
   const currentDate = new Date();
@@ -16,7 +17,12 @@ async function getTrendingProducts(limit = 10) {
         p.slug, 
         p.sku,
         p.price, 
-        p.discount_price, 
+        p.discount_price,
+        p.sticker_name,
+        p.sticker_background_color,
+        p.sticker_active_from,
+        p.sticker_active_until,
+        p.sticker_source,
         COUNT(DISTINCT o.id) AS order_count
       FROM 
         products p
@@ -31,7 +37,9 @@ async function getTrendingProducts(limit = 10) {
         AND o.status IN ('processing', 'packed', 'shipped', 'out_for_delivery', 'delivered', 'completed')
         AND o.deletedAt IS NULL
       GROUP BY 
-        p.id, p.name, p.slug, p.sku, p.price, p.discount_price
+        p.id, p.name, p.slug, p.sku, p.price, p.discount_price,
+        p.sticker_name, p.sticker_background_color,
+        p.sticker_active_from, p.sticker_active_until, p.sticker_source
       ORDER BY 
         order_count DESC
       LIMIT :limit
@@ -40,7 +48,10 @@ async function getTrendingProducts(limit = 10) {
     type: sequelize.QueryTypes.SELECT,
   });
 
-  return trendingProducts;
+  return trendingProducts.map((row) => ({
+    ...row,
+    sticker: formatProductStickerResponse(row),
+  }));
 }
 // Helper function to generate unique filename
 const generateUniqueFileName = (originalName) => {
@@ -662,6 +673,8 @@ const fetchProducts = async (query, status = 'published') => {
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type,
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt,
           p.new_in_at, p.updatedAt, p.deletedAt,
+          p.sticker_name, p.sticker_background_color,
+          p.sticker_active_from, p.sticker_active_until, p.sticker_source,
           COALESCE(order_stats.order_count, 0) as order_count,
           COALESCE(price_stats.min_price, 0) as min_price
         FROM products p
@@ -1171,7 +1184,6 @@ const fetchProducts = async (query, status = 'published') => {
       // Add out_of_stock flag (low_stock still means sellable inventory)
       const hasInStockVariant = !product.is_discontinued && product.variants && product.variants.some(variant =>
         variant.status === 'active' &&
-        !variant.is_discontinued &&
         variant.stock > 0 &&
         (variant.stock_status === stockStatus.IN_STOCK || variant.stock_status === stockStatus.LOW_STOCK) &&
         variant.price !== null &&
@@ -1263,7 +1275,7 @@ const fetchProducts = async (query, status = 'published') => {
         puff_count: puffCount,
         flavors: flavorTerms,
         flavor_count,
-        out_of_stock: Boolean(product.is_discontinued) || !hasInStockVariant,
+        out_of_stock: !hasInStockVariant,
         min_price_variant: product.min_price_variant || null,
         order_count: product.order_count ? parseInt(product.order_count) : 0,
         reviews: processedReviews,
@@ -1275,6 +1287,7 @@ const fetchProducts = async (query, status = 'published') => {
            const newInReference = product.new_in_at || product.createdAt;
            return new Date(newInReference) >= thirtyDaysAgo;
          })() : false
+        sticker: formatProductStickerResponse(product),
       };
     });
     // Build base product filter conditions for SQL queries
@@ -1903,7 +1916,7 @@ function getMinPriceVariant(product) {
 
 // Cached wrapper for product listing (reduces DB load; invalidate with invalidateCachePattern('products:*') on admin product changes)
 const fetchProductsCached = async (query, status = 'published') => {
-  const cacheKey = `products:list:${JSON.stringify({
+  const cacheKey = `products:list:v2:${JSON.stringify({
     sort_by: query.sort_by,
     order: query.order,
     limit: query.limit,
@@ -1922,5 +1935,46 @@ const fetchProductsCached = async (query, status = 'published') => {
   return cacheOrFetch(cacheKey, () => fetchProducts(query, status), 30);
 };
 
-module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern };
+/**
+ * Hide selector when there is exactly 1 active variant and none of that
+ * variant's attributes are both used for variations and page-visible
+ * (same filters as PDP available_terms / picker).
+ * Display-only attrs (used_in_variation = false) do not keep the selector open.
+ *
+ * @param {Array} activeVariants - variants with variantAttributes / attributes
+ * @param {Array} productAttributeTerms - ALL product_attribute_terms for the product
+ */
+function shouldHideVariantSelector(activeVariants = [], productAttributeTerms = []) {
+  if (!Array.isArray(activeVariants) || activeVariants.length !== 1) {
+    return false;
+  }
+
+  const variant = activeVariants[0];
+  const variantAttrs =
+    variant.variantAttributes ||
+    variant.attributes ||
+    [];
+
+  if (variantAttrs.length === 0) return true;
+
+  const pickerVisibleByAttrTerm = new Map();
+  for (const pat of productAttributeTerms) {
+    const attrId = pat.attribute_id ?? pat.attr_id;
+    const termId = pat.term_id;
+    if (attrId == null || termId == null) continue;
+    const usedInVariation = pat.used_in_variation === true || pat.used_in_variation === 1;
+    const isVisiblePage = pat.is_visible_page === true || pat.is_visible_page === 1;
+    pickerVisibleByAttrTerm.set(`${attrId}-${termId}`, usedInVariation && isVisiblePage);
+  }
+
+  const hasPickerVisibleVariantAttr = variantAttrs.some((va) => {
+    const attrId = va.attribute?.id ?? va.attribute_id;
+    const termId = va.term?.id ?? va.term_id;
+    return pickerVisibleByAttrTerm.get(`${attrId}-${termId}`) === true;
+  });
+
+  return !hasPickerVisibleVariantAttr;
+}
+
+module.exports = { getTrendingProducts, generateUniqueFileName, fetchProducts: fetchProductsCached, fetchProductsOriginal: fetchProducts, getMinPriceVariant, invalidateCachePattern, shouldHideVariantSelector };
 

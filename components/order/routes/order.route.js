@@ -952,6 +952,65 @@ router.post("/cancel/:orderId", authenticateJWT, validateRequest(validateOrderId
 
 /**
  * @swagger
+ * /api/order/retry-payment/{orderId}:
+ *   post:
+ *     summary: Retry payment for an existing unpaid order
+ *     description: Starts a new Worldpay payment session for a pending order using that order's stored items and totals. Does not use the current cart. Only pending unpaid orders can be retried.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: The order ID to retry payment for
+ *     responses:
+ *       200:
+ *         description: Payment retry started
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: Payment retry started
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         order_code:
+ *                           type: string
+ *                         worldpay_url:
+ *                           type: string
+ *                         retried_existing_order:
+ *                           type: boolean
+ *                           example: true
+ *       400:
+ *         description: Order cannot be retried
+ *       401:
+ *         description: Unauthorized - Invalid or missing token
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post("/retry-payment/:orderId", authenticateJWT, validateRequest(validateOrderId), orderController.retryOrderPayment);
+
+/**
+ * @swagger
  * /api/order/check-stock/{orderId}:
  *   get:
  *     summary: Check order items stock availability

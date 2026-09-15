@@ -13,9 +13,12 @@ const { createNotification } = require('../../notification/helper/notification.h
 const dealService = require('../../Cart/helper/deal.service');
 const { findOrCreateTemporaryUser } = require('../../auth/helper/temporaryUser.helper');
 const { placeOrderLogic } = require('../helper/orderPlacement.helper');
+const { retryOrderPaymentLogic } = require('../helper/orderRetryPayment.helper');
 const { completeWorldpayCheckout } = require('../helper/worldpay.helper');
 const { migrateGuestCartToDatabase, createGuestUser } = require('../../checkout/helper/guestCheckout.helper');
-const orderPlacementLogger = require('../../../utils/orderPlacementLogger');
+const { createDomainLogger } = require('../../../library/logging/domainLogger');
+const { serializeErrorForLog } = require('../../../utils/serializeErrorForLog');
+const orderLog = createDomainLogger('order-placement');
 
 module.exports.getOrders = async (req, res) => {
     try {
@@ -329,7 +332,7 @@ module.exports.placeOrder = async (req, res, next) => {
         shippingMethodId: req.body?.shipping_method_id ?? null
     };
 
-    orderPlacementLogger.logStart(logContext);
+    orderLog.logStart(logContext);
 
     let transactionCommitted = false;
     const transaction = await sequelize.transaction();
@@ -342,7 +345,7 @@ module.exports.placeOrder = async (req, res, next) => {
 
         const finalOrderResult = await completeWorldpayCheckout(orderResult);
 
-        orderPlacementLogger.logSuccess({
+        orderLog.logSuccess({
             ...logContext,
             durationMs: Date.now() - startedAt,
             orderId: finalOrderResult.order_details?.order_id ?? null,
@@ -362,13 +365,38 @@ module.exports.placeOrder = async (req, res, next) => {
             await transaction.rollback();
         }
 
-        orderPlacementLogger.logError({
+        orderLog.logError({
             ...logContext,
             durationMs: Date.now() - startedAt,
-            error: orderPlacementLogger.serializeErrorForLog(error)
+            error: serializeErrorForLog(error)
         });
 
         return errorResponse(res, error, error.message);
+    }
+};
+
+module.exports.retryOrderPayment = async (req, res) => {
+    const userId = req.user.id;
+    const orderId = req.params.orderId;
+    let transactionCommitted = false;
+    const transaction = await sequelize.transaction();
+
+    try {
+        const orderResult = await retryOrderPaymentLogic(userId, orderId, transaction);
+        await transaction.commit();
+        transactionCommitted = true;
+
+        const finalResult = await completeWorldpayCheckout(orderResult);
+
+        return successResponse(res, {
+            message: 'Payment retry started',
+            data: finalResult
+        }, 'Success');
+    } catch (error) {
+        if (!transactionCommitted) {
+            await transaction.rollback();
+        }
+        return errorResponse(res, error, error.message, error.statusCode);
     }
 };
 

@@ -5,6 +5,7 @@ const { Order } = require('../../../../models');
 const logger = require('../../../../library/logger');
 const { createDomainLogger } = require('../../../../library/logging/domainLogger');
 const shipstationLog = createDomainLogger('shipstation');
+const { mapOrderItemsForShipStation } = require('../../../order/helper/orderItemDisplayName.helper');
 
 /**
  * Capitalize first letter of each word in a string
@@ -104,35 +105,7 @@ async function createShipStationOrder(order, options = {}) {
                 country: "GB",
                 phone: order.orderShippingAddress.phone,
             } : undefined,
-            items: order.orderItems ? order.orderItems.map(item => {
-                const variantSku = item.variant?.sku || item.variant?.slug || (item.variant?.id ? String(item.variant.id) : null);
-                const productSku = item.product?.sku || item.product?.slug || (item.product?.id ? String(item.product.id) : null);
-                
-                // Build product name with attributes
-                let productName = item.product?.name;
-                if (!productName) {
-                    throw new Error(`Order item ${item.id} is missing product name`);
-                }
-                
-                // If variant has attributes, append them in readable format
-                if (item.variant?.variantAttributes && item.variant.variantAttributes.length > 0) {
-                    const attributeParts = item.variant.variantAttributes
-                        .filter(va => va.attribute && va.term) // Ensure both exist
-                        .map(va => `${va.attribute.name}: ${va.term.name}`)
-                        .filter(Boolean); // Remove any empty strings
-                    
-                    if (attributeParts.length > 0) {
-                        productName = `${productName}, ${attributeParts.join(', ')}`;
-                    }
-                }
-                
-                return {
-                    sku: variantSku || productSku,
-                    name: productName,
-                    quantity: item.quantity,
-                    unitPrice: item.unit_price,
-                };
-            }) : [],
+            items: order.orderItems ? await mapOrderItemsForShipStation(order.orderItems) : [],
             amountPaid: order.total,
             paymentMethod: 'VivaWallet',
             shippingAmount: order.shipping_cost || 0,

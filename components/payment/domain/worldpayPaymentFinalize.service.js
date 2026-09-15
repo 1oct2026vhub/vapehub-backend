@@ -1,5 +1,6 @@
 const { Order, sequelize } = require('../../../models');
-const paymentWebhookLogger = require('../../../utils/paymentWebhookLogger');
+const { createDomainLogger } = require('../../../library/logging/domainLogger');
+const paymentWebhookLogger = createDomainLogger('payment-webhook');
 const {
     findWorldpayOrderByCode,
     runPostPaymentSideEffects

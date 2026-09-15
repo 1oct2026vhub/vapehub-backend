@@ -1,12 +1,12 @@
 const { errorResponse, successResponse } = require("../../../utils/responseUtils");
-const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
+const { Carousel, BannerImage, SlugRelation, FooterSection, FooterLink, FooterBadge, FlashNews, User, Deal, Product, Category, Brand, BlogCategory, DealProduct, SeoMeta, ProductCategory, ProductBrand, ProductVariant, ProductImage, WelcomeContent, FeatureContent, FeatureContentIcon, ShopByCategory, PopularCategory, EntityBanner, Redirect, CategoryBuyingGuide, BrandBuyingGuide } = require("../../../models");
 const { uploadFiletToS3 } = require("../../../library/s3/s3Helper");
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
 const seoService = require("../../../components/admin/seo/domain/seo.service");
 const axios = require('axios');
 const { getAccessToken, findBusinessUnitId } = require('../../review/helper/review.helper');
-const logger = require("../../../utils/logger");
+const logger = require("../../../library/logger");
 const { cacheOrFetch } = require('../../../library/cache');
 const { formatBuyingGuideCta } = require('../../category/helper/buyingGuide.serializer');
 // Priority order for entity types when multiple matches are found
@@ -2186,9 +2186,17 @@ module.exports.getFooterSections = async (req, res) => {
           order: [['order', 'ASC']]
         }]
       });
+      const badges = await FooterBadge.findAll({
+        where: {
+          is_active: true
+        },
+        order: [['order', 'ASC']],
+        attributes: ['id', 'icon_url', 'heading', 'subtitle', 'url', 'order']
+      });
       res.json({
         success: true,
-        data: sections
+        data: sections,
+        badges
       });
     } catch (error) {
       res.status(500).json({
@@ -2411,7 +2419,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Log the API request
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_request',
             endpoint: 'getReviewSummaries',
             businessUnitId,
@@ -2437,7 +2445,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
             }
         );
         // Log the API response
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_response',
             endpoint: 'getReviewSummaries',
             responseData: {
@@ -2491,7 +2499,7 @@ module.exports.getTrustpilotReviewSummaries = async (req, res, next) => {
 
     } catch (error) {
         // Log error
-        logger.logError({
+        logger.error({
             type: 'trustpilot_api_error',
             endpoint: 'getReviewSummaries',
             error: error.message,
@@ -2549,7 +2557,7 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
         const businessUnitId = await findBusinessUnitId(accessToken);
 
         // Log the API request
-        logger.logInfo({
+        logger.info({
             type: 'trustpilot_api_request',
             endpoint: 'getProductReviews',
             businessUnitId,
@@ -2642,7 +2650,7 @@ module.exports.getTrustpilotProductReviews = async (req, res, next) => {
 
     } catch (error) {
         // Log error
-        logger.logError({
+        logger.error({
             type: 'trustpilot_api_error',
             endpoint: 'getProductReviews',
             error: error.message,

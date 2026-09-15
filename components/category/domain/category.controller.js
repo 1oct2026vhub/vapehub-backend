@@ -180,7 +180,6 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 (SELECT COUNT(*) FROM product_variants pv_stock 
                  WHERE pv_stock.product_id = p.id 
                  AND pv_stock.status = 'active' 
-                 AND pv_stock.is_discontinued = 0
                  AND pv_stock.stock > 0 
                  AND pv_stock.stock_status IN ('in_stock', 'low_stock') 
                  AND pv_stock.price IS NOT NULL 
@@ -410,7 +409,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
                     deletedAt: product.deletedAt,
                     flavor_count: parseInt(product.flavor_count) || 0,
                     flavors: [], // Will be populated from productAttributeTerms if needed
-                    out_of_stock: Boolean(product.is_discontinued) || !(parseInt(product.in_stock_variants_count) > 0),
+                    out_of_stock: !(parseInt(product.in_stock_variants_count) > 0),
                     order_count: product.order_count ? parseInt(product.order_count) : 0, // Add order count for popularity
                     ProductImages: productImagesMap.get(product.id) || [], // Add ProductImages array like fetchProducts
                     min_price_variant: {

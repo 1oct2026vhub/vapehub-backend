@@ -18,7 +18,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    if (branchName != 'hotfix/searchflex-new-blog-details') {
+                    if (branchName != 'staging-v-1') {
                         echo "Branch ${branchName} not configured for deployment."
                         return
                     }
