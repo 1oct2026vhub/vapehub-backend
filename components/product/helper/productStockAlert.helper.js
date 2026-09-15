@@ -68,6 +68,31 @@ const isFalsyComingSoon = (value) =>
   value === false || value === 'false' || value === '0' || value === 0;
 
 /**
+ * Resolve new_in_at when Coming Soon changes.
+ * - true → false: treat as newly launched for New In sorting
+ * - false → true: clear so it leaves New In until released again
+ * - unchanged / other: return undefined (caller should not overwrite)
+ */
+const resolveNewInAtOnComingSoonChange = (previousComingSoon, nextComingSoon, now = new Date()) => {
+  const wasComingSoon = isTruthyComingSoon(previousComingSoon);
+  const willBeComingSoon = isTruthyComingSoon(nextComingSoon);
+
+  if (wasComingSoon && !willBeComingSoon) {
+    return now;
+  }
+  if (!wasComingSoon && willBeComingSoon) {
+    return null;
+  }
+  return undefined;
+};
+
+/**
+ * Initial new_in_at for a newly created product.
+ */
+const resolveNewInAtOnCreate = (isComingSoon, now = new Date()) =>
+  isTruthyComingSoon(isComingSoon) ? null : now;
+
+/**
  * Subscribe an email to a Coming Soon product stock alert.
  */
 const subscribeToStockAlert = async ({ productId, email, marketingOptIn = false, userId = null }) => {
@@ -302,5 +327,7 @@ module.exports = {
   maybeNotifyOnComingSoonRelease,
   productHasInStockVariant,
   isTruthyComingSoon,
-  isFalsyComingSoon
+  isFalsyComingSoon,
+  resolveNewInAtOnComingSoonChange,
+  resolveNewInAtOnCreate
 };

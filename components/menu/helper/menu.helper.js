@@ -120,6 +120,16 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
     const twentyEightDaysAgo = new Date();
     twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
 
+    const newInWindow = {
+        [Op.or]: [
+            { new_in_at: { [Op.gte]: twentyEightDaysAgo } },
+            {
+                new_in_at: null,
+                createdAt: { [Op.gte]: twentyEightDaysAgo }
+            }
+        ]
+    };
+
     let products = [];
 
     switch (entityType) {
@@ -129,11 +139,9 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                     category_id: entityId,
                     status: 'published',
                     is_coming_soon: false,
-                    createdAt: {
-                        [Op.gte]: twentyEightDaysAgo
-                    }
+                    ...newInWindow
                 },
-                attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
+                attributes: ['id', 'name', 'slug', 'price', 'discount_price', 'new_in_at', 'createdAt'],
                 include: [{
                     model: require('../../../models').ProductImage,
                     as: 'ProductImages',
@@ -141,7 +149,7 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                     attributes: ['image_url'],
                     required: false
                 }],
-                order: [['createdAt', 'DESC']],
+                order: [[sequelize.literal('COALESCE(new_in_at, createdAt)'), 'DESC']],
                 limit: limit
             });
             break;
@@ -163,12 +171,10 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                 where: {
                     status: 'published',
                     is_coming_soon: false,
-                    createdAt: {
-                        [Op.gte]: twentyEightDaysAgo
-                    }
+                    ...newInWindow
                 },
-                attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
-                order: [['createdAt', 'DESC']],
+                attributes: ['id', 'name', 'slug', 'price', 'discount_price', 'new_in_at', 'createdAt'],
+                order: [[sequelize.literal('COALESCE(new_in_at, createdAt)'), 'DESC']],
                 limit: limit
             });
             break;
@@ -190,12 +196,10 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                 where: {
                     status: 'published',
                     is_coming_soon: false,
-                    createdAt: {
-                        [Op.gte]: twentyEightDaysAgo
-                    }
+                    ...newInWindow
                 },
-                attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
-                order: [['createdAt', 'DESC']],
+                attributes: ['id', 'name', 'slug', 'price', 'discount_price', 'new_in_at', 'createdAt'],
+                order: [[sequelize.literal('COALESCE(new_in_at, createdAt)'), 'DESC']],
                 limit: limit
             });
             break;
@@ -204,13 +208,11 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
             // If no specific entity, get all new products
             products = await Product.findAll({
                 where: {
-                    createdAt: {
-                        [Op.gte]: twentyEightDaysAgo
-                    },
                     status: 'published',
-                    is_coming_soon: false
+                    is_coming_soon: false,
+                    ...newInWindow
                 },
-                attributes: ['id', 'name', 'slug', 'price', 'discount_price'],
+                attributes: ['id', 'name', 'slug', 'price', 'discount_price', 'new_in_at', 'createdAt'],
                 include: [{
                     model: require('../../../models').ProductImage,
                     as: 'ProductImages',
@@ -218,7 +220,7 @@ const getNewProducts = async (entityType, entityId, limit = 10) => {
                     attributes: ['image_url'],
                     required: false
                 }],
-                order: [['createdAt', 'DESC']],
+                order: [[sequelize.literal('COALESCE(new_in_at, createdAt)'), 'DESC']],
                 limit: limit
             });
     }
@@ -408,7 +410,7 @@ const getProductsByEntity = async (entityType, entityId, limit = 10) => {
 };
 
 /**
- * Check if a specific product is new (created within 28 days)
+ * Check if a specific product is new (New In within 28 days)
  * @param {number} productId - ID of the product to check
  * @returns {boolean} True if product is new
  */
@@ -420,9 +422,14 @@ const isProductNew = async (productId) => {
         where: {
             id: productId,
             status: 'published',
-            createdAt: {
-                [Op.gte]: twentyEightDaysAgo
-            }
+            is_coming_soon: false,
+            [Op.or]: [
+                { new_in_at: { [Op.gte]: twentyEightDaysAgo } },
+                {
+                    new_in_at: null,
+                    createdAt: { [Op.gte]: twentyEightDaysAgo }
+                }
+            ]
         },
         attributes: ['id']
     });

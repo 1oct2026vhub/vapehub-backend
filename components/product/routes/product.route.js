@@ -368,9 +368,9 @@ router.get('/', productController.listAllproducts);
  *         name: sort_by
  *         schema:
  *           type: string
- *           default: "createdAt"
- *           enum: ["id", "name", "price", "createdAt", "stock"]
- *         description: Field to sort by (applies to both Product and ProductVariant)
+ *           default: "new_in_at"
+ *           enum: ["id", "name", "price", "createdAt", "new_in_at", "stock"]
+ *         description: Field to sort by. Default new_in_at (New In launch date). createdAt is original create time and is unchanged when Coming Soon is unset.
  *       - in: query
  *         name: order
  *         schema:
@@ -424,6 +424,12 @@ router.get('/', productController.listAllproducts);
  *                           createdAt:
  *                             type: string
  *                             format: date-time
+ *                             description: Original product create time (unchanged when Coming Soon is unset)
+ *                           new_in_at:
+ *                             type: string
+ *                             format: date-time
+ *                             nullable: true
+ *                             description: New In sort timestamp. Set when product becomes available (create or Coming Soon unset)
  *                           Categories:
  *                             type: array
  *                             items:

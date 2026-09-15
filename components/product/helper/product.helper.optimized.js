@@ -223,7 +223,7 @@ const fetchProductsOptimized = async (query, status = 'published') => {
           p.coil_style, p.device_style, p.eliquid_capacity, p.pod_coil_style, 
           p.pod_fill_style, p.power_supply, p.nicotine_strength, p.nicotine_type, 
           p.vg_ratio, p.vaping_style, p.bottle_size, p.status, p.is_discontinued, p.createdAt, 
-          p.updatedAt, p.deletedAt,
+          p.new_in_at, p.updatedAt, p.deletedAt,
           p.sticker_name, p.sticker_background_color,
           p.sticker_active_from, p.sticker_active_until, p.sticker_source,
           MIN(pv.price) as min_variant_price,
@@ -690,7 +690,8 @@ const fetchProductsOptimized = async (query, status = 'published') => {
         is_new: is_new ? (() => {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          return new Date(product.createdAt) >= thirtyDaysAgo;
+          const newInReference = product.new_in_at || product.createdAt;
+          return new Date(newInReference) >= thirtyDaysAgo;
         })() : false,
         sticker: formatProductStickerResponse(product),
         Categories: productCategoriesData.map(pc => ({
