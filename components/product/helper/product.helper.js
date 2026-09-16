@@ -1286,7 +1286,7 @@ const fetchProducts = async (query, status = 'published') => {
            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
            const newInReference = product.new_in_at || product.createdAt;
            return new Date(newInReference) >= thirtyDaysAgo;
-         })() : false
+         })() : false,
         sticker: formatProductStickerResponse(product),
       };
     });
