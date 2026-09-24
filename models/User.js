@@ -29,6 +29,10 @@ module.exports = (sequelize, DataTypes) => {
                 foreignKey: 'user_id', 
                 as: 'loyaltyPointsHistory' 
             });
+            this.hasOne(models.Author, {
+                foreignKey: 'user_id',
+                as: 'blogAuthor'
+            });
             // this.hasMany(models.Review, { foreignKey: 'user_id' });
             // this.hasMany(models.Referral, { foreignKey: 'referrer_id', as: 'referrals' });
             // this.hasMany(models.Blog, { foreignKey: 'author_id', as: 'blogs' });

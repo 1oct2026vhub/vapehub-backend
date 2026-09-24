@@ -4,7 +4,7 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
     class Blog extends Model {
         static associate(models) {
-            this.belongsTo(models.User, {
+            this.belongsTo(models.Author, {
                 foreignKey: 'author_id',
                 as: 'author'
             });
@@ -86,7 +86,7 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false,
             references: {
-                model: 'users',
+                model: 'authors',
                 key: 'id'
             }
         },
@@ -107,10 +107,6 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true
         },
         first_person_callouts: {
-            type: DataTypes.JSON,
-            allowNull: true
-        },
-        author_override: {
             type: DataTypes.JSON,
             allowNull: true
         },
