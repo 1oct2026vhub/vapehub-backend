@@ -1,6 +1,16 @@
-const { FooterSection, FooterLink } = require('../../../../models');
+const { FooterSection, FooterLink, FooterBadge } = require('../../../../models');
 const { Op } = require('sequelize');
 const { Sequelize } = require('sequelize');
+const { invalidateCachePattern } = require('../../../../library/cache');
+const {
+  parseOptionalBoolean,
+  parseOptionalInt,
+  normalizeOptionalUrl,
+  uploadBadgeIcon,
+  deleteBadgeIcon
+} = require('../helper/footerBadge.helper');
+
+const invalidateFooterCache = () => invalidateCachePattern('footer:sections:*');
 
 class FooterController {
   
@@ -400,6 +410,244 @@ class FooterController {
       res.status(500).json({
         success: false,
         error: 'Failed to reorder footer link'
+      });
+    }
+  }
+
+  async getFooterBadges(req, res) {
+    try {
+      const { is_active } = req.query;
+      const where = {};
+      if (is_active !== undefined) {
+        where.is_active = is_active === 'true';
+      }
+
+      const badges = await FooterBadge.findAll({
+        where,
+        order: [['order', 'ASC']]
+      });
+
+      res.json({
+        success: true,
+        data: badges
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch footer badges'
+      });
+    }
+  }
+
+  async createFooterBadge(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: 'Icon is required'
+        });
+      }
+
+      const heading = req.body.heading;
+      const subtitle = req.body.subtitle;
+      const url = normalizeOptionalUrl(req.body.url);
+      const order = parseOptionalInt(req.body.order);
+      const is_active = parseOptionalBoolean(req.body.is_active, true);
+      const updated_by = req.user?.id ?? null;
+
+      let icon_url;
+      try {
+        icon_url = await uploadBadgeIcon(req.file);
+      } catch (uploadError) {
+        console.error('File Upload Error:', uploadError);
+        return res.status(500).json({
+          success: false,
+          error: 'File upload failed'
+        });
+      }
+
+      if (order !== undefined) {
+        await FooterBadge.update(
+          { order: Sequelize.literal('`order` + 1') },
+          {
+            where: {
+              order: { [Op.gte]: order }
+            }
+          }
+        );
+      }
+
+      const badge = await FooterBadge.create({
+        icon_url,
+        heading,
+        subtitle,
+        url: url === undefined ? null : url,
+        order: order ?? 0,
+        is_active,
+        updated_by
+      });
+
+      await invalidateFooterCache();
+
+      res.status(201).json({
+        success: true,
+        data: badge
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create footer badge'
+      });
+    }
+  }
+
+  async updateFooterBadge(req, res) {
+    try {
+      const badge = await FooterBadge.findByPk(req.params.id);
+      if (!badge) {
+        return res.status(404).json({
+          success: false,
+          error: 'Footer badge not found'
+        });
+      }
+
+      const updateData = {};
+      if (req.body.heading !== undefined) updateData.heading = req.body.heading;
+      if (req.body.subtitle !== undefined) updateData.subtitle = req.body.subtitle;
+      if (req.body.url !== undefined) updateData.url = normalizeOptionalUrl(req.body.url);
+      if (req.body.order !== undefined) {
+        const parsedOrder = parseOptionalInt(req.body.order);
+        if (parsedOrder !== undefined) updateData.order = parsedOrder;
+      }
+      if (req.body.is_active !== undefined) {
+        updateData.is_active = parseOptionalBoolean(req.body.is_active, badge.is_active);
+      }
+      if (req.user?.id != null) updateData.updated_by = req.user.id;
+
+      if (req.file) {
+        try {
+          const icon_url = await uploadBadgeIcon(req.file);
+          const previousIcon = badge.icon_url;
+          updateData.icon_url = icon_url;
+          await badge.update(updateData);
+          await deleteBadgeIcon(previousIcon);
+          await invalidateFooterCache();
+          return res.json({
+            success: true,
+            data: badge
+          });
+        } catch (uploadError) {
+          console.error('File Upload Error:', uploadError);
+          return res.status(500).json({
+            success: false,
+            error: 'File upload failed'
+          });
+        }
+      }
+
+      const updatedBadge = await badge.update(updateData);
+      await invalidateFooterCache();
+      res.json({
+        success: true,
+        data: updatedBadge
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update footer badge'
+      });
+    }
+  }
+
+  async deleteFooterBadge(req, res) {
+    try {
+      const badge = await FooterBadge.findByPk(req.params.id);
+      if (!badge) {
+        return res.status(404).json({
+          success: false,
+          error: 'Footer badge not found'
+        });
+      }
+
+      const previousIcon = badge.icon_url;
+      await badge.destroy();
+      await deleteBadgeIcon(previousIcon);
+      await invalidateFooterCache();
+
+      res.json({
+        success: true,
+        message: 'Footer badge deleted successfully'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete footer badge'
+      });
+    }
+  }
+
+  async reorderFooterBadge(req, res) {
+    try {
+      const { id } = req.params;
+      const { new_order } = req.body;
+
+      const badge = await FooterBadge.findByPk(id);
+      if (!badge) {
+        return res.status(404).json({
+          success: false,
+          error: 'Footer badge not found'
+        });
+      }
+
+      await FooterBadge.sequelize.transaction(async (t) => {
+        if (badge.order < new_order) {
+          await FooterBadge.update(
+            { order: Sequelize.literal('`order` - 1') },
+            {
+              where: {
+                order: {
+                  [Op.gt]: badge.order,
+                  [Op.lte]: new_order
+                }
+              },
+              transaction: t
+            }
+          );
+        } else if (badge.order > new_order) {
+          await FooterBadge.update(
+            { order: Sequelize.literal('`order` + 1') },
+            {
+              where: {
+                order: {
+                  [Op.gte]: new_order,
+                  [Op.lt]: badge.order
+                }
+              },
+              transaction: t
+            }
+          );
+        }
+
+        const orderPayload = { order: new_order };
+        if (req.user?.id != null) orderPayload.updated_by = req.user.id;
+        await badge.update(orderPayload, { transaction: t });
+      });
+
+      await invalidateFooterCache();
+
+      const updatedBadges = await FooterBadge.findAll({
+        order: [['order', 'ASC']]
+      });
+
+      res.json({
+        success: true,
+        data: updatedBadges,
+        message: 'Badge order updated successfully'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to reorder footer badge'
       });
     }
   }
