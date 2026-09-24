@@ -240,7 +240,7 @@ module.exports.createBlog = async (req, res) => {
         const content = await replaceInlineBase64ImagesWithS3Urls(req.body.content);
         const categories = parseJsonOrCsvIds(req.body.categories, 'categories');
         const tags = parseJsonOrCsvIds(req.body.tags, 'tags');
-        const author_id = await resolveAuthorId(req.body.author_id);
+        const author_id = await resolveAuthorId(req.body.author_id, req.user.id);
         const sources = req.body.sources !== undefined
             ? parseSourcesField(req.body.sources)
             : [];

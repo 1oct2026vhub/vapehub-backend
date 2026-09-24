@@ -1,7 +1,7 @@
 const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
-const { Blog, Author } = require('../../../../models');
+const { Blog, User } = require('../../../../models');
 const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField, parseJsonOrCsvIds } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
