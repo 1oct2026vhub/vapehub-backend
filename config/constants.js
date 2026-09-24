@@ -16,6 +16,7 @@ module.exports = {
         WELCOME: 'WELCOME',
         INVENTORY_LOW_STOCK: 'INVENTORY_LOW_STOCK',
         PRODUCT_UPDATES: 'PRODUCT_UPDATES',
+        PRODUCT_BACK_IN_STOCK: 'PRODUCT_BACK_IN_STOCK',
         PROMOTIONAL: 'PROMOTIONAL',
         PROMOTIONAL_NEWSLETTER: 'PROMOTIONAL_NEWSLETTER',
     },
@@ -98,6 +99,11 @@ module.exports = {
         PRODUCT_UPDATES: {
             folderName: 'product_updates',
             subject: 'New Products Alert! 🆕 Latest Additions to VapeHub',
+            from: process.env.EMAIL_NO_REPLY_SENDER,
+        },
+        PRODUCT_BACK_IN_STOCK: {
+            folderName: 'product_back_in_stock',
+            subject: 'Your product is now available | VapeHub',
             from: process.env.EMAIL_NO_REPLY_SENDER,
         },
         PROMOTIONAL: {

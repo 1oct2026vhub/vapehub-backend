@@ -9,6 +9,7 @@ const { readUploadFile, cleanupMulterFiles } = require("../../../library/multer/
 const { productStatus } = require("../../../config/constants");
 const { cacheOrFetch, invalidateCache } = require('../../../library/cache');
 const { getPublishedProductRelatedBlogs, getPublishedProductRelatedBlogCards } = require('../../admin/product/helper/productBlogRelations.helper');
+const { subscribeToStockAlert } = require('../helper/productStockAlert.helper');
 
 module.exports.listAllproducts = async (req, res, next) => {
     try {
@@ -60,7 +61,7 @@ module.exports.listAllproducts = async (req, res, next) => {
 module.exports.listNewProducts = async (req, res, next) => {
     try {
         const {
-            sort_by = 'createdAt',
+            sort_by = 'new_in_at',
             order = 'DESC',
             limit = 10,
             offset = 0,
@@ -127,7 +128,7 @@ module.exports.listNewProducts = async (req, res, next) => {
             return acc;
         }, {});
 
-        const cacheKey = `product:new:${JSON.stringify({
+        const cacheKey = `product:new:v3:${JSON.stringify({
             sort_by,
             order,
             limit: parsedLimit,
@@ -145,6 +146,7 @@ module.exports.listNewProducts = async (req, res, next) => {
         let productFilterConditions = [
             "p.deletedAt IS NULL",
             "p.status = 'published'",
+            "p.is_coming_soon = false",
             "EXISTS (SELECT 1 FROM product_variants pv_active WHERE pv_active.product_id = p.id AND pv_active.status = 'active' AND pv_active.deleted_at IS NULL AND pv_active.price > 0)"
         ];
         let productFilterParams = {};
@@ -218,19 +220,25 @@ module.exports.listNewProducts = async (req, res, next) => {
             name: 'name',
             price: 'price',
             createdAt: 'createdAt',
+            new_in_at: 'new_in_at',
             stock: 'stock_quantity'
         };
-        const safeSortBy = sortColumnMap[sort_by] || 'createdAt';
+        const safeSortBy = sortColumnMap[sort_by] || 'new_in_at';
         const safeOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+        // Prefer new_in_at for New In; fall back to createdAt for any legacy nulls.
+        const orderByClause = safeSortBy === 'new_in_at'
+            ? `COALESCE(p.new_in_at, p.createdAt) ${safeOrder}`
+            : `p.${safeSortBy} ${safeOrder}`;
 
         // Optimized main products query - only essential fields
         const productsQuery = `
             SELECT 
                 p.id, p.name, p.slug, p.price, p.discount_price,
-                p.stock_quantity, p.puff_count, p.is_new, p.is_discontinued, p.status, p.createdAt
+                p.stock_quantity, p.puff_count, p.is_new, p.is_coming_soon, p.is_discontinued, p.status,
+                p.createdAt, p.new_in_at
             FROM products p
             ${sqlProductWhereClause}
-            ORDER BY p.${safeSortBy} ${safeOrder}
+            ORDER BY ${orderByClause}
             LIMIT :limit OFFSET :offset
         `;
 
@@ -588,10 +596,11 @@ module.exports.listNewProducts = async (req, res, next) => {
                 ProductImages: productImagesMap.get(product.id) || []
             });
 
-            // Calculate is_new: either database field is true OR product is within last 30 days
+            // Calculate is_new: database flag OR within last 30 days of New In date (fallback createdAt)
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            const isWithinLast30Days = new Date(product.createdAt) >= thirtyDaysAgo;
+            const newInReference = product.new_in_at || product.createdAt;
+            const isWithinLast30Days = new Date(newInReference) >= thirtyDaysAgo;
             const isNewProduct = product.is_new || isWithinLast30Days;
 
             // Process reviews for this product (similar to fetchProducts implementation)
@@ -660,9 +669,11 @@ module.exports.listNewProducts = async (req, res, next) => {
                 stock_quantity: product.stock_quantity,
                 puff_count: puffCount,
                 is_new: isNewProduct,
+                is_coming_soon: Boolean(product.is_coming_soon),
                 is_discontinued: Boolean(product.is_discontinued),
                 status: product.status,
                 createdAt: product.createdAt,
+                new_in_at: product.new_in_at,
                 Categories: categoriesMap.get(product.id) || [],
                 Brands: brandsMap.get(product.id) || [],
                 ProductImages: productImagesMap.get(product.id) || [],
@@ -693,6 +704,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pc.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY c.id, c.name, c.slug
                 LIMIT 20
             `, {
@@ -709,6 +721,7 @@ module.exports.listNewProducts = async (req, res, next) => {
                 JOIN products p ON p.id = pb.product_id
                 WHERE p.deletedAt IS NULL
                 AND p.status = 'published'
+                AND p.is_coming_soon = false
                 GROUP BY b.id, b.name, b.slug
                 LIMIT 20
             `, {
@@ -1179,6 +1192,34 @@ module.exports.getProductDescription = async (req, res, next) => {
         return successResponse(res, responseData, 'Product description fetched successfully');
     } catch (error) {
         return errorResponse(res, error, error.message);
+    }
+};
+
+/**
+ * Coming Soon — email me when available
+ * POST /api/product/:id/notify-me
+ * Body: { email, marketing_opt_in? }
+ */
+module.exports.notifyMeWhenAvailable = async (req, res) => {
+    try {
+        const productId = parseInt(req.params.id, 10);
+        const { email: submittedEmail, marketing_opt_in } = req.body;
+        const userId = req.user?.id || null;
+        // Use the authenticated account email when available. Guest requests
+        // must provide their own email address.
+        const email = req.user?.email || submittedEmail;
+
+        const result = await subscribeToStockAlert({
+            productId,
+            email,
+            marketingOptIn: marketing_opt_in === true || marketing_opt_in === 'true' || marketing_opt_in === '1',
+            userId
+        });
+
+        return successResponse(res, result, result.message);
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        return errorResponse(res, error, error.message, statusCode);
     }
 };
 
@@ -1980,7 +2021,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
         const productResult = await Product.sequelize.query(`
             SELECT 
                 p.id, p.name, p.slug, p.description, p.price, p.discount_price,
-                p.is_discontinued, p.createdAt, p.updatedAt
+                p.is_discontinued, p.is_coming_soon, p.createdAt, p.updatedAt
             FROM products p
             WHERE p.id = :product_id 
             AND p.status = 'published'
@@ -2829,6 +2870,7 @@ module.exports.filterVariantsByAttributes = async (req, res, next) => {
                 slug: product.slug,
                 description: product.description, // Use direct description from SQL result
                 is_discontinued: Boolean(product.is_discontinued),
+                is_coming_soon: Boolean(product.is_coming_soon),
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
                 key_highlights: keyHighlights,

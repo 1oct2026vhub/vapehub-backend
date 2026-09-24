@@ -199,12 +199,19 @@ module.exports = {
                 const twentyEightDaysAgo = new Date();
                 twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
                 
-                // Check new products in batch
+                // Check new products in batch (New In window uses new_in_at)
                 const newProducts = await Product.findAll({
                     where: {
                         id: { [Op.in]: productIds },
                         status: 'published',
-                        createdAt: { [Op.gte]: twentyEightDaysAgo }
+                        is_coming_soon: false,
+                        [Op.or]: [
+                            { new_in_at: { [Op.gte]: twentyEightDaysAgo } },
+                            {
+                                new_in_at: null,
+                                createdAt: { [Op.gte]: twentyEightDaysAgo }
+                            }
+                        ]
                     },
                     attributes: ['id'],
                     raw: true
