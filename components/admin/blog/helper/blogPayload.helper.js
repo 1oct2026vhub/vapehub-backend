@@ -289,6 +289,21 @@ const FIRST_PERSON_CALLOUT_BODY_MAX_CHARS = 2000;
 const FIRST_PERSON_CALLOUT_HEADING_MAX_CHARS = 255;
 const FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS = 80;
 
+const compareCalloutPosition = (a, b) => {
+    const aPos = a.insert_after_paragraph;
+    const bPos = b.insert_after_paragraph;
+    if (aPos == null && bPos == null) {
+        return 0;
+    }
+    if (aPos == null) {
+        return 1;
+    }
+    if (bPos == null) {
+        return -1;
+    }
+    return aPos - bPos;
+};
+
 const parseFirstPersonCalloutsField = (field) => {
     if (field == null || field === '' || field === '[]' || field === 'null') {
         return [];
@@ -311,6 +326,7 @@ const parseFirstPersonCalloutsField = (field) => {
         throw new Error(`first_person_callouts cannot contain more than ${FIRST_PERSON_CALLOUT_MAX_ITEMS} items`);
     }
 
+    const usedParagraphs = new Set();
     const normalized = callouts.map((item, index) => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) {
             throw new Error(`first_person_callouts[${index}] must be an object`);
@@ -320,9 +336,8 @@ const parseFirstPersonCalloutsField = (field) => {
         const label = labelRaw || FIRST_PERSON_CALLOUT_DEFAULT_LABEL;
         const heading = item.heading != null ? String(item.heading).trim() : '';
         const body = item.body != null ? String(item.body).trim() : '';
-        const insertAfterParagraph = item.insert_after_paragraph != null
-            ? parseInt(item.insert_after_paragraph, 10)
-            : NaN;
+        const rawPosition = item.insert_after_paragraph;
+        const positionMissing = rawPosition == null || String(rawPosition).trim() === '';
 
         if (label.length > FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS) {
             throw new Error(`first_person_callouts[${index}].label must be ${FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS} characters or fewer`);
@@ -339,25 +354,29 @@ const parseFirstPersonCalloutsField = (field) => {
         if (body.length > FIRST_PERSON_CALLOUT_BODY_MAX_CHARS) {
             throw new Error(`first_person_callouts[${index}].body must be ${FIRST_PERSON_CALLOUT_BODY_MAX_CHARS} characters or fewer`);
         }
-        if (Number.isNaN(insertAfterParagraph) || insertAfterParagraph < 1) {
-            throw new Error(`first_person_callouts[${index}].insert_after_paragraph must be a positive integer`);
+
+        let insertAfterParagraph = null;
+        if (!positionMissing) {
+            insertAfterParagraph = parseInt(rawPosition, 10);
+            if (Number.isNaN(insertAfterParagraph) || insertAfterParagraph < 1) {
+                throw new Error(`first_person_callouts[${index}].insert_after_paragraph must be a positive integer`);
+            }
+            if (usedParagraphs.has(insertAfterParagraph)) {
+                throw new Error('first_person_callouts cannot share the same insert_after_paragraph value');
+            }
+            usedParagraphs.add(insertAfterParagraph);
         }
 
         return {
             label,
             heading,
             body,
-            insert_after_paragraph: insertAfterParagraph,
+            ...(insertAfterParagraph != null ? { insert_after_paragraph: insertAfterParagraph } : {}),
             location: FIRST_PERSON_CALLOUT_LOCATION
         };
     });
 
-    const paragraphPositions = normalized.map((item) => item.insert_after_paragraph);
-    if (new Set(paragraphPositions).size !== paragraphPositions.length) {
-        throw new Error('first_person_callouts cannot share the same insert_after_paragraph value');
-    }
-
-    return normalized.sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+    return normalized.sort(compareCalloutPosition);
 };
 
 const formatFirstPersonCallouts = (callouts) => {
@@ -370,10 +389,10 @@ const formatFirstPersonCallouts = (callouts) => {
             label: item.label || FIRST_PERSON_CALLOUT_DEFAULT_LABEL,
             heading: item.heading,
             body: item.body,
-            insert_after_paragraph: item.insert_after_paragraph,
+            ...(item.insert_after_paragraph != null ? { insert_after_paragraph: item.insert_after_paragraph } : {}),
             location: item.location || FIRST_PERSON_CALLOUT_LOCATION
         }))
-        .sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+        .sort(compareCalloutPosition);
 };
 
 const parseRelatedBlogIdsField = (field, blogId = null) => {

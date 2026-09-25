@@ -216,7 +216,7 @@ router.get('/posts/:id',
  *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
  *               first_person_callouts:
  *                 type: string
- *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. insert_after_paragraph is optional; when null or empty it is omitted and not stored. Send empty string or [] to clear.
  *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
  *               related_blog_ids:
  *                 type: string
@@ -444,7 +444,7 @@ router.put('/posts/bulk-restore',
  *                 example: '{"entity_type":"category","entity_id":12,"blurb":"Every bottle on our shelf is checked for batch code and best-before before it ships.","cta_label":"SHOP NIC SALTS"}'
  *               first_person_callouts:
  *                 type: string
- *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. Send empty string or [] to clear.
+ *                 description: Optional JSON array (max 2) of first-person warehouse/team callouts for inline body placement. insert_after_paragraph is optional; when null or empty it is omitted and not stored. Send empty string or [] to clear.
  *                 example: '[{"label":"FROM OUR WAREHOUSE","heading":"We rotate stock by batch code — here''s what ages fastest.","body":"<p>VapeHub turns over thousands of bottles a week...</p>","insert_after_paragraph":3}]'
  *               related_blog_ids:
  *                 type: string
@@ -687,7 +687,6 @@ router.use('/authors', blogAuthorRoute);
  *       required:
  *         - heading
  *         - body
- *         - insert_after_paragraph
  *         - location
  *       properties:
  *         label:
@@ -702,6 +701,7 @@ router.use('/authors', blogAuthorRoute);
  *         insert_after_paragraph:
  *           type: integer
  *           minimum: 1
+ *           description: Optional paragraph index after which the callout is inserted. Omitted from the saved record when null or empty.
  *           example: 3
  *         location:
  *           type: string
