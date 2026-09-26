@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const authenticateJWT = require("../../auth/middleware/authMiddleware");
+const { optionalAuthenticateJWT } = require("../../auth/middleware/authMiddleware");
 const productController = require("../domain/product.controller");
 const { validateRequest } = require("../../../utils/validationMiddleware");
 const { check, query, param } = require("express-validator");
@@ -367,9 +368,9 @@ router.get('/', productController.listAllproducts);
  *         name: sort_by
  *         schema:
  *           type: string
- *           default: "createdAt"
- *           enum: ["id", "name", "price", "createdAt", "stock"]
- *         description: Field to sort by (applies to both Product and ProductVariant)
+ *           default: "new_in_at"
+ *           enum: ["id", "name", "price", "createdAt", "new_in_at", "stock"]
+ *         description: Field to sort by. Default new_in_at (New In launch date). createdAt is original create time and is unchanged when Coming Soon is unset.
  *       - in: query
  *         name: order
  *         schema:
@@ -423,6 +424,12 @@ router.get('/', productController.listAllproducts);
  *                           createdAt:
  *                             type: string
  *                             format: date-time
+ *                             description: Original product create time (unchanged when Coming Soon is unset)
+ *                           new_in_at:
+ *                             type: string
+ *                             format: date-time
+ *                             nullable: true
+ *                             description: New In sort timestamp. Set when product becomes available (create or Coming Soon unset)
  *                           Categories:
  *                             type: array
  *                             items:
@@ -1308,6 +1315,54 @@ router.get('/:id/description',
         param('id').isInt().withMessage('ID must be an integer')
     ]),
     productController.getProductDescription
+);
+
+/**
+ * @swagger
+ * /api/product/{id}/notify-me:
+ *   post:
+ *     tags:
+ *       - Product
+ *     summary: Sign up for a one-time email when a Coming Soon product is in stock
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Required for guest users; omitted for authenticated users
+ *               marketing_opt_in:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Signed up successfully
+ *       400:
+ *         description: Invalid email
+ *       404:
+ *         description: Product not available for stock alerts
+ */
+router.post('/:id/notify-me',
+    optionalAuthenticateJWT,
+    validateRequest([
+        param('id').isInt().withMessage('ID must be an integer'),
+        check('email')
+            .optional({ nullable: true, checkFalsy: true })
+            .isEmail().withMessage('A valid email address is required')
+            .normalizeEmail(),
+        check('marketing_opt_in').optional().isBoolean().withMessage('marketing_opt_in must be a boolean')
+    ]),
+    productController.notifyMeWhenAvailable
 );
 
 /**

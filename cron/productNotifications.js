@@ -41,6 +41,7 @@ async function getLatestProducts(frequency) {
         const products = await Product.findAll({
             where: {
                 status: 'published',
+                is_coming_soon: false,
                 createdAt: {
                     [Op.gte]: startDate.toDate()
                 }

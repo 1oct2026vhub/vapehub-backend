@@ -1,8 +1,8 @@
 const { body, param, query } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
-const { Blog, User } = require('../../../../models');
-const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField } = require('./blogPayload.helper');
+const { Author, Blog } = require('../../../../models');
+const { parsePullQuoteField, parseInlineProductCardField, parseFirstPersonCalloutsField, parseJsonOrCsvIds } = require('./blogPayload.helper');
 const { Op } = require('sequelize');
 // blog content size
 const MB = 1024 * 1024;
@@ -14,6 +14,14 @@ const BLOG_MAX_NON_FILE_FIELDS = 50;
 
 const contentTooLargeMessage = () =>
     `Blog content exceeds the maximum size of ${BLOG_CONTENT_MAX_MB}MB. Remove large sized pasted images and save again after images are uploaded.`;
+
+const assertIdList = (value, fieldName) => {
+    if (value == null || value === '') {
+        return true;
+    }
+    parseJsonOrCsvIds(value, fieldName);
+    return true;
+};
 
 const assertContentWithinSizeLimit = (value) => {
     if (value == null || value === '') {
@@ -109,9 +117,14 @@ const parseRelatedBlogIdsForValidation = (value, blogId = null) => {
     return uniqueIds;
 };
 
-const authorIdValidation = (optional = true) => body('author_id')
-    .optional({ values: optional ? 'undefined' : 'falsy' })
-    .custom(async (value) => {
+const authorIdValidation = (optional = true) => {
+    const chain = optional
+        ? body('author_id').optional({ values: 'undefined' })
+        : body('author_id')
+            .exists({ checkFalsy: true })
+            .withMessage('author_id is required');
+
+    return chain.custom(async (value) => {
         if (value == null || value === '') {
             return true;
         }
@@ -121,13 +134,14 @@ const authorIdValidation = (optional = true) => body('author_id')
             throw new Error('author_id must be a valid integer');
         }
 
-        const author = await User.findByPk(authorId, { attributes: ['id'] });
+        const author = await Author.findByPk(authorId, { attributes: ['id'] });
         if (!author) {
-            throw new Error('author_id does not match an existing user');
+            throw new Error('author_id does not match an existing author');
         }
 
         return true;
     });
+};
 
 const sourcesValidation = body('sources')
     .optional()
@@ -164,72 +178,6 @@ const relatedBlogIdsValidation = (blogIdFromParams = false) => body('related_blo
         parseRelatedBlogIdsForValidation(value, blogId);
         return true;
     });
-
-const authorOverrideValidations = [
-    body('author_override')
-        .optional()
-        .custom((value) => {
-            if (value === '' || value === '{}') {
-                return true;
-            }
-
-            const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-            if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-                throw new Error('author_override must be a JSON object');
-            }
-
-            return true;
-        }),
-
-    body('author_first_name')
-        .optional()
-        .isString()
-        .withMessage('author_first_name must be a string')
-        .isLength({ max: 255 })
-        .withMessage('author_first_name must be less than 255 characters'),
-
-    body('author_last_name')
-        .optional()
-        .isString()
-        .withMessage('author_last_name must be a string')
-        .isLength({ max: 255 })
-        .withMessage('author_last_name must be less than 255 characters'),
-
-    body('author_role')
-        .optional()
-        .isString()
-        .withMessage('author_role must be a string')
-        .isLength({ max: 255 })
-        .withMessage('author_role must be less than 255 characters'),
-
-    body('author_bio')
-        .optional()
-        .isString()
-        .withMessage('author_bio must be a string')
-        .isLength({ max: 5000 })
-        .withMessage('author_bio must be less than 5000 characters'),
-
-    body('author_archive_url')
-        .optional()
-        .isString()
-        .withMessage('author_archive_url must be a string')
-        .isLength({ max: 500 })
-        .withMessage('author_archive_url must be less than 500 characters'),
-
-    body('author_team_url')
-        .optional()
-        .isString()
-        .withMessage('author_team_url must be a string')
-        .isLength({ max: 500 })
-        .withMessage('author_team_url must be less than 500 characters'),
-
-    body('author_avatar_url')
-        .optional()
-        .isString()
-        .withMessage('author_avatar_url must be a string')
-        .isLength({ max: 500 })
-        .withMessage('author_avatar_url must be less than 500 characters')
-];
 
 const blogIdValidation = [
     param('id')
@@ -275,27 +223,11 @@ const blogValidation = [
     
     body('categories')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const categoryIds = value.split(',').map(id => parseInt(id.trim()));
-            if (categoryIds.some(id => isNaN(id))) {
-                throw new Error('Categories must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'categories')),
     
     body('tags')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const tagIds = value.split(',').map(id => parseInt(id.trim()));
-            if (tagIds.some(id => isNaN(id))) {
-                throw new Error('Tags must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'tags')),
     
     body('alt_text')
         .optional()
@@ -303,13 +235,12 @@ const blogValidation = [
         .isLength({ max: 500 })
         .withMessage('Alt text must be a string with maximum 500 characters'),
 
-    authorIdValidation(true),
+    authorIdValidation(false),
     sourcesValidation,
     pullQuoteValidation,
     inlineProductCardValidation,
     firstPersonCalloutsValidation,
-    relatedBlogIdsValidation(false),
-    ...authorOverrideValidations
+    relatedBlogIdsValidation(false)
 ];
 
 const blogUpdateValidation = [
@@ -364,25 +295,11 @@ const blogUpdateValidation = [
     
     body('categories')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            const categories = value.split(',').map(id => parseInt(id.trim()));
-            if (!categories.every(id => !isNaN(id))) {
-                throw new Error('Invalid category ID format');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'categories')),
     
     body('tags')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            const tags = value.split(',').map(id => parseInt(id.trim()));
-            if (!tags.every(id => !isNaN(id))) {
-                throw new Error('Invalid tag ID format');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'tags')),
     
     body('published_at')
         .optional()
@@ -414,8 +331,7 @@ const blogUpdateValidation = [
     pullQuoteValidation,
     inlineProductCardValidation,
     firstPersonCalloutsValidation,
-    relatedBlogIdsValidation(true),
-    ...authorOverrideValidations
+    relatedBlogIdsValidation(true)
 ];
 
 const filterValidations = [
@@ -472,34 +388,18 @@ const filterValidations = [
     
     query('category_id')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const categoryIds = value.split(',').map(id => parseInt(id.trim()));
-            if (categoryIds.some(id => isNaN(id))) {
-                throw new Error('Category IDs must be valid integers');
-            }
-            return true;
-        }),
+        .custom((value) => assertIdList(value, 'category_id')),
     
     query('tag_id')
         .optional()
-        .custom((value) => {
-            if (!value) return true;
-            // Handle comma-separated string of numbers
-            const tagIds = value.split(',').map(id => parseInt(id.trim()));
-            if (tagIds.some(id => isNaN(id))) {
-                throw new Error('Tag IDs must be valid integers');
-            }
-            return true;
-        })
+        .custom((value) => assertIdList(value, 'tag_id'))
 ];
 
 // Configure multer storage
 const storage = multer.memoryStorage(); // Using memory storage for S3 upload
 
 const multerLimitMessage = (err) => {
-    const fieldLabel = err.field === 'author_avatar' ? 'Author avatar' : 'Featured image';
+    const fieldLabel = 'Featured image';
     switch (err.code) {
         case 'LIMIT_FIELD_VALUE':
             return contentTooLargeMessage();
@@ -536,8 +436,7 @@ const uploadValidation = multer({
         cb(null, true);
     }
 }).fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'author_avatar', maxCount: 1 }
+    { name: 'image', maxCount: 1 }
 ]);
 
 // Add upload middleware handler

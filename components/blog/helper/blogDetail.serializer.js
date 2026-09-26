@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { Blog, BlogCategory, BlogRelatedPost, Product, ProductImage, Category } = require('../../../models');
 const { AUTHOR_ATTRIBUTES, formatFirstPersonCallouts } = require('../../admin/blog/helper/blogPayload.helper');
-const { formatMergedAuthor } = require('./blogAuthor.formatter');
+const { formatAuthor } = require('./blogAuthor.formatter');
 const formatSlug = (slug) => {
     if (!slug) {
         return slug;
@@ -244,12 +244,11 @@ const resolveInlineProductCard = async (blogData) => {
 
 const formatBlogDetailResponse = async (blog, relatedBlogs = []) => {
     const blogData = blog.toJSON ? blog.toJSON() : blog;
-    const { author_override: authorOverride, ...publicBlogData } = blogData;
 
     return {
-        ...publicBlogData,
+        ...blogData,
         slug: formatSlug(blogData.slug),
-        author: formatMergedAuthor(blogData.author, authorOverride),
+        author: formatAuthor(blogData.author),
         sources: resolveSources(blogData),
         pull_quote: blogData.pull_quote ?? null,
         inline_product_card: await resolveInlineProductCard(blogData),
@@ -261,7 +260,7 @@ const formatBlogDetailResponse = async (blog, relatedBlogs = []) => {
 module.exports = {
     AUTHOR_ATTRIBUTES,
     formatSlug,
-    formatMergedAuthor,
+    formatAuthor,
     formatRelatedBlogCard,
     formatProductRelatedBlogCard,
     resolveSources,

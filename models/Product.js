@@ -52,6 +52,10 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'product_id',
         as: 'relatedBlogRelations'
       });
+      this.hasMany(models.ProductStockAlert, {
+        foreignKey: 'product_id',
+        as: 'stockAlerts'
+      });
     }
   }
 
@@ -105,6 +109,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     is_new: { type: DataTypes.BOOLEAN, defaultValue: false },
+    is_coming_soon: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    new_in_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'New In sort timestamp. Updated when Coming Soon is unset; createdAt stays unchanged.'
+    },
     battery_capacity: DataTypes.STRING,
     coil_style: DataTypes.STRING,
     device_style: DataTypes.STRING,

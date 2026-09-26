@@ -194,6 +194,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             )
             AND p.status = 'published'
             AND p.deletedAt IS NULL
+            AND p.is_coming_soon = false
             ORDER BY ${
               sort_by === 'popularity' || sort_by === 'order_count' 
                 ? `order_count ${orderValue}` 
@@ -201,6 +202,8 @@ const fetchCategoryProducts = async (categoryId, query) => {
                 ? `min_price ${orderValue}` 
                 : sort_by === 'createdAt' 
                 ? `p.createdAt ${orderValue}` 
+                : sort_by === 'new_in_at'
+                ? `COALESCE(p.new_in_at, p.createdAt) ${orderValue}`
                 : `p.${sort_by} ${orderValue}`
             }, p.id ASC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
@@ -214,6 +217,7 @@ const fetchCategoryProducts = async (categoryId, query) => {
             WHERE pc.category_id = ${categoryId}
             AND p.status = 'published'
             AND p.deletedAt IS NULL
+            AND p.is_coming_soon = false
         `;
 
         // Get product images for all products

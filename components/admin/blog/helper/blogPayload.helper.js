@@ -1,21 +1,45 @@
-const { User, Product, Category } = require('../../../../models');
+const { Author, User, Product, Category } = require('../../../../models');
 
 const AUTHOR_ATTRIBUTES = [
     'id',
     'first_name',
     'last_name',
-    'email',
-    'profile_pic_url',
-    'blog_author_role',
-    'blog_author_bio',
-    'blog_author_slug',
-    'blog_author_archive_url',
-    'blog_author_team_url'
+    'role',
+    'bio',
+    'slug',
+    'avatar_url',
+    'archive_url',
+    'team_url',
+    'user_id'
 ];
+
+const getAuthorInclude = (options = {}) => ({
+    model: Author,
+    as: 'author',
+    attributes: AUTHOR_ATTRIBUTES,
+    paranoid: false,
+    required: options.required ?? false,
+    include: [
+        {
+            model: User,
+            as: 'user',
+            attributes: options.userAttributes || ['id', 'email'],
+            required: false
+        }
+    ],
+    ...(options.where ? { where: options.where } : {})
+});
 
 const parseJsonOrCsvIds = (field, fieldName = 'field') => {
     if (field == null || field === '') {
         return [];
+    }
+
+    if (typeof field === 'number') {
+        if (Number.isNaN(field)) {
+            throw new Error(`${fieldName} must be valid integers`);
+        }
+        return [field];
     }
 
     if (Array.isArray(field)) {
@@ -265,6 +289,21 @@ const FIRST_PERSON_CALLOUT_BODY_MAX_CHARS = 2000;
 const FIRST_PERSON_CALLOUT_HEADING_MAX_CHARS = 255;
 const FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS = 80;
 
+const compareCalloutPosition = (a, b) => {
+    const aPos = a.insert_after_paragraph;
+    const bPos = b.insert_after_paragraph;
+    if (aPos == null && bPos == null) {
+        return 0;
+    }
+    if (aPos == null) {
+        return 1;
+    }
+    if (bPos == null) {
+        return -1;
+    }
+    return aPos - bPos;
+};
+
 const parseFirstPersonCalloutsField = (field) => {
     if (field == null || field === '' || field === '[]' || field === 'null') {
         return [];
@@ -287,6 +326,7 @@ const parseFirstPersonCalloutsField = (field) => {
         throw new Error(`first_person_callouts cannot contain more than ${FIRST_PERSON_CALLOUT_MAX_ITEMS} items`);
     }
 
+    const usedParagraphs = new Set();
     const normalized = callouts.map((item, index) => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) {
             throw new Error(`first_person_callouts[${index}] must be an object`);
@@ -296,9 +336,8 @@ const parseFirstPersonCalloutsField = (field) => {
         const label = labelRaw || FIRST_PERSON_CALLOUT_DEFAULT_LABEL;
         const heading = item.heading != null ? String(item.heading).trim() : '';
         const body = item.body != null ? String(item.body).trim() : '';
-        const insertAfterParagraph = item.insert_after_paragraph != null
-            ? parseInt(item.insert_after_paragraph, 10)
-            : NaN;
+        const rawPosition = item.insert_after_paragraph;
+        const positionMissing = rawPosition == null || String(rawPosition).trim() === '';
 
         if (label.length > FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS) {
             throw new Error(`first_person_callouts[${index}].label must be ${FIRST_PERSON_CALLOUT_LABEL_MAX_CHARS} characters or fewer`);
@@ -315,25 +354,29 @@ const parseFirstPersonCalloutsField = (field) => {
         if (body.length > FIRST_PERSON_CALLOUT_BODY_MAX_CHARS) {
             throw new Error(`first_person_callouts[${index}].body must be ${FIRST_PERSON_CALLOUT_BODY_MAX_CHARS} characters or fewer`);
         }
-        if (Number.isNaN(insertAfterParagraph) || insertAfterParagraph < 1) {
-            throw new Error(`first_person_callouts[${index}].insert_after_paragraph must be a positive integer`);
+
+        let insertAfterParagraph = null;
+        if (!positionMissing) {
+            insertAfterParagraph = parseInt(rawPosition, 10);
+            if (Number.isNaN(insertAfterParagraph) || insertAfterParagraph < 1) {
+                throw new Error(`first_person_callouts[${index}].insert_after_paragraph must be a positive integer`);
+            }
+            if (usedParagraphs.has(insertAfterParagraph)) {
+                throw new Error('first_person_callouts cannot share the same insert_after_paragraph value');
+            }
+            usedParagraphs.add(insertAfterParagraph);
         }
 
         return {
             label,
             heading,
             body,
-            insert_after_paragraph: insertAfterParagraph,
+            ...(insertAfterParagraph != null ? { insert_after_paragraph: insertAfterParagraph } : {}),
             location: FIRST_PERSON_CALLOUT_LOCATION
         };
     });
 
-    const paragraphPositions = normalized.map((item) => item.insert_after_paragraph);
-    if (new Set(paragraphPositions).size !== paragraphPositions.length) {
-        throw new Error('first_person_callouts cannot share the same insert_after_paragraph value');
-    }
-
-    return normalized.sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+    return normalized.sort(compareCalloutPosition);
 };
 
 const formatFirstPersonCallouts = (callouts) => {
@@ -346,10 +389,10 @@ const formatFirstPersonCallouts = (callouts) => {
             label: item.label || FIRST_PERSON_CALLOUT_DEFAULT_LABEL,
             heading: item.heading,
             body: item.body,
-            insert_after_paragraph: item.insert_after_paragraph,
+            ...(item.insert_after_paragraph != null ? { insert_after_paragraph: item.insert_after_paragraph } : {}),
             location: item.location || FIRST_PERSON_CALLOUT_LOCATION
         }))
-        .sort((a, b) => a.insert_after_paragraph - b.insert_after_paragraph);
+        .sort(compareCalloutPosition);
 };
 
 const parseRelatedBlogIdsField = (field, blogId = null) => {
@@ -367,18 +410,19 @@ const parseRelatedBlogIdsField = (field, blogId = null) => {
     return uniqueIds;
 };
 
-const resolveAuthorId = async (requestedAuthorId, fallbackAuthorId) => {
-    const authorId = requestedAuthorId != null && requestedAuthorId !== ''
-        ? parseInt(requestedAuthorId, 10)
-        : fallbackAuthorId;
+const resolveAuthorId = async (requestedAuthorId) => {
+    if (requestedAuthorId == null || requestedAuthorId === '') {
+        throw new Error('author_id is required');
+    }
 
+    const authorId = parseInt(requestedAuthorId, 10);
     if (Number.isNaN(authorId)) {
         throw new Error('author_id must be a valid integer');
     }
 
-    const author = await User.findByPk(authorId, { attributes: ['id'] });
+    const author = await Author.findByPk(authorId, { attributes: ['id'] });
     if (!author) {
-        throw new Error('author_id does not match an existing user');
+        throw new Error('author_id does not match an existing author');
     }
 
     return authorId;
@@ -418,7 +462,6 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
         pull_quote: blogData.pull_quote ?? null,
         inline_product_card: blogData.inline_product_card ?? null,
         first_person_callouts: blogData.first_person_callouts ?? [],
-        author_override: blogData.author_override ?? null,
         related_blog_ids,
         related_blogs
     };
@@ -426,6 +469,7 @@ const attachRelatedBlogFields = (blogData, relatedPosts = []) => {
 
 module.exports = {
     AUTHOR_ATTRIBUTES,
+    getAuthorInclude,
     PULL_QUOTE_SOURCE_TYPES,
     PULL_QUOTE_LOCATION,
     INLINE_PRODUCT_CARD_ENTITY_TYPES,
